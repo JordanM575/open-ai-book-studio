@@ -1,6 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { runLiveChecks, type LiveResult } from "./live-checks";
+import { ProviderError, type ConnectionSummary, type StoredCredential } from "@ai-book-studio/core/providers/types";
+import { endpointFor, parseProviderModels } from "@ai-book-studio/core/providers/keys";
+import { applyModelPreset } from "@ai-book-studio/core/providers/compatibility";
 import type { ProviderService } from "./providers";
 
 /**
@@ -10,6 +13,11 @@ import type { ProviderService } from "./providers";
  * never on the command line where a shell history would keep it. So the check runs here, in the
  * app's own runtime, against the app's own stored connection.
  *
+ * There is a second route, for a key that is only in the environment: `META_API_KEY` and
+ * `META_BASE_URL` are used when the studio has no stored Meta connection. It is held in memory
+ * for the length of the check and written nowhere, but a shell history may keep it, so the
+ * stored connection is the better way.
+ *
  * The library it writes to is a copy of the committed sample, in a temporary folder, deleted
  * afterwards. The author's own book is never touched.
  */
@@ -17,7 +25,10 @@ export async function runLiveCheckInApp(
   providers: ProviderService,
   sampleRoot: string
 ): Promise<LiveResult[]> {
-  const results = await runLiveChecks(providers, { sampleRoot });
+  const service = (await hasMetaConnection(providers))
+    ? providers
+    : (fromEnvironment() ?? providers);
+  const results = await runLiveChecks(service, { sampleRoot });
   for (const result of results) {
     const mark = result.outcome === "ok" ? "ok   " : result.outcome === "blocked" ? "block" : "FAIL ";
     console.log(`[live] ${mark} ${result.name} — ${result.detail}`);
@@ -30,6 +41,56 @@ export async function runLiveCheckInApp(
     console.log("[live] A blocked check is an account fact, not a defect: the model or the access is not on this key.");
   }
   return results;
+}
+
+async function hasMetaConnection(providers: ProviderService): Promise<boolean> {
+  try {
+    return (await providers.list()).some((entry) => entry.provider === "meta");
+  } catch {
+    return false;
+  }
+}
+
+/** A provider service for a key that is only in the environment. */
+function fromEnvironment(): ProviderService | null {
+  const secret = process.env.META_API_KEY?.trim();
+  const baseUrl = process.env.META_BASE_URL?.trim();
+  if (!secret || !baseUrl) return null;
+  console.log("[live] using the Meta key from the environment, for this run only.");
+  const credential: StoredCredential = {
+    id: "conn_livecheck01",
+    provider: "meta",
+    label: "Live check",
+    kind: "api-key",
+    createdAt: new Date().toISOString(),
+    secret,
+    metadata: { baseUrl }
+  };
+  const connection: ConnectionSummary = {
+    id: credential.id,
+    provider: "meta",
+    label: "Live check",
+    kind: "api-key",
+    createdAt: credential.createdAt
+  };
+  return {
+    list: async () => [connection],
+    credential: async (id: string) => {
+      if (id !== credential.id) throw new ProviderError("auth", "No such connection.");
+      return credential;
+    },
+    models: async () => {
+      const endpoint = endpointFor("meta", secret, baseUrl);
+      const response = await fetch(endpoint.url, { headers: endpoint.headers });
+      if (!response.ok) {
+        throw new ProviderError("auth", `Meta answered ${response.status} for the model list.`);
+      }
+      const models = parseProviderModels("meta", await response.json()).map((model) =>
+        applyModelPreset("meta", model)
+      );
+      return { models, fetchedAt: new Date().toISOString() };
+    }
+  } as unknown as ProviderService;
 }
 
 /**

@@ -40,9 +40,14 @@ const credentials = join(defaultProfile, "credentials.json");
 if (existsSync(credentials)) {
   await copyFile(credentials, join(profile, "credentials.json"));
   console.log("[live] the stored connections were copied into a throwaway profile");
+} else if (process.env.META_API_KEY && process.env.META_BASE_URL) {
+  console.log("[live] no stored connection, so the key in the environment will be used, for this run only");
 } else {
-  console.error("[live] There is no stored Meta connection yet.");
-  console.error("[live] Open AI Book Studio, add the Meta connection in Settings, and run this again.");
+  console.error("[live] There is no stored Meta connection, and no key in the environment.");
+  console.error("[live] Either:");
+  console.error("[live]   open AI Book Studio and add the Meta connection in Settings, then run this again;");
+  console.error("[live]   or set META_API_KEY and META_BASE_URL and run it again.");
+  console.error("[live] The stored connection is the better way: a shell history may keep the other.");
   await rm(temp, { recursive: true, force: true });
   process.exit(2);
 }
