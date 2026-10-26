@@ -25,6 +25,8 @@ export interface ToolkitClient {
   ): Promise<SaveChapterResult>;
   /** The studio's own writing tools, so the toolkit never invents a second dialect. */
   tools(): Promise<ToolDescriptor[]>;
+  /** The tools the studio will run for one book, with the withdrawn ones left out. */
+  bookTools(bookId: string): Promise<ToolDescriptor[]>;
   callTool(
     bookId: string,
     name: string,
@@ -126,6 +128,23 @@ export class McpServer {
         const args = asObject(params.arguments);
         const tool = (await this.tools()).find((entry) => entry.name === name);
         if (!tool) throw new McpFailure(-32602, `Unknown tool: ${name}`);
+        // A tool the author withdrew for this book is not reachable, whatever the catalog says
+        // (FR-013). The studio's own per-book list is the authority; a book the server cannot
+        // answer for is left to the tool's own call, which reports it as a tool failure.
+        if (typeof args.bookId === "string" && args.bookId) {
+          let allowed: ToolDescriptor[] | null = null;
+          try {
+            allowed = await this.client.bookTools(args.bookId);
+          } catch {
+            allowed = null;
+          }
+          if (allowed && !allowed.some((entry) => entry.name === name)) {
+            throw new McpFailure(
+              -32602,
+              `${name} is turned off for this book. The author withdrew it.`
+            );
+          }
+        }
         try {
           const value = await tool.run(args);
           return {

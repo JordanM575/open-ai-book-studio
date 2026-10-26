@@ -20,6 +20,8 @@ import type { VoiceTranscript } from "./providers/speech";
 import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
 import type { AgentThread } from "./agent/messages";
 import type { ThreadSummary } from "./agent/threads";
+import type { AgentStatus, PluginStatus } from "./agent/metrics";
+import type { ToolDescriptor } from "./agent/tools";
 import type { StorageSummary } from "./library/storage";
 import type { BuildMetadata } from "./build";
 
@@ -104,6 +106,14 @@ export const IPC = {
     stop: "agent:stop",
     undoLast: "agent:undoLast",
     approve: "agent:approve",
+    /** Everything the app shows about a book's agent. */
+    status: "agent:status",
+    /** Change this book's agent settings. */
+    setSettings: "agent:setSettings",
+    /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
+    choosePluginFolder: "agent:choosePluginFolder",
+    /** Point the app at a folder of TypeScript tools, or clear it with null. */
+    setPluginFolder: "agent:setPluginFolder",
     threads: {
       list: "agent:threads:list",
       read: "agent:threads:read",
@@ -289,6 +299,26 @@ export interface StudioApi {
     stop(turnId: string): Promise<Result<null>>;
     undoLast(bookId: string): Promise<Result<{ restored: number; skipped: number }>>;
     approve(turnId: string, approvalId: string, approved: boolean): Promise<Result<null>>;
+    /** Everything the app shows about a book's agent: tools, skills, cache and plugins. */
+    status(bookId: string): Promise<Result<AgentStatus>>;
+    /**
+     * Change this book's agent settings.
+     *
+     * The main process merges the patch into the book's current settings, so a change never drops
+     * a setting the app did not send.
+     */
+    setSettings(
+      bookId: string,
+      patch: {
+        disabledTools?: string[];
+        skillsEnabled?: boolean;
+        cachePrefixMode?: "off" | "auto";
+      }
+    ): Promise<Result<AgentStatus>>;
+    /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
+    choosePluginFolder(): Promise<Result<string | null>>;
+    /** Point the app at a folder of TypeScript tools, or clear it with null. */
+    setPluginFolder(folder: string | null): Promise<Result<PluginStatus>>;
     threads: {
       list(bookId: string): Promise<Result<ThreadSummary[]>>;
       read(bookId: string, threadId: string): Promise<Result<AgentThread | null>>;

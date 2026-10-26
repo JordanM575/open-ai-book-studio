@@ -263,6 +263,22 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
         Promise.resolve(
           failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
         ),
+      status: () =>
+        Promise.resolve(
+          failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
+        ),
+      setSettings: () =>
+        Promise.resolve(
+          failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
+        ),
+      choosePluginFolder: () =>
+        Promise.resolve(
+          failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
+        ),
+      setPluginFolder: () =>
+        Promise.resolve(
+          failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
+        ),
       threads: {
         list: () =>
           Promise.resolve(

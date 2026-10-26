@@ -51,6 +51,13 @@ explicit opt-in, so a leaked token is not enough on its own.
 Every change a tool makes leaves an undo checkpoint in the book, in the same format the studio's own
 Undo uses. The author can revert a change made by another agent from the app.
 
+### Tools the author has withdrawn
+
+The author can turn a tool off for a book, in **More → Agent**. A withdrawn tool is not offered to
+the model, and it is not reachable from the CLI, the backend or the MCP server: the toolkit refuses
+it with `turned off for this book. The author withdrew it.` The setting lives in the book, so it
+travels with the book and applies to every agent that works on it.
+
 ## Build and install
 
 From the repository:

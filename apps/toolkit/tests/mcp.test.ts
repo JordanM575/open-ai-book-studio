@@ -78,6 +78,7 @@ function client(): ToolkitClient {
     createChapter: async () => chapter,
     saveChapter: async () => ({ status: "saved", chapter }) satisfies SaveChapterResult,
     tools: async () => catalog,
+    bookTools: async () => catalog,
     callTool: async (_bookId, name, args) => ({ ok: true, message: `ran ${name}`, args })
   };
 }
@@ -174,6 +175,24 @@ describe("MCP server", () => {
       arguments: { bookId: BOOK, chapterId: CHAPTER, content: "New." }
     });
     expect(seen[0]?.allowDestructive).toBe(true);
+  });
+
+  test("refuses a tool the author withdrew for that book", async () => {
+    const base = client();
+    const server = new McpServer(
+      {
+        ...base,
+        // The book has `append_to_chapter` withdrawn, so the studio's per-book list leaves it out.
+        bookTools: async () => catalog.filter((tool) => tool.name !== "append_to_chapter")
+      },
+      { allowWrites: true }
+    );
+    const response = await call(server, "tools/call", {
+      name: "append_to_chapter",
+      arguments: { bookId: BOOK, chapterId: CHAPTER, text: "A new line." }
+    });
+    expect(response.error?.code).toBe(-32602);
+    expect(response.error?.message).toMatch(/turned off for this book/i);
   });
 
   test("returns protocol errors for unknown methods and bad arguments, and isError for tool failures", async () => {

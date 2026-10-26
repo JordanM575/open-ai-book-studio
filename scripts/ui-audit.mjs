@@ -241,6 +241,34 @@ if (!(await waitFor('[data-testid="illustration-prompt"]'))) {
 }
 await closeDialogs();
 
+// The agent's own panel: what it can do, how it is doing, and its plugins.
+await click('[data-testid="open-agent"]');
+if (!(await waitFor('[data-testid="agent-performance"]'))) {
+  problem("agent panel", "the agent panel did not open");
+} else {
+  notes.push("the agent panel opened");
+}
+const agentPanel = await page.evaluate(
+  () => document.querySelector('[role="dialog"]')?.innerText ?? ""
+);
+for (const section of ["Performance", "Plugins", "Tools"]) {
+  if (!agentPanel.includes(section)) {
+    problem("agent panel", `the agent panel is missing “${section}”`);
+  }
+}
+if (!/provider does not report a prompt cache|of the prompt came from the cache/i.test(agentPanel)) {
+  problem("agent panel", "the agent panel does not say what the prompt cache did");
+} else {
+  notes.push("the agent panel says what the cache did");
+}
+const pluginPicker = await page.locator('[data-testid="agent-choose-plugins"]').count();
+if (pluginPicker === 0) {
+  problem("agent panel", "there is no way to point the app at a plugin folder");
+} else {
+  notes.push("the agent panel offers a plugin folder");
+}
+await closeDialogs();
+
 if (consoleErrors.length > 0) {
   for (const error of consoleErrors) problem("console", error);
 }

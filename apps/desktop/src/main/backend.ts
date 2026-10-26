@@ -46,7 +46,7 @@ export interface BackendSource {
  * a third-party agent gets the same verbs and the same safety rules.
  */
 export interface BackendToolRunner {
-  catalog(): ToolDescriptor[];
+  catalog(): Promise<ToolDescriptor[]>;
   run(request: {
     bookId: string;
     name: string;
@@ -173,7 +173,7 @@ export class LocalBackend {
       return;
     }
     if (request.method === "GET" && parts.length === 2 && parts[1] === "tools") {
-      this.send(response, 200, { tools: this.toolRunner().catalog() });
+      this.send(response, 200, { tools: await this.toolRunner().catalog() });
       return;
     }
 
@@ -185,7 +185,7 @@ export class LocalBackend {
       return;
     }
     if (request.method === "GET" && parts.length === 4 && parts[3] === "tools") {
-      this.send(response, 200, { tools: this.toolRunner().catalog() });
+      this.send(response, 200, { tools: await this.toolRunner().catalog() });
       return;
     }
     if (request.method === "POST" && parts.length === 5 && parts[3] === "tools") {

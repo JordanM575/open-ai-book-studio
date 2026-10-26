@@ -10,6 +10,7 @@ import { AgentRuntime } from "./agent/runtime";
 import { ToolBridge } from "./agent/tool-bridge";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
+import { MetricsStore } from "./metrics";
 import { ImageService } from "./images";
 import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
@@ -322,9 +323,12 @@ app.whenReady().then(async () => {
 
   // The control plane is for the standalone CLI and MCP server. A hidden test run can start it too,
   // with its own locator file, so the toolkit can be exercised end to end without a window.
+  const toolsBridge = new ToolBridge(
+    () => studio.library,
+    () => settings.get().pluginFolder ?? null
+  );
   if (!headless || process.env.STUDIO_BACKEND === "1") {
-    const tools = new ToolBridge(() => studio.library);
-    backend = new LocalBackend(studio, { tools });
+    backend = new LocalBackend(studio, { tools: toolsBridge });
     void backend.start().catch((error: unknown) => {
       console.warn("[backend] Could not start the agent toolkit service:", error);
       backend = null;
@@ -349,9 +353,18 @@ app.whenReady().then(async () => {
     }
   });
   notifier = new BackgroundNotifier(() => mainWindow, showStudioWindow);
-  agentRuntime = new AgentRuntime(studio, providers, (event) => {
-    mainWindow?.webContents.send(AGENT_EVENT_CHANNEL, event);
-  }, undefined, (outcome) => notifier.handle(outcome));
+  const metrics = new MetricsStore(() => studio.library?.root ?? null);
+  agentRuntime = new AgentRuntime(
+    studio,
+    providers,
+    (event) => {
+      mainWindow?.webContents.send(AGENT_EVENT_CHANNEL, event);
+    },
+    undefined,
+    (outcome) => notifier.handle(outcome),
+    () => settings.get().pluginFolder ?? null,
+    metrics
+  );
 
   // The studio only needs the microphone. Camera, geolocation, notifications and every other
   // permission stay denied; there is no remote content that could ask for them.
@@ -368,7 +381,17 @@ app.whenReady().then(async () => {
   });
   app.on("browser-window-focus", () => notifier.clearBadge());
 
-  registerIpc(studio, () => mainWindow, providers, agentRuntime, voice, images, segmentation);
+  registerIpc(
+    studio,
+    () => mainWindow,
+    providers,
+    agentRuntime,
+    voice,
+    images,
+    segmentation,
+    toolsBridge,
+    settings
+  );
   buildMenu();
   mainWindow = createWindow();
 

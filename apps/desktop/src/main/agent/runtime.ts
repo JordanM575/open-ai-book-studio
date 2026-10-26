@@ -35,7 +35,13 @@ import { newId } from "../library/paths";
 import { modelFor } from "./transport";
 import { CheckpointStore } from "./checkpoints";
 import { createChapterTools, DESTRUCTIVE_TOOL_NAMES, type ChapterChange } from "./tools";
+import { buildToolSet } from "./tool-set";
 import { buildPrompt } from "./prompt";
+import { readBookSkills } from "./skills";
+import { cachePrefixFor } from "./cache";
+import { loadPlugins, pluginTools, type LoadedPlugins } from "./plugins";
+import type { PluginTool } from "@ai-book-studio/core/agent/plugins";
+import { MetricsStore } from "../metrics";
 
 interface PendingApproval {
   approvalId: string;
@@ -107,12 +113,41 @@ export class AgentRuntime {
     private readonly providers: ProviderService,
     private readonly emit: (event: AgentEvent) => void,
     private readonly makeModel: AgentModelFactory = modelFor,
-    private readonly onOutcome: (outcome: AgentOutcome) => void = () => {}
+    private readonly onOutcome: (outcome: AgentOutcome) => void = () => {},
+    /** The library-level plugin folder, if the author pointed at one. */
+    private readonly pluginFolder: () => string | null = () => null,
+    /** Where the per-book tool metrics are kept. */
+    private readonly metrics: MetricsStore | null = null
   ) {}
 
   /** True while a turn the author explicitly marked as background is still alive. */
   hasActiveBackgroundTurns(): boolean {
     return [...this.active.values()].some((turn) => turn.background);
+  }
+
+  /**
+   * The plugin tools for a book.
+   *
+   * A folder that fails to load is reported to the caller and the turn carries on with the built-in
+   * tools (FR-010).
+   */
+  private async pluginToolsFor(bookId: string): Promise<PluginTool[]> {
+    const loaded = await loadPlugins(this.pluginFolder());
+    this.lastPluginLoad = loaded;
+    return pluginTools(loaded.plugins);
+  }
+
+  /** What the last plugin load found, so the app can show it. */
+  lastPluginLoad: LoadedPlugins | null = null;
+
+  /** Record one tool call's outcome for the book's metrics (FR-003). */
+  private async recordToolCall(bookId: string, name: string, ok: boolean): Promise<void> {
+    if (!this.metrics) return;
+    try {
+      await this.metrics.append(bookId, { name, ok, at: new Date().toISOString() });
+    } catch (error) {
+      console.warn("[agent] Could not record the tool metric:", redact((error as Error).message));
+    }
   }
 
   /**
@@ -178,7 +213,12 @@ export class AgentRuntime {
     const model = this.makeModel(credential, modelId);
     const prepared = await prepareThread(library.threads, input);
     const activeChapter = input.chapterId ? (chapters.find((chapter) => chapter.id === input.chapterId) ?? null) : null;
-    const built = buildPrompt({ book, chapters, activeChapter });
+    const skills = await readBookSkills(
+      library.root,
+      input.bookId,
+      book.settings?.agent?.skillsEnabled !== false
+    );
+    const built = buildPrompt({ book, chapters, activeChapter, skills: skills?.text ?? null });
     const compacted = compactHistory(prepared.thread).messages;
     const messages = modelMessagesFor(compacted);
     const context = contextBreakdown(
@@ -204,17 +244,29 @@ export class AgentRuntime {
       checkpointAttempted: false,
       checkpointSaved: false
     };
-    const tools = createChapterTools(library, input.bookId, (change) => {
-      if (!state.changes.some((existing) => existing.chapterId === change.chapterId)) state.changes.push(change);
+    const cache = cachePrefixFor(
+      credential.provider,
+      book.settings?.cache?.prefixMode !== "off"
+    );
+    const tools = buildToolSet(library, input.bookId, {
+      disabledTools: book.settings?.agent?.disabledTools ?? [],
+      pluginTools: await this.pluginToolsFor(book.id),
+      ...(cache.toolProviderOptions ? { toolProviderOptions: cache.toolProviderOptions } : {}),
+      onBeforeChange: (change) => {
+        if (!state.changes.some((existing) => existing.chapterId === change.chapterId)) state.changes.push(change);
+      }
     });
     const agent = new ToolLoopAgent({
       id: "chapter-writer",
       model,
-      instructions: built.system,
+      instructions: cache.systemProviderOptions
+        ? ({ role: "system", content: built.system, providerOptions: cache.systemProviderOptions } as const)
+        : built.system,
       tools,
-      // The destructive tools are the ones the toolkit also keeps behind an explicit opt-in.
+      // The destructive tools are the ones the toolkit also keeps behind an explicit opt-in. A
+      // tool the author withdrew is not in the set, so it is not listed here either.
       toolApproval: Object.fromEntries(
-        DESTRUCTIVE_TOOL_NAMES.map((name) => [name, "user-approval"])
+        DESTRUCTIVE_TOOL_NAMES.filter((name) => name in tools).map((name) => [name, "user-approval"])
       ) as Record<string, "user-approval">,
       stopWhen: isStepCount(MAX_STEPS)
     });
@@ -443,6 +495,7 @@ export class AgentRuntime {
             output: part.output,
             ...(output?.ok === false ? { isError: true } : {})
           });
+          await this.recordToolCall(input.bookId, part.toolName, output?.ok !== false);
           this.emit({
             type: "tool",
             turnId,

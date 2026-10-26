@@ -54,6 +54,10 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
 - The sample library, submission packet and readiness check (spec 023).
 - The studio's own writing tools served over the loopback backend and mirrored in the MCP server, so
   a third-party agent gets the built-in agent's verbs (spec 024).
+- The agent's own capabilities: a cacheable prompt prefix with its hit rate, per-tool call and success
+  metrics, a per-book switch that withdraws a tool from the model, the backend and the MCP server
+  alike, an optional `SKILLS.md` that gives the agent the author's own house rules, and a folder of
+  TypeScript plugins the author points the app at (spec 025).
 
 The event branch is `meta-hackathon`; the cut tag is `meta-base-2026-10-26`. The Gitea history is
 canonical. The GitHub clean replay is a separate publication step and must not be used to hide
@@ -78,7 +82,7 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Check | Command | Result at submission |
 | --- | --- | --- |
 | Typecheck | `bun run typecheck` | Pass (desktop, web, toolkit) |
-| Tests | `bun test` | **422 pass, 0 fail** |
+| Tests | `bun test` | **470 pass, 0 fail** |
 | Desktop build | `bun run build` | Pass |
 | Web build | `bun run build:web` | Pass |
 | Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |

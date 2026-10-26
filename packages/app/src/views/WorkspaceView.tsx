@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, ChevronLeft, Cpu, Download, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, type LucideIcon } from "lucide-react";
+import { BookOpen, Bot, ChevronLeft, Cpu, Download, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, type LucideIcon } from "lucide-react";
 import type { BookDetail, BookMeta, Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { ChapterRail } from "../components/ChapterRail";
 import { ModelPickerDialog } from "../components/ModelPickerDialog";
 import { IllustrationDialog } from "../components/IllustrationDialog";
+import { AgentDialog } from "../components/AgentDialog";
 import { StoryBibleDialog } from "../components/StoryBibleDialog";
 import { SearchDialog } from "../components/SearchDialog";
 import { ChatPanel } from "../components/ChatPanel";
@@ -61,6 +62,7 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
   const [illustrationData, setIllustrationData] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -412,6 +414,16 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
               <MessageSquare size={16} />
             </Button>
             <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setAgentOpen(true)}
+              aria-label="Agent settings"
+              title="Agent settings"
+              data-testid="open-agent"
+            >
+              <Bot size={16} />
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               onClick={() => openModelPicker("book")}
@@ -661,6 +673,13 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         onOpenSettings={() => openSettings("providers")}
       />
 
+      <AgentDialog
+        open={agentOpen}
+        bookId={bookId}
+        onClose={() => setAgentOpen(false)}
+        onNotice={onNotice}
+      />
+
       <Dialog open={moreOpen} onOpenChange={setMoreOpen}>
         <DialogContent title="More" description="Book tools, settings, and appearance.">
           <div className="grid gap-1">
@@ -675,6 +694,18 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             >
               <Settings2 size={16} />
               Settings
+            </Button>
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid="more-agent"
+              onClick={() => {
+                setMoreOpen(false);
+                setAgentOpen(true);
+              }}
+            >
+              <Bot size={16} />
+              Agent
             </Button>
             <Button
               variant="ghost"

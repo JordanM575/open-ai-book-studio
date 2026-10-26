@@ -169,6 +169,14 @@ export class BackendClient {
     return result.tools;
   }
 
+  /** The tools the studio will actually run for a book, with the withdrawn ones left out. */
+  async bookTools(bookId: string): Promise<ToolDescriptor[]> {
+    const result = await this.request<{ tools: ToolDescriptor[] }>(
+      `/v1/books/${encodeURIComponent(bookId)}/tools`
+    );
+    return result.tools;
+  }
+
   async callTool(
     bookId: string,
     name: string,

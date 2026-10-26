@@ -59,6 +59,14 @@ function client(): ToolkitClient {
         tier: "read" as const
       }
     ],
+    bookTools: async () => [
+      {
+        name: "read_story_bible",
+        description: "Read the full Story Bible.",
+        inputSchema: { type: "object", properties: {} },
+        tier: "read" as const
+      }
+    ],
     callTool: async () => ({ ok: true, message: "ran the tool" })
   };
 }

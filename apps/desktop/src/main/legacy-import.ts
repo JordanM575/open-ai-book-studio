@@ -5,6 +5,7 @@ import {
   type Memory,
   type StoryArc
 } from "@ai-book-studio/core/schema";
+import { DEFAULT_AGENT_SETTINGS, DEFAULT_CACHE_SETTINGS } from "@ai-book-studio/core/agent/settings";
 import { parseLegacyExport, type LegacyImportReport } from "@ai-book-studio/core/legacy";
 import type { Library } from "./library/store";
 import { newId } from "./library/paths";
@@ -104,7 +105,11 @@ export async function importLegacyBackup(library: Library, raw: unknown): Promis
         characters,
         memories,
         stage: legacy.stage === "drafting" ? "drafting" : "onboarding",
-        settings: { manuscript: settings.success ? settings.data : DEFAULT_MANUSCRIPT_SETTINGS },
+        settings: {
+          manuscript: settings.success ? settings.data : DEFAULT_MANUSCRIPT_SETTINGS,
+          agent: DEFAULT_AGENT_SETTINGS,
+          cache: DEFAULT_CACHE_SETTINGS
+        },
         frontMatter: legacy.frontMatter
       });
 

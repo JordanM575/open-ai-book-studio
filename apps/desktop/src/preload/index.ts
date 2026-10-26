@@ -105,6 +105,14 @@ const api: StudioApi = {
     undoLast: (bookId: string) => invoke(IPC.agent.undoLast, bookId),
     approve: (turnId: string, approvalId: string, approved: boolean) =>
       invoke(IPC.agent.approve, { turnId, approvalId, approved }),
+    status: (bookId: string) => invoke(IPC.agent.status, bookId),
+    setSettings: (bookId: string, patch: {
+      disabledTools?: string[];
+      skillsEnabled?: boolean;
+      cachePrefixMode?: "off" | "auto";
+    }) => invoke(IPC.agent.setSettings, { bookId, patch }),
+    choosePluginFolder: () => invoke(IPC.agent.choosePluginFolder),
+    setPluginFolder: (folder: string | null) => invoke(IPC.agent.setPluginFolder, folder),
     threads: {
       list: (bookId: string) => invoke(IPC.agent.threads.list, bookId),
       read: (bookId: string, threadId: string) => invoke(IPC.agent.threads.read, { bookId, threadId }),

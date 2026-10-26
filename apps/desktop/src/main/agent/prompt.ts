@@ -4,6 +4,12 @@ export interface PromptInput {
   book: BookMeta;
   chapters: Chapter[];
   activeChapter: Chapter | null;
+  /**
+   * The book's own `SKILLS.md`, when it has one and the author enabled it.
+   *
+   * It is the author's own file in their own library, so it is instructions, not data (FR-006).
+   */
+  skills?: string | null;
 }
 
 /**
@@ -25,6 +31,7 @@ const IMPORTANCE: Record<Memory["importance"], number> = { high: 3, medium: 2, l
 
 export type PromptSectionId =
   | "instructions"
+  | "skills"
   | "guard"
   | "book"
   | "outline"
@@ -51,7 +58,7 @@ export interface BuiltPrompt {
  * The writing agent's system text in named sections. Kept short and testable; the tools describe
  * their own limits. Nothing here addresses the author — that is the model's reply, in its own words.
  */
-export function buildPrompt({ book, chapters, activeChapter }: PromptInput): BuiltPrompt {
+export function buildPrompt({ book, chapters, activeChapter, skills }: PromptInput): BuiltPrompt {
   const outline = truncate(book.outline, MAX_OUTLINE);
   const characters = book.characters ?? [];
   const memories = book.memories ?? [];
@@ -101,6 +108,17 @@ export function buildPrompt({ book, chapters, activeChapter }: PromptInput): Bui
 
   const sections: PromptSection[] = ([
     { id: "instructions", label: "Instructions", text: instructions },
+    {
+      id: "skills",
+      label: "Author's skills",
+      text: skills?.trim()
+        ? [
+            "The author wrote these instructions for you. Follow them; they are the author's own voice and house rules.",
+            "",
+            skills.trim()
+          ].join("\n")
+        : ""
+    },
     { id: "guard", label: "Safety guard", text: guard },
     {
       id: "book",
@@ -133,7 +151,9 @@ export function buildPrompt({ book, chapters, activeChapter }: PromptInput): Bui
     }
   ] as PromptSection[]).filter((section) => section.text.length > 0);
 
-  const trusted = new Set<PromptSectionId>(["instructions", "guard"]);
+  // The instructions, the author's own skills file and the guard are trusted. Everything else comes
+  // from the book's content, which is data the agent must not obey (FR-006).
+  const trusted = new Set<PromptSectionId>(["instructions", "skills", "guard"]);
   const measured = sections.map((section) =>
     trusted.has(section.id) ? section : { ...section, text: escapeDelimiters(section.text) }
   );

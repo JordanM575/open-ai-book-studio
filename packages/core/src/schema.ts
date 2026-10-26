@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  agentSettingsSchema,
+  cacheSettingsSchema,
+  DEFAULT_AGENT_SETTINGS,
+  DEFAULT_CACHE_SETTINGS
+} from "./agent/settings";
 
 /**
  * The on-disk schema version. A newer app may write a newer number; an older app must refuse
@@ -46,32 +52,35 @@ export const memorySchema = z.object({
   updatedAt: isoDate
 });
 
-export const manuscriptSettingsSchema = z.object({
-  bodyFont: z
-    .enum([
-      "Times New Roman",
-      "Garamond",
-      "Georgia",
-      "Palatino Linotype",
-      "Book Antiqua",
-      "Cambria",
-      "Calibri",
-      "Bookman Old Style",
-      "Century",
-      "Courier New",
-      "Arial",
-      "Helvetica"
-    ])
-    .default("Times New Roman"),
-  bodyFontSize: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14)]).default(12),
-  firstLineIndent: z
-    .union([z.literal(0), z.literal(0.1), z.literal(0.2), z.literal(0.3), z.literal(0.5)])
-    .default(0.2),
-  lineSpacing: z.enum(["Single", "1.15", "1.5", "Double"]).default("Double"),
-  chapterTitleAlignment: z.enum(["Left", "Center"]).default("Center"),
-  includeTableOfContents: z.boolean().default(false),
-  preserveLineBreaks: z.boolean().default(true)
-});
+export const manuscriptSettingsSchema = z
+  .object({
+    bodyFont: z
+      .enum([
+        "Times New Roman",
+        "Garamond",
+        "Georgia",
+        "Palatino Linotype",
+        "Book Antiqua",
+        "Cambria",
+        "Calibri",
+        "Bookman Old Style",
+        "Century",
+        "Courier New",
+        "Arial",
+        "Helvetica"
+      ])
+      .default("Times New Roman"),
+    bodyFontSize: z.union([z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14)]).default(12),
+    firstLineIndent: z
+      .union([z.literal(0), z.literal(0.1), z.literal(0.2), z.literal(0.3), z.literal(0.5)])
+      .default(0.2),
+    lineSpacing: z.enum(["Single", "1.15", "1.5", "Double"]).default("Double"),
+    chapterTitleAlignment: z.enum(["Left", "Center"]).default("Center"),
+    includeTableOfContents: z.boolean().default(false),
+    preserveLineBreaks: z.boolean().default(true)
+  })
+  /** The default is on the input, so a book that predates a setting still opens. */
+  .prefault({});
 
 export const DEFAULT_MANUSCRIPT_SETTINGS: ManuscriptSettings = manuscriptSettingsSchema.parse({});
 
@@ -106,7 +115,19 @@ export const bookSchema = z.looseObject({
    * book. Off by default; the agent refuses a contributor model until the author enables it.
    */
   allowContributorTraining: z.boolean().default(false),
-  settings: z.object({ manuscript: manuscriptSettingsSchema }).default({ manuscript: DEFAULT_MANUSCRIPT_SETTINGS }),
+  settings: z
+    .object({
+      manuscript: manuscriptSettingsSchema,
+      /** Which built-in tools the author has withdrawn, and whether the skills file is used. */
+      agent: agentSettingsSchema,
+      /** How the agent's request is marked for the provider's cache. */
+      cache: cacheSettingsSchema
+    })
+    /**
+     * The defaults are on the input, so a book written before these settings existed still opens.
+     * The sample library and every book an author already has must keep working.
+     */
+    .prefault({}),
   /** Front and back matter: title page, dedication, acknowledgements, author's note. */
   frontMatter: z.record(z.string(), z.string()).default({}),
   createdAt: isoDate,

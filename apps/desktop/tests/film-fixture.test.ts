@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { Library } from "../src/main/library/store";
 import { buildFilmFixture } from "../../../scripts/film-fixture";
@@ -9,6 +9,24 @@ const cleanups: string[] = [];
 
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+});
+
+describe("the committed sample library", () => {
+  test("opens with the current schema, so a new setting never locks the author out", async () => {
+    // The committed sample was written before the agent settings existed. If a new setting breaks
+    // an older book, the sample stops opening and the shipped library is broken.
+    const root = await mkdtemp(join(tmpdir(), "abs-sample-library-"));
+    cleanups.push(root);
+    const libraryRoot = join(root, "library");
+    await cp(resolve(import.meta.dir, "../../../samples/the-salt-road"), libraryRoot, { recursive: true });
+    const library = await Library.open(libraryRoot);
+    const books = await library.listBooks();
+    expect(books).toHaveLength(1);
+    expect(books[0]?.title).toBe("The Salt Road");
+    const detail = await library.readBook(books[0]!.id);
+    expect(detail.book.settings.agent.disabledTools).toEqual([]);
+    expect(detail.book.settings.cache.prefixMode).toBe("auto");
+  });
 });
 
 describe("film fixture", () => {

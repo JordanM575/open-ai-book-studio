@@ -21,6 +21,13 @@ import { importLegacyBackup } from "./legacy-import";
 import { importLibraryArchiveToFolder, writeLibraryArchive } from "./library/archive";
 import { ArchiveError } from "@ai-book-studio/core/archive/errors";
 import { UsageStore } from "./usage";
+import { MetricsStore } from "./metrics";
+import { summarizeCache } from "@ai-book-studio/core/agent/metrics";
+import type { AgentStatus, PluginStatus } from "@ai-book-studio/core/agent/metrics";
+import { loadPlugins, pluginTools, validatePluginFolder } from "./agent/plugins";
+import { readBookSkills } from "./agent/skills";
+import type { ToolBridge } from "./agent/tool-bridge";
+import type { SettingsStore } from "./settings";
 import type { Studio } from "./studio";
 import type { ProviderService } from "./providers";
 import type { AgentRuntime } from "./agent/runtime";
@@ -88,8 +95,21 @@ export function registerIpc(
   agent: AgentRuntime,
   voice: VoiceService,
   images: ImageService,
-  segmentation: SegmentationService
+  segmentation: SegmentationService,
+  toolsBridge: ToolBridge,
+  settings: SettingsStore
 ): void {
+  /** What the plugin folder currently provides, for the settings panel. */
+  const pluginStatus = async (): Promise<PluginStatus> => {
+    const loaded = await loadPlugins(settings.get().pluginFolder ?? null);
+    return {
+      folder: loaded.folder,
+      loaded: loaded.plugins.map((plugin) => plugin.name),
+      tools: pluginTools(loaded.plugins).map((tool) => tool.name),
+      failures: loaded.failures
+    };
+  };
+
   const handle = <T>(channel: string, handler: (payload: unknown) => Promise<T> | T): void => {
     ipcMain.handle(channel, async (_event, payload: unknown): Promise<Result<T>> => {
       try {
@@ -383,6 +403,99 @@ export function registerIpc(
   handle(IPC.usage.summary, async (payload) => {
     const bookId = idSchema.parse(payload);
     return new UsageStore(() => studio.library?.root ?? null).summary(bookId);
+  });
+
+  /* -------------------------------------------------------------------- agent */
+
+  /** Everything the app shows about a book's agent. */
+  const agentStatus = async (bookId: string): Promise<AgentStatus> => {
+    const library = studio.library;
+    if (!library) throw new ProviderError("invalid-request", "No library is open in the studio.");
+    const { book } = await library.readBook(bookId);
+    const disabled = new Set(book.settings?.agent?.disabledTools ?? []);
+    const catalog = await toolsBridge.catalog();
+    const root = library.root;
+    const usage = await new UsageStore(() => root).read(bookId);
+    const cache = summarizeCache(
+      usage.map((record) => ({
+        cachedInputTokens: record.cachedInputTokens,
+        inputTokens: record.inputTokens,
+        // A provider that does not report a cache leaves the count at zero; that is "not reported",
+        // not "no cache" (D-147).
+        reported: record.costBasis !== "unknown" || record.cachedInputTokens > 0
+      }))
+    );
+    const skills = await readBookSkills(root, bookId, true);
+    const metrics = await new MetricsStore(() => root).summary(bookId);
+    const counts = new Map(metrics.tools.map((tool) => [tool.name, tool]));
+    return {
+      tools: catalog.map((tool) => {
+        const count = counts.get(tool.name);
+        return {
+          name: tool.name,
+          description: tool.description,
+          tier: tool.tier,
+          enabled: !disabled.has(tool.name),
+          calls: count?.calls ?? 0,
+          successes: count?.successes ?? 0,
+          failures: count?.failures ?? 0,
+          successRate: count?.successRate ?? 0
+        };
+      }),
+      toolTotals: metrics,
+      skills: {
+        present: skills !== null,
+        enabled: book.settings?.agent?.skillsEnabled !== false,
+        characters: skills?.text.length ?? 0
+      },
+      cache: { ...cache, mode: book.settings?.cache?.prefixMode ?? "auto" },
+      plugins: await pluginStatus()
+    };
+  };
+
+  handle(IPC.agent.status, async (payload) => agentStatus(idSchema.parse(payload)));
+
+  handle(IPC.agent.setSettings, async (payload) => {
+    const input = z
+      .object({
+        bookId: idSchema,
+        patch: z.object({
+          disabledTools: z.array(z.string().min(2).max(60)).max(64).optional(),
+          skillsEnabled: z.boolean().optional(),
+          cachePrefixMode: z.enum(["off", "auto"]).optional()
+        })
+      })
+      .parse(payload);
+    const library = studio.requireLibrary();
+    const { book } = await library.readBook(input.bookId);
+    const agent = { ...book.settings.agent };
+    const cache = { ...book.settings.cache };
+    if (input.patch.disabledTools) agent.disabledTools = [...new Set(input.patch.disabledTools)];
+    if (input.patch.skillsEnabled !== undefined) agent.skillsEnabled = input.patch.skillsEnabled;
+    if (input.patch.cachePrefixMode) cache.prefixMode = input.patch.cachePrefixMode;
+    await library.updateBook(input.bookId, { settings: { ...book.settings, agent, cache } });
+    return agentStatus(input.bookId);
+  });
+
+  handle(IPC.agent.choosePluginFolder, async () => {
+    const window = getWindow();
+    const options = {
+      title: "Choose a plugin folder",
+      buttonLabel: "Use this folder",
+      properties: ["openDirectory"] as Array<"openDirectory">
+    };
+    const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    const folder = picked.filePaths[0];
+    if (picked.canceled || !folder) return null;
+    return folder;
+  });
+
+  handle(IPC.agent.setPluginFolder, async (payload) => {
+    const folder = payload === null ? null : z.string().min(1).max(4096).parse(payload);
+    const problem = folder ? validatePluginFolder(folder) : null;
+    if (problem) throw new ProviderError("invalid-request", problem);
+    await settings.update({ pluginFolder: folder });
+    return pluginStatus();
   });
 
   /* --------------------------------------------------------------------- voice */
