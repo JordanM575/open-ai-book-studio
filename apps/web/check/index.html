@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Browser storage check</title>
+    <style>
+      :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; padding: 32px; max-width: 820px; background: #0f1117; color: #e8eaf0; }
+      h1 { font-size: 22px; margin: 0 0 8px; }
+      p { color: #9aa3b2; margin: 0 0 20px; }
+      ul { list-style: none; padding: 0; display: grid; gap: 8px; }
+      li { padding: 12px 14px; border-radius: 10px; background: #191d27; border: 1px solid #2a3140; }
+      li.fail { border-color: #8a3040; background: #2a1620; }
+      strong { display: block; font-size: 14px; }
+      span { color: #9aa3b2; font-size: 13px; overflow-wrap: anywhere; }
+      #summary { font-weight: 600; margin-top: 20px; }
+    </style>
+  </head>
+  <body data-result="running">
+    <h1>Browser storage check</h1>
+    <p>Exercises the real OPFS adapter, checked saves, conflicts, the archive and IndexedDB.</p>
+    <ul id="checks"></ul>
+    <p id="summary">Running…</p>
+    <script type="module" src="./dist/main.js"></script>
+  </body>
+</html>

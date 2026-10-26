@@ -1,0 +1,51 @@
+{
+  "name": "ai-book-studio",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "trustedDependencies": [
+    "electron",
+    "electron-winstaller",
+    "esbuild"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "bun --filter @ai-book-studio/desktop dev",
+    "build": "bun --filter @ai-book-studio/desktop build",
+    "build:info": "node scripts/build-info.mjs",
+    "typecheck": "bun --filter @ai-book-studio/desktop typecheck && bun --filter @ai-book-studio/web typecheck",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "smoke": "bun run build && bun scripts/smoke.mjs",
+    "smoke:run": "bun scripts/smoke.mjs",
+    "smoke:packaged": "bun run package:dir && SMOKE_PACKAGED=1 bun scripts/smoke.mjs",
+    "capture:run": "bun scripts/capture.mjs",
+    "package": "bun --filter @ai-book-studio/desktop package",
+    "package:dir": "bun --filter @ai-book-studio/desktop package",
+    "dist": "bun --filter @ai-book-studio/desktop dist",
+    "keys:check": "bun scripts/check-keys.mjs",
+    "tokens": "bun scripts/build-tokens.mjs",
+    "verify": "bun run build:info && bun run typecheck && bun test && bun run build && bun run build:web",
+    "postinstall": "node scripts/check-electron.mjs",
+    "dev:web": "bun --filter @ai-book-studio/web dev",
+    "build:web": "bun --filter @ai-book-studio/web build",
+    "smoke:web": "bun run build:web && node scripts/web-smoke.mjs",
+    "gallery:build": "bun --filter @ai-book-studio/web build:gallery",
+    "matrix:web": "node scripts/browser-matrix.mjs",
+    "ios:pair": "node scripts/simulator-pair.mjs",
+    "ios:ipad": "apps/mobile/scripts/run-sim.sh ipad",
+    "ios:iphone": "apps/mobile/scripts/run-sim.sh iphone"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "playwright": "^1.64.1",
+    "typescript": "^7.0.2"
+  }
+}

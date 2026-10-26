@@ -1,0 +1,414 @@
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { z } from "zod";
+import { IPC, type Result, type StudioError } from "@ai-book-studio/core/ipc";
+import { bookSchema, idSchema } from "@ai-book-studio/core/schema";
+import { PROVIDER_LIST, providerById } from "@ai-book-studio/core/providers/registry";
+import { ProviderError, connectionIdSchema, providerIdSchema } from "@ai-book-studio/core/providers/types";
+import { redact } from "@ai-book-studio/core/providers/redact";
+import { LibraryPortError } from "@ai-book-studio/core/library/errors";
+import { buildMetadata } from "@ai-book-studio/core/build";
+import { LibraryError } from "./library/store";
+import { safeJoin } from "./library/paths";
+import { buildDocx } from "./export";
+import { writeFileAtomic } from "./library/atomic";
+import { LegacyImportError } from "@ai-book-studio/core/legacy";
+import { importLegacyBackup } from "./legacy-import";
+import { importLibraryArchiveToFolder, writeLibraryArchive } from "./library/archive";
+import { ArchiveError } from "@ai-book-studio/core/archive/errors";
+import { UsageStore } from "./usage";
+import type { Studio } from "./studio";
+import type { ProviderService } from "./providers";
+import type { AgentRuntime } from "./agent/runtime";
+
+const folderInput = z.string().min(1).max(4096);
+const contentInput = z.string().max(20_000_000);
+const versionInput = z.number().int().min(0);
+const hashInput = z.string().regex(/^[a-f0-9]{64}$/);
+const connectionId = connectionIdSchema;
+
+const saveInput = z.object({
+  bookId: idSchema,
+  chapterId: idSchema,
+  content: contentInput,
+  baseVersion: versionInput,
+  baseHash: hashInput
+});
+
+const metaPatch = z.object({
+  title: z.string().max(400).optional(),
+  synopsis: z.string().max(20_000).optional(),
+  purpose: z.string().max(20_000).optional(),
+  notes: z.string().max(20_000).optional(),
+  arc: z.enum(["beginning", "middle", "end"]).optional(),
+  order: z.number().int().positive().optional(),
+  isPrologue: z.boolean().optional(),
+  color: z.string().max(40).nullable().optional()
+});
+
+function ok<T>(data: T): Result<T> {
+  return { ok: true, data };
+}
+
+function fail(error: unknown): Result<never> {
+  if (error instanceof z.ZodError) {
+    return { ok: false, error: { code: "invalid", message: error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ") } };
+  }
+  if (error instanceof LibraryError) {
+    return { ok: false, error: { code: error.code, message: error.message } };
+  }
+  if (error instanceof ArchiveError) {
+    return { ok: false, error: { code: "io", message: error.message } };
+  }
+  if (error instanceof LibraryPortError) {
+    const code: StudioError["code"] =
+      error.code === "not-found" ? "not-found" : error.code === "invalid-path" ? "invalid" : "io";
+    return { ok: false, error: { code, message: error.message } };
+  }
+  if (error instanceof ProviderError) {
+    return { ok: false, error: { code: error.code, message: redact(error.message) } };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const code: StudioError["code"] = /ENOENT/.test(message) ? "not-found" : /EACCES|EPERM/.test(message) ? "io" : "internal";
+  console.error("[ipc]", redact(message));
+  return { ok: false, error: { code, message: redact(message) } };
+}
+
+export function registerIpc(
+  studio: Studio,
+  getWindow: () => BrowserWindow | null,
+  providers: ProviderService,
+  agent: AgentRuntime
+): void {
+  const handle = <T>(channel: string, handler: (payload: unknown) => Promise<T> | T): void => {
+    ipcMain.handle(channel, async (_event, payload: unknown): Promise<Result<T>> => {
+      try {
+        return ok(await handler(payload));
+      } catch (error) {
+        return fail(error);
+      }
+    });
+  };
+
+  /* ---------------------------------------------------------------------- app */
+
+  handle(IPC.app.info, () => buildMetadata("desktop"));
+
+  /* ------------------------------------------------------------------ library */
+
+  handle(IPC.library.current, () => studio.current());
+
+  handle(IPC.library.choose, async () => {
+    const window = getWindow();
+    const options = {
+      title: "Choose a library folder",
+      buttonLabel: "Use this folder",
+      properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">
+    };
+    const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    const folder = picked.filePaths[0];
+    if (picked.canceled || !folder) return null;
+    return studio.openLibrary(folder);
+  });
+
+  handle(IPC.library.open, async (payload) => studio.openLibrary(folderInput.parse(payload)));
+
+  handle(IPC.library.reveal, async () => {
+    const library = studio.requireLibrary();
+    shell.showItemInFolder(library.root);
+    return null;
+  });
+
+  handle(IPC.library.importLegacy, async () => {
+    const window = getWindow();
+    const options = {
+      title: "Import an old backup",
+      buttonLabel: "Import backup",
+      filters: [{ name: "Backup", extensions: ["json"] }],
+      properties: ["openFile"] as Array<"openFile">
+    };
+    const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    const file = picked.filePaths[0];
+    if (picked.canceled || !file) return null;
+    const raw = await readFile(file, "utf8");
+    return importLegacyBackup(studio.requireLibrary(), raw);
+  });
+
+  handle(IPC.library.exportArchive, async () => {
+    const library = studio.requireLibrary();
+    const window = getWindow();
+    const options = {
+      title: "Export the whole library",
+      buttonLabel: "Export archive",
+      defaultPath: join(dirname(library.root), `${basename(library.root) || "library"}.zip`),
+      filters: [{ name: "AI Book Studio library", extensions: ["zip"] }]
+    };
+    const picked = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return null;
+    return writeLibraryArchive(library, picked.filePath, app.getVersion());
+  });
+
+  handle(IPC.library.importArchive, async () => {
+    const window = getWindow();
+    const archiveOptions = {
+      title: "Import a library archive",
+      buttonLabel: "Choose archive",
+      filters: [{ name: "AI Book Studio library", extensions: ["zip"] }],
+      properties: ["openFile"] as Array<"openFile">
+    };
+    const pickedArchive = window
+      ? await dialog.showOpenDialog(window, archiveOptions)
+      : await dialog.showOpenDialog(archiveOptions);
+    const archive = pickedArchive.filePaths[0];
+    if (pickedArchive.canceled || !archive) return null;
+
+    const destinationOptions = {
+      title: "Choose an empty folder for the imported library",
+      buttonLabel: "Import here",
+      properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">
+    };
+    const pickedFolder = window
+      ? await dialog.showOpenDialog(window, destinationOptions)
+      : await dialog.showOpenDialog(destinationOptions);
+    const folder = pickedFolder.filePaths[0];
+    if (pickedFolder.canceled || !folder) return null;
+
+    const imported = await importLibraryArchiveToFolder(archive, folder);
+    const info = await studio.openLibrary(imported.root);
+    return { library: info, bookCount: imported.bookCount };
+  });
+
+  /* -------------------------------------------------------------------- books */
+
+  handle(IPC.books.list, async () => studio.requireLibrary().listBooks());
+
+  handle(IPC.books.create, async (payload) => {
+    const input = z
+      .object({ title: z.string().min(1).max(300), description: z.string().max(20_000).optional() })
+      .parse(payload);
+    return studio.requireLibrary().createBook(input);
+  });
+
+  handle(IPC.books.open, async (payload) => studio.requireLibrary().readBook(idSchema.parse(payload)));
+
+  handle(IPC.books.delete, async (payload) => studio.requireLibrary().deleteBook(idSchema.parse(payload)));
+
+  handle(IPC.books.search, async (payload) => {
+    const input = z.object({ bookId: idSchema, query: z.string().trim().min(1).max(200) }).parse(payload);
+    return studio.requireLibrary().search(input.bookId, input.query);
+  });
+
+  handle(IPC.books.update, async (payload) => {
+    const input = z.object({ bookId: idSchema, patch: z.record(z.string(), z.unknown()) }).parse(payload);
+    const allowed = ["title", "workingTitle", "description", "genres", "influences", "isErotica", "chapterRange", "outline", "storyArc", "characters", "memories", "stage", "settings", "frontMatter", "defaultProvider", "defaultConnectionId", "defaultModelId"];
+    const patch = Object.fromEntries(Object.entries(input.patch).filter(([key]) => allowed.includes(key)));
+    return studio.requireLibrary().updateBook(input.bookId, patch);
+  });
+
+  handle(IPC.books.exportDocx, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    const detail = await studio.requireLibrary().readBook(bookId);
+    const data = await buildDocx(detail);
+    const stem =
+      detail.book.title
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "manuscript";
+    const options = {
+      title: "Export manuscript",
+      defaultPath: `${stem}.docx`,
+      filters: [{ name: "Word document", extensions: ["docx"] }]
+    };
+    const window = getWindow();
+    const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (choice.canceled || !choice.filePath) return null;
+    await writeFileAtomic(choice.filePath, data);
+    return choice.filePath;
+  });
+
+  /* ----------------------------------------------------------------- chapters */
+
+  handle(IPC.chapters.create, async (payload) => {
+    const input = z.object({ bookId: idSchema, title: z.string().max(400).optional() }).parse(payload);
+    return studio.requireLibrary().createChapter(input.bookId, { title: input.title });
+  });
+
+  handle(IPC.chapters.save, async (payload) => {
+    const input = saveInput.parse(payload);
+    return studio.requireLibrary().saveChapter(input.bookId, input.chapterId, input.content, {
+      baseVersion: input.baseVersion,
+      baseHash: input.baseHash
+    });
+  });
+
+  handle(IPC.chapters.updateMeta, async (payload) => {
+    const input = z
+      .object({
+        bookId: idSchema,
+        chapterId: idSchema,
+        patch: metaPatch,
+        expected: z.object({ baseVersion: versionInput, baseHash: hashInput })
+      })
+      .parse(payload);
+    return studio
+      .requireLibrary()
+      .updateChapterMeta(input.bookId, input.chapterId, input.patch, input.expected);
+  });
+
+  handle(IPC.chapters.reorder, async (payload) => {
+    const input = z
+      .object({ bookId: idSchema, chapterId: idSchema, direction: z.enum(["up", "down"]) })
+      .parse(payload);
+    return studio.requireLibrary().reorderChapter(input.bookId, input.chapterId, input.direction);
+  });
+
+  handle(IPC.chapters.move, async (payload) => {
+    const input = z
+      .object({ bookId: idSchema, chapterId: idSchema, targetIndex: z.number().int().min(0).max(10_000) })
+      .parse(payload);
+    return studio.requireLibrary().moveChapterTo(input.bookId, input.chapterId, input.targetIndex);
+  });
+
+  handle(IPC.chapters.delete, async (payload) => {
+    const input = z.object({ bookId: idSchema, chapterId: idSchema }).parse(payload);
+    await studio.requireLibrary().deleteChapter(input.bookId, input.chapterId);
+    studio.drafts.clear(input.bookId, input.chapterId);
+    return null;
+  });
+
+  /* ---------------------------------------------------------------- conflicts */
+
+  handle(IPC.conflicts.list, async (payload) => studio.requireLibrary().listConflicts(idSchema.parse(payload)));
+
+  handle(IPC.conflicts.reveal, async (payload) => {
+    const input = z.object({ bookId: idSchema, savedAs: z.string().min(1).max(1024) }).parse(payload);
+    const library = studio.requireLibrary();
+    const target = safeJoin(library.root, input.savedAs);
+    shell.showItemInFolder(target);
+    return null;
+  });
+
+  /* ------------------------------------------------------------------- drafts */
+
+  handle(IPC.drafts.set, async (payload) => {
+    studio.drafts.set(saveInput.parse(payload));
+    return null;
+  });
+
+  handle(IPC.drafts.clear, async (payload) => {
+    const input = z.object({ bookId: idSchema, chapterId: idSchema }).parse(payload);
+    studio.drafts.clear(input.bookId, input.chapterId);
+    return null;
+  });
+
+  /* --------------------------------------------------------------- providers */
+
+  handle(IPC.providers.list, () => PROVIDER_LIST);
+
+  handle(IPC.providers.models, async (payload) => providers.models(connectionId.parse(payload)));
+
+  /* ------------------------------------------------------------- connections */
+
+  handle(IPC.connections.list, async () => providers.list());
+
+  handle(IPC.connections.available, async () => providers.available());
+
+  handle(IPC.connections.addKey, async (payload) => {
+    const input = z
+      .object({
+        provider: providerIdSchema,
+        secret: z.string().min(8).max(4096),
+        label: z.string().max(80).optional(),
+        baseUrl: z.string().max(500).optional()
+      })
+      .parse(payload);
+    return providers.addKey(input);
+  });
+
+  handle(IPC.connections.startOpenRouter, async () => providers.startOpenRouter());
+
+  handle(IPC.connections.cancelOpenRouter, async () => {
+    providers.cancelOpenRouter();
+    return null;
+  });
+
+  handle(IPC.connections.remove, async (payload) => {
+    await providers.remove(connectionId.parse(payload));
+    return null;
+  });
+
+  handle(IPC.connections.test, async (payload) => providers.test(connectionId.parse(payload)));
+
+  /* --------------------------------------------------------------------- usage */
+
+  handle(IPC.usage.summary, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    return new UsageStore(() => studio.library?.root ?? null).summary(bookId);
+  });
+
+  /* --------------------------------------------------------------------- agent */
+
+  const agentInput = z.object({
+    bookId: idSchema,
+    chapterId: idSchema.nullable().optional(),
+    prompt: z.string().min(1).max(50_000),
+    threadId: idSchema.nullable().optional(),
+    model: z
+      .object({
+        connectionId: z.string().min(1).max(200),
+        modelId: z.string().min(1).max(200)
+      })
+      .optional(),
+    history: z
+      .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(100_000) }))
+      .max(40)
+      .optional()
+  });
+
+  handle(IPC.agent.start, async (payload) => agent.start(agentInput.parse(payload)));
+
+  handle(IPC.agent.stop, async (payload) => agent.stop(z.string().min(1).max(80).parse(payload)));
+
+  handle(IPC.agent.undoLast, async (payload) => agent.undoLast(idSchema.parse(payload)));
+
+  handle(IPC.agent.approve, async (payload) => {
+    const input = z
+      .object({
+        turnId: z.string().min(1).max(80),
+        approvalId: z.string().min(1).max(200),
+        approved: z.boolean()
+      })
+      .parse(payload);
+    return agent.approve(input.turnId, input.approvalId, input.approved);
+  });
+
+  handle(IPC.agent.threads.list, async (payload) => studio.requireLibrary().threads.list(idSchema.parse(payload)));
+
+  handle(IPC.agent.threads.read, async (payload) => {
+    const input = z.object({ bookId: idSchema, threadId: idSchema }).parse(payload);
+    return studio.requireLibrary().threads.read(input.bookId, input.threadId);
+  });
+
+  handle(IPC.agent.threads.rename, async (payload) => {
+    const input = z
+      .object({ bookId: idSchema, threadId: idSchema, title: z.string().trim().min(1).max(200) })
+      .parse(payload);
+    return studio.requireLibrary().threads.rename(input.bookId, input.threadId, input.title);
+  });
+
+  handle(IPC.agent.threads.remove, async (payload) => {
+    const input = z.object({ bookId: idSchema, threadId: idSchema }).parse(payload);
+    await studio.requireLibrary().threads.remove(input.bookId, input.threadId);
+    return null;
+  });
+
+  handle(IPC.agent.threads.fork, async (payload) => {
+    const input = z
+      .object({ bookId: idSchema, threadId: idSchema, turnId: z.string().min(1).max(80) })
+      .parse(payload);
+    return studio.requireLibrary().threads.fork(input.bookId, input.threadId, input.turnId);
+  });
+}

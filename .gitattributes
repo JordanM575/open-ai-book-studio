@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.icns binary
+*.ico binary
+*.woff2 binary
+pnpm-lock.yaml -diff linguist-generated
+design/tokens.json -diff linguist-generated
+src/renderer/src/styles/tokens.generated.css linguist-generated

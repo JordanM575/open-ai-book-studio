@@ -1,0 +1,22 @@
+{
+  "name": "@ai-book-studio/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capacitor iOS shell for AI Book Studio",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "sync": "cap sync ios",
+    "open": "cap open ios",
+    "ios:ipad": "./scripts/run-sim.sh ipad",
+    "ios:iphone": "./scripts/run-sim.sh iphone"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "typescript": "^7.0.2"
+  }
+}

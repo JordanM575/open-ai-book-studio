@@ -1,0 +1,36 @@
+{
+  "name": "@ai-book-studio/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared studio shell and product components for every AI Book Studio target",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/App.tsx",
+      "default": "./src/App.tsx"
+    },
+    "./components/*": {
+      "types": "./src/components/*.tsx",
+      "default": "./src/components/*.tsx"
+    },
+    "./lib/*": {
+      "types": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
+    },
+    "./hooks/*": {
+      "types": "./src/hooks/*.ts",
+      "default": "./src/hooks/*.ts"
+    }
+  },
+  "dependencies": {
+    "@ai-book-studio/core": "workspace:*",
+    "@ai-book-studio/ui": "workspace:*",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

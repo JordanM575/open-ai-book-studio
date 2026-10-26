@@ -1,0 +1,342 @@
+import { app, BrowserWindow, Menu, shell } from "electron";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { AGENT_EVENT_CHANNEL, LIBRARY_EVENT_CHANNEL } from "@ai-book-studio/core/ipc";
+import { DraftBuffer } from "./drafts";
+import { registerIpc } from "./ipc";
+import { DesktopCredentialVault } from "./credentials";
+import { ProviderService } from "./providers";
+import { AgentRuntime } from "./agent/runtime";
+import { SettingsStore } from "./settings";
+import { Studio } from "./studio";
+import { runSmoke } from "./smoke";
+
+const isDev = !app.isPackaged;
+
+/**
+ * Test mode keeps a development run invisible and isolated.
+ *
+ * - `STUDIO_TEST=1` gives the run its own profile (`STUDIO_USER_DATA`) so it never reads or
+ *   overwrites the author's real library, window bounds or settings.
+ * - `STUDIO_HEADLESS=1` opens the window off-screen and never shows it. The renderer still paints
+ *   and runs, so `executeJavaScript` can inspect it without stealing focus.
+ * - `STUDIO_SMOKE=1` runs the built-in smoke checks once the renderer has loaded, prints them and
+ *   exits with a status code.
+ */
+const isTest = process.env.STUDIO_TEST === "1";
+const headless = isTest || process.env.STUDIO_HEADLESS === "1";
+const smoke = process.env.STUDIO_SMOKE === "1";
+const capturePath = process.env.STUDIO_CAPTURE;
+const windowSize = parseWindowSize(process.env.STUDIO_WINDOW_SIZE);
+const TEST_WINDOW_OFFSET = -16_000;
+
+// Must happen before the single-instance lock and before any settings are read.
+if (isTest && process.env.STUDIO_USER_DATA) {
+  app.setPath("userData", process.env.STUDIO_USER_DATA);
+} else if (isTest) {
+  console.warn("[studio] STUDIO_TEST is set without STUDIO_USER_DATA; this run is using your real profile.");
+}
+
+let mainWindow: BrowserWindow | null = null;
+let studio: Studio;
+let providers: ProviderService;
+let agentRuntime: AgentRuntime;
+let flushed = false;
+
+// A hidden test run may sit beside the author's real window, so it does not claim the lock.
+if (!headless) {
+  const singleInstance = app.requestSingleInstanceLock();
+  if (!singleInstance) {
+    app.quit();
+  } else {
+    app.on("second-instance", () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+  }
+}
+
+function createWindow(): BrowserWindow {
+  const settings = studio.settingsWindowBounds();
+  const window = new BrowserWindow({
+    width: windowSize?.width ?? settings?.width ?? 1440,
+    height: windowSize?.height ?? settings?.height ?? 900,
+    ...(headless
+      ? { x: TEST_WINDOW_OFFSET, y: TEST_WINDOW_OFFSET }
+      : settings?.x !== undefined && settings.y !== undefined
+        ? { x: settings.x, y: settings.y }
+        : {}),
+    minWidth: windowSize ? 320 : 1024,
+    minHeight: windowSize ? 480 : 700,
+    show: false,
+    skipTaskbar: headless,
+    backgroundColor: "#eef0f6",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: { x: 18, y: 20 },
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: true
+    }
+  });
+
+  // The capture harness can exercise responsive touch targets without a device.
+  // This is test-only and does not change normal Electron pointer behavior.
+  if (isTest && process.env.STUDIO_COARSE_POINTER === "1") {
+    try {
+      const debuggerSession = window.webContents.debugger;
+      debuggerSession.attach("1.3");
+      void debuggerSession
+        .sendCommand("Emulation.setEmulatedMedia", {
+          features: [
+            { name: "pointer", value: "coarse" },
+            { name: "hover", value: "none" }
+          ]
+        })
+        .then(() => debuggerSession.sendCommand("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }))
+        .catch((error: unknown) => console.error("[capture] Could not emulate a coarse pointer:", error));
+      window.once("closed", () => {
+        if (debuggerSession.isAttached()) debuggerSession.detach();
+      });
+    } catch (error) {
+      console.error("[capture] Could not attach touch emulation:", error);
+    }
+  }
+
+  // A hidden test window must never surface, even when it is ready.
+  window.once("ready-to-show", () => {
+    if (!headless) window.show();
+  });
+
+  if (!app.isPackaged) {
+    window.webContents.on("console-message", (event) => {
+      console.log(`[renderer:${event.level}] ${event.message} (${event.sourceId}:${event.lineNumber})`);
+    });
+    window.webContents.on("did-fail-load", (_event, code, description, url) => {
+      console.error(`[renderer] Failed to load ${url}: ${description} (${code})`);
+    });
+    window.webContents.on("preload-error", (_event, path, error) => {
+      console.error(`[preload] ${path}:`, error);
+    });
+  }
+
+  // Nothing in this app should open a second window or navigate away from the studio.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+
+  const rememberBounds = (): void => {
+    if (headless) return;
+    const bounds = window.getNormalBounds();
+    studio.rememberWindowBounds(bounds);
+  };
+  window.on("resized", rememberBounds);
+  window.on("moved", rememberBounds);
+
+  // Give the draft buffer one chance to reach the disk before the window goes away.
+  let allowClose = false;
+  window.on("close", (event) => {
+    if (allowClose) return;
+    event.preventDefault();
+    void studio
+      .flushDrafts()
+      .catch((error: unknown) => console.warn("[studio] Flush before close failed:", error))
+      .finally(() => {
+        allowClose = true;
+        window.close();
+      });
+  });
+
+  window.on("closed", () => {
+    mainWindow = null;
+  });
+
+  if (isDev && process.env.ELECTRON_RENDERER_URL) {
+    void window.loadURL(process.env.ELECTRON_RENDERER_URL);
+  } else {
+    void window.loadFile(join(__dirname, "../renderer/index.html"));
+  }
+
+  if (smoke) {
+    window.webContents.once("did-finish-load", () => {
+      void runSmoke(window, studio).catch((error: unknown) => {
+        console.error("[smoke] The run crashed:", error);
+        app.exit(1);
+      });
+    });
+  }
+
+  if (capturePath) {
+    window.webContents.once("did-finish-load", () => {
+      setTimeout(() => {
+        void (async () => {
+          const click = process.env.STUDIO_CAPTURE_CLICK;
+              if (click) {
+                for (const selector of click.split("||")) {
+                  await window.webContents.executeJavaScript(
+                    `document.querySelector(${JSON.stringify(selector)})?.click()`
+                  );
+                  await new Promise((resolve) => setTimeout(resolve, 900));
+                }
+              }
+              if (process.env.STUDIO_COARSE_POINTER === "1") {
+                const audit = (await window.webContents.executeJavaScript(`(() => {
+                  const selectors = [
+                    'button:not(:disabled)',
+                    '[role="button"]',
+                    '[role="tab"]',
+                    '[role="menuitem"]',
+                    '[role="option"]',
+                    '[role="combobox"]',
+                    'summary',
+                    'select',
+                    'textarea',
+                    'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not(:disabled)',
+                    'label:has(> input[type="checkbox"]:not(:disabled))',
+                    'label:has(> input[type="radio"]:not(:disabled))'
+                  ].join(',');
+                  const failures = [...document.querySelectorAll(selectors)]
+                    .filter((element) => {
+                      const style = getComputedStyle(element);
+                      const rect = element.getBoundingClientRect();
+                      return style.display !== 'none' && style.visibility !== 'hidden' &&
+                        rect.width > 0 && rect.height > 0 && (rect.width < 44 || rect.height < 44);
+                    })
+                    .map((element) => {
+                      const rect = element.getBoundingClientRect();
+                      return {
+                        selector: element.getAttribute('data-testid') || element.getAttribute('aria-label') || element.tagName.toLowerCase(),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height)
+                      };
+                    });
+                  return {
+                    coarse: matchMedia('(pointer: coarse)').matches,
+                    failures,
+                    scrollWidth: document.documentElement.scrollWidth,
+                    innerWidth: window.innerWidth
+                  };
+                })()`)) as {
+                  coarse: boolean;
+                  failures: Array<{ selector: string; width: number; height: number }>;
+                  scrollWidth: number;
+                  innerWidth: number;
+                };
+                if (!audit.coarse || audit.failures.length > 0 || audit.scrollWidth > audit.innerWidth + 1) {
+                  console.error("[capture] Coarse-pointer audit failed:", JSON.stringify(audit));
+                  app.exit(1);
+                  return;
+                }
+                console.log(`[capture] touch targets ok (${audit.failures.length} below 44px)`);
+              }
+              const image = await window.webContents.capturePage();
+          await writeFile(capturePath, image.toPNG());
+          app.exit(0);
+        })().catch((error: unknown) => {
+          console.error("[capture] The screenshot failed:", error);
+          app.exit(1);
+        });
+      }, 1800);
+    });
+  }
+
+  return window;
+}
+
+function parseWindowSize(value: string | undefined): { width: number; height: number } | null {
+  if (!value) return null;
+  const match = /^(\d{3,4})x(\d{3,4})$/.exec(value);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return { width, height };
+}
+
+function buildMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "Open library…",
+          accelerator: "CmdOrCtrl+O",
+          click: () => {
+            mainWindow?.webContents.send("menu:open-library");
+          }
+        },
+        { type: "separator" },
+        process.platform === "darwin" ? { role: "close" } : { role: "quit" }
+      ]
+    },
+    { role: "editMenu" },
+    {
+      label: "View",
+      submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" }]
+    },
+    { role: "windowMenu" }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+app.whenReady().then(async () => {
+  if (headless && process.platform === "darwin") {
+    app.dock?.hide();
+  }
+
+  const settings = new SettingsStore();
+  await settings.load();
+  studio = new Studio(settings, new DraftBuffer());
+  studio.onExternalChange = (event) => {
+    mainWindow?.webContents.send(LIBRARY_EVENT_CHANNEL, event);
+  };
+  await studio.restore();
+
+  const vault = new DesktopCredentialVault();
+  providers = new ProviderService(vault, (url) => shell.openExternal(url));
+  void vault.repairPermissions().then((permissions) => {
+    if (permissions === "corrected") {
+      console.log("[credentials] Corrected the credential file to owner-only permissions.");
+    } else if (permissions === "unavailable") {
+      console.warn("[credentials] Could not confirm owner-only permissions on the credential file.");
+    }
+  }).catch(() => {});
+  void providers.available().then((available) => {
+    if (!available) {
+      console.warn("[credentials] Protected storage is unavailable; model connections cannot be saved on this computer.");
+    }
+  });
+  agentRuntime = new AgentRuntime(studio, providers, (event) => {
+    mainWindow?.webContents.send(AGENT_EVENT_CHANNEL, event);
+  });
+  registerIpc(studio, () => mainWindow, providers, agentRuntime);
+  buildMenu();
+  mainWindow = createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
+  });
+});
+
+app.on("before-quit", (event) => {
+  if (flushed || !studio) return;
+  event.preventDefault();
+  void studio
+    .flushDrafts()
+    .catch((error: unknown) => console.warn("[studio] Flush before quit failed:", error))
+    .finally(() => {
+      flushed = true;
+      app.quit();
+    });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin" || headless) app.quit();
+});

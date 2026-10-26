@@ -1,0 +1,6 @@
+build/
+node_modules/
+ios/App/App/public/
+ios/App/Pods/
+ios/App/DerivedData/
+ios/App/build/

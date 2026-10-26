@@ -1,0 +1,585 @@
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, KeyRound, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
+import type { BuildMetadata } from "@ai-book-studio/core/build";
+import { BROWSER_CREDENTIAL_DISCLOSURE } from "@ai-book-studio/core/providers/credentials";
+import type { ConnectionSummary, ModelInfo, ProviderDescription, ProviderId } from "@ai-book-studio/core/providers/types";
+import type { StorageSummary } from "@ai-book-studio/core/library/storage";
+import { browserAvailabilityCopy } from "@ai-book-studio/core/providers/registry";
+import { Button } from "@ai-book-studio/ui/button";
+import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { must } from "../lib/utils";
+import type { ThemeChoice } from "../hooks/use-theme";
+
+export type SettingsSection = "appearance" | "providers" | "library";
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onNotice: (error: unknown) => void;
+  theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void };
+  libraryRoot?: string;
+  storage?: StorageSummary;
+  /** Open on a particular section; reconnect uses "providers". */
+  section?: SettingsSection;
+}
+
+const THEMES: Array<{ id: ThemeChoice; label: string; icon: typeof Sun }> = [
+  { id: "system", label: "System", icon: Monitor },
+  { id: "light", label: "Light", icon: Sun },
+  { id: "dark", label: "Dark", icon: Moon }
+];
+
+export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoot, storage, section }: Props) {
+  const providersRef = useRef<HTMLElement>(null);
+  const [liveStorage, setLiveStorage] = useState<StorageSummary | undefined>(storage);
+  const [build, setBuild] = useState<BuildMetadata | null>(null);
+
+  // The summary is a snapshot on LibraryInfo; ask the live library when the dialog opens so a
+  // just-confirmed save shows its new time instead of the value from page load.
+  useEffect(() => {
+    if (!open) return;
+    setLiveStorage(storage);
+    void (async () => {
+      try {
+        const info = await window.studio.library.current();
+        if (info.ok && info.data?.storage) setLiveStorage(info.data.storage);
+      } catch {
+        // Keep the passed summary; this only sharpens the displayed time.
+      }
+    })();
+  }, [open, storage]);
+
+  useEffect(() => {
+    if (!open) return;
+    void (async () => {
+      try {
+        setBuild(await must(window.studio.app.info()));
+      } catch {
+        setBuild(null);
+      }
+    })();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || section !== "providers") return;
+    // Radix mounts the content on open; wait one frame before scrolling inside it.
+    const timer = window.setTimeout(() => {
+      providersRef.current?.scrollIntoView({ block: "start" });
+      providersRef.current?.focus({ preventScroll: true });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [open, section]);
+  const [providers, setProviders] = useState<ProviderDescription[]>([]);
+  const [connections, setConnections] = useState<ConnectionSummary[] | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [result, setResult] = useState<Record<string, string>>({});
+  const [models, setModels] = useState<Record<string, ModelInfo[]>>({});
+  const [storageAvailable, setStorageAvailable] = useState<boolean | null>(null);
+  const [keyProvider, setKeyProvider] = useState<ProviderId>("openai");
+  const [keySecret, setKeySecret] = useState("");
+  const [keyLabel, setKeyLabel] = useState("");
+  const [keyBaseUrl, setKeyBaseUrl] = useState("");
+  const [addingKey, setAddingKey] = useState(false);
+  const [keyResult, setKeyResult] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [providerList, connectionList, available] = await Promise.all([
+        must(window.studio.providers.list()),
+        must(window.studio.connections.list()),
+        must(window.studio.connections.available())
+      ]);
+      setProviders(providerList);
+      setConnections(connectionList);
+      setStorageAvailable(available);
+    } catch (error) {
+      onNotice(error);
+      setConnections([]);
+    }
+  }, [onNotice]);
+
+  useEffect(() => {
+    if (open) void refresh();
+  }, [open, refresh]);
+
+  const connect = async (): Promise<void> => {
+    setWaiting(true);
+    setResult((current) => ({ ...current, openrouter: "" }));
+    try {
+      await must(window.studio.connections.startOpenRouter());
+      await refresh();
+      setResult((current) => ({
+        ...current,
+        openrouter:
+          build?.target === "web"
+            ? "Connected. Your key is in this browser's origin storage."
+            : "Connected. Your key is in this computer's protected storage."
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/cancel/i.test(message)) onNotice(error);
+    } finally {
+      setWaiting(false);
+    }
+  };
+
+  const cancel = async (): Promise<void> => {
+    try {
+      await must(window.studio.connections.cancelOpenRouter());
+    } catch (error) {
+      onNotice(error);
+    } finally {
+      setWaiting(false);
+    }
+  };
+
+  const test = async (connection: ConnectionSummary): Promise<void> => {
+    setBusy(connection.id);
+    try {
+      const response = await must(window.studio.connections.test(connection.id));
+      setResult((current) => ({ ...current, [connection.id]: response.message }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setResult((current) => ({ ...current, [connection.id]: message }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const loadModels = async (connection: ConnectionSummary): Promise<void> => {
+    setBusy(connection.id);
+    try {
+      const catalogue = await must(window.studio.providers.models(connection.id));
+      setModels((current) => ({ ...current, [connection.id]: catalogue.models }));
+      setResult((current) => ({
+        ...current,
+        [connection.id]: `${catalogue.models.length} models available${catalogue.fetchedAt ? "" : ""}.`
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setResult((current) => ({ ...current, [connection.id]: message }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addKey = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    const secret = keySecret.trim();
+    if (secret.length < 8) return;
+    setAddingKey(true);
+    setKeyResult(null);
+    try {
+      const connection = await must(
+        window.studio.connections.addKey({
+          provider: keyProvider,
+          secret,
+          ...(keyLabel.trim() ? { label: keyLabel.trim() } : {}),
+          ...(keyProvider === "meta" && keyBaseUrl.trim() ? { baseUrl: keyBaseUrl.trim() } : {})
+        })
+      );
+      setKeySecret("");
+      setKeyLabel("");
+      setKeyBaseUrl("");
+      setKeyResult(`${connection.label} added. The key was accepted and stored in protected storage.`);
+      await refresh();
+    } catch (error) {
+      setKeyResult(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAddingKey(false);
+    }
+  };
+
+  const remove = async (connection: ConnectionSummary): Promise<void> => {    setBusy(connection.id);
+    try {
+      await must(window.studio.connections.remove(connection.id));
+      setRemoving(null);
+      await refresh();
+    } catch (error) {
+      onNotice(error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!waiting) onOpenChange(next);
+      }}
+    >
+      <DialogContent
+        title="Settings"
+        description="Appearance, provider connections, and where this library lives."
+        className="w-[calc(100vw-48px)] max-w-[640px]"
+        footer={
+          <DialogFooter className="mt-0">
+            <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={waiting}>
+              Done
+            </Button>
+          </DialogFooter>
+        }
+        onInteractOutside={(event) => {
+          if (waiting) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (waiting) event.preventDefault();
+        }}
+      >
+        <section>
+          <h3 className="text-[var(--text-callout-size)] font-medium">Appearance</h3>
+          <div className="mt-2 grid grid-cols-3 gap-2" role="group" aria-label="Theme">
+            {THEMES.map(({ id, label, icon: Icon }) => (
+              <Button
+                key={id}
+                variant={theme.choice === id ? "secondary" : "ghost"}
+                size="sm"
+                aria-pressed={theme.choice === id}
+                onClick={() => theme.set(id)}
+                data-testid={`theme-${id}`}
+              >
+                <Icon size={14} />
+                {label}
+              </Button>
+            ))}
+          </div>
+          <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+            System follows this computer's light or dark setting.
+          </p>
+        </section>
+
+        <section ref={providersRef} tabIndex={-1} className="mt-6 outline-none">
+          <h3 className="text-[var(--text-callout-size)] font-medium">Provider connections</h3>
+          <p className="mt-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+            {build?.target === "web"
+              ? "Bring your own account. Keys are kept in this browser's origin storage, never in your book folder."
+              : "Bring your own account. Keys are kept on this computer, never in your book folder."}
+          </p>
+          <div className="mt-3 flex items-start justify-between gap-4 rounded-[var(--corner-lg)] border border-border bg-card/60 p-4">
+            <div className="min-w-0">
+              <h3 className="flex items-center gap-2 text-[var(--text-headline-size)] font-semibold">
+                <KeyRound size={16} />
+                OpenRouter
+              </h3>
+              <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+                One sign-in reaches models from many companies. You approve the key in your browser and can revoke it at
+                OpenRouter at any time.
+              </p>
+              {result.openrouter ? (
+                <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-success-text">
+                  {result.openrouter}
+                </p>
+              ) : null}
+              {storageAvailable === false ? (
+                <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-destructive-text">
+                  {build?.target === "web"
+                    ? "Provider connections are not enabled in the browser build yet. When they are, credentials will live in this browser's origin storage, not the operating system keychain."
+                    : "This computer's protected storage is locked, so a key cannot be saved. Unlock your keychain or keyring, then reopen this window."}
+                </p>
+              ) : null}
+            </div>
+            {waiting ? (
+              <Button variant="secondary" size="sm" onClick={() => void cancel()}>
+                Cancel
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                className="shrink-0"
+                disabled={storageAvailable === false}
+                onClick={() => void connect()}
+              >
+                Connect
+              </Button>
+            )}
+          </div>
+          {waiting ? (
+            <p className="mt-2 flex items-center gap-2 text-[var(--text-subheadline-size)] text-muted-foreground" aria-live="polite">
+              <Loader2 size={14} className="animate-spin" />
+              Finish signing in in your browser. This window will update on its own.
+            </p>
+          ) : null}
+        </section>
+
+        <section className="mt-6">
+          <h3 className="text-[var(--text-callout-size)] font-medium">Your connections</h3>
+          {connections === null ? (
+            <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground">Reading connections…</p>
+          ) : connections.length === 0 ? (
+            <p className="mt-2 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              No connections yet. Connect OpenRouter above to use the writing agent.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-3">
+              {connections.map((connection) => (
+                <li key={connection.id} className="rounded-[var(--corner-lg)] border border-border p-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[var(--text-body-size)] font-medium">{connection.label}</p>
+                      <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
+                        {connection.kind === "openrouter-oauth" ? "Signed in with OpenRouter" : "API key"}
+                        {connection.lastUsedAt ? ` · last used ${new Date(connection.lastUsedAt).toLocaleDateString()}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="sm" disabled={busy === connection.id} onClick={() => void test(connection)}>
+                        {busy === connection.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                        Test
+                      </Button>
+                      <Button variant="ghost" size="sm" disabled={busy === connection.id} onClick={() => void loadModels(connection)}>
+                        Models
+                      </Button>
+                      {removing === connection.id ? (
+                        <Button variant="danger" size="sm" disabled={busy === connection.id} onClick={() => void remove(connection)}>
+                          Remove
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Remove ${connection.label}`}
+                          onClick={() => setRemoving(connection.id)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {result[connection.id] ? (
+                    <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+                      {result[connection.id]}
+                    </p>
+                  ) : null}
+                  {models[connection.id]?.length ? (
+                    <div className="thin-scroll mt-2 max-h-40 overflow-y-auto rounded-[var(--corner-md)] bg-muted/50 p-2">
+                      {models[connection.id]!.slice(0, 30).map((model) => (
+                        <p key={model.id} className="flex items-center justify-between gap-3 py-1 text-[var(--text-caption-size)]">
+                          <span className="truncate">{model.name}</span>
+                          <span className="tabular shrink-0 text-muted-foreground">
+                            {model.contextLength ? `${Math.round(model.contextLength / 1000)}k` : "—"}
+                          </span>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-6">
+          <h3 className="text-[var(--text-callout-size)] font-medium">Other providers</h3>
+          <ul className="mt-2 divide-y divide-border rounded-[var(--corner-lg)] border border-border">
+            {providers
+              .filter((provider) => provider.id !== "openrouter")
+              .map((provider) => (
+                <li
+                  key={provider.id}
+                  className="flex flex-col items-start gap-2 p-3 min-[520px]:flex-row min-[520px]:justify-between min-[520px]:gap-4"
+                >
+                  <div className="min-w-0 min-[520px]:flex-1">
+                    <p className="text-[var(--text-body-size)] font-medium">{provider.name}</p>
+                    <p className="mt-0.5 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+                      {provider.note}
+                    </p>
+                  </div>
+                  <span className="w-fit max-w-full self-start rounded-full bg-muted px-2 py-1 text-left text-[var(--text-caption-2-size)] leading-[var(--text-caption-leading)] text-muted-foreground min-[520px]:shrink-0">
+                    {browserAvailabilityCopy(provider.browserAccess)}
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+            A key is checked once with the provider, then stored only on this computer. A rejected key is never saved.
+          </p>
+        </section>
+
+        <section className="mt-6">
+          <h3 className="text-[var(--text-callout-size)] font-medium">Add a key</h3>
+          <form className="mt-2 space-y-2" onSubmit={(event) => void addKey(event)}>
+            <div className="flex flex-wrap gap-2">
+              <select
+                aria-label="Provider"
+                value={keyProvider}
+                onChange={(event) => {
+                  setKeyProvider(event.target.value as ProviderId);
+                  setKeyResult(null);
+                }}
+                className="h-9 rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              >
+                {providers
+                  .filter((provider) => provider.id !== "openrouter")
+                  .map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+              </select>
+              <input
+                aria-label="Connection label"
+                value={keyLabel}
+                onChange={(event) => setKeyLabel(event.target.value)}
+                placeholder="Label (optional)"
+                maxLength={80}
+                className="h-9 min-w-0 flex-1 rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              />
+            </div>
+            {keyProvider === "meta" ? (
+              <input
+                aria-label="Meta base URL"
+                value={keyBaseUrl}
+                onChange={(event) => setKeyBaseUrl(event.target.value)}
+                placeholder="Base URL from Meta's developer console"
+                maxLength={500}
+                className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              />
+            ) : null}
+            <div className="flex gap-2">
+              <input
+                aria-label="API key"
+                type="password"
+                value={keySecret}
+                onChange={(event) => setKeySecret(event.target.value)}
+                placeholder="Paste the API key"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 min-w-0 flex-1 rounded-[var(--corner-md)] bg-card px-3 font-[var(--font-code)] text-[var(--text-caption-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:font-[var(--font-ui)] placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="primary"
+                disabled={
+                  addingKey ||
+                  storageAvailable === false ||
+                  keySecret.trim().length < 8 ||
+                  (keyProvider === "meta" && !keyBaseUrl.trim())
+                }
+              >
+                {addingKey ? <Loader2 size={13} className="animate-spin" /> : null}
+                Add connection
+              </Button>
+            </div>
+          </form>
+          {keyResult ? (
+            <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground" aria-live="polite">
+              {keyResult}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="mt-6">
+          <h3 className="text-[var(--text-callout-size)] font-medium">Library</h3>
+          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            Each book is a folder: <span className="font-mono">book.json</span> for the idea and cast,{" "}
+            <span className="font-mono">chapters/*.md</span> for the prose. Open them in any editor.
+          </p>
+          {libraryRoot ? (
+            <p className="mt-2 truncate rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 font-mono text-[11px] text-muted-foreground" title={libraryRoot}>
+              {libraryRoot}
+            </p>
+          ) : null}
+          {liveStorage ? (
+            <>
+              <dl className="mt-3 space-y-1 text-[var(--text-caption-size)]" data-testid="storage-summary">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Storage</dt>
+                  <dd>{liveStorage.tier === "browser" ? "This browser" : liveStorage.label}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Last confirmed save</dt>
+                  <dd>{liveStorage.lastCommittedAt ? new Date(liveStorage.lastCommittedAt).toLocaleString() : "None yet"}</dd>
+                </div>
+                {liveStorage.permission !== "granted" ? (
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="text-muted-foreground">Permission</dt>
+                    <dd>{liveStorage.permission}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              {liveStorage.warning ? (
+                <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-[var(--destructive-text)]">
+                  {liveStorage.warning}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </section>
+
+        <section className="mt-6" data-testid="about">
+          <h3 className="text-[var(--text-callout-size)] font-medium">About</h3>
+          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            Private preview. The manuscript stays a folder of ordinary files; this build never uploads it.
+          </p>
+          {build ? (
+            <>
+              <dl className="mt-3 space-y-1 text-[var(--text-caption-size)]">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Build</dt>
+                  <dd>{build.target === "desktop" ? "Desktop" : "Web"}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Version</dt>
+                  <dd>{build.version}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Commit</dt>
+                  <dd className="font-mono">{build.commit}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Format</dt>
+                  <dd>{build.schemaVersion}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Platform</dt>
+                  <dd>{window.studio.platform}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Storage</dt>
+                  <dd>
+                    {liveStorage
+                      ? liveStorage.tier === "browser"
+                        ? "Browser storage"
+                        : liveStorage.label
+                      : "No library open"}
+                  </dd>
+                </div>
+              </dl>
+              {build.target === "web" ? (
+                <p
+                  className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground"
+                  data-testid="browser-credential-disclosure"
+                >
+                  {BROWSER_CREDENTIAL_DISCLOSURE}
+                </p>
+              ) : null}
+              <ul className="mt-3 space-y-1.5 text-[var(--text-caption-size)]" aria-label="Capabilities">
+                {build.capabilities.map((capability) => (
+                  <li key={capability.id} className="flex flex-wrap items-baseline gap-x-2">
+                    <span className={capability.available ? "text-success-text" : "text-muted-foreground"}>
+                      {capability.available ? "Available" : "Not available"}
+                    </span>
+                    <span>{capability.label}</span>
+                    {!capability.available && capability.reason ? (
+                      <span className="text-muted-foreground">— {capability.reason}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+              Build information is not available.
+            </p>
+          )}
+        </section>
+
+      </DialogContent>
+    </Dialog>
+  );
+}

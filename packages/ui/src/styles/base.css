@@ -1,0 +1,377 @@
+@import "tailwindcss";
+@import "./tokens.generated.css";
+
+/* Scan the primitive package and the shared product shell. */
+@source "..";
+@source "../../../app/src";
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  /* The native iOS shell opts out of automatic content inset; keep the interface clear of the
+     notch, home indicator and rounded corners. All insets are 0 outside a safe-area device. */
+  #root {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    color: var(--foreground);
+    /* Matches the window wash where safe-area padding or overscroll exposes the page. */
+    background: var(--ambient-base);
+    overscroll-behavior: none;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 24%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: default;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+}
+
+/* --------------------------------------------------------------- the window */
+
+.window-wash {
+  background:
+    radial-gradient(55% 60% at 0% 0%, var(--ambient-1) 0%, transparent 70%),
+    radial-gradient(50% 55% at 100% 0%, var(--ambient-2) 0%, transparent 70%),
+    radial-gradient(55% 60% at 100% 100%, var(--ambient-3) 0%, transparent 72%),
+    radial-gradient(50% 55% at 0% 100%, var(--ambient-4) 0%, transparent 72%),
+    radial-gradient(28% 36% at 46% 58%, var(--ambient-2) 0%, transparent 70%),
+    radial-gradient(24% 30% at 70% 30%, var(--ambient-1) 0%, transparent 70%),
+    var(--ambient-base);
+  background-attachment: fixed;
+}
+
+/* ---------------------------------------------------------------- liquid glass */
+
+.glass,
+.glass-strong {
+  isolation: isolate;
+  position: relative;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(22px) saturate(190%) brightness(1.04);
+  backdrop-filter: blur(22px) saturate(190%) brightness(1.04);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-specular),
+    inset 0 -1px 0 0 var(--glass-rim-low),
+    0 0 0 0.5px var(--glass-outline),
+    var(--elevation-glass);
+}
+
+.glass-strong {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+
+/* A full-screen sheet on phones and tablets; a side panel on the desktop. */
+.chat-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+@media (min-width: 1000px) {
+  .chat-sheet {
+    position: static;
+    z-index: auto;
+    width: 400px;
+    height: auto;
+    border-radius: var(--corner-xl);
+  }
+}
+
+.glass::before,
+.glass-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    radial-gradient(120% 70% at 18% -10%, var(--glass-specular) 0%, transparent 55%),
+    linear-gradient(180deg, var(--glass-specular) 0%, transparent 38%);
+}
+
+.glass::after,
+.glass-strong::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  padding: 1px;
+  background: linear-gradient(160deg, var(--glass-specular) 0%, transparent 28%, transparent 70%, var(--glass-rim-low) 100%);
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-origin: content-box, border-box;
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Text inside glass sits on a moving ground, so use the slightly darker secondary tone. */
+.glass,
+.glass-strong,
+.glass-dialog {
+  --muted-foreground: var(--glass-secondary-fg);
+}
+
+.glass a:not(.no-tint),
+.glass-strong a:not(.no-tint) {
+  color: var(--glass-accent-fg);
+}
+
+.glass-dialog {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(34px) saturate(190%) brightness(1.04);
+  backdrop-filter: blur(34px) saturate(190%) brightness(1.04);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-specular),
+    inset 0 -1px 0 0 var(--glass-rim-low),
+    0 0 0 0.5px var(--glass-outline),
+    var(--elevation-overlay);
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--ambient-base);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.hairline {
+  box-shadow: inset 0 0 0 1px var(--glass-outline);
+}
+
+/* --------------------------------------------------------------- manuscript */
+
+.manuscript {
+  font-family: var(--font-reading);
+  font-size: var(--text-manuscript-size);
+  line-height: var(--text-manuscript-leading);
+  color: var(--foreground);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+.chapter-title {
+  font-family: var(--font-reading);
+  font-size: var(--text-chapter-title-size);
+  line-height: var(--text-chapter-title-leading);
+  font-weight: var(--text-chapter-title-weight);
+}
+
+/* Compact and touch layouts keep the design but enlarge the hit area, not the icon. */
+@media (max-width: 999px), (pointer: coarse) {
+  :is(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], summary, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
+    min-block-size: var(--touch-target);
+  }
+
+  :is(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"]) {
+    min-inline-size: var(--touch-target);
+  }
+
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    min-block-size: var(--touch-target);
+  }
+
+  .titlebar-no-drag {
+    gap: 8px;
+  }
+
+  .titlebar-no-drag > div {
+    gap: 8px;
+  }
+}
+
+/* Hover reveals the move and delete actions on a mouse; a touch device has no hover, so they
+   move into the row instead of sitting invisibly over the chapter. */
+/* The mobile drawer has no hover, and a touch tablet has no hover either. */
+@media (max-width: 699px), (pointer: coarse) {
+  .chapter-actions {
+    opacity: 0.65;
+  }
+
+  .chapter-actions:focus-within,
+  .chapter-actions:active {
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  .chapter-rail-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .chapter-rail-item > .chapter-rail-row {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .chapter-actions {
+    position: static;
+    flex: 0 0 auto;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 699px) {
+  .manuscript {
+    font-size: 16px;
+    line-height: 26px;
+  }
+
+  .chapter-title {
+    font-size: 24px;
+    line-height: 30px;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ chrome */
+
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag,
+.titlebar-drag button,
+.titlebar-drag input,
+.titlebar-drag a {
+  -webkit-app-region: no-drag;
+}
+
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent;
+}
+
+.thin-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.thin-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+  background-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+}
+
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+}
+
+/* --------------------------------------------------------------- preferences */
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-strong,
+  .glass-dialog {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--card);
+  }
+
+  .glass::before,
+  .glass::after,
+  .glass-strong::before,
+  .glass-strong::after {
+    display: none;
+  }
+
+  .window-wash {
+    background: var(--background);
+  }
+
+  .scrim {
+    background: color-mix(in srgb, var(--ambient-base) 72%, transparent);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+    --duration-spring: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .glass,
+  .glass-strong,
+  .glass-dialog {
+    box-shadow:
+      inset 0 0 0 1px var(--foreground),
+      0 0 0 0.5px var(--foreground),
+      var(--elevation-glass);
+  }
+}

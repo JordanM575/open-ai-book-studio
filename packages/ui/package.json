@@ -1,0 +1,45 @@
+{
+  "name": "@ai-book-studio/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared React components and styles for every AI Book Studio target",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./button": {
+      "types": "./src/button.tsx",
+      "default": "./src/button.tsx"
+    },
+    "./dialog": {
+      "types": "./src/dialog.tsx",
+      "default": "./src/dialog.tsx"
+    },
+    "./brand": {
+      "types": "./src/brand.tsx",
+      "default": "./src/brand.tsx"
+    },
+    "./notice": {
+      "types": "./src/notice.tsx",
+      "default": "./src/notice.tsx"
+    },
+    "./styles/*": {
+      "default": "./src/styles/*"
+    },
+    "./utils": {
+      "types": "./src/utils.ts",
+      "default": "./src/utils.ts"
+    }
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.3.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

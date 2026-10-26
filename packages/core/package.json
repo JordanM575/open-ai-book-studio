@@ -1,0 +1,63 @@
+{
+  "name": "@ai-book-studio/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Schemas, book format and IPC contract shared by every build",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./schema": {
+      "types": "./src/schema.ts",
+      "default": "./src/schema.ts"
+    },
+    "./build": {
+      "types": "./src/build.ts",
+      "default": "./src/build.ts"
+    },
+    "./ipc": {
+      "types": "./src/ipc.ts",
+      "default": "./src/ipc.ts"
+    },
+    "./markdown": {
+      "types": "./src/markdown.ts",
+      "default": "./src/markdown.ts"
+    },
+    "./agent": {
+      "types": "./src/agent.ts",
+      "default": "./src/agent.ts"
+    },
+    "./agent/*": {
+      "types": "./src/agent/*.ts",
+      "default": "./src/agent/*.ts"
+    },
+    "./legacy": {
+      "types": "./src/legacy.ts",
+      "default": "./src/legacy.ts"
+    },
+    "./providers/*": {
+      "types": "./src/providers/*.ts",
+      "default": "./src/providers/*.ts"
+    },
+    "./library/*": {
+      "types": "./src/library/*.ts",
+      "default": "./src/library/*.ts"
+    },
+    "./archive/*": {
+      "types": "./src/archive/*.ts",
+      "default": "./src/archive/*.ts"
+    },
+    "./sync": {
+      "types": "./src/sync/index.ts",
+      "default": "./src/sync/index.ts"
+    },
+    "./sync/*": {
+      "types": "./src/sync/*.ts",
+      "default": "./src/sync/*.ts"
+    }
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,51 @@
+# Specs
+
+Each directory is one feature: `spec.md` (why and what), `plan.md` (how), `tasks.md` (ordered work,
+`[x]` when done). See ADR 0005 for the process and `.specify/memory/constitution.md` for the rules
+every spec must satisfy.
+
+| Spec | Title | State |
+| --- | --- | --- |
+| [001](001-foundation/spec.md) | Foundation: library, format, editor | Implemented (retroactive) |
+| [002](002-studio-v1/spec.md) | AI Book Studio v1: the whole product, white-room | In progress (current) — library, editor, Story Bible, provider connections, a first agent loop, Word export, legacy import and book search |
+| [003](003-legacy-port/spec.md) | Legacy port: previous app's export to the new library | In progress — backup parser, importer, library import button and tests |
+| 004 | Story Bible: returnable planning, cast, outline, memories | Folded into 002 |
+| 005 | Writing agent: runtime, keychain, tool edits, checkpoints | Folded into 002 |
+| 006 | Index: SQLite cache for search, conversations and usage | Folded into 002 |
+| 007 | Export: DOCX, PDF and EPUB with KDP settings | Folded into 002 |
+| 008 | Sync surface: conflict review, device names, library health | Folded into 002 |
+| [009](009-packaging-release/spec.md) | Packaging and release: signing, notarisation, updates ([plan](009-packaging-release/plan.md), [tasks](009-packaging-release/tasks.md)) | Draft, gated by D-115 — release record and unsigned path specified; signing, notarisation and updates wait on the decision |
+| [010](010-web-target/spec.md) | Browser target: local libraries and portable storage ([plan](010-web-target/plan.md), [tasks](010-web-target/tasks.md)) | In progress — shared library service, desktop port, portable archive, browser storage/archive I/O, save-failure tests and web smoke journeys implemented; folder/permission journeys and archive import picker covered by tests; Playwright Chromium passes the real storage harness 16/16, with Firefox/WebKit OPFS findings; native folder-picker matrix and shared UI extraction remain |
+| [011](011-model-access/spec.md) | Model access: OpenRouter SSO, provider keys, ChatGPT plan, usage | In progress — Phases 1–4, selection, model picker, transport, usage records, per-turn model override and metadata, credential safety and the first writing-agent loop implemented; browser credential vault, disclosure and OpenRouter sign-in added; live browser-access pass T040/T041 remains; [plan](011-model-access/plan.md), [tasks](011-model-access/tasks.md) |
+| [012](012-automated-verification/spec.md) | Automated verification: unit, contract, end-to-end, live provider checks ([plan](012-automated-verification/plan.md), [tasks](012-automated-verification/tasks.md)) | In progress — 308 Bun tests, 16/16 desktop smoke, 11/11 web smoke, Chromium 16/16 browser matrix, gallery and key check exist; lint, coverage, accessibility, performance, security, CI runner, live providers and release gates remain |
+| [013](013-builds-and-deployment/spec.md) | Builds and deployment: shared core, desktop and web builds, staging | In progress — web shell built and smoke-tested; build metadata, capability table, environments, runbook and CI workflow added; `packages/ui` carries the primitives and stylesheet, `packages/app` the shared shell, and T014's light/dark gallery is measured; [plan](013-builds-and-deployment/plan.md), [tasks](013-builds-and-deployment/tasks.md) |
+| [014](014-mobile/spec.md) | Mobile: iPhone and iPad mini layouts, Capacitor shell ([plan](014-mobile/plan.md), [tasks](014-mobile/tasks.md)) | Implemented — responsive layouts, Capacitor shell, touch-target audit, iPad mini rotation and accessibility pass complete; signing/real-device distribution remains; depends on 010/013 |
+| [016](016-sync/spec.md) | Sync and device trust: two-device folders, drift detection, local app lock ([plan](016-sync/plan.md), [tasks](016-sync/tasks.md), [research](016-sync/research.md)) | In progress — journal, read-only drift detector, library scan, two-system harness and docs (T001–T005, T013) implemented; drift report and lock wait on D-121–D-124 |
+
+Spec numbers 004–008 were reserved in the foundation roadmap and are now requirements inside
+[002](002-studio-v1/spec.md) rather than separate specs, because the white-room specification covers
+them as one product. Numbers are not reused.
+
+The browser build is 010 on purpose: it depends on the core/port split in ADR 0009, which is a refactor
+of 001, and on the storage-tier requirements added to 002 as FR-071…FR-076. Specs 011–013 are the
+hackathon delivery track: model access, the verification suite and the two build targets. They refine
+002 rather than replace it; where they disagree, the newer spec wins and 002 is amended. The agent harness runtimes
+(`@ai-sdk/harness`) are deferred in ADR 0007 rather than given a spec number; no work is planned until a
+local sandbox and a stable API exist.
+
+Agent coverage is audited in [`docs/AGENTIC-COVERAGE.md`](../docs/AGENTIC-COVERAGE.md): 002 and 011
+cover a v1 writing assistant, not the full agentic suite. The audit lists the implemented requirements,
+the specified-but-missing ones and the behaviour no spec has decided.
+
+## Status vocabulary
+
+- **Planned** — spec exists, not started.
+- **In progress** — tasks being executed; `tasks.md` shows what remains.
+- **Implemented** — tasks complete, tests pass, changelog updated.
+- **Superseded** — replaced by another spec; keep the file, link the replacement.
+
+## Retroactive specs
+
+`001-foundation` was written after the code, to give the repository a complete record from its first
+commit. It is held to the same standard as any other spec: requirements, acceptance criteria,
+non-goals, and tasks that actually correspond to the code.

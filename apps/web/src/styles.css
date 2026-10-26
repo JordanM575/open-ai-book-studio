@@ -1,0 +1,4 @@
+@import "@ai-book-studio/ui/styles/base.css";
+
+/* The UI stylesheet scans its own package and the shared shell; the web check page is local. */
+@source "../check";

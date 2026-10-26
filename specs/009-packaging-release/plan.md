@@ -1,0 +1,193 @@
+# Implementation Plan: Packaging and release integrity
+
+**Branch**: `009-packaging-release` · **Date**: 2026-10-26 · **Spec**: [spec.md](spec.md)
+**Status**: Draft, gated by D-115
+
+## Summary
+
+Add a release layer around the desktop artifact that spec 013 already builds. The work has three
+parts:
+
+1. Produce a verifiable macOS release: Developer ID signing, hardened runtime, notarisation and
+   stapling, with an explicit unsigned mode.
+2. Publish a release record with checksums, signature identity, commit/version/schema and gates.
+3. Define and test a static, signed update manifest and an atomic updater, but keep the update path
+   disabled until D-115 is accepted.
+
+The build, artifact naming, staging and deployment rollback stay in spec 013. The updater replaces the
+application bundle only; it never opens or writes a library.
+
+## Current state
+
+- `apps/desktop/electron-builder.yml` produces an unsigned unpacked app with `package:dir`; `bun run
+  dist` is the installer path. The app is labelled unsigned in About and release notes through spec
+  013.
+- `docs/DEPLOYMENT.md` defines artifact names, gates, promotion and rollback.
+- `scripts/build-info.mjs` stamps version, commit and schema into the build.
+- There is no signing configuration, notarisation hook, release record generator, update manifest or
+  updater in the repository.
+- D-115 is deferred: no certificate and no public update channel. Unsigned builds are the current
+  shipping path.
+
+## Technical approach
+
+### Signing and notarisation (blocked by D-115)
+
+- `apps/desktop/electron-builder.yml` gains a macOS section configured from environment:
+  - `CSC_LINK` and `CSC_KEY_PASSWORD` for the `.p12`;
+  - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for notarisation;
+  - `hardenedRuntime: true`, `gatekeeperAssess: false`, explicit `entitlements` and
+    `entitlementsInherit`.
+- A small `scripts/release/mac.mjs` (or the electron-builder afterSign hook) submits the `.app` for
+  notarisation, waits for the result, staples the `.app` and `.dmg`, and runs:
+  - `codesign --verify --deep --strict --verbose=2 <app>`;
+  - `spctl --assess --type execute --verbose=4 <app>`;
+  - `xcrun stapler validate <app>` and the `.dmg`.
+- The identity is never guessed. If `CSC_LINK` is absent, the release command enters **unsigned mode**
+  and writes `signing: "unsigned"` into the record. If a signing variable is present but invalid, the
+  command fails; it does not fall back.
+- Entitlements are an allow-list. Start with the Electron minimum (JIT, unsigned executable memory,
+  network client if required) and add nothing without a feature that needs it.
+
+### Release record and provenance
+
+`scripts/release/record.mjs` writes a JSON record next to the artifacts:
+
+```json
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "commit": "…",
+  "schema": 1,
+  "platform": "darwin",
+  "arch": "arm64",
+  "artifacts": [
+    { "name": "AI Book Studio-0.1.0-mac-arm64.dmg", "sha256": "…", "bytes": 0 }
+  ],
+  "signing": { "status": "signed", "identity": "Developer ID Application: …", "teamId": "…" },
+  "notarization": { "status": "accepted", "staple": "valid" },
+  "gates": ["typecheck", "test", "smoke", "web-smoke"],
+  "unsigned": false
+}
+```
+
+The record is input to the release notes and the update manifest. It must be produced from the bytes
+that are actually served; a rebuild after the record is written is a release failure.
+
+### Update manifest and updater (blocked by D-115)
+
+The static feed is a directory of immutable versioned artifacts plus one signed `latest.json` per
+channel:
+
+```json
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "version": "0.2.0",
+  "commit": "…",
+  "schema": 2,
+  "platform": "darwin",
+  "arch": "arm64",
+  "minimumOs": "12.0",
+  "url": "https://…/AI-Book-Studio-0.2.0-mac-arm64.zip",
+  "sha256": "…",
+  "publishedAt": "2026-10-26T00:00:00.000Z",
+  "signature": "base64…"
+}
+```
+
+- The manifest signature is verified with an embedded public key; the key id is in the manifest. A
+  rotation requires a new app build, not a remote key swap.
+- The updater is a small main-process module with no renderer access to the manifest or filesystem.
+  It exposes state through IPC: `disabled`, `checking`, `available`, `downloading`, `verifying`,
+  `ready`, `installing`, `failed`, `rolled-back`.
+- When D-115 is not accepted, `checkForUpdates()` returns `disabled` without a network call and the
+  Settings surface says updates are off.
+- When enabled, a check is an explicit author action (or a policy-approved launch check), downloads to
+  a temporary file, verifies the hash and signature, and only then replaces the app. The library path
+  is never in the updater's payload.
+- On macOS, use a signed `.zip`/`.dmg` and the platform's atomic replace semantics. Keep the previous
+  version in a versioned directory until the new version has launched successfully and the author has
+  opened a library; the exact retention window belongs to the D-115 policy.
+- A schema newer than the app refuses the update and tells the author to update the app or open the
+  library with a compatible build; it never runs a migration behind their back.
+
+### Failure and recovery
+
+- Disk-full, read-only location and permission failures are detected before replacing the app.
+- A failed verification deletes the temporary artifact and leaves the current app untouched.
+- A failed launch after install is recoverable through the previous version; the release record names
+  the rollback.
+- Logs include version, commit, channel and reason, never prose, keys or full signed URLs.
+
+### Testing
+
+- **Unit**: manifest schema, signature envelope, hash/URL validation, downgrade/schema/OS refusal,
+  state machine, and the disabled path making no network call.
+- **Integration**: signed staging artifact verification; unsigned fixture refusal; a failing signature
+  and a failing hash; application preservation after a simulated install failure.
+- **Release**: signature/notarisation/stapling commands against the actual artifact, plus a secret/source
+  map scan.
+- **Library safety**: hash the fixture library before and after a successful update and after a
+  rollback; assert every file is unchanged.
+
+## Files and ownership
+
+```text
+apps/desktop/electron-builder.yml        macOS signing/notarisation, artifact names
+apps/desktop/build/entitlements.mac.plist least-privilege entitlements
+apps/desktop/src/main/updates.ts         state machine, no direct renderer access
+apps/desktop/src/main/ipc.ts             validated update-status/check/install channels
+apps/desktop/src/preload/index.ts        narrow bridge
+apps/desktop/src/renderer/...            Settings status and consent, existing design tokens
+scripts/release/mac.mjs                  sign/notarize/staple/verify
+scripts/release/record.mjs               release record and checksums
+scripts/release/update-manifest.mjs      manifest signing and validation
+.gitea/workflows/release.yml             macOS release job, secrets scoped to it
+docs/RELEASE.md                          runbook, unsigned mode, rollback
+docs/DEPLOYMENT.md                       link to release record/update policy
+```
+
+## Phases
+
+1. **Provenance without signing** — define the record and checksum generator; use it for unsigned
+   builds. This can land before D-115 and makes the current release honest.
+2. **Signing and notarisation** — blocked by D-115 and a Developer ID certificate.
+3. **Update manifest and disabled path** — implement the parser, signature verification and disabled
+   state; no network when off. Blocked by D-115 because the policy is not accepted.
+4. **Install and rollback** — atomic replacement, previous-version retention and failure tests.
+   Blocked by D-115.
+5. **Release automation** — secret-scoped macOS job, artifact scan and release notes.
+6. **Verification** — unit/integration/release tests and spec 012 gates.
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+| --- | --- |
+| Certificate unavailable at hackathon | Explicit unsigned mode; signed tests skip with a reason; no fake trust |
+| Notarisation rejected because of an entitlement | Minimal entitlements; submit a fixture build before a release |
+| Updater damages the library | Updater replaces only the app bundle; library hash test before/after; schema updates stay in-app |
+| Bad manifest or key rotation | Signed manifest with key id; reject unknown keys; rotate only with a new app build |
+| Update while app is read-only or disk full | Preflight write/space checks; leave current app intact |
+| Rebuild after checksum | Release record generated from served bytes; promotion, not rebuild, per 013 |
+| Windows/Linux signing scope creep | v1 documents them as future; macOS is the release gate |
+
+## Verification
+
+- `bun run typecheck`, `bun test`, `bun run build`, `bun run smoke` plus the spec 012 gates.
+- Signed artifact: `codesign`, `spctl`, `stapler` and checksum match.
+- Unsigned artifact: About/release notes say unsigned; signed-update tests skip.
+- Updates disabled: no network request in an instrumented run.
+- Update enabled (staging): good update installs; bad signature/hash/downgrade/schema/OS/read-only/disk
+  full are refused; library hash unchanged; previous version runs after rollback.
+- Secret scan of artifact and notes reports zero credentials and no source maps.
+
+## Out of scope
+
+The build and staging/promotion mechanics owned by spec 013, the library format, provider credentials,
+App Store distribution, Windows/Linux signing, delta updates and hosted update services.
+
+## Decision gate
+
+D-115 must be accepted with a named certificate owner, an update feed location and a rollback window
+before phases 2–4 start. Until then, only phase 1 (record/checksums) and documentation can land.

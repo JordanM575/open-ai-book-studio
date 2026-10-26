@@ -1,0 +1,78 @@
+import type { ProviderErrorCode, ProviderId } from "./types";
+import { ProviderError } from "./types";
+
+interface NormalizeInput {
+  provider: ProviderId;
+  status?: number;
+  body?: string;
+  message?: string;
+  retryAfterSeconds?: number;
+}
+
+const AUTH = /invalid.*(key|token)|unauthor|forbidden|authentication|expired/i;
+const QUOTA = /quota|insufficient.*credit|billing|payment required/i;
+const CONTEXT = /context.*(length|window)|too many tokens|maximum.*tokens/i;
+const REFUSAL = /content policy|safety|refus|moderation/i;
+const RATE = /rate limit|too many requests|slow down/i;
+
+/** One place that turns a provider response into something the interface can explain. */
+export function normalizeProviderError(input: NormalizeInput): ProviderError {
+  const haystack = `${input.message ?? ""} ${input.body ?? ""}`.trim();
+  const status = input.status;
+  const options = {
+    provider: input.provider,
+    ...(input.retryAfterSeconds !== undefined ? { retryAfterSeconds: input.retryAfterSeconds } : {})
+  };
+
+  if (status === 429) {
+    return new ProviderError("rate-limit", "The provider is rate limiting this account. Try again shortly.", options);
+  }
+  if (status === 402 || QUOTA.test(haystack)) {
+    return new ProviderError("quota", "This account has no credit or has reached its quota.", options);
+  }
+  if (REFUSAL.test(haystack)) {
+    return new ProviderError("refusal", "The provider's content policy declined this request.", options);
+  }
+  if (status === 401 || status === 403 || AUTH.test(haystack)) {
+    return new ProviderError("auth", "The provider rejected this connection. Reconnect or check the key.", options);
+  }
+  if (CONTEXT.test(haystack)) {
+    return new ProviderError(
+      "context",
+      "The request is larger than this model can read. Choose a larger model or start a new conversation.",
+      options
+    );
+  }
+  if (RATE.test(haystack)) {
+    return new ProviderError("rate-limit", "The provider asked us to slow down. Try again shortly.", options);
+  }
+  if (status === 400 || status === 422) {
+    return new ProviderError("invalid-request", "The provider could not accept this request.", options);
+  }
+  if (status !== undefined && status >= 500) {
+    return new ProviderError("unknown", "The provider had a problem on its side. Your text is safe; try again.", options);
+  }
+  if (isOffline(input)) {
+    return new ProviderError("offline", "The provider could not be reached. Check your connection.", options);
+  }
+  return new ProviderError("unknown", input.message ?? "The provider returned an unexpected response.", options);
+}
+
+function isOffline(input: NormalizeInput): boolean {
+  if (input.status !== undefined) return false;
+  return /fetch failed|network|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|abort/i.test(input.message ?? "");
+}
+
+export function isProviderErrorCode(value: string): value is ProviderErrorCode {
+  return [
+    "auth",
+    "rate-limit",
+    "quota",
+    "context",
+    "refusal",
+    "offline",
+    "invalid-request",
+    "unsupported",
+    "unknown"
+  ].includes(value);
+}

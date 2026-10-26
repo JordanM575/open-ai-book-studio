@@ -1,0 +1,30 @@
+# This workflow is ready, but no Gitea runner is registered yet. Until one is, local
+# `bun run verify` is the source of truth and the README does not claim a passing CI badge.
+name: verify
+on:
+  push:
+    branches:
+      - 015-web-target
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Version agreement and build info
+        run: bun run build:info
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Tests
+        run: bun test
+      - name: Desktop bundle
+        run: bun run build
+      - name: Web bundle
+        run: bun run build:web

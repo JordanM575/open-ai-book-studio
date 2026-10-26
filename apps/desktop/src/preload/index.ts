@@ -1,0 +1,116 @@
+import { contextBridge, ipcRenderer } from "electron";
+import {
+  AGENT_EVENT_CHANNEL,
+  IPC,
+  LIBRARY_EVENT_CHANNEL,
+  type AgentEvent,
+  type AgentTurnInput,
+  type ChapterMetaPatch,
+  type DraftInput,
+  type LibraryChangeEvent,
+  type SaveChapterInput,
+  type StudioApi
+} from "@ai-book-studio/core/ipc";
+import type { BookMeta } from "@ai-book-studio/core/schema";
+import type { ProviderId } from "@ai-book-studio/core/providers/types";
+
+function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<T>;
+}
+
+const api: StudioApi = {
+  app: {
+    info: () => invoke(IPC.app.info)
+  },
+  library: {
+    choose: () => invoke(IPC.library.choose),
+    open: (folder) => invoke(IPC.library.open, folder),
+    current: () => invoke(IPC.library.current),
+    reveal: () => invoke(IPC.library.reveal),
+    importLegacy: () => invoke(IPC.library.importLegacy),
+    exportArchive: () => invoke(IPC.library.exportArchive),
+    importArchive: () => invoke(IPC.library.importArchive),
+    onChange: (callback) => {
+      const listener = (_event: unknown, change: LibraryChangeEvent) => callback(change);
+      ipcRenderer.on(LIBRARY_EVENT_CHANNEL, listener);
+      return () => ipcRenderer.removeListener(LIBRARY_EVENT_CHANNEL, listener);
+    }
+  },
+  books: {
+    list: () => invoke(IPC.books.list),
+    create: (input) => invoke(IPC.books.create, input),
+    update: (bookId: string, patch: Partial<BookMeta>) => invoke(IPC.books.update, { bookId, patch }),
+    delete: (bookId: string) => invoke(IPC.books.delete, bookId),
+    open: (bookId) => invoke(IPC.books.open, bookId),
+    search: (bookId: string, query: string) => invoke(IPC.books.search, { bookId, query }),
+    exportDocx: (bookId) => invoke(IPC.books.exportDocx, bookId)
+  },
+  chapters: {
+    create: (bookId, input) => invoke(IPC.chapters.create, { bookId, ...input }),
+    save: (input: SaveChapterInput) => invoke(IPC.chapters.save, input),
+    updateMeta: (bookId, chapterId, patch: ChapterMetaPatch, expected) =>
+      invoke(IPC.chapters.updateMeta, { bookId, chapterId, patch, expected }),
+    reorder: (bookId, chapterId, direction) =>
+      invoke(IPC.chapters.reorder, { bookId, chapterId, direction }),
+    move: (bookId, chapterId, targetIndex) =>
+      invoke(IPC.chapters.move, { bookId, chapterId, targetIndex }),
+    delete: (bookId, chapterId) => invoke(IPC.chapters.delete, { bookId, chapterId })
+  },
+  conflicts: {
+    list: (bookId) => invoke(IPC.conflicts.list, bookId),
+    reveal: (bookId, savedAs) => invoke(IPC.conflicts.reveal, { bookId, savedAs })
+  },
+  drafts: {
+    set: (input: DraftInput) => invoke(IPC.drafts.set, input),
+    clear: (bookId, chapterId) => invoke(IPC.drafts.clear, { bookId, chapterId })
+  },
+  usage: {
+    summary: (bookId) => invoke(IPC.usage.summary, bookId)
+  },
+  providers: {
+    list: () => invoke(IPC.providers.list),
+    models: (connectionId) => invoke(IPC.providers.models, connectionId)
+  },
+  connections: {
+    list: () => invoke(IPC.connections.list),
+    available: () => invoke(IPC.connections.available),
+    addKey: (input: { provider: ProviderId; secret: string; label?: string; baseUrl?: string }) =>
+      invoke(IPC.connections.addKey, input),
+    startOpenRouter: () => invoke(IPC.connections.startOpenRouter),
+    cancelOpenRouter: () => invoke(IPC.connections.cancelOpenRouter),
+    remove: (connectionId) => invoke(IPC.connections.remove, connectionId),
+    test: (connectionId) => invoke(IPC.connections.test, connectionId)
+  },
+  agent: {
+    start: (input: AgentTurnInput) => invoke(IPC.agent.start, input),
+    stop: (turnId: string) => invoke(IPC.agent.stop, turnId),
+    undoLast: (bookId: string) => invoke(IPC.agent.undoLast, bookId),
+    approve: (turnId: string, approvalId: string, approved: boolean) =>
+      invoke(IPC.agent.approve, { turnId, approvalId, approved }),
+    threads: {
+      list: (bookId: string) => invoke(IPC.agent.threads.list, bookId),
+      read: (bookId: string, threadId: string) => invoke(IPC.agent.threads.read, { bookId, threadId }),
+      rename: (bookId: string, threadId: string, title: string) =>
+        invoke(IPC.agent.threads.rename, { bookId, threadId, title }),
+      remove: (bookId: string, threadId: string) =>
+        invoke(IPC.agent.threads.remove, { bookId, threadId }),
+      fork: (bookId: string, threadId: string, turnId: string) =>
+        invoke(IPC.agent.threads.fork, { bookId, threadId, turnId })
+    },
+    onEvent: (callback: (event: AgentEvent) => void) => {
+      const listener = (_event: unknown, payload: AgentEvent): void => callback(payload);
+      ipcRenderer.on(AGENT_EVENT_CHANNEL, listener);
+      return () => ipcRenderer.removeListener(AGENT_EVENT_CHANNEL, listener);
+    }
+  },
+  menu: {
+    onOpenLibrary: (callback) => {
+      const listener = (): void => callback();
+      ipcRenderer.on("menu:open-library", listener);
+      return () => ipcRenderer.removeListener("menu:open-library", listener);
+    }
+  },
+  platform: process.platform
+};
+
+contextBridge.exposeInMainWorld("studio", api);

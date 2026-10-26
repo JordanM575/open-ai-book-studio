@@ -1,0 +1,29 @@
+appId: studio.aibook.app
+productName: AI Book Studio
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+directories:
+  buildResources: build
+  output: ../../release
+files:
+  - out/**/*
+  - package.json
+asar: true
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+win:
+  target:
+    - nsis
+linux:
+  category: Office
+  target:
+    - AppImage
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

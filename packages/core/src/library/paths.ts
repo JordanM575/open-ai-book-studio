@@ -1,0 +1,59 @@
+import { toLibraryPath, type LibraryPath } from "./path";
+
+/** Names from docs/FORMAT.md. They are format constants, not preferences. */
+export const LIBRARY_DIRS = {
+  books: "books",
+  studio: ".studio",
+  trash: "trash",
+  chapters: "chapters",
+  conflicts: "conflicts",
+  threads: "threads",
+  checkpoints: "checkpoints",
+  sync: "sync"
+} as const;
+
+export const LIBRARY_FILES = {
+  index: "library.json",
+  device: "device.json",
+  fileIndex: "files.json"
+} as const;
+
+export const studioPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio]);
+export const booksPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.books]);
+export const bookPath = (bookId: string): LibraryPath => toLibraryPath([LIBRARY_DIRS.books, bookId]);
+export const bookFilePath = (bookId: string): LibraryPath => toLibraryPath([LIBRARY_DIRS.books, bookId, "book.json"]);
+export const chaptersPath = (bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.chapters]);
+export const chapterPath = (bookId: string, fileName: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.chapters, fileName]);
+export const conflictsPath = (bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.conflicts]);
+export const conflictPath = (bookId: string, fileName: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.conflicts, fileName]);
+export const threadsPath = (bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.threads]);
+export const checkpointsPath = (bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.checkpoints]);
+/** Device-local sync baselines; never exported in the portable archive. */
+export const syncPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.sync]);
+export const syncJournalPath = (deviceId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.sync, `${deviceId}.json`]);
+/** Deleted books live beside chapter trash, under their own folder so ids never collide. */
+export const bookTrashPath = (stamp: string, bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.trash, LIBRARY_DIRS.books, `${stamp}-${bookId}`]);
+export const trashPath = (bookId?: string): LibraryPath =>
+  bookId === undefined
+    ? toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.trash])
+    : toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.trash, bookId]);
+export const libraryIndexPath = (): LibraryPath => toLibraryPath([LIBRARY_FILES.index]);
+export const devicePath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_FILES.device]);
+export const fileIndexPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_FILES.fileIndex]);
+
+/** A human-readable path for a chapter's metadata fallback and for logs. Never used as a host path. */
+export function chapterDisplayPath(bookId: string, fileName: string): string {
+  return `${LIBRARY_DIRS.books}/${bookId}/${LIBRARY_DIRS.chapters}/${fileName}`;
+}
+
+export function conflictDisplayPath(bookId: string, fileName: string): string {
+  return `${LIBRARY_DIRS.books}/${bookId}/${LIBRARY_DIRS.conflicts}/${fileName}`;
+}
