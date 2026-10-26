@@ -22,6 +22,7 @@ import { compactHistory } from "@ai-book-studio/core/agent/history";
 import { contextBreakdown, type ContextBreakdown } from "@ai-book-studio/core/agent/context";
 import type { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import { findModel, unavailableReason } from "@ai-book-studio/core/providers/models";
+import { isContributorModelId } from "@ai-book-studio/core/providers/compatibility";
 import { reportedCost } from "@ai-book-studio/core/providers/openrouter";
 import { normalizeProviderError } from "@ai-book-studio/core/providers/errors";
 import { redact } from "@ai-book-studio/core/providers/redact";
@@ -150,6 +151,12 @@ export class AgentRuntime {
     const modelId = input.model?.modelId ?? book.defaultModelId;
     if (!connectionId || !modelId) {
       throw new ProviderError("invalid-request", "Choose a model for this book before asking the agent to write.");
+    }
+    if (isContributorModelId(modelId) && !book.allowContributorTraining) {
+      throw new ProviderError(
+        "invalid-request",
+        "Muse Spark Contributor may use this book's content to train Meta's models. Allow Contributor training for this book in the model picker, or choose the Standard model."
+      );
     }
     const credential = await this.providers.credential(connectionId);
     let contextLength: number | null = null;

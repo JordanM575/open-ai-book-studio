@@ -308,3 +308,21 @@ later with `images:attachCharacter`; the character id is stored on the image rec
 Concept prompts are validated in `packages/core/src/images/segmentation.ts`: one short noun phrase,
 no lists, negation, questions or commands. Zero matches is a normal result and writes nothing. The web
 build refuses until Meta browser access is verified.
+
+## Provider compatibility and the Contributor model
+
+`packages/core/src/providers/compatibility.ts` holds the provider-neutral model facts and the
+Contributor policy. `apps/desktop/src/main/agent/transport.ts` is the single translation seam:
+`modelFor(credential, modelId)` maps every `ProviderId` to an AI SDK `LanguageModel` through a
+`Record<ProviderId, Adapter>`. The runtime, tools and tests never import a provider SDK or branch on a
+provider.
+
+`ProviderService.models` applies known presets after parsing a provider catalogue. For Meta this fills
+the Muse Spark 1.3 Contributor facts the model list omits: 1,048,576 context, tools/images, $0.10 input,
+$0.002 cached input, $0.20 output, `minimal`–`xhigh` reasoning and `trainingOnData: true`. Standard
+1.3 has its own non-training preset.
+
+Contributor consent is per book. `BookMeta.allowContributorTraining` defaults to `false`; the model
+picker shows the training warning and requires a checkbox, and `AgentRuntime.start` refuses a
+contributor model before it reads a credential or sends a request. Contributor is for the synthetic
+fixture and public-domain testing only; the author’s manuscript must stay on Standard.

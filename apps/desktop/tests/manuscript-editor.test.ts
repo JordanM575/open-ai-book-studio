@@ -359,3 +359,89 @@ describe("IllustrationDialog character attachment", () => {
     await testing.waitFor(() => testing.screen.getByText("Character image attached to the cast member."));
   });
 });
+
+const { ModelPickerDialog } = await import("@ai-book-studio/app/components/ModelPickerDialog");
+const { bookSchema } = await import("@ai-book-studio/core/schema");
+
+describe("ModelPickerDialog contributor consent", () => {
+  test("requires the training consent before a Contributor model can be used", async () => {
+    const parsed = bookSchema.parse({
+      id: BOOK,
+      title: "The Salt Road",
+      createdAt: "2026-10-26T12:00:00.000Z",
+      updatedAt: "2026-10-26T12:00:00.000Z"
+    });
+    const update = mock((_bookId: string, patch: Record<string, unknown>) =>
+      Promise.resolve({ ok: true as const, data: { ...parsed, ...patch } })
+    );
+    (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
+      providers: {
+        list: mock(() => Promise.resolve({ ok: true as const, data: [] })),
+        models: mock(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: {
+              fetchedAt: "2026-10-26T12:00:00.000Z",
+              models: [
+                {
+                  id: "muse-spark-1.3-contributor",
+                  name: "Muse Spark 1.3 Contributor",
+                  contextLength: 1_048_576,
+                  supportsTools: true,
+                  supportsImages: true,
+                  inputPricePerMillion: 0.1,
+                  outputPricePerMillion: 0.2,
+                  trainingOnData: true
+                }
+              ]
+            }
+          })
+        )
+      },
+      connections: {
+        list: mock(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: [
+              {
+                id: "conn_meta0001",
+                provider: "meta",
+                label: "Meta",
+                kind: "api-key",
+                createdAt: "2026-10-26T12:00:00.000Z"
+              }
+            ]
+          })
+        )
+      },
+      books: { update }
+    };
+    const onSaved = mock(() => {});
+    testing.render(
+      React.createElement(ModelPickerDialog, {
+        open: true,
+        book: parsed,
+        onClose: () => {},
+        onSaved
+      })
+    );
+
+    await testing.waitFor(() => testing.screen.getByText("Muse Spark 1.3 Contributor"));
+    testing.fireEvent.click(testing.screen.getByText("Muse Spark 1.3 Contributor"));
+    await testing.waitFor(() => testing.screen.getByText("Contributor mode"));
+    const use = testing.screen.getByText("Use this model").closest("button") as HTMLButtonElement;
+    expect(use.disabled).toBe(true);
+    testing.fireEvent.click(testing.screen.getByTestId("allow-contributor"));
+    await testing.waitFor(() => expect(use.disabled).toBe(false));
+    testing.fireEvent.click(use);
+    await testing.waitFor(() =>
+      expect(update).toHaveBeenCalledWith(BOOK, {
+        defaultProvider: "meta",
+        defaultConnectionId: "conn_meta0001",
+        defaultModelId: "muse-spark-1.3-contributor",
+        allowContributorTraining: true
+      })
+    );
+    expect(onSaved).toHaveBeenCalled();
+  });
+});

@@ -20,6 +20,13 @@ import {
 import { PROVIDERS, PROVIDER_LIST, browserAvailabilityCopy, browserAvailable } from "../src/providers/registry";
 import { connectionIdSchema, providerIdSchema } from "../src/providers/types";
 import { redact, redactDeep } from "../src/providers/redact";
+import {
+  MUSE_SPARK_CONTRIBUTOR,
+  MUSE_SPARK_STANDARD,
+  applyModelPreset,
+  contributorWarning,
+  isContributorModelId
+} from "../src/providers/compatibility";
 import type { ModelInfo, StoredCredential } from "../src/providers/types";
 
 const model = (overrides: Partial<ModelInfo> = {}): ModelInfo => ({
@@ -309,5 +316,42 @@ describe("older books", () => {
     expect(book.defaultProvider).toBeNull();
     expect(book.defaultConnectionId).toBeNull();
     expect(book.defaultModelId).toBeNull();
+  });
+});
+
+describe("provider compatibility and the Contributor model", () => {
+  const base = (id: string): ModelInfo => ({
+    id,
+    name: id,
+    contextLength: null,
+    supportsTools: null,
+    supportsImages: null,
+    inputPricePerMillion: null,
+    outputPricePerMillion: null
+  });
+
+  test("fills the known Muse Spark 1.3 Contributor facts", () => {
+    const model = applyModelPreset("meta", base(MUSE_SPARK_CONTRIBUTOR));
+    expect(model).toMatchObject({
+      name: "Muse Spark 1.3 Contributor",
+      contextLength: 1_048_576,
+      supportsTools: true,
+      supportsImages: true,
+      inputPricePerMillion: 0.1,
+      cachedInputPricePerMillion: 0.002,
+      outputPricePerMillion: 0.2,
+      trainingOnData: true
+    });
+    expect(model.reasoningEfforts).not.toContain("max");
+    expect(isContributorModelId(MUSE_SPARK_CONTRIBUTOR)).toBe(true);
+    expect(contributorWarning(model)).toMatch(/train/);
+  });
+
+  test("keeps Standard non-training and does not touch another provider", () => {
+    const standard = applyModelPreset("meta", base(MUSE_SPARK_STANDARD));
+    expect(standard).toMatchObject({ trainingOnData: false, inputPricePerMillion: 1.25 });
+    expect(contributorWarning(standard)).toBeNull();
+    const openai = base(MUSE_SPARK_CONTRIBUTOR);
+    expect(applyModelPreset("openai", openai)).toBe(openai);
   });
 });

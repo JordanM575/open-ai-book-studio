@@ -339,3 +339,10 @@ needed and the spec or task it blocks.
 | ID | Status | Question | Decision | Evidence | Tasks |
 | --- | --- | --- | --- | --- | --- |
 | D-137 | Accepted | May the desktop use Meta's `@meta-sam/parser` when the project is Apache-2.0? | Yes for the hackathon build, with the SAM License included in `THIRD_PARTY_NOTICES.md` and the distribution. The feature is optional and desktop-only. Before a public release, review compatibility or replace the parser with a clean-room implementation; do not claim the repository is Apache-2.0 while silently shipping an incompatible dependency. | `THIRD_PARTY_NOTICES.md`, spec 020 FR-013 | 020 T007 and release review |
+
+## Provider compatibility decisions (2026-10-26)
+
+| ID | Status | Question | Decision | Evidence | Tasks |
+| --- | --- | --- | --- | --- | --- |
+| D-138 | Accepted | How does the app use Muse Spark 1.3 Contributor without sending an author's private book to a training-eligible model? | Contributor is opt-in per book (`allowContributorTraining`, default false). The model picker shows the training warning, prices and reasoning limit and requires a checkbox; `AgentRuntime` refuses the model before any request until consent exists. Contributor is for the synthetic fixture/public-domain tests; Standard is the default alternative. | `packages/core/src/providers/compatibility.ts`, `AgentRuntime.start`, `ModelPickerDialog`; spec 022 | 022 T001–T008 |
+| D-139 | Deferred | Should the compatibility layer also be a local OpenAI-compatible HTTP endpoint? | Not in v1. `modelFor` is the one AI SDK seam. A network gateway needs caller authentication, streaming, tool execution and approval ownership; it would be a separate spec. | Spec 022 FR-014 | None |

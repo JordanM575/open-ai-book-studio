@@ -101,6 +101,11 @@ export const bookSchema = z.looseObject({
   defaultProvider: z.string().max(40).nullable().default(null),
   defaultConnectionId: z.string().max(200).nullable().default(null),
   defaultModelId: z.string().max(200).nullable().default(null),
+  /**
+   * Explicit consent to use a training-eligible model (for example Muse Spark Contributor) with this
+   * book. Off by default; the agent refuses a contributor model until the author enables it.
+   */
+  allowContributorTraining: z.boolean().default(false),
   settings: z.object({ manuscript: manuscriptSettingsSchema }).default({ manuscript: DEFAULT_MANUSCRIPT_SETTINGS }),
   /** Front and back matter: title page, dedication, acknowledgements, author's note. */
   frontMatter: z.record(z.string(), z.string()).default({}),

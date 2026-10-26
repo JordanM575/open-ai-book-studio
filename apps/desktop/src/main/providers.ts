@@ -3,6 +3,7 @@ import { once } from "node:events";
 import type { Catalogue } from "@ai-book-studio/core/providers/models";
 import { parseOpenRouterModels } from "@ai-book-studio/core/providers/catalogue";
 import { endpointFor, parseProviderModels } from "@ai-book-studio/core/providers/keys";
+import { applyModelPreset } from "@ai-book-studio/core/providers/compatibility";
 import { providerById } from "@ai-book-studio/core/providers/registry";
 import type { CredentialVault } from "@ai-book-studio/core/providers/credentials";
 import { ProviderError, type ConnectionSummary, type ProviderId, type StoredCredential } from "@ai-book-studio/core/providers/types";
@@ -206,7 +207,8 @@ export class ProviderService {
       credential.provider === "openrouter"
         ? parseOpenRouterModels(payload)
         : parseProviderModels(credential.provider, payload);
-    const catalogue: Catalogue = { models, fetchedAt: new Date().toISOString() };
+    const enriched = models.map((model) => applyModelPreset(credential.provider, model));
+    const catalogue: Catalogue = { models: enriched, fetchedAt: new Date().toISOString() };
     this.catalogues.set(connectionId, catalogue);
     await this.vault.touch(connectionId);
     return catalogue;

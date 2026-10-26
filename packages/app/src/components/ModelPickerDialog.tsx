@@ -3,6 +3,7 @@ import { Check, Loader2, Search } from "lucide-react";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ConnectionSummary, ModelInfo, ProviderDescription } from "@ai-book-studio/core/providers/types";
 import { canRunAgent, unavailableReason } from "@ai-book-studio/core/providers/models";
+import { contributorWarning, isContributorModel } from "@ai-book-studio/core/providers/compatibility";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { must } from "../lib/utils";
@@ -29,6 +30,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [search, setSearch] = useState("");
   const [chosen, setChosen] = useState<string | null>(initialModelId);
+  const [allowContributor, setAllowContributor] = useState(book.allowContributorTraining);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,9 +58,10 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
     if (!open) return;
     setConnectionId(initialConnectionId);
     setChosen(initialModelId);
+    setAllowContributor(book.allowContributorTraining);
     setSearch("");
     void loadConnections();
-  }, [open, initialConnectionId, initialModelId, loadConnections]);
+  }, [open, initialConnectionId, initialModelId, book.allowContributorTraining, loadConnections]);
 
   const loadModels = useCallback(async (id: string) => {
     setLoading(true);
@@ -97,10 +100,26 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
     const sorted = [...models].sort((a, b) => Number(canRunAgent(b)) - Number(canRunAgent(a)) || a.name.localeCompare(b.name));
     return query ? sorted.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(query)) : sorted;
   }, [models, search]);
+  const chosenModel = models.find((model) => model.id === chosen) ?? null;
+  const contributor = isContributorModel(chosenModel);
+  const warning = contributorWarning(chosenModel);
 
   const save = async (): Promise<void> => {
     if (!connection || !chosen || saving) return;
+    if (contributor && !allowContributor) return;
     if (onPick) {
+      if (contributor && !book.allowContributorTraining) {
+        setSaving(true);
+        setError(null);
+        try {
+          await must(window.studio.books.update(book.id, { allowContributorTraining: true }));
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+          setSaving(false);
+          return;
+        }
+        setSaving(false);
+      }
       onPick({ connectionId: connection.id, modelId: chosen });
       onClose();
       return;
@@ -113,7 +132,8 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
         window.studio.books.update(book.id, {
           defaultProvider: connection.provider,
           defaultConnectionId: connection.id,
-          defaultModelId: chosen
+          defaultModelId: chosen,
+          allowContributorTraining: contributor ? allowContributor : book.allowContributorTraining
         })
       );
       onSaved(updated);
@@ -214,6 +234,11 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                             ? "Price not reported"
                             : `$${model.inputPricePerMillion.toFixed(2)} in · $${(model.outputPricePerMillion ?? 0).toFixed(2)} out per million`}
                         </span>
+                        {model.trainingOnData ? (
+                          <span className="block text-[var(--text-caption-size)] text-muted-foreground">
+                            Contributor · Meta may train on this content
+                          </span>
+                        ) : null}
                         {!usable && reason ? (
                           <span className="block text-[var(--text-caption-size)] text-destructive-text">{reason}</span>
                         ) : null}
@@ -230,6 +255,25 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                 {error}
               </p>
             ) : null}
+
+            {contributor && warning ? (
+              <div className="rounded-[var(--corner-lg)] border border-[var(--warning)] bg-[var(--secondary)] p-3">
+                <p className="text-[var(--text-subheadline-size)] font-medium">Contributor mode</p>
+                <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">{warning}</p>
+                <label className="mt-2 flex items-start gap-2 text-[var(--text-caption-size)]">
+                  <input
+                    type="checkbox"
+                    checked={allowContributor}
+                    onChange={(event) => setAllowContributor(event.target.checked)}
+                    className="mt-0.5 size-4 accent-[var(--primary)]"
+                    data-testid="allow-contributor"
+                  />
+                  <span>
+                    I understand and allow this book’s content to be used to train Meta’s models.
+                  </span>
+                </label>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -237,7 +281,10 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={() => void save()} disabled={!connection || !chosen || saving || connections.length === 0}>
+          <Button
+            onClick={() => void save()}
+            disabled={!connection || !chosen || saving || connections.length === 0 || (contributor && !allowContributor)}
+          >
             {saving ? <Loader2 size={15} className="animate-spin" /> : null}
             {turnMode ? "Use for this turn" : "Use this model"}
           </Button>

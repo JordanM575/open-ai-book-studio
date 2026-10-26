@@ -73,6 +73,16 @@ function providersFor(): ProviderService {
           supportsImages: false,
           inputPricePerMillion: null,
           outputPricePerMillion: null
+        },
+        {
+          id: "muse-spark-1.3-contributor",
+          name: "Muse Spark 1.3 Contributor",
+          contextLength: 1_048_576,
+          supportsTools: true,
+          supportsImages: true,
+          inputPricePerMillion: 0.1,
+          outputPricePerMillion: 0.2,
+          trainingOnData: true
         }
       ],
       fetchedAt: "2026-10-25T00:00:00.000Z"
@@ -194,6 +204,26 @@ function createChapter(content = "The old opening.\n"): ReturnType<Library["crea
 }
 
 describe("agent runtime contract", () => {
+  test("refuses a contributor model until the book opts in", async () => {
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      () => {},
+      () => textModel(),
+      () => {}
+    );
+    await expect(
+      runtime.start({
+        bookId: book.id,
+        prompt: "Plan the next scene.",
+        model: { connectionId: credential.id, modelId: "muse-spark-1.3-contributor" }
+      })
+    ).rejects.toMatchObject({
+      code: "invalid-request",
+      message: expect.stringMatching(/Contributor training/)
+    });
+  });
+
   test("persists a text turn and its usage without a provider call", async () => {
     const events: AgentEvent[] = [];
     let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;

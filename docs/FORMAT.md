@@ -60,6 +60,7 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 | `defaultProvider` | string \| null | Provider chosen for this book (`openrouter`, `openai`, `anthropic`, `gemini`, `meta`), or `null` when not chosen. Older books gain `null` on read. |
 | `defaultConnectionId` | string \| null | A connection id such as `conn_…`. The secret lives in the app's protected storage, never here. |
 | `defaultModelId` | string \| null | Model id as the provider names it. A model that disappears stays recorded and is shown as unavailable. |
+| `allowContributorTraining` | boolean | Default `false`. Explicit consent to use a training-eligible model such as Muse Spark Contributor with this book. The model picker sets it; migrations never do. |
 | `frontMatter` | record | Free-form front/back matter pages, keyed by page id. |
 | `createdAt`, `updatedAt` | ISO 8601 | Written by the app. |
 

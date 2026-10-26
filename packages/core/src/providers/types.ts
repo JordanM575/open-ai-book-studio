@@ -59,6 +59,14 @@ export interface ModelInfo {
   supportsImages: boolean | null;
   inputPricePerMillion: number | null;
   outputPricePerMillion: number | null;
+  /** Cached-input price when the provider publishes one, in USD per million tokens. */
+  cachedInputPricePerMillion?: number | null;
+  /** True when the provider may use prompts and completions to train its models. */
+  trainingOnData?: boolean | null;
+  /** Reasoning levels the provider advertises for this model, strongest last. */
+  reasoningEfforts?: string[] | null;
+  /** Short provider or policy note shown in the model picker. */
+  note?: string | null;
 }
 
 export type ProviderErrorCode =
