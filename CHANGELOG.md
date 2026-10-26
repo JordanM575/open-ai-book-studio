@@ -31,6 +31,12 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the studio's tool catalog in Meta's two interchange shapes (spec 026): a WebMCP tool list,
+  which a page on Meta's Ray-Ban Display glasses registers so the wearer can ask for it by voice,
+  and a Meta AI connector manifest, with every tool classified Read or Write and the destructive
+  ones marked sensitive. `bookwriter tools --format webmcp` and `--format connector` produce them
+  from a live studio. The studio's own tier was already the classification Meta asks for, so this
+  is a renaming rather than a translation.
 - Added the agent's own capabilities (spec 025): a cacheable prompt prefix where the provider
   supports one, with the hit rate, the cached and fresh token counts and the turns that hit it
   shown per book, and a switch to turn the prefix off; per-tool call, success and failure counts; a
@@ -45,6 +51,10 @@ Update the `Unreleased` section before every commit.
 - Recorded the toolkit manual pass in `docs/research/toolkit-2026-10-26.md`: the compiled
   `bookwriter` binary and a separate MCP client process against a real backend over a real library,
   with every change read back from the file.
+- Recorded the glasses assessment in `docs/research/glasses-2026-10-26.md`: Meta's three surfaces
+  for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
+  the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
+  connector shapes.
 - Recorded the plugin manual pass in `docs/research/plugins-2026-10-26.md`: the built app pointed at
   a folder of TypeScript plugins, the plugin's tool listed in the backend's catalog, the tool run
   against the open book, and a plugin that cannot resolve its imports left the others working.

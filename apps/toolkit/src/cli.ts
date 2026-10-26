@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
+import { connectorManifest, webMcpTools } from "@ai-book-studio/core/agent/surfaces";
 import { BackendClient, BackendError, type BackendOverrides } from "./backend-client";
 import { McpServer, serveMcp, type ToolkitClient } from "./mcp";
 
@@ -38,6 +39,7 @@ Options:
   --allow-writes                    Enable create-chapter, save, call and write MCP tools
   --allow-destructive               Enable destructive tools (implies --allow-writes)
   --json                            Print the backend payload
+  --format <format>                 For tools: json, webmcp or connector (default: json)
   --content-file <path>             Chapter content for create/save
   --stdin                           Read chapter content from stdin
   --title <title>                   Chapter title for create-chapter
@@ -203,6 +205,13 @@ export async function runCli(
       }
       case "tools": {
         const tools = await client.tools();
+        const format = stringFlag(parsed, "format") ?? "json";
+        if (format === "webmcp") return print(io, webMcpTools(tools));
+        if (format === "connector") return print(io, connectorManifest(tools));
+        if (format !== "json") {
+          io.stderr.write(`--format must be json, webmcp or connector. Not “${format}”.\n`);
+          return 1;
+        }
         if (json) return print(io, tools);
         if (tools.length === 0) {
           io.stdout.write("This studio exposes no writing tools.\n");

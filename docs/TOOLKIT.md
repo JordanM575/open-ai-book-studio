@@ -32,6 +32,22 @@ verbs rather than a thinner dialect of its own:
 
 `bookwriter tools` prints the live catalog with the tier of each tool.
 
+### The catalog in other people's shapes
+
+The catalog is also what other agents and surfaces speak, so the toolkit can print it in the two
+shapes Meta named:
+
+```bash
+bookwriter tools --format webmcp     # the tool list a web page registers with document.modelContext
+bookwriter tools --format connector  # the Meta AI connector manifest, every tool classified
+```
+
+The WebMCP form is what a page on Meta's Ray-Ban Display glasses registers so the wearer can ask
+for it by voice; the connector form is the tool list a Meta AI connector exposes, with every tool
+classified Read or Write and the destructive ones marked sensitive. Neither talks to Meta: they are
+descriptions, so a caller can hand them over. See
+[`specs/026-glasses`](../specs/026-glasses/spec.md).
+
 ### Safety tiers
 
 Every tool has one of three tiers:
