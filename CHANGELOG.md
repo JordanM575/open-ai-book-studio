@@ -59,6 +59,12 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Made the ambient status say the truth about `working`. It was always `false`, so the minimal
+  mode never offered Stop, and a phone would have shown a Stop it could not honour. The status now
+  asks the runtime, and the control plane and the bridge both grew `POST /v1/books/:bookId/stop`.
+- Fixed the minimal mode in the browser build. It showed an error on every book because the ambient
+  status was a desktop-only stub, but the status is a pure function over the book, so this build now
+  computes it from the library it already has. The web smoke proves the line and the six actions.
 - Added undo to the control plane and the bridge, and `bookwriter undo`. The ambient status offers
   the action whenever a checkpoint exists, so a client that shows the status must be able to perform
   it; a route that offers an action it cannot do is a dead end in a pair of glasses. The bridge probe

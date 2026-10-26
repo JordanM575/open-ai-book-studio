@@ -55,6 +55,17 @@ describe("the ambient service", () => {
     expect(status.chapter?.title).toBe("The Light");
   });
 
+  test("reports that the agent is working, so Stop can be offered", async () => {
+    const { library, book } = await fixture();
+    const idle = await new AmbientService(() => library).status(book.id);
+    expect(idle.working).toBe(false);
+    expect(idle.actions.find((action) => action.id === "stop")?.available).toBe(false);
+    const busy = await new AmbientService(() => library, () => true).status(book.id);
+    expect(busy.working).toBe(true);
+    expect(busy.actions.find((action) => action.id === "stop")?.available).toBe(true);
+    expect(busy.say).toMatch(/working on/i);
+  });
+
   test("cannot keep going until a model is chosen", async () => {
     const { library, book } = await fixture();
     const without = await new AmbientService(() => library).status(book.id);

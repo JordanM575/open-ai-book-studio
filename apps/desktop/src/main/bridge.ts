@@ -14,12 +14,12 @@ import { z } from "zod";
  * author's machine. So there is a second, much smaller listener, and it is the only thing the
  * phone is allowed to reach.
  *
- * It serves four things and nothing else:
+ * It serves five things and nothing else:
  *
  * - the ambient status, so the phone can show where the author is;
  * - a turn, so the author can talk to the agent from the glasses;
  * - a tool call, so a tap on the lenses can be an action in the book;
- * - an undo, because the status offers one and an offered action must work.
+ * - an undo and a stop, because the status offers both and an offered action must work.
  *
  * It is off until the author turns it on, it needs the same per-run token as the rest of the
  * control plane, and it binds to one named local address rather than to every interface.
@@ -46,6 +46,13 @@ export interface BridgeStudio {
    * glasses.
    */
   undo(bookId: string): Promise<{ restored: number; skipped: number }>;
+  /**
+   * Stop the agent if it is working on this book.
+   *
+   * The status reports whether it is working, so the phone must be able to act on that; a Stop
+   * the wearer can see and press has to do something.
+   */
+  stop(bookId: string): Promise<{ stopped: number }>;
 }
 
 export interface LocalBridgeOptions {
@@ -162,6 +169,12 @@ export class LocalBridge {
       const body = turnBody.parse(await readJson(request));
       const result = await this.options.studio.turn({ bookId: body.bookId, prompt: body.prompt });
       this.send(response, 200, { result });
+      return;
+    }
+
+    if (request.method === "POST" && parts.length === 2 && parts[1] === "stop") {
+      const body = undoBody.parse(await readJson(request));
+      this.send(response, 200, { result: await this.options.studio.stop(body.bookId) });
       return;
     }
 

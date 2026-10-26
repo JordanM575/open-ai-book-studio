@@ -109,6 +109,15 @@ app.whenReady().then(async () => {
         out.storageTier = root.ok ? (root.data.storage?.tier ?? null) : null;
         out.lastCommittedAt = root.ok ? (root.data.storage?.lastCommittedAt ?? null) : null;
 
+        /*
+         * The minimal mode in a browser: the ambient status is a pure function over the book, so
+         * this build computes it itself even though the writing agent needs the desktop.
+         */
+        const ambient = await window.studio.agent.ambient(created.data.id);
+        out.ambientOk = ambient.ok;
+        out.ambientSay = ambient.ok ? ambient.data.say : null;
+        out.ambientActions = ambient.ok ? ambient.data.actions.length : -1;
+
         const build = await window.studio.app.info();
         out.buildTarget = build.ok ? build.data.target : null;
         out.buildVersion = build.ok ? build.data.version : null;
@@ -162,6 +171,20 @@ app.whenReady().then(async () => {
       result.storageTier === "browser" && Boolean(result.lastCommittedAt),
       `${result.storageTier ?? "no tier"} · ${result.lastCommittedAt ?? "no confirmed save"}`
     );
+    record(
+      "the minimal mode knows where the author is, in a browser",
+      result.ambientOk === true &&
+        typeof result.ambientSay === "string" &&
+        /Smoke/i.test(result.ambientSay) &&
+        result.ambientSay.length > 20,
+      String(result.ambientSay ?? "no status").slice(0, 74)
+    );
+    record(
+      "the minimal mode offers the studio's verbs in a browser",
+      result.ambientActions >= 4,
+      `${result.ambientActions ?? "no"} actions`
+    );
+
     record(
       "the web build reports its own metadata",
       result.buildTarget === "web" && result.buildVersion === version && result.buildAgent === false,

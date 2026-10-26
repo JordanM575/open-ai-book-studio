@@ -129,6 +129,25 @@ export class AgentRuntime {
   }
 
   /**
+   * Whether the agent is working on a book right now.
+   *
+   * The ambient status reports it, so the panel's Stop is offered only when there is something to
+   * stop, and a phone can stop a turn it did not start.
+   */
+  isWorking(bookId: string): boolean {
+    return [...this.active.values()].some((turn) => turn.bookId === bookId);
+  }
+
+  /** Stop every running turn for a book, and say how many were stopped. */
+  async stopBook(bookId: string): Promise<number> {
+    const turns = [...this.active.entries()]
+      .filter(([, turn]) => turn.bookId === bookId)
+      .map(([turnId]) => turnId);
+    for (const turnId of turns) await this.stop(turnId);
+    return turns.length;
+  }
+
+  /**
    * The plugin tools for a book.
    *
    * A folder that fails to load is reported to the caller and the turn carries on with the built-in

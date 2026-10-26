@@ -9,6 +9,7 @@ import { BrowserCredentialVault } from "../storage/credentials";
 import { BrowserDraftBuffer, flushDraftsOnHide } from "../storage/drafts";
 import { BrowserLibraries, browserRuntime } from "./browser-libraries";
 import { cancelOpenRouterFlow, startOpenRouterFlow } from "./openrouter";
+import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
 
 const EMPTY_USAGE: UsageSummary = {
   turns: 0,
@@ -283,10 +284,35 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
         Promise.resolve(
           failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
         ),
-      ambient: () =>
-        Promise.resolve(
-          failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")
-        ),
+      /*
+       * The ambient status is computed here, from the library this build already has.
+       *
+       * It is a pure function over the book and its chapters, so there is no reason for the
+       * minimal mode to be broken in a browser: it knows where the author is, what the book holds
+       * and what can be said, even though the writing agent itself needs the desktop.
+       */
+      ambient: (bookId) =>
+        safe(async () => {
+          const detail = await libraries.require().readBook(bookId);
+          return ambientStatus({
+            book: {
+              id: detail.book.id,
+              title: detail.book.title || detail.book.workingTitle || "Untitled book",
+              stage: detail.book.stage
+            },
+            chapters: detail.chapters.map((chapter) => ({
+              id: chapter.id,
+              title: chapter.title,
+              order: chapter.order,
+              wordCount: chapter.wordCount
+            })),
+            // There is no agent in this build, so nothing is running and nothing can be undone.
+            working: false,
+            canUndo: false,
+            canKeepGoing: false,
+            now: new Date()
+          });
+        }),
       bridge: () =>
         Promise.resolve(
           failure("invalid", "The writing agent is not available in the browser build yet. Use the desktop app.")

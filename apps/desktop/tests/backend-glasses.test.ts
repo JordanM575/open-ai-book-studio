@@ -265,7 +265,8 @@ describe("the ambient agent on the control plane", () => {
             changed: 1
           };
         },
-        undo: async () => ({ restored: 1, skipped: 0 })
+        undo: async () => ({ restored: 1, skipped: 0 }),
+        stop: async () => ({ stopped: 1 })
       }
     });
     const started = await withAgent.start();
@@ -311,6 +312,17 @@ describe("the ambient agent on the control plane", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { restored: number } };
     expect(body.result.restored).toBe(1);
+  });
+
+  test("stops the agent when it is working", async () => {
+    const response = await fetch(`${agentUrl}/v1/books/${BOOK_ID}/stop`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${agentToken}`, "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { stopped: number } };
+    expect(body.result.stopped).toBe(1);
   });
 
   test("refuses a turn with nothing to say", async () => {

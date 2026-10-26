@@ -11,7 +11,11 @@ import { CheckpointStore } from "./checkpoints";
  * without being asked.
  */
 export class AmbientService {
-  constructor(private readonly library: () => Library | null) {}
+  constructor(
+    private readonly library: () => Library | null,
+    /** Whether the agent is working on a book right now. */
+    private readonly isWorking: (bookId: string) => boolean = () => false
+  ) {}
 
   /** The ambient status of a book. */
   async status(bookId: string, activeChapterId?: string | null): Promise<AmbientStatus> {
@@ -36,6 +40,7 @@ export class AmbientService {
       activeChapterId: activeChapterId ?? null,
       lastChange,
       lastSaid,
+      working: this.isWorking(bookId),
       canUndo: checkpoint !== null,
       canKeepGoing: Boolean(book.defaultConnectionId && book.defaultModelId)
     });

@@ -196,7 +196,20 @@ try {
     undo?.error?.message?.slice(0, 70)
   );
 
-  // 5. The bridge is not the library API, and it is not open.
+  // 5. Stop, because the status reports whether the agent is working.
+  const stopResponse = await fetch(`${url}/v1/stop`, {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ bookId: BOOK })
+  });
+  const stop = await stopResponse.json();
+  check(
+    "stop is reachable, and reports nothing to stop when the agent is idle",
+    stopResponse.status === 200 && stop?.result?.stopped === 0,
+    `stopped ${stop?.result?.stopped ?? "?"}`
+  );
+
+  // 6. The bridge is not the library API, and it is not open.
   check("a route the bridge does not serve is refused", (await fetch(`${url}/v1/books`, { headers: auth })).status === 404);
   check("a request without the token is refused", (await fetch(`${url}/v1/ambient?book=${BOOK}`)).status === 401);
   check(

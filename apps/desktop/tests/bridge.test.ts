@@ -30,7 +30,8 @@ const studio: BridgeStudio = {
     ran.push(input.name);
     return { ok: true, message: "Done." };
   },
-  undo: async () => ({ restored: 1, skipped: 0 })
+  undo: async () => ({ restored: 1, skipped: 0 }),
+  stop: async () => ({ stopped: 1 })
 };
 
 let bridge: LocalBridge | null = null;
@@ -114,6 +115,16 @@ describe("the bridge to the phone", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { restored: number } };
     expect(body.result.restored).toBe(1);
+  });
+
+  test("stops the agent, because the status says when it is working", async () => {
+    const response = await call("/v1/stop", {
+      method: "POST",
+      body: JSON.stringify({ bookId: BOOK_ID })
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { stopped: number } };
+    expect(body.result.stopped).toBe(1);
   });
 
   test("serves nothing else", async () => {

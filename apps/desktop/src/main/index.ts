@@ -355,10 +355,11 @@ app.whenReady().then(async () => {
   if (!headless || process.env.STUDIO_BACKEND === "1") {
     backend = new LocalBackend(studio, {
       tools: toolsBridge,
-      ambient: new AmbientService(() => studio.library),
+      ambient: new AmbientService(() => studio.library, (bookId) => agentRuntime.isWorking(bookId)),
       agent: {
         run: (input) => agentRuntime.runToCompletion(input),
-        undo: (bookId) => agentRuntime.undoLast(bookId)
+        undo: (bookId) => agentRuntime.undoLast(bookId),
+        stop: async (bookId) => ({ stopped: await agentRuntime.stopBook(bookId) })
       },
       glassesPage,
       glassesManifest
@@ -387,10 +388,12 @@ app.whenReady().then(async () => {
         address,
         token,
         studio: {
-          ambient: (bookId) => new AmbientService(() => studio.library).status(bookId),
+          ambient: (bookId) =>
+            new AmbientService(() => studio.library, (id) => agentRuntime.isWorking(id)).status(bookId),
           turn: (input) => agentRuntime.runToCompletion(input),
           tool: (input) => toolsBridge.run(input),
-          undo: (bookId) => agentRuntime.undoLast(bookId)
+          undo: (bookId) => agentRuntime.undoLast(bookId),
+          stop: async (bookId) => ({ stopped: await agentRuntime.stopBook(bookId) })
         }
       });
       bridgeControl.bridge = bridge;
@@ -465,7 +468,8 @@ app.whenReady().then(async () => {
     settings,
     speech,
     () => backend,
-    bridgeControl
+    bridgeControl,
+    (bookId) => agentRuntime.isWorking(bookId)
   );
 
   /*

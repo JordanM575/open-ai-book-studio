@@ -120,7 +120,9 @@ export function registerIpc(
   settings: SettingsStore,
   speech: SpeechService,
   getBackend: () => LocalBackend | null = () => null,
-  bridge: BridgeControl = { status: null, start: async () => undefined, stop: async () => undefined }
+  bridge: BridgeControl = { status: null, start: async () => undefined, stop: async () => undefined },
+  /** Whether the agent is working on a book right now, for the ambient status and Stop. */
+  isWorking: (bookId: string) => boolean = () => false
 ): void {
   /** What the plugin folder currently provides, for the settings panel. */
   const pluginStatus = async (): Promise<PluginStatus> => {
@@ -524,7 +526,7 @@ export function registerIpc(
 
   handle(IPC.agent.ambient, async (payload) => {
     const bookId = idSchema.parse(payload);
-    return new AmbientService(() => studio.library).status(bookId);
+    return new AmbientService(() => studio.library, isWorking).status(bookId);
   });
 
   handle(IPC.agent.bridge, () => bridgeStatus());

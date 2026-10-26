@@ -84,6 +84,8 @@ export interface BackendAgent {
   }): Promise<AgentTurnResult>;
   /** Undo the agent's last turn, because the ambient status offers it. */
   undo(bookId: string): Promise<{ restored: number; skipped: number }>;
+  /** Stop the agent if it is working on this book, because the status reports that it is. */
+  stop(bookId: string): Promise<{ stopped: number }>;
 }
 
 export interface LocalBackendOptions {
@@ -326,6 +328,11 @@ export class LocalBackend {
     if (request.method === "GET" && parts.length === 4 && parts[3] === "ambient") {
       if (!this.ambient) throw new HttpError(404, "not-found", "This studio build has no ambient agent.");
       this.send(response, 200, { ambient: await this.ambient.status(bookId) });
+      return;
+    }
+    if (request.method === "POST" && parts.length === 4 && parts[3] === "stop") {
+      if (!this.agent) throw new HttpError(404, "not-found", "This studio build has no writing agent.");
+      this.send(response, 200, { result: await this.agent.stop(bookId) });
       return;
     }
     if (request.method === "POST" && parts.length === 4 && parts[3] === "undo") {
