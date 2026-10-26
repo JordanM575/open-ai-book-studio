@@ -101,3 +101,6 @@ agent's proxy.
   pretending otherwise.
 - **Audio output through a speaker.** The pipeline is proven to produce real audio; whether a
   speaker plays it is not something a check can hear.
+- **Linux.** Every end-to-end check has been run on macOS. `.github/workflows/verify.yml` has a job
+  for them on Linux, and it is allowed to fail until somebody has watched it pass and said so. The
+  typecheck, tests, builds and the coverage floor run everywhere.

@@ -47,7 +47,9 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
 - Background agent turns, native notifications, dock badge and approval-pause handling (spec 017).
 - `bookwriter` CLI, MCP server and the loopback backend with per-run token (spec 018).
 - Image storage (`images.json`), Muse Image generation, illustration UI and DOCX embedding (spec 019).
-- SAM 3.1 cutouts with the official parser, canvas compositor and cast attachment (spec 020).
+- ~~SAM 3.1 cutouts~~ — built, then retired (D-158). The request reaches Meta and is accepted, but
+  returns no records and no usage on real and synthetic images alike, so nothing is built on it and
+  this packet does not claim a cutout.
 - Product film plan, timed script, storyboard, deterministic fixture and motion plates (spec 021).
 - Provider compatibility seam, Muse Spark 1.3 Contributor presets and book-level training consent
   (spec 022).
@@ -58,6 +60,15 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   metrics, a per-book switch that withdraws a tool from the model, the backend and the MCP server
   alike, an optional `SKILLS.md` that gives the agent the author's own house rules, and a folder of
   TypeScript plugins the author points the app at (spec 025).
+- The ambient agent and the minimal mode: a status the studio keeps whether or not anyone is looking
+  — where the author is, what changed, what it would do next — spoken through the voice pipeline and
+  rendered on three surfaces from one pure contract: the desktop strip, the 600×600 glasses page, and
+  the browser build.
+- The voice pipeline (D-159): listening through Muse Voice Transcribe, speaking through a
+  text-to-speech seam, with OpenRouter's free TTS model behind it so a check that runs on every
+  change costs nothing.
+- A bridge from the studio to a phone on the local network, which is the Mac half of the glasses app,
+  proven from a separate process.
 
 The event branch is `meta-hackathon`; the cut tag is `meta-base-2026-10-26`. The Gitea history is
 canonical. The GitHub clean replay is a separate publication step and must not be used to hide
@@ -88,7 +99,8 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
 | Smoke | `bun run smoke` | **18/18** |
 | End to end | `bun run e2e` | **7/7** — app, web, audit, glasses, ambient, plugins, bridge |
-| UI audit | `bun run ui:audit` | **no dead ends** |
+| UI audit | `bun run ui:audit` | **no dead ends**; every control named, every image with an `alt`, one `h1`, keyboard focus visible |
+| Coverage | `bun run coverage` | **81.4% functions, 88.3% lines**, floor 80/87 |
 | Plugin probe | `bun run plugin:probe` | **ok** — the plugin's tool listed, run, and a broken plugin left the others working |
 | Submission check | `bun run submission:check` | **ready** · 143 commits · 515 tracked files |
 | Clean clone | `bun install && bun run verify && bun run smoke` | **Pass** · 487 packages · verify pass · smoke 16/16 |
