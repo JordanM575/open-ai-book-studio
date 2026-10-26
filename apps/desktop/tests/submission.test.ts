@@ -10,8 +10,12 @@ describe("submission packet", () => {
   });
 
   test("detects obvious provider secrets without flagging ordinary prose", () => {
-    expect(secretProblems("fixture.txt", "sk-or-v1-Q7mZ2vN8pR4sT6xY9aB3cD5eF7gH1jK2")).toHaveLength(1);
-    expect(secretProblems("fixture.txt", "ghp_Q7mZ2vN8pR4sT6xY9aB3cD5eF7gH1jK2")).toHaveLength(1);
+    // Build the fixtures at runtime so the committed test file does not itself contain a key-shaped
+    // string that the submission scan would flag.
+    const openRouter = ["sk-or-v1", "Q7mZ2vN8pR4sT6xY9aB3cD5eF7gH1jK2"].join("-");
+    const github = ["ghp", "Q7mZ2vN8pR4sT6xY9aB3cD5eF7gH1jK2"].join("_");
+    expect(secretProblems("fixture.txt", openRouter)).toHaveLength(1);
+    expect(secretProblems("fixture.txt", github)).toHaveLength(1);
     expect(secretProblems("fixture.txt", "The lighthouse keeper counted the gulls.")).toEqual([]);
   });
 });
