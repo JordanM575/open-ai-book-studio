@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, Gauge, Plug, ScrollText, Wrench } from "lucide-react";
+import { FolderOpen, Gauge, Plug, ScrollText, Smartphone, Wrench } from "lucide-react";
 import type { AgentStatus } from "@ai-book-studio/core/agent/metrics";
+import type { BridgeStatus } from "@ai-book-studio/core/ipc";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { must } from "../lib/utils";
@@ -29,6 +30,7 @@ const TIER_ORDER: AgentStatus["tools"][number]["tier"][] = ["read", "write", "de
  */
 export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
   const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
@@ -44,6 +46,12 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
   useEffect(() => {
     if (!open) return;
     void refresh();
+    void window.studio.agent
+      .bridge()
+      .then((result) => {
+        if (result.ok) setBridge(result.data);
+      })
+      .catch(() => undefined);
   }, [open, refresh]);
 
   const setSettings = async (
@@ -99,6 +107,19 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
 
   const withdrawn = status?.tools.filter((tool) => !tool.enabled) ?? [];
   const visible = showAll ? status?.tools ?? [] : (status?.tools ?? []).filter((tool) => tool.enabled);
+
+  const toggleBridge = async (): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const next = await must(window.studio.agent.setBridge(!(bridge?.running ?? false)));
+      setBridge(next);
+    } catch (error) {
+      onNotice(error);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -167,6 +188,39 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
               />
               <span>Use the SKILLS.md</span>
             </label>
+          ) : null}
+        </section>
+
+        <section className="mt-6">
+          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+            <Smartphone size={15} />
+            Your phone
+          </h3>
+          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            Turn this on and a phone on the same network can reach the studio: to show the agent&apos;s
+            status on your glasses, and to send you the agent&apos;s answer. It listens on one local
+            address and stops when you turn it off.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant={bridge?.running ? "secondary" : "primary"}
+              size="sm"
+              onClick={() => void toggleBridge()}
+              disabled={busy}
+              data-testid="agent-bridge-toggle"
+            >
+              {bridge?.running ? "Turn it off" : "Turn it on"}
+            </Button>
+          </div>
+          {bridge?.running && bridge.url ? (
+            <div className="mt-2" data-testid="agent-bridge-details">
+              <p className="truncate rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                {bridge.url}
+              </p>
+              <p className="mt-1 truncate rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                token {bridge.token}
+              </p>
+            </div>
           ) : null}
         </section>
 

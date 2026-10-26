@@ -22,6 +22,35 @@ import type { AgentThread } from "./agent/messages";
 import type { ThreadSummary } from "./agent/threads";
 import type { AgentStatus, PluginStatus } from "./agent/metrics";
 import type { AmbientStatus } from "./agent/ambient";
+
+/** The bridge to the phone, as the app's settings panel drives it. */
+export interface BridgeControl {
+  /** The running bridge's address, token and port, or null when it is off. */
+  status: { url: string; token: string; address: string } | null;
+  /** Start it on one named local address. */
+  start(address: string): Promise<unknown>;
+  /** Stop it. */
+  stop(): Promise<void>;
+}
+
+/**
+ * The bridge to the phone.
+ *
+ * The phone is on the local network and cannot reach the studio's loopback, so there is a second,
+ * much smaller listener. It is off until the author turns it on.
+ */
+export interface BridgeStatus {
+  /** Whether the bridge is listening. */
+  running: boolean;
+  /** The address a phone can reach, when it is running. */
+  url: string | null;
+  /** The token the phone must present. It is the control plane's own per-run token. */
+  token: string | null;
+  /** The local addresses the bridge could listen on. */
+  addresses: string[];
+  /** The address it is listening on. */
+  address: string | null;
+}
 import type { ToolDescriptor } from "./agent/tools";
 import type { StorageSummary } from "./library/storage";
 import type { BuildMetadata } from "./build";
@@ -122,6 +151,10 @@ export const IPC = {
      * said or done next.
      */
     ambient: "agent:ambient",
+    /** The bridge to the phone: its address, its token and whether it is running. */
+    bridge: "agent:bridge",
+    /** Turn the bridge to the phone on or off. */
+    setBridge: "agent:setBridge",
     /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
     choosePluginFolder: "agent:choosePluginFolder",
     /** Point the app at a folder of TypeScript tools, or clear it with null. */
@@ -338,6 +371,14 @@ export interface StudioApi {
      * said or done next.
      */
     ambient(bookId: string): Promise<Result<AmbientStatus>>;
+    /**
+     * The bridge to the phone.
+     *
+     * It is off until the author turns it on, and it listens on one named local address.
+     */
+    bridge(): Promise<Result<BridgeStatus>>;
+    /** Turn the bridge to the phone on or off. */
+    setBridge(enabled: boolean): Promise<Result<BridgeStatus>>;
     /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
     choosePluginFolder(): Promise<Result<string | null>>;
     /** Point the app at a folder of TypeScript tools, or clear it with null. */

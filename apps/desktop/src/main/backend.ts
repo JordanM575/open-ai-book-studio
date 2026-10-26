@@ -204,6 +204,15 @@ export class LocalBackend {
   }
 
   /**
+   * The per-run token.
+   *
+   * The bridge to the phone shares it, so the author pastes one secret rather than two.
+   */
+  get token_value(): string {
+    return this.token;
+  }
+
+  /**
    * The address of the glasses page, with the per-run token in its fragment.
    *
    * The fragment is never sent to a server, so the token does not end up in a request line or a

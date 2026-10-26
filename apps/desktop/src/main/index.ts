@@ -10,6 +10,7 @@ import { AgentRuntime } from "./agent/runtime";
 import { ToolBridge } from "./agent/tool-bridge";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
+import { LocalBridge, type BridgeLocator } from "./bridge";
 import { MetricsStore } from "./metrics";
 import glassesPage from "./glasses/index.html?raw";
 import glassesManifest from "./glasses/manifest.json?raw";
@@ -346,6 +347,42 @@ app.whenReady().then(async () => {
     });
   }
 
+  /*
+   * The bridge to the phone.
+   *
+   * It is off until the author turns it on, and it listens on one named local address rather than
+   * on every interface, so the studio is not exposed to whatever network the machine happens to
+   * be on. It serves the ambient status, a turn and a tool call, and nothing else.
+   */
+  const bridgeControl = {
+    bridge: null as LocalBridge | null,
+    status: null as BridgeLocator | null,
+    async start(address: string): Promise<BridgeLocator> {
+      if (bridgeControl.bridge) return bridgeControl.status!;
+      const token = backend?.token_value;
+      if (!token) throw new Error("The control plane is not running, so there is no token to share.");
+      const bridge = new LocalBridge({
+        address,
+        token,
+        studio: {
+          ambient: (bookId) => new AmbientService(() => studio.library).status(bookId),
+          turn: (input) => agentRuntime.runToCompletion(input),
+          tool: (input) => toolsBridge.run(input)
+        }
+      });
+      bridgeControl.bridge = bridge;
+      const started = await bridge.start();
+      bridgeControl.status = started;
+      console.log(`[bridge] the phone can reach the studio at ${started.url}`);
+      return started;
+    },
+    async stop(): Promise<void> {
+      await bridgeControl.bridge?.stop();
+      bridgeControl.bridge = null;
+      bridgeControl.status = null;
+    }
+  };
+
   const vault = new DesktopCredentialVault();
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
   const voice = new VoiceService(providers);
@@ -402,7 +439,8 @@ app.whenReady().then(async () => {
     segmentation,
     toolsBridge,
     settings,
-    () => backend
+    () => backend,
+    bridgeControl
   );
   buildMenu();
   mainWindow = createWindow();

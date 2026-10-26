@@ -113,6 +113,8 @@ const api: StudioApi = {
     }) => invoke(IPC.agent.setSettings, { bookId, patch }),
     glassesUrl: () => invoke(IPC.agent.glassesUrl),
     ambient: (bookId: string) => invoke(IPC.agent.ambient, bookId),
+    bridge: () => invoke(IPC.agent.bridge),
+    setBridge: (enabled: boolean) => invoke(IPC.agent.setBridge, enabled),
     choosePluginFolder: () => invoke(IPC.agent.choosePluginFolder),
     setPluginFolder: (folder: string | null) => invoke(IPC.agent.setPluginFolder, folder),
     threads: {

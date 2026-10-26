@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
-import { IPC, type Result, type StudioError } from "@ai-book-studio/core/ipc";
+import { IPC, type BridgeControl, type BridgeStatus, type Result, type StudioError } from "@ai-book-studio/core/ipc";
 import { bookSchema, idSchema } from "@ai-book-studio/core/schema";
 import { PROVIDER_LIST, providerById } from "@ai-book-studio/core/providers/registry";
 import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
@@ -27,6 +27,7 @@ import type { AgentStatus, PluginStatus } from "@ai-book-studio/core/agent/metri
 import { loadPlugins, pluginTools, validatePluginFolder } from "./agent/plugins";
 import { readBookSkills } from "./agent/skills";
 import { AmbientService } from "./agent/ambient";
+import { localAddresses } from "./bridge";
 import type { ToolBridge } from "./agent/tool-bridge";
 import type { LocalBackend } from "./backend";
 import type { SettingsStore } from "./settings";
@@ -100,7 +101,8 @@ export function registerIpc(
   segmentation: SegmentationService,
   toolsBridge: ToolBridge,
   settings: SettingsStore,
-  getBackend: () => LocalBackend | null = () => null
+  getBackend: () => LocalBackend | null = () => null,
+  bridge: BridgeControl = { status: null, start: async () => undefined, stop: async () => undefined }
 ): void {
   /** What the plugin folder currently provides, for the settings panel. */
   const pluginStatus = async (): Promise<PluginStatus> => {
@@ -112,6 +114,15 @@ export function registerIpc(
       failures: loaded.failures
     };
   };
+
+  /** The bridge to the phone: its address, its token and whether it is running. */
+  const bridgeStatus = (): BridgeStatus => ({
+    running: bridge.status !== null,
+    url: bridge.status?.url ?? null,
+    token: bridge.status?.token ?? null,
+    address: bridge.status?.address ?? null,
+    addresses: localAddresses()
+  });
 
   const handle = <T>(channel: string, handler: (payload: unknown) => Promise<T> | T): void => {
     ipcMain.handle(channel, async (_event, payload: unknown): Promise<Result<T>> => {
@@ -485,6 +496,26 @@ export function registerIpc(
   handle(IPC.agent.ambient, async (payload) => {
     const bookId = idSchema.parse(payload);
     return new AmbientService(() => studio.library).status(bookId);
+  });
+
+  handle(IPC.agent.bridge, () => bridgeStatus());
+
+  handle(IPC.agent.setBridge, async (payload) => {
+    const enabled = z.boolean().parse(payload);
+    if (enabled) {
+      const addresses = localAddresses();
+      const chosen = addresses[0];
+      if (!chosen) {
+        throw new ProviderError(
+          "invalid-request",
+          "This computer has no local network address, so there is nothing for a phone to reach."
+        );
+      }
+      await bridge.start(chosen);
+    } else {
+      await bridge.stop();
+    }
+    return bridgeStatus();
   });
 
   handle(IPC.agent.choosePluginFolder, async () => {
