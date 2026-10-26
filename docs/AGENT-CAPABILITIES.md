@@ -119,6 +119,12 @@ the same `Library` the built-in tools use, so the atomic save and the version gu
 - A plugin tool is a write, so the toolkit's `--allow-writes` applies to it as well.
 - The folder is read on demand. Restart the app, or ask for a reload, after adding a file.
 
+### Proving it
+
+`bun run plugin:probe` runs the built app against a throwaway library and a folder of TypeScript
+plugins, then asks the app's own backend for its catalog and for one plugin call. The pass is
+recorded in [`docs/research/plugins-2026-10-26.md`](research/plugins-2026-10-26.md).
+
 ### What a plugin is not
 
 It runs **inside the app's own process**, in the app's Node runtime. It is code the author chose

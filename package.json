@@ -39,6 +39,7 @@
     "toolkit": "bun --filter @ai-book-studio/toolkit start",
     "toolkit:build": "bun --filter @ai-book-studio/toolkit build",
     "film:fixture": "bun scripts/film-fixture.ts",
+    "plugin:probe": "node scripts/plugin-probe.mjs",
     "video:motion": "node video/motion/render.mjs",
     "video:motion:preview": "node video/motion/render.mjs --preview --ambient",
     "submission:check": "bun scripts/submission-check.ts",

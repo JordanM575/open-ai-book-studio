@@ -34,13 +34,18 @@ Update the `Unreleased` section before every commit.
   switch per built-in tool, per book, that withdraws the tool from the model, the backend and the
   MCP server alike; an optional `SKILLS.md` in the book folder, given to the agent as the author's
   own instructions; and a plugin folder of TypeScript tools the author points the app at.
-  Documented in [`docs/AGENT-CAPABILITIES.md`](docs/AGENT-CAPABILITIES.md).
+  Documented in [`docs/AGENT-CAPABILITIES.md`](docs/AGENT-CAPABILITIES.md), and proved in the built
+  app by `bun run plugin:probe`.
 - A plugin's arguments are a JSON Schema, or a Zod schema when the plugin's own folder can resolve
   it: a plugin folder usually sits outside the app, where the app's packages cannot be resolved, so
   a plugin that needed an import would simply fail to load.
 - Recorded the toolkit manual pass in `docs/research/toolkit-2026-10-26.md`: the compiled
   `bookwriter` binary and a separate MCP client process against a real backend over a real library,
   with every change read back from the file.
+- Recorded the plugin manual pass in `docs/research/plugins-2026-10-26.md`: the built app pointed at
+  a folder of TypeScript plugins, the plugin's tool listed in the backend's catalog, the tool run
+  against the open book, and a plugin that cannot resolve its imports left the others working.
+  `bun run plugin:probe` repeats it.
 - Added the studio's own writing tools to the loopback backend and the MCP server (spec 024): the
   backend serves `GET /v1/tools` and `POST /v1/books/:bookId/tools/:tool`, and `bookwriter mcp`
   mirrors the built-in agent's tools with a `bookId` argument, so a third-party agent gets the same
