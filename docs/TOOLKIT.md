@@ -137,6 +137,7 @@ do next, whether or not anyone has opened the chat panel. Two commands reach it:
 ```bash
 bookwriter where book_abc12345
 bookwriter ask book_abc12345 "carry on with the next scene"
+bookwriter undo book_abc12345
 ```
 
 `where` prints the line the agent would say — the book, the chapter, the progress, the last
@@ -149,6 +150,7 @@ The same two things are available over the backend, for anything that is not a c
 | --- | --- |
 | `GET /v1/books/:bookId/ambient` | The ambient status: where the author is, what changed, what can be said or done. |
 | `POST /v1/books/:bookId/turn` | Run a turn and wait for the answer. The body is `{ "prompt": "…" }`. |
+| `POST /v1/books/:bookId/undo` | Undo the agent's last turn. The status offers this action, so the route that serves the status must also honour it. |
 
 A turn that needs the author's approval for a destructive tool is refused with a sentence saying
 so, because only the app can ask them.

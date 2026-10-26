@@ -139,6 +139,23 @@ const out = await new Promise((resolve) => {
 });
 check("the toolkit can say it too", /The Salt Road/.test(out));
 
+// The ambient status offers undo, so the command line must be able to perform it. There is no
+// checkpoint in this fixture, so the honest answer is a refusal that says so.
+const undoOut = await new Promise((resolve) => {
+  const child = spawn(cli, ["undo", "book_amb000001", "--url", locator.url, "--token", locator.token], {
+    cwd: root
+  });
+  let buffer = "";
+  child.stdout.on("data", (chunk) => (buffer += chunk));
+  child.stderr.on("data", (chunk) => (buffer += chunk));
+  child.on("close", (code) => resolve({ code, buffer }));
+});
+check(
+  "the toolkit can undo, and says plainly when there is nothing to undo",
+  undoOut.code !== 0 && /undo/i.test(undoOut.buffer),
+  undoOut.buffer.trim().slice(0, 80)
+);
+
 await app.close().catch(() => {});
 await rm(temp, { recursive: true, force: true });
 

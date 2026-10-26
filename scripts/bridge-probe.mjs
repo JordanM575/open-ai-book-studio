@@ -182,7 +182,21 @@ try {
     turn?.error?.message?.slice(0, 70)
   );
 
-  // 4. The bridge is not the library API, and it is not open.
+  // 4. Undo, because the ambient status offers it. There is no checkpoint here, so the honest
+  //    answer is a refusal that says so rather than a route that does not exist.
+  const undoResponse = await fetch(`${url}/v1/undo`, {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ bookId: BOOK })
+  });
+  const undo = await undoResponse.json();
+  check(
+    "undo is reachable and says plainly when there is nothing to undo",
+    undoResponse.status >= 400 && /undo/i.test(undo?.error?.message ?? ""),
+    undo?.error?.message?.slice(0, 70)
+  );
+
+  // 5. The bridge is not the library API, and it is not open.
   check("a route the bridge does not serve is refused", (await fetch(`${url}/v1/books`, { headers: auth })).status === 404);
   check("a request without the token is refused", (await fetch(`${url}/v1/ambient?book=${BOOK}`)).status === 401);
   check(

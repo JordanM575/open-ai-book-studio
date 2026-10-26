@@ -264,7 +264,8 @@ describe("the ambient agent on the control plane", () => {
             text: "I tightened the opening.",
             changed: 1
           };
-        }
+        },
+        undo: async () => ({ restored: 1, skipped: 0 })
       }
     });
     const started = await withAgent.start();
@@ -299,6 +300,17 @@ describe("the ambient agent on the control plane", () => {
     const body = (await response.json()) as { result: { text: string; changed: number } };
     expect(body.result.text).toBe("I tightened the opening.");
     expect(asked).toEqual(["Carry on with the next scene."]);
+  });
+
+  test("undoes the agent's last turn", async () => {
+    const response = await fetch(`${agentUrl}/v1/books/${BOOK_ID}/undo`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${agentToken}`, "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { restored: number } };
+    expect(body.result.restored).toBe(1);
   });
 
   test("refuses a turn with nothing to say", async () => {

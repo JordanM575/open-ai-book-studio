@@ -31,6 +31,8 @@ export interface ToolkitClient {
   bookTools(bookId: string): Promise<ToolDescriptor[]>;
   /** The ambient agent's status of a book: where the author is and what changed. */
   ambient(bookId: string): Promise<AmbientStatus>;
+  /** Undo the agent's last turn. */
+  undoLast(bookId: string): Promise<{ restored: number; skipped: number }>;
   /** Run a turn and wait for the agent's answer. */
   turn(
     bookId: string,

@@ -59,6 +59,10 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added undo to the control plane and the bridge, and `bookwriter undo`. The ambient status offers
+  the action whenever a checkpoint exists, so a client that shows the status must be able to perform
+  it; a route that offers an action it cannot do is a dead end in a pair of glasses. The bridge probe
+  and the ambient check both drive the refusal that says there is nothing to undo.
 - Added one end-to-end gate, `bun run e2e`, which builds the app, the web build and the toolkit and
   then runs seven checks against them: the built app through its own renderer, the browser build over
   its own storage, the real window for dead ends, the 600×600 glasses page, the ambient agent and the

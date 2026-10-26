@@ -14,11 +14,12 @@ import { z } from "zod";
  * author's machine. So there is a second, much smaller listener, and it is the only thing the
  * phone is allowed to reach.
  *
- * It serves three things and nothing else:
+ * It serves four things and nothing else:
  *
  * - the ambient status, so the phone can show where the author is;
  * - a turn, so the author can talk to the agent from the glasses;
- * - a tool call, so a tap on the lenses can be an action in the book.
+ * - a tool call, so a tap on the lenses can be an action in the book;
+ * - an undo, because the status offers one and an offered action must work.
  *
  * It is off until the author turns it on, it needs the same per-run token as the rest of the
  * control plane, and it binds to one named local address rather than to every interface.
@@ -37,6 +38,14 @@ export interface BridgeStudio {
     args: unknown;
     allowDestructive?: boolean;
   }): Promise<ToolCallResult>;
+  /**
+   * Undo the agent's last turn.
+   *
+   * The ambient status offers this action whenever a checkpoint exists, so the phone must be able
+   * to perform it. An action the status offers and the bridge cannot do is a dead end in a pair of
+   * glasses.
+   */
+  undo(bookId: string): Promise<{ restored: number; skipped: number }>;
 }
 
 export interface LocalBridgeOptions {
@@ -156,6 +165,13 @@ export class LocalBridge {
       return;
     }
 
+    if (request.method === "POST" && parts.length === 2 && parts[1] === "undo") {
+      const body = undoBody.parse(await readJson(request));
+      const result = await this.options.studio.undo(body.bookId);
+      this.send(response, 200, { result });
+      return;
+    }
+
     if (request.method === "POST" && parts.length === 2 && parts[1] === "tool") {
       const body = toolBody.parse(await readJson(request));
       const result = await this.options.studio.tool({
@@ -237,6 +253,10 @@ function asHttpError(error: unknown): HttpError {
 const turnBody = z.object({
   bookId: z.string().min(1).max(80),
   prompt: z.string().min(1).max(20_000)
+});
+
+const undoBody = z.object({
+  bookId: z.string().min(1).max(80)
 });
 
 const toolBody = z.object({

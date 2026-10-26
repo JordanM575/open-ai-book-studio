@@ -29,7 +29,8 @@ const studio: BridgeStudio = {
   tool: async (input) => {
     ran.push(input.name);
     return { ok: true, message: "Done." };
-  }
+  },
+  undo: async () => ({ restored: 1, skipped: 0 })
 };
 
 let bridge: LocalBridge | null = null;
@@ -103,6 +104,16 @@ describe("the bridge to the phone", () => {
     });
     expect(response.status).toBe(200);
     expect(ran).toContain("read_chapter");
+  });
+
+  test("undoes the agent's last turn, because the status offers it", async () => {
+    const response = await call("/v1/undo", {
+      method: "POST",
+      body: JSON.stringify({ bookId: BOOK_ID })
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { restored: number } };
+    expect(body.result.restored).toBe(1);
   });
 
   test("serves nothing else", async () => {

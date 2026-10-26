@@ -31,6 +31,7 @@ Commands:
   tools                             List the studio's writing tools
   where <bookId>                    Say where the author is, and what can be done
   ask <bookId> <prompt>             Ask the agent, and wait for its answer
+  undo <bookId>                     Undo the agent's last turn
   call <bookId> <tool>              Run one studio tool (requires --allow-writes)
   mcp                               Start the MCP server on stdio
 
@@ -244,6 +245,17 @@ export async function runCli(
         const result = await client.turn(bookId, prompt);
         if (json) return print(io, result);
         io.stdout.write(`${result.text}\n`);
+        return 0;
+      }
+      case "undo": {
+        const bookId = required(parsed.positionals[0], "undo needs a bookId.");
+        const result = await client.undoLast(bookId);
+        if (json) return print(io, result);
+        io.stdout.write(
+          result.restored > 0
+            ? `Restored ${result.restored} chapter${result.restored === 1 ? "" : "s"}${result.skipped > 0 ? `, skipped ${result.skipped}` : ""}.\n`
+            : "There was nothing to restore.\n"
+        );
         return 0;
       }
       case "call": {

@@ -357,7 +357,8 @@ app.whenReady().then(async () => {
       tools: toolsBridge,
       ambient: new AmbientService(() => studio.library),
       agent: {
-        run: (input) => agentRuntime.runToCompletion(input)
+        run: (input) => agentRuntime.runToCompletion(input),
+        undo: (bookId) => agentRuntime.undoLast(bookId)
       },
       glassesPage,
       glassesManifest
@@ -388,7 +389,8 @@ app.whenReady().then(async () => {
         studio: {
           ambient: (bookId) => new AmbientService(() => studio.library).status(bookId),
           turn: (input) => agentRuntime.runToCompletion(input),
-          tool: (input) => toolsBridge.run(input)
+          tool: (input) => toolsBridge.run(input),
+          undo: (bookId) => agentRuntime.undoLast(bookId)
         }
       });
       bridgeControl.bridge = bridge;

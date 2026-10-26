@@ -98,6 +98,7 @@ function client(): ToolkitClient {
     tools: async () => catalog,
     bookTools: async () => catalog,
     ambient: async () => ambientStatus,
+    undoLast: async () => ({ restored: 1, skipped: 0 }),
     turn: async () => turnResult,
     callTool: async (_bookId, name, args) => ({ ok: true, message: `ran ${name}`, args })
   };
