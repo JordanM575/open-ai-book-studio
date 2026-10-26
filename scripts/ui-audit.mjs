@@ -245,6 +245,21 @@ if (consoleErrors.length > 0) {
   for (const error of consoleErrors) problem("console", error);
 }
 
+// The narrow layout: the header actions collapse, so the phone path must still reach them.
+const narrow = await page.evaluate(() => {
+  const overflow = document.documentElement.scrollWidth - document.documentElement.innerWidth;
+  const more = document.querySelector('[data-testid="mobile-more"]');
+  return { overflow, more: Boolean(more) };
+});
+if (narrow.overflow > 1) {
+  problem("narrow layout", `the workspace overflows by ${narrow.overflow}px`);
+}
+if (!narrow.more) {
+  problem("narrow layout", "the narrow layout has no More sheet, so Settings is unreachable");
+} else {
+  notes.push("the narrow layout has a More sheet");
+}
+
 console.log("[audit] what worked");
 for (const note of notes) console.log(`  ok   ${note}`);
 if (problems.length > 0) {

@@ -26,6 +26,9 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Recorded the toolkit manual pass in `docs/research/toolkit-2026-10-26.md`: the compiled
+  `bookwriter` binary and a separate MCP client process against a real backend over a real library,
+  with every change read back from the file.
 - Added the studio's own writing tools to the loopback backend and the MCP server (spec 024): the
   backend serves `GET /v1/tools` and `POST /v1/books/:bookId/tools/:tool`, and `bookwriter mcp`
   mirrors the built-in agent's tools with a `bookId` argument, so a third-party agent gets the same

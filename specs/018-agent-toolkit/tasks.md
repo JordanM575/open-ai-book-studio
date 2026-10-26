@@ -37,8 +37,10 @@ Tasks are ordered. `[P]` marks work that can run in parallel within a phase.
 - [x] T010 Add the backend/toolkit sections to `docs/ARCHITECTURE.md`, D-128/D-129 to
   `docs/DECISIONS.md`, the CLI/MCP quickstart to `README.md` or `docs/DEPLOYMENT.md`, and the spec link
   to `specs/README.md`.
-- [ ] T011 Manual pass with the desktop app open: `bookwriter books`, read/save, MCP initialize and a
-  read tool from a real client. Record it in `docs/research/toolkit-2026-10-26.md`.
+- [x] T011 Manual pass with the desktop app open: `bookwriter books`, read/save, MCP initialize and a
+  read tool from a real client. Record it in `docs/research/toolkit-2026-10-26.md`. The pass ran the
+  compiled binary against a real backend over a real library, and a separate MCP client process
+  drove a read and a write that were read back from the file.
 
 ## Dependencies
 
