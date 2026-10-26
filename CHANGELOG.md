@@ -59,6 +59,13 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added `.github/workflows/verify.yml`: the typecheck, tests, builds and the coverage floor on every
+  push, and the end-to-end checks under a virtual display. The e2e job is marked allowed-to-fail
+  until it has been watched passing on Linux, because every check so far has been run on macOS and
+  claiming otherwise would be a guess.
+- Added the ambient agent, the voice pipeline, the bridge and the glasses page to
+  `docs/ARCHITECTURE.md`, and marked the SAM section superseded where it is described rather than
+  leaving it looking live.
 - Added the studio's session verbs to the MCP server: `studio_status`, `studio_ask`,
   `studio_undo` and `studio_stop`. Without them a third-party agent could edit a book it could not
   describe, and could not undo what it had just done. The status is readable on a read-only server;

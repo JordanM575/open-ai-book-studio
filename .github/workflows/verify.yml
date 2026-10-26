@@ -1,0 +1,60 @@
+name: verify
+
+# The gates, in the order a person runs them: the unit layer, the builds, then the checks that only
+# fail with a real window, a real browser and a second process.
+#
+# The live provider check is deliberately absent. It needs keys and costs money, so it is run by a
+# person against a temporary copy of the sample, not by a runner on every push.
+
+on:
+  push:
+    branches: [main, meta-hackathon]
+  pull_request:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck, tests and builds
+        run: bun run verify
+
+      - name: Coverage floor
+        run: bun run coverage
+
+  e2e:
+    # The end-to-end checks drive a real Electron window, so they need a display.
+    #
+    # This job has only been run on macOS. It is here so the gap is visible rather than forgotten,
+    # and it is allowed to fail until someone has watched it pass on Linux and said so.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Install the browser the checks drive
+        run: bunx playwright install --with-deps chromium firefox webkit
+
+      - name: Run the end-to-end checks under a virtual display
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1600x1000x24" bun run e2e

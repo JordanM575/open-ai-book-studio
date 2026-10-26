@@ -296,7 +296,13 @@ backend. Remote access is deferred by D-129.
 The image folder and manifest are ordinary author files, included in the portable archive by the
 normal recursive walk. No image is stored in `book.json`, the catalog or the app profile.
 
-## SAM 3.1 cutouts
+## SAM 3.1 cutouts (superseded, D-158)
+
+**Retired.** A live request reaches Meta and is accepted — `200`, `status: completed` — and comes
+back with no records and no usage, on real and synthetic images alike, in the shape Meta's own
+segmenting guide documents. The studio cannot fix that from its side, so nothing is built on it and
+the submission does not claim a cutout. The implementation below stays, with its tests, as the
+record of what was tried. See [`research/live-meta-2026-10-26.md`](research/live-meta-2026-10-26.md).
 
 `apps/desktop/src/main/segmentation.ts` sends one concept prompt and the source image to Meta's
 Responses API as `sam-3.1`, with `metadata.mask_encoding = "one_bit"` and confidence on. The official
@@ -330,3 +336,83 @@ Contributor consent is per book. `BookMeta.allowContributorTraining` defaults to
 picker shows the training warning and requires a checkbox, and `AgentRuntime.start` refuses a
 contributor model before it reads a credential or sends a request. Contributor is for the synthetic
 fixture and public-domain testing only; the author’s manuscript must stay on Standard.
+
+## The ambient agent
+
+The chat panel is for talking to the agent. The rest of the time the studio should know where the
+author is without being asked, and be able to say it.
+
+`packages/core/src/agent/ambient.ts` is that contract, and it is **pure**: plain facts in, one small
+object out. It holds the book, the chapter, the progress, what the agent last changed, whether it is
+working, the actions the studio offers, and one line written to be *heard* rather than read.
+
+Three surfaces render the same object, which is what stops them drifting apart:
+
+| Surface | Renders it as |
+| --- | --- |
+| The desktop's minimal mode | A strip at the bottom of the workspace, spoken through the voice pipeline |
+| The glasses page | A 600×600 display, with the line, the passage and four buttons |
+| The browser build | The same strip, computed in the renderer from the library it already has |
+
+`apps/desktop/src/main/agent/ambient.ts` assembles it from the library, the undo checkpoints and the
+newest conversation. It asks the runtime whether the agent is working, so `working` is true while a
+turn runs and Stop is offered only when there is something to stop.
+
+The verbs the status offers are the studio's own: `read_aloud`, `keep_going`, `stop`,
+`next_chapter`, `undo`, `where_am_i`. Every surface that draws one must be able to perform it. That
+rule is why two routes exist that would otherwise not: an action a wearer can see and press has to
+do something.
+
+- `GET /v1/books/:bookId/ambient` — the status, on the control plane and on the bridge.
+- `POST /v1/books/:bookId/turn` — run a turn and wait for the answer.
+- `POST /v1/books/:bookId/undo` — undo the agent's last turn.
+- `POST /v1/books/:bookId/stop` — stop it if it is working.
+
+The MCP server exposes the same four as `studio_status`, `studio_ask`, `studio_undo` and
+`studio_stop`. The status is readable on a read-only server; the three that change the book need
+`--allow-writes`.
+
+## The voice pipeline
+
+Listening and speaking are different providers with different contracts, so they are different
+modules: `packages/core/src/providers/speech.ts` listens, `tts.ts` speaks. The pipeline is the two
+either side of the agent.
+
+Both supported voice services use OpenAI's `audio/speech` shape — OpenAI directly, and OpenRouter,
+whose free `fish-audio/s2.1-pro-free:free` is what makes a check that runs on every change cost
+nothing. One request carries a few thousand characters and a chapter is longer, so the text is split
+at sentence boundaries, sent in order, and the audio joined back into one sound. `SpeechService`
+wraps a provider that answers with raw `audio/pcm` in a WAV header so the renderer still plays one
+thing. [`VOICE.md`](VOICE.md) has the detail.
+
+## The bridge to the phone
+
+The control plane listens on the loopback, which is right for the command line and wrong for a
+phone. `apps/desktop/src/main/bridge.ts` is a second, much smaller listener: it binds one named
+local address rather than every interface, needs the same per-run token, refuses browser origins,
+and serves five things and nothing else — the ambient status, a turn, a tool call, an undo and a
+stop.
+
+It is off until the author turns it on, in the Agent panel. That panel shows the address and the
+token to put in the phone app.
+
+`scripts/bridge-probe.mjs` proves it the only way that counts: the app runs headless with the
+bridge on, and **a separate process** speaks to it over the local network.
+
+## The glasses page
+
+`apps/desktop/src/main/glasses/index.html` is one file, served by the studio itself at `/glasses`,
+so it is the same origin as the API — no cross-origin request, no CORS, no public host, no
+certificate. The page holds no prose and no token; the token travels in the URL fragment, which a
+browser never sends to a server.
+
+It is written to the hardware's rules rather than a browser's: 600×600 with no scrolling, a dark
+background because the display adds light rather than blocking it, the D-pad moving focus in a ring,
+and every word also visible because someone who cannot hear still needs it. The studio's own read
+tools are registered with the browser's model context, so an assistant on the glasses can call them
+by voice — and every one is also reachable by hand.
+
+What a Web App cannot do is reach a private network: it must be loaded from a public HTTPS URL, and
+an HTTPS page cannot fetch `http://`. So the page is proven in a browser at 600×600 by
+`scripts/glasses-check.mjs`, and the author's own book reaches the glasses through the phone, in the
+Device Access Toolkit slice.
