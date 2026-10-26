@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolCallResult, ToolDescriptor } from "@ai-book-studio/core/agent/tools";
+import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import type {
   BookDetail,
   BookSummary,
@@ -57,6 +58,16 @@ export interface BackendToolRunner {
   }): Promise<ToolCallResult>;
 }
 
+/**
+ * The ambient agent's status of a book.
+ *
+ * The glasses page and the toolkit read the same object the desktop's minimal panel does, so the
+ * three surfaces cannot drift apart.
+ */
+export interface BackendAmbient {
+  status(bookId: string): Promise<AmbientStatus>;
+}
+
 export interface LocalBackendOptions {
   /** Override for tests; production uses `~/.ai-book-studio/backend.json`. */
   locatorPath?: string;
@@ -65,6 +76,8 @@ export interface LocalBackendOptions {
   token?: string;
   /** The studio's writing tools. Without them the tool routes report that they are unavailable. */
   tools?: BackendToolRunner;
+  /** The ambient agent's status. Without it the route reports that it is unavailable. */
+  ambient?: BackendAmbient;
   /**
    * The origins allowed to call the API from a browser, besides the page's own origin.
    *
@@ -104,6 +117,7 @@ export class LocalBackend {
   private readonly token: string;
   private readonly locatorPath: string;
   private readonly tools: BackendToolRunner | null;
+  private readonly ambient: BackendAmbient | null;
   private readonly allowedOrigins: Set<string>;
   private readonly glassesPage: string | null;
   private readonly glassesManifest: string;
@@ -116,6 +130,7 @@ export class LocalBackend {
     this.locatorPath = options.locatorPath ?? backendLocatorPath();
     this.port = options.port ?? 0;
     this.tools = options.tools ?? null;
+    this.ambient = options.ambient ?? null;
     this.allowedOrigins = new Set(options.allowedOrigins ?? []);
     this.glassesPage = options.glassesPage ?? null;
     this.glassesManifest = options.glassesManifest ?? "{}";
@@ -275,6 +290,11 @@ export class LocalBackend {
         ...(body.allowDestructive ? { allowDestructive: true } : {})
       });
       this.send(response, 200, { result });
+      return;
+    }
+    if (request.method === "GET" && parts.length === 4 && parts[3] === "ambient") {
+      if (!this.ambient) throw new HttpError(404, "not-found", "This studio build has no ambient agent.");
+      this.send(response, 200, { ambient: await this.ambient.status(bookId) });
       return;
     }
     if (request.method === "GET" && parts.length === 4 && parts[3] === "conflicts") {

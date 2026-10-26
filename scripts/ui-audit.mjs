@@ -197,6 +197,31 @@ if (retryRequest === 0) {
 await click('[data-testid="toggle-chat"]');
 await page.waitForTimeout(250);
 
+// The minimal mode: the agent in a strip, without the chat panel.
+if (!(await waitFor('[data-testid="ambient-panel"]'))) {
+  problem("ambient", "the minimal mode did not appear");
+} else {
+  notes.push("the minimal mode appears");
+}
+const ambientLine = await page.textContent('[data-testid="ambient-line"]');
+if (!ambientLine || ambientLine.trim().length === 0) {
+  problem("ambient", "the minimal mode says nothing about the book");
+} else {
+  notes.push("the minimal mode says where the author is");
+}
+await click('[data-testid="ambient-toggle"]');
+if (!(await waitFor('[data-testid="ambient-action-read_aloud"]'))) {
+  problem("ambient", "the minimal mode offers no actions");
+} else {
+  notes.push("the minimal mode offers its actions");
+}
+const ambientInput = await page.locator('[data-testid="ambient-input"]').count();
+if (ambientInput === 0) {
+  problem("ambient", "the minimal mode has no way to tell the agent something");
+} else {
+  notes.push("the minimal mode can be talked to");
+}
+
 // The Story Bible.
 await click('[data-testid="open-story-bible"]');
 if (!(await waitFor('[data-testid="save-story-bible"]'))) {

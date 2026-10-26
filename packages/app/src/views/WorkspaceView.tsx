@@ -9,6 +9,7 @@ import { ChapterRail } from "../components/ChapterRail";
 import { ModelPickerDialog } from "../components/ModelPickerDialog";
 import { IllustrationDialog } from "../components/IllustrationDialog";
 import { AgentDialog } from "../components/AgentDialog";
+import { AmbientPanel } from "../components/AmbientPanel";
 import { StoryBibleDialog } from "../components/StoryBibleDialog";
 import { SearchDialog } from "../components/SearchDialog";
 import { ChatPanel } from "../components/ChatPanel";
@@ -119,6 +120,15 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
 
   const selected = detail?.chapters.find((chapter) => chapter.id === selectedId) ?? null;
   const ordinal = selected ? detail!.chapters.filter((chapter) => chapter.order <= selected.order).length : 0;
+
+  /** The next chapter, for the agent's "next chapter" action. */
+  const nextChapter = useCallback(() => {
+    const chapters = detail?.chapters ?? [];
+    if (chapters.length === 0) return;
+    const index = selected ? chapters.findIndex((chapter) => chapter.id === selected.id) : -1;
+    const next = chapters[(index + 1) % chapters.length];
+    if (next) setSelectedId(next.id);
+  }, [detail, selected]);
 
   const loadIllustration = useCallback(
     async (chapterId: string | null) => {
@@ -609,6 +619,14 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
           />
         ) : null}
       </main>
+
+      <AmbientPanel
+        bookId={bookId}
+        chapterTitle={selected?.title ?? ""}
+        chapterContent={selected?.content ?? ""}
+        onNextChapter={nextChapter}
+        onNotice={onNotice}
+      />
 
       <nav
         className="glass mx-3 mb-3 flex items-center justify-around gap-2 rounded-[var(--corner-xl)] px-1.5 py-1.5 min-[700px]:hidden"

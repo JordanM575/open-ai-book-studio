@@ -13,6 +13,7 @@ import { LocalBackend } from "./backend";
 import { MetricsStore } from "./metrics";
 import glassesPage from "./glasses/index.html?raw";
 import glassesManifest from "./glasses/manifest.json?raw";
+import { AmbientService } from "./agent/ambient";
 import { ImageService } from "./images";
 import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
@@ -332,6 +333,7 @@ app.whenReady().then(async () => {
   if (!headless || process.env.STUDIO_BACKEND === "1") {
     backend = new LocalBackend(studio, {
       tools: toolsBridge,
+      ambient: new AmbientService(() => studio.library),
       glassesPage,
       glassesManifest
     });

@@ -21,6 +21,7 @@ import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
 import type { AgentThread } from "./agent/messages";
 import type { ThreadSummary } from "./agent/threads";
 import type { AgentStatus, PluginStatus } from "./agent/metrics";
+import type { AmbientStatus } from "./agent/ambient";
 import type { ToolDescriptor } from "./agent/tools";
 import type { StorageSummary } from "./library/storage";
 import type { BuildMetadata } from "./build";
@@ -116,6 +117,11 @@ export const IPC = {
      * `null` when the control plane is not running.
      */
     glassesUrl: "agent:glassesUrl",
+    /**
+     * The ambient agent's status of a book: where the author is, what changed, and what can be
+     * said or done next.
+     */
+    ambient: "agent:ambient",
     /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
     choosePluginFolder: "agent:choosePluginFolder",
     /** Point the app at a folder of TypeScript tools, or clear it with null. */
@@ -327,6 +333,11 @@ export interface StudioApi {
      * `null` when the control plane is not running.
      */
     glassesUrl(): Promise<Result<string | null>>;
+    /**
+     * The ambient agent's status of a book: where the author is, what changed, and what can be
+     * said or done next.
+     */
+    ambient(bookId: string): Promise<Result<AmbientStatus>>;
     /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
     choosePluginFolder(): Promise<Result<string | null>>;
     /** Point the app at a folder of TypeScript tools, or clear it with null. */

@@ -26,6 +26,7 @@ import { summarizeCache } from "@ai-book-studio/core/agent/metrics";
 import type { AgentStatus, PluginStatus } from "@ai-book-studio/core/agent/metrics";
 import { loadPlugins, pluginTools, validatePluginFolder } from "./agent/plugins";
 import { readBookSkills } from "./agent/skills";
+import { AmbientService } from "./agent/ambient";
 import type { ToolBridge } from "./agent/tool-bridge";
 import type { LocalBackend } from "./backend";
 import type { SettingsStore } from "./settings";
@@ -480,6 +481,11 @@ export function registerIpc(
   });
 
   handle(IPC.agent.glassesUrl, () => getBackend()?.glassesUrl ?? null);
+
+  handle(IPC.agent.ambient, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    return new AmbientService(() => studio.library).status(bookId);
+  });
 
   handle(IPC.agent.choosePluginFolder, async () => {
     const window = getWindow();

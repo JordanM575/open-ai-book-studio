@@ -112,6 +112,7 @@ const api: StudioApi = {
       cachePrefixMode?: "off" | "auto";
     }) => invoke(IPC.agent.setSettings, { bookId, patch }),
     glassesUrl: () => invoke(IPC.agent.glassesUrl),
+    ambient: (bookId: string) => invoke(IPC.agent.ambient, bookId),
     choosePluginFolder: () => invoke(IPC.agent.choosePluginFolder),
     setPluginFolder: (folder: string | null) => invoke(IPC.agent.setPluginFolder, folder),
     threads: {
