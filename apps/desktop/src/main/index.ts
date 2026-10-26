@@ -21,6 +21,7 @@ import { VoiceService } from "./voice";
 import { SettingsStore } from "./settings";
 import { Studio } from "./studio";
 import { runSmoke } from "./smoke";
+import { runLiveCheckInApp, sampleLibraryPath } from "./live-check";
 
 const isDev = !app.isPackaged;
 
@@ -186,6 +187,25 @@ function createWindow(): BrowserWindow {
         app.exit(1);
       });
     });
+  }
+
+  /*
+   * The live check runs here, in the app's own runtime, so it uses the Meta key from the
+   * operating system's keychain through the app's own vault. The key is never on a command line,
+   * where a shell history would keep it.
+   */
+  if (process.env.STUDIO_LIVE_CHECK === "1") {
+    void (async () => {
+      try {
+        const results = await runLiveCheckInApp(providers, sampleLibraryPath());
+        const failed = results.filter((result) => result.outcome === "failed").length;
+        console.log(`[live] result ${JSON.stringify(results)}`);
+        app.exit(failed === 0 ? 0 : 1);
+      } catch (error) {
+        console.error("[live] The run crashed:", error);
+        app.exit(1);
+      }
+    })();
   }
 
   if (capturePath) {
