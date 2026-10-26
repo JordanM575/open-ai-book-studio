@@ -12,8 +12,10 @@
 
 ## Phase 2 — Capture
 
-- [ ] T004 Build a fixture library for the film: one short original book, Story Bible, two chapters,
-  a generated illustration and a cutout. No personal data.
+- [x] T004 Build a fixture library for the film: one short original book, Story Bible, two chapters,
+  a generated illustration and a cutout. No personal data. `scripts/film-fixture.ts` builds
+  `video/fixture/library` through the real `Library`/`ImageStore`, with deterministic PNGs; the test
+  covers the book, cast, chapters, illustration, cutout and manifest.
 - [ ] T005 Record the library, workspace, Story Bible, agent turn, save status, dictation, background
   toggle, notification, illustration dialog, SAM match picker, cutout, CLI, MCP and DOCX export.
 - [ ] T006 Capture the Finder/file-tree proof and the export result.

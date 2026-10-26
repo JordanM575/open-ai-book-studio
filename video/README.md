@@ -12,7 +12,8 @@ the actual book, and the author keeps the actual files** — see
 
 ## Produce it
 
-1. Build the fixture library and verify the real states in the storyboard.
+1. `rm -rf video/fixture/library && bun run film:fixture` for the original fixture book, then open it
+   in a throwaway profile. See [`fixture/README.md`](fixture/README.md).
 2. Build the motion plates with the design tokens; capture them frame-exactly through Playwright.
 3. Record the app at 1440×900, 2× scale, 30 fps, on the fixture library.
 4. Record the narration, or generate a licensed voice; transcribe with Muse Voice Transcribe for

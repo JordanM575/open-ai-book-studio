@@ -37,6 +37,7 @@
     "dev:web": "bun --filter @ai-book-studio/web dev",
     "toolkit": "bun --filter @ai-book-studio/toolkit start",
     "toolkit:build": "bun --filter @ai-book-studio/toolkit build",
+    "film:fixture": "bun scripts/film-fixture.ts",
     "build:web": "bun --filter @ai-book-studio/web build",
     "smoke:web": "bun run build:web && node scripts/web-smoke.mjs",
     "gallery:build": "bun --filter @ai-book-studio/web build:gallery",

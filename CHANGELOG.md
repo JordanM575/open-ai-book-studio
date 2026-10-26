@@ -26,6 +26,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the film fixture generator (spec 021 T004): `bun run film:fixture` builds an original short
+  book with a Story Bible, two chapters, a deterministic 1024×1024 illustration and a 512×512
+  transparent character cutout through the real library and image store. The fixture is ignored by git;
+  the generator and its test are committed.
 - Added the product-film plan (spec 021): a positioning review of the category, a positioned script,
   a shot-by-shot storyboard and the voice, music
   and motion-plate production plan. Added the brand-positioning paragraph to `docs/DESIGN.md`.
