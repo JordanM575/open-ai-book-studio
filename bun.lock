@@ -68,6 +68,21 @@
         "typescript": "^7.0.2",
       },
     },
+    "apps/toolkit": {
+      "name": "@ai-book-studio/toolkit",
+      "version": "0.1.0",
+      "bin": {
+        "bookwriter": "./src/cli.ts",
+      },
+      "dependencies": {
+        "@ai-book-studio/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+        "@types/node": "^26.6.5",
+        "typescript": "^7.0.2",
+      },
+    },
     "apps/web": {
       "name": "@ai-book-studio/web",
       "version": "0.1.0",
@@ -149,6 +164,8 @@
     "@ai-book-studio/desktop": ["@ai-book-studio/desktop@workspace:apps/desktop"],
 
     "@ai-book-studio/mobile": ["@ai-book-studio/mobile@workspace:apps/mobile"],
+
+    "@ai-book-studio/toolkit": ["@ai-book-studio/toolkit@workspace:apps/toolkit"],
 
     "@ai-book-studio/ui": ["@ai-book-studio/ui@workspace:packages/ui"],
 

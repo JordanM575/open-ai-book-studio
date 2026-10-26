@@ -5,9 +5,10 @@ files on your own disk — in iCloud Drive, Google Drive, Dropbox, or anywhere e
 no account, no server, and no database that can quietly disagree with your prose.
 
 Status: v0.1.0 development. The library, manuscript editor, autosave, conflict handling, Story Bible,
-provider connections, writing agent, Word export, legacy import, browser storage and read-only sync
-drift detection are working. Remaining work is deployment, mobile device verification and the sync
-review interface.
+provider connections, writing agent, Word export, legacy import, browser storage, read-only sync
+drift detection, Muse Voice Transcribe dictation, background agent turns and the standalone CLI/MCP
+toolkit are working. Remaining work is deployment, mobile device verification and the sync review
+interface.
 
 **Verification:** local `bun run verify` is the source of truth. A Gitea workflow is ready at
 [`.gitea/workflows/verify.yml`](.gitea/workflows/verify.yml), but no runner is registered yet, so this
@@ -22,6 +23,12 @@ project does not claim a passing CI badge.
   your text is kept as a copy in `conflicts/` instead of overwriting the other version.
 - **Recovery** — a draft buffer in the main process flushes unfinished typing on quit; deleted
   chapters go to `.studio/trash`, not into the void.
+- **Voice dictation** — record with Muse Voice Transcribe, convert to WAV in the browser, and insert
+  the transcript at the caret through the normal save path.
+- **Background turns** — let the agent finish after the window closes and notify you on macOS; a
+  destructive tool still waits for approval.
+- **Agent toolkit** — `bookwriter` exposes the open library through a CLI and an MCP server. Read-only
+  by default; writes use compare-before-write. See [docs/TOOLKIT.md](docs/TOOLKIT.md).
 - **Liquid Glass interface** — the AI Book Studio design kit compiled into tokens, with
   light, dark, reduced-transparency and reduced-motion support.
 
@@ -41,6 +48,8 @@ bun run smoke      # build, then drive a hidden window through the real UI
 bun run smoke:packaged # package the app, then run the hidden suite against the packaged binary
 bun run build      # typecheck + production bundle into apps/desktop/out
 bun run build:web  # static web bundle in apps/web/dist
+bun run toolkit:build # compiled `bookwriter` CLI/MCP binary in apps/toolkit/dist
+bun run toolkit    # run the CLI from source
 bun run smoke:web  # build the web bundle and drive the browser shell
 bun run gallery:build # shared-component light/dark gallery in apps/web/check/gallery-dist
 bun run package    # unpacked app in release/

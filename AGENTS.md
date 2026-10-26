@@ -49,6 +49,8 @@ bun run build        # typecheck + production bundle to apps/desktop/out
 bun run package:dir  # unpacked app in release/
 bun run dist         # installers for this platform
 bun run tokens       # regenerate tokens.generated.css from design/tokens.json
+bun run toolkit:build # compile the `bookwriter` CLI/MCP binary into apps/toolkit/dist
+bun run toolkit      # run the CLI from source
 bun run keys:check   # provider key status; prints no key material
 ```
 
@@ -66,8 +68,8 @@ Quirks:
 
 **Tooling (ADR 0010).** Bun is the package manager, task runner and test runner. Electron's main and
 preload processes still run on Electron's Node; Playwright and electron-builder also stay on Node. The
-workspace is `apps/desktop` and `packages/core` today; `apps/web`, `packages/ui` and `packages/config`
-arrive with specs 010 and 013.
+workspace is `apps/desktop`, `apps/web`, `apps/mobile`, `apps/toolkit`, `packages/core`, `packages/app`
+and `packages/ui`.
 
 ## Layout
 
@@ -78,6 +80,9 @@ apps/desktop/src/main/studio.ts       the open library, draft flush, remembered 
 apps/desktop/src/main/settings.ts     studio.json in userData (library path, window bounds)
 apps/desktop/src/main/drafts.ts       in-memory draft buffer, flushed on close/quit
 apps/desktop/src/main/smoke.ts        hidden UI smoke checks (STUDIO_SMOKE)
+apps/desktop/src/main/backend.ts      loopback HTTP control plane for the CLI/MCP toolkit
+apps/desktop/src/main/voice.ts        Meta Muse Voice Transcribe request and provider error mapping
+apps/desktop/src/main/background.ts   native notification and dock badge for background turns
 apps/desktop/src/main/library/
   atomic.ts              temp file + fsync + rename
   paths.ts               layout, safeJoin, ids, schema version guard
@@ -95,6 +100,7 @@ packages/core/src/agent/threads.ts    thread store over the library port
 packages/app/src/                     shared App shell, views, components, hooks and renderer libs
 packages/ui/src/                      shared Button, Dialog, Brand, Notice and cn
 packages/ui/src/styles/               base.css and generated design tokens
+apps/toolkit/src/                     standalone `bookwriter` CLI, MCP server and backend client
 scripts/smoke.mjs                     throwaway profile + fixture, spawns the hidden run
 design/tokens.json                    vendored design kit tokens (do not hand-edit)
 ```
@@ -252,6 +258,17 @@ harness update in ADR 0007.
 The product is becoming multi-target: a shared core over a storage port, with Electron, Chromium folders
 and browser storage as adapters (ADR 0009). Write new logic so it could live without `node:fs`; if you
 need a new filesystem primitive, add it to the port instead of calling `fs` from a new module.
+
+## Local backend and agent toolkit
+
+- `apps/desktop/src/main/backend.ts` starts a loopback-only HTTP control plane in a normal app launch,
+  writes `~/.ai-book-studio/backend.json` with mode `0600`, and stops before quit. It uses only
+  `Studio.requireLibrary()`; never add a second library opener or writer.
+- `apps/toolkit/` is the standalone `bookwriter` CLI and MCP server. It has no Electron dependency and
+  no provider key. Read tools are on by default; `create_chapter` and `save_chapter` require
+  `--allow-writes`, and a save carries the version and hash from the read.
+- The backend rejects browser origins, non-loopback Host headers and missing/wrong bearer tokens.
+  Never expose it on a LAN address or add CORS. Remote access is deferred by D-129.
 
 ## Known gaps
 

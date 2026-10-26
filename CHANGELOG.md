@@ -26,6 +26,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the standalone `bookwriter` toolkit (spec 018): a loopback-only desktop backend with a per-run
+  token, a CLI for info/books/read/search/conflicts/create/save, and an MCP stdio server whose read
+  tools are on by default and whose write tools require `--allow-writes`. Saves carry the version and
+  hash from the read and use the existing conflict path.
 - Added Muse Voice Transcribe dictation (spec 017): a Meta ASR service in the main process, strict
   mono 16-bit PCM WAV validation, browser-side decode/resample/encode, a microphone button with a
   ten-minute cap, and insertion at the editor caret through the normal save path.

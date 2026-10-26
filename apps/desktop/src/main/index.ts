@@ -8,6 +8,7 @@ import { DesktopCredentialVault } from "./credentials";
 import { ProviderService } from "./providers";
 import { AgentRuntime } from "./agent/runtime";
 import { BackgroundNotifier } from "./background";
+import { LocalBackend } from "./backend";
 import { VoiceService } from "./voice";
 import { SettingsStore } from "./settings";
 import { Studio } from "./studio";
@@ -44,6 +45,7 @@ let studio: Studio;
 let providers: ProviderService;
 let agentRuntime: AgentRuntime;
 let notifier: BackgroundNotifier;
+let backend: LocalBackend | null = null;
 let flushed = false;
 
 // A hidden test run may sit beside the author's real window, so it does not claim the lock.
@@ -312,6 +314,14 @@ app.whenReady().then(async () => {
   };
   await studio.restore();
 
+  if (!headless) {
+    backend = new LocalBackend(studio);
+    void backend.start().catch((error: unknown) => {
+      console.warn("[backend] Could not start the agent toolkit service:", error);
+      backend = null;
+    });
+  }
+
   const vault = new DesktopCredentialVault();
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
   const voice = new VoiceService(providers);
@@ -360,8 +370,10 @@ app.whenReady().then(async () => {
 app.on("before-quit", (event) => {
   if (flushed || !studio) return;
   event.preventDefault();
-  void studio
-    .flushDrafts()
+  void Promise.allSettled([
+    studio.flushDrafts(),
+    backend?.stop() ?? Promise.resolve()
+  ])
     .catch((error: unknown) => console.warn("[studio] Flush before quit failed:", error))
     .finally(() => {
       flushed = true;

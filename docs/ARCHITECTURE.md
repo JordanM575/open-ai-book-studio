@@ -253,3 +253,21 @@ window on click. A paused destructive tool is reported but never approved automa
 A background turn uses the same thread, checkpoint and usage stores as an interactive one. Closing the
 window on macOS leaves the process alive; quitting the app stops all work. The web build does not
 promise background execution.
+
+## Local backend and agent toolkit
+
+`apps/desktop/src/main/backend.ts` is the studio's local control plane for the standalone toolkit. It
+starts after `Studio.restore()` in a normal launch and stops in the `before-quit` chain. It binds
+`127.0.0.1:0`, generates a 256-bit token, writes `~/.ai-book-studio/backend.json` with mode `0600`, and
+refuses browser origins, non-loopback hosts and requests without the bearer token. It reads and writes
+only through `Studio.requireLibrary()`, so the library service remains the single writer.
+
+`apps/toolkit/` is a workspace package with a `bookwriter` bin. `backend-client.ts` resolves the
+locator (flags, environment, then the owner-only file) and issues bearer requests. `cli.ts` exposes
+`info`, `books`, `read`, `search`, `conflicts`, `create-chapter`, `save` and `mcp`. `mcp.ts` is a
+newline-delimited JSON-RPC 2.0 server over stdio with read tools by default; `--allow-writes` adds
+`create_chapter` and `save_chapter`, and a save always carries the version and hash from the read.
+Writes therefore reach the normal conflict path instead of bypassing it.
+
+The toolkit has no Electron dependency, no provider key and no model calls. Closing the app closes the
+backend. Remote access is deferred by D-129.
