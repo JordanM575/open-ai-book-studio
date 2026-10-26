@@ -99,6 +99,7 @@ function client(): ToolkitClient {
     bookTools: async () => catalog,
     ambient: async () => ambientStatus,
     undoLast: async () => ({ restored: 1, skipped: 0 }),
+    stop: async () => ({ stopped: 1 }),
     turn: async () => turnResult,
     callTool: async (_bookId, name, args) => ({ ok: true, message: `ran ${name}`, args })
   };
@@ -124,6 +125,7 @@ describe("MCP server", () => {
       "library_info",
       "list_books",
       "list_conflicts",
+      "studio_status",
       "read_story_bible"
     ]);
   });
@@ -137,6 +139,26 @@ describe("MCP server", () => {
     const read = tools.find((tool) => tool.name === "read_story_bible")!;
     expect(read.inputSchema.properties?.bookId).toBeDefined();
     expect(read.inputSchema.required).toContain("bookId");
+  });
+
+  test("hides the session write verbs too, and keeps the status readable", async () => {
+    const readOnly = new McpServer(client());
+    const names = ((await call(readOnly, "tools/list", {})).result.tools as Array<{ name: string }>).map(
+      (tool) => tool.name
+    );
+    // Asking where the author is must work without permission; asking the agent to write must not.
+    expect(names).toContain("studio_status");
+    expect(names).not.toContain("studio_ask");
+    expect(names).not.toContain("studio_undo");
+    expect(names).not.toContain("studio_stop");
+
+    const writable = new McpServer(client(), { allowWrites: true });
+    const withWrites = ((await call(writable, "tools/list", {})).result.tools as Array<{ name: string }>).map(
+      (tool) => tool.name
+    );
+    expect(withWrites).toContain("studio_ask");
+    expect(withWrites).toContain("studio_undo");
+    expect(withWrites).toContain("studio_stop");
   });
 
   test("hides write and destructive tools unless the matching flag is set", async () => {
@@ -248,6 +270,6 @@ describe("MCP server", () => {
     expect(lines).toHaveLength(3);
     expect(JSON.parse(lines[0]!)).toMatchObject({ id: 1, result: { serverInfo: { name: "ai-book-studio" } } });
     expect(JSON.parse(lines[1]!)).toMatchObject({ id: null, error: { code: -32700 } });
-    expect(JSON.parse(lines[2]!).result.tools).toHaveLength(4);
+    expect(JSON.parse(lines[2]!).result.tools).toHaveLength(5);
   });
 });

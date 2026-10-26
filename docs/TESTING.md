@@ -5,6 +5,7 @@ Three layers, and each one catches what the others cannot.
 | Layer | What it proves | Command | Cost |
 | --- | --- | --- | --- |
 | **Unit** | The library, the providers, the tools, the schema — in process, no app | `bun test` | seconds |
+| **Coverage** | That the unit layer has not quietly thinned out | `bun run coverage` | seconds |
 | **End to end** | The built app, a real browser, a separate process | `bun run e2e` | under a minute |
 | **Live** | A real provider, a real key, a real cost | `bun run live:check` | a few cents |
 
@@ -23,6 +24,16 @@ Two of them are worth knowing about because they guard decisions rather than fun
   out of their own library;
 - the committed sample library opens with the current schema, which is the same promise made with
   real data.
+
+## The coverage ratchet
+
+`bun run coverage` measures the unit layer and fails below a floor: **80% of functions, 87% of
+lines** at the time of writing, against a measured 81.5 and 88.3. The floor only moves up — a
+change that raises coverage is expected to raise the floor in the same commit — and a change that
+drops it below the floor has to say why.
+
+Bun does not fail a run on coverage by itself, so the script reads the summary it prints. Coverage
+is not a goal in itself; it is a way of noticing that a change removed more test than it added.
 
 ## The end-to-end layer
 

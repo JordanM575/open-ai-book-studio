@@ -33,6 +33,8 @@ export interface ToolkitClient {
   ambient(bookId: string): Promise<AmbientStatus>;
   /** Undo the agent's last turn. */
   undoLast(bookId: string): Promise<{ restored: number; skipped: number }>;
+  /** Stop the agent if it is working on a book. */
+  stop(bookId: string): Promise<{ stopped: number }>;
   /** Run a turn and wait for the agent's answer. */
   turn(
     bookId: string,
@@ -212,6 +214,61 @@ export class McpServer {
           additionalProperties: false
         },
         run: (args) => this.client.conflicts(bookId(args, "bookId"))
+      },
+      /*
+       * The studio's own session verbs, which are not writing tools but are how an assistant
+       * knows what it is looking at. Without them a third-party agent can edit a book it cannot
+       * describe, and cannot undo what it just did.
+       */
+      {
+        name: "studio_status",
+        description:
+          "Where the author is in a book: the chapter, the progress, what the agent last changed, whether it is working, and which actions the studio offers. Read this first.",
+        inputSchema: {
+          type: "object",
+          properties: { bookId: { type: "string" } },
+          required: ["bookId"],
+          additionalProperties: false
+        },
+        run: (args) => this.client.ambient(bookId(args, "bookId"))
+      },
+      {
+        name: "studio_ask",
+        description:
+          "Ask the writing agent for something and wait for its answer. It can change the book, and leaves an undo checkpoint when it does.",
+        inputSchema: {
+          type: "object",
+          properties: { bookId: { type: "string" }, prompt: { type: "string" } },
+          required: ["bookId", "prompt"],
+          additionalProperties: false
+        },
+        tier: "write",
+        run: (args) =>
+          this.client.turn(bookId(args, "bookId"), requiredString(args, "prompt"))
+      },
+      {
+        name: "studio_undo",
+        description: "Undo the agent's last turn on a book, restoring what it changed.",
+        inputSchema: {
+          type: "object",
+          properties: { bookId: { type: "string" } },
+          required: ["bookId"],
+          additionalProperties: false
+        },
+        tier: "write",
+        run: (args) => this.client.undoLast(bookId(args, "bookId"))
+      },
+      {
+        name: "studio_stop",
+        description: "Stop the agent if it is working on a book.",
+        inputSchema: {
+          type: "object",
+          properties: { bookId: { type: "string" } },
+          required: ["bookId"],
+          additionalProperties: false
+        },
+        tier: "write",
+        run: (args) => this.client.stop(bookId(args, "bookId"))
       }
     ];
 
@@ -220,7 +277,14 @@ export class McpServer {
       if (!this.tierAllowed(descriptor.tier)) continue;
       mirrored.push(this.mirror(descriptor));
     }
-    return [...libraryTools, ...mirrored];
+    /*
+     * The tier filter applies to everything, not only to the mirrored catalog. A tool with no
+     * tier is a way to find or describe the library and is always available; a write is a write
+     * wherever it is declared, and a read-only server must not offer one.
+     */
+    return [...libraryTools, ...mirrored].filter(
+      (tool) => tool.tier === undefined || this.tierAllowed(tool.tier)
+    );
   }
 
   /** One studio tool, with the book it works on as an argument. */

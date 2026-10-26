@@ -229,6 +229,14 @@ Library-level tools stay alongside them:
 | `library_info` | The open library, device id and device name |
 | `list_books` | Book summaries |
 | `list_conflicts` | Preserved conflict copies |
+| `studio_status` | Where the author is in a book: the chapter, the progress, the last change, whether the agent is working, and the actions the studio offers |
+| `studio_ask` | Ask the agent and wait for its answer (write) |
+| `studio_undo` | Undo the agent's last turn (write) |
+| `studio_stop` | Stop the agent if it is working (write) |
+
+The status is readable on a read-only server, because knowing what you are looking at is not the
+same as changing it. The three that change the book need `--allow-writes`, the same as the writing
+tools: a write is a write wherever it is declared.
 
 Everything is JSON text content, so any MCP client can read it. Diagnostics go to stderr; stdout is
 protocol only.

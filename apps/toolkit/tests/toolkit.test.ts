@@ -79,6 +79,7 @@ function client(): ToolkitClient {
     ],
     ambient: async () => ambientStatus,
     undoLast: async () => ({ restored: 1, skipped: 0 }),
+    stop: async () => ({ stopped: 1 }),
     turn: async () => turnResult,
     bookTools: async () => [
       {

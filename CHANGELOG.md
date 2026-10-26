@@ -59,6 +59,15 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added the studio's session verbs to the MCP server: `studio_status`, `studio_ask`,
+  `studio_undo` and `studio_stop`. Without them a third-party agent could edit a book it could not
+  describe, and could not undo what it had just done. The status is readable on a read-only server;
+  the three that change the book need `--allow-writes`. The tier filter now applies to every tool
+  rather than only to the mirrored catalog, which a test caught: the new write verbs had been
+  sitting in the always-included list.
+- Added a coverage ratchet, `bun run coverage`: 81.5% of functions and 88.3% of lines, with a floor
+  of 80 and 87 that only moves up. Coverage had never been measured, so nobody could tell whether a
+  change made it worse.
 - Added the archive export to the smoke run, so both export paths are proven end to end: the Word
   file is unzipped and checked for its illustration and its text, and the archive is read back for
   its entries and the book inside it. Spec 019 T010b closes.

@@ -39,6 +39,7 @@
     "toolkit": "bun --filter @ai-book-studio/toolkit start",
     "toolkit:build": "bun --filter @ai-book-studio/toolkit build",
     "e2e": "node scripts/e2e.mjs",
+    "coverage": "node scripts/coverage-check.mjs",
     "bridge:probe": "node scripts/bridge-probe.mjs",
     "film:fixture": "bun scripts/film-fixture.ts",
     "plugin:probe": "node scripts/plugin-probe.mjs",

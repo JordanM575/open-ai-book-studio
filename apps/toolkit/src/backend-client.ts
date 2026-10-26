@@ -213,6 +213,14 @@ export class BackendClient {
     return result.result;
   }
 
+  async stop(bookId: string): Promise<{ stopped: number }> {
+    const result = await this.request<{ result: { stopped: number } }>(
+      `/v1/books/${encodeURIComponent(bookId)}/stop`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+    return result.result;
+  }
+
   async callTool(
     bookId: string,
     name: string,
