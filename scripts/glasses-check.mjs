@@ -129,7 +129,16 @@ check(
 const note = (await page.textContent("#note")) ?? "";
 check(
   "the page says plainly that this device cannot be spoken to",
-  /cannot be spoken to|tool/i.test(note)
+  /buttons only|cannot be spoken to/i.test(await page.textContent("#status")) ||
+    /buttons only|cannot be spoken to/i.test(note)
+);
+
+// The agent's own sentence, the same one the desktop's minimal mode says.
+const statusLine = (await page.textContent("#note")) ?? "";
+check(
+  "the page shows the agent's own status line",
+  statusLine.includes("The Salt Road") && /chapter/i.test(statusLine),
+  statusLine.slice(0, 84)
 );
 
 // The D-pad is the pointer, so the arrow keys must move the focus.

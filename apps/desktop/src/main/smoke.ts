@@ -734,6 +734,31 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return `${media.length} image${media.length === 1 ? "" : "s"}, ${words} text runs`;
     });
 
+    await check("the whole library exports as an archive", async () => {
+      const result = await evaluate<{ ok: boolean; path?: string; error?: string }>(
+        win,
+        `(async () => {
+          try {
+            const exported = await window.studio.library.exportArchive();
+            if (!exported.ok) return { ok: false, error: exported.error.message };
+            return { ok: true, path: exported.data.path, entries: exported.data.entryCount };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+        })()`
+      );
+      if (!result.ok || !result.path) throw new Error(result.error ?? "the export failed");
+      const bytes = await readFile(result.path);
+      if (bytes.subarray(0, 2).toString("latin1") !== "PK") throw new Error("the archive is not a zip");
+      const { inflateRawSync } = await import("node:zlib");
+      const entries = unzip(bytes, inflateRawSync);
+      const book = [...entries.keys()].find((name) => name.endsWith("book.json"));
+      if (!book) throw new Error("the archive has no book");
+      const manifest = entries.get(book)?.toString("utf8") ?? "";
+      if (!/"id"/.test(manifest)) throw new Error("the book in the archive has no id");
+      return `${entries.size} entries, ${book.split("/").slice(-2).join("/")}`;
+    });
+
     await check("a book can be renamed and moved to the trash", async () => {
       const back = await evaluate<boolean>(
         win,

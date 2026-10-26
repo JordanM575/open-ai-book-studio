@@ -59,6 +59,12 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added the archive export to the smoke run, so both export paths are proven end to end: the Word
+  file is unzipped and checked for its illustration and its text, and the archive is read back for
+  its entries and the book inside it. Spec 019 T010b closes.
+- Made the glasses page show the agent's own status line, the same sentence the desktop's minimal
+  mode says, rather than composing its own summary of the book. What the device cannot do — being
+  spoken to, when WebMCP is off — moved to the header, so the agent's line keeps the display.
 - Made the ambient status say the truth about `working`. It was always `false`, so the minimal
   mode never offered Stop, and a phone would have shown a Stop it could not honour. The status now
   asks the runtime, and the control plane and the bridge both grew `POST /v1/books/:bookId/stop`.

@@ -82,11 +82,11 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Check | Command | Result at submission |
 | --- | --- | --- |
 | Typecheck | `bun run typecheck` | Pass (desktop, web, toolkit) |
-| Tests | `bun test` | **475 pass, 0 fail** |
+| Tests | `bun test` | **567 pass, 0 fail** |
 | Desktop build | `bun run build` | Pass |
 | Web build | `bun run build:web` | Pass |
 | Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
-| Smoke | `bun run smoke` | **17/17** |
+| Smoke | `bun run smoke` | **18/18** |
 | End to end | `bun run e2e` | **7/7** — app, web, audit, glasses, ambient, plugins, bridge |
 | UI audit | `bun run ui:audit` | **no dead ends** |
 | Plugin probe | `bun run plugin:probe` | **ok** — the plugin's tool listed, run, and a broken plugin left the others working |

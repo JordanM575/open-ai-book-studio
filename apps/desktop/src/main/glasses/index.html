@@ -75,6 +75,10 @@
         color: var(--ink-dim);
       }
 
+      #status.warn {
+        color: var(--warn);
+      }
+
       /* The main panel: the current passage, sized so it never scrolls. */
       main {
         min-height: 0;
@@ -103,9 +107,15 @@
 
       #note {
         min-height: 20px;
+        max-height: 40px;
         font-size: 14px;
         line-height: 1.3;
         color: var(--accent);
+        /* The agent's line can be two lines long. It must not push the passage off the display. */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
 
       #note.warn {
@@ -261,7 +271,8 @@
         book: null,
         chapters: [],
         chapterIndex: 0,
-        tools: []
+        tools: [],
+        ambient: null
       };
 
       const el = {
@@ -512,7 +523,11 @@
 
       async function registerTools() {
         if (!("modelContext" in document) || typeof document.modelContext.registerTool !== "function") {
-          say("This device cannot be spoken to. Use the buttons.", true);
+          // What the device can do is a fact about the device, so it goes in the header. The
+          // display below belongs to the agent's line, which is what the wearer came for.
+          el.status.textContent = "buttons only";
+          el.status.classList.add("warn");
+          sayAmbient();
           return 0;
         }
         let count = 0;
@@ -538,17 +553,31 @@
               }
             });
             count += 1;
-          } catch (error) {
-            say(`The assistant could not be given ${tool.name}.`, true);
+          } catch {
+            // A tool the device refused to take is not worth the display; the count says so.
           }
         }
-        say(
-          count > 0
-            ? `${count} tool${count === 1 ? "" : "s"} ready. Ask by voice, or use the buttons.`
-            : "This device cannot be spoken to. Use the buttons.",
-          count === 0
-        );
+        // What the device can do is a fact about the device, so it goes in the header. The display
+        // below belongs to the agent's line, which is what the wearer came for.
+        if (count === 0) {
+          el.status.textContent = "buttons only";
+          el.status.classList.add("warn");
+        }
+        sayAmbient();
         return count;
+      }
+
+      /**
+       * The agent's line, which is the same sentence the desktop's minimal mode says.
+       *
+       * The status is the studio's own: the page does not compose its own summary of the book,
+       * because two surfaces saying different things about one book is how a product stops
+       * feeling like one product.
+       */
+      function sayAmbient() {
+        const line = state.ambient?.say;
+        if (!line) return;
+        say(line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line);
       }
 
       /** Turn a tool's result into something worth reading aloud. */
@@ -604,6 +633,14 @@
 
           const catalog = await call(`/v1/books/${encodeURIComponent(wanted.id)}/tools`);
           state.tools = catalog.tools ?? [];
+
+          // The same status the desktop's minimal mode shows, so both say the same sentence.
+          try {
+            const ambient = await call(`/v1/books/${encodeURIComponent(wanted.id)}/ambient`);
+            state.ambient = ambient.ambient ?? null;
+          } catch {
+            state.ambient = null;
+          }
 
           await openChapter(0);
           await registerTools();

@@ -38,8 +38,12 @@
   the chapter id, attaching an existing image and the SAM match list; the full suite is 394 tests.
 - [x] T010a Live Muse Image generation: 3.8 MB of PNG at 1024×1024 from `muse-image-1.0`, through the
   app's own image service. Recorded in `docs/research/live-meta-2026-10-26.md`.
-- [ ] T010b The rest of the pass: reopen the book, and export DOCX and archive with the new image.
-  Pending: a person at the machine.
+- [x] T010b Export the manuscript to Word with the image embedded, and the library to an archive.
+  Both run in the hidden smoke against the fixture, which now carries an illustration: the Word
+  check unzips the file it produced and finds `2 images, 9 text runs`, and the archive check reads
+  back `6 entries` with the book's own `book.json` inside. The save dialogs are bypassed for a
+  headless run through `STUDIO_EXPORT_PATH`, because an export that always opens a dialog is an
+  export no check can make.
 
 ## Dependencies
 

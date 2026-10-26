@@ -200,6 +200,11 @@ export function registerIpc(
 
   handle(IPC.library.exportArchive, async () => {
     const library = studio.requireLibrary();
+    const forced = process.env.STUDIO_EXPORT_PATH;
+    if (forced) {
+      // A headless run cannot answer a save dialog; it names the folder instead.
+      return writeLibraryArchive(library, join(forced, "library.zip"), app.getVersion());
+    }
     const window = getWindow();
     const options = {
       title: "Export the whole library",
