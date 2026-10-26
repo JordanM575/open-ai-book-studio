@@ -34,7 +34,7 @@ import { UsageStore } from "../usage";
 import { newId } from "../library/paths";
 import { modelFor } from "./transport";
 import { CheckpointStore } from "./checkpoints";
-import { createChapterTools, type ChapterChange } from "./tools";
+import { createChapterTools, DESTRUCTIVE_TOOL_NAMES, type ChapterChange } from "./tools";
 import { buildPrompt } from "./prompt";
 
 interface PendingApproval {
@@ -212,15 +212,10 @@ export class AgentRuntime {
       model,
       instructions: built.system,
       tools,
-      toolApproval: {
-        remove_memory: "user-approval",
-        overwrite_chapter: "user-approval",
-        delete_chapter: "user-approval",
-        delete_lines_in_chapter: "user-approval",
-        move_chapter: "user-approval",
-        split_chapter: "user-approval",
-        merge_chapters: "user-approval"
-      },
+      // The destructive tools are the ones the toolkit also keeps behind an explicit opt-in.
+      toolApproval: Object.fromEntries(
+        DESTRUCTIVE_TOOL_NAMES.map((name) => [name, "user-approval"])
+      ) as Record<string, "user-approval">,
       stopWhen: isStepCount(MAX_STEPS)
     });
 

@@ -52,6 +52,8 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
 - Provider compatibility seam, Muse Spark 1.3 Contributor presets and book-level training consent
   (spec 022).
 - The sample library, submission packet and readiness check (spec 023).
+- The studio's own writing tools served over the loopback backend and mirrored in the MCP server, so
+  a third-party agent gets the built-in agent's verbs (spec 024).
 
 The event branch is `meta-hackathon`; the cut tag is `meta-base-2026-10-26`. The Gitea history is
 canonical. The GitHub clean replay is a separate publication step and must not be used to hide
@@ -75,16 +77,20 @@ turn until the book opts in; the sample and film fixture are the only intended C
 
 | Check | Command | Result at submission |
 | --- | --- | --- |
-| Typecheck | `bun run typecheck` | `<result>` |
-| Tests | `bun test` | `<count> pass, 0 fail` |
-| Desktop build | `bun run build` | `<result>` |
-| Web build | `bun run build:web` | `<result>` |
-| Toolkit | `bun run toolkit:build` | `<result>` |
-| Smoke | `bun run smoke` | `<16/16>` |
-| Submission check | `bun run submission:check` | `<result>` |
-| Clean clone | `bun install && bun run verify && bun run smoke` | `<result>` |
+| Typecheck | `bun run typecheck` | Pass (desktop, web, toolkit) |
+| Tests | `bun test` | **422 pass, 0 fail** |
+| Desktop build | `bun run build` | Pass |
+| Web build | `bun run build:web` | Pass |
+| Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
+| Smoke | `bun run smoke` | **16/16** |
+| UI audit | `bun run ui:audit` | **no dead ends** |
+| Submission check | `bun run submission:check` | **ready** · 136 commits · 489 tracked files |
+| Clean clone | `bun install && bun run verify && bun run smoke` | **Pass** · 487 packages · verify pass · smoke 16/16 |
 
-Record the submitted commit hash and date here: `<commit>` / `<date>`.
+**Code verified at:** `16a20e5` on 2026-10-26. The verification table and this packet are the
+documentation-only commits that follow; the app code did not change after the clean-clone pass.
+**Clean-clone path:** a fresh temporary directory
+(temporary; deleted after evidence was recorded).
 
 ## Demo runbook
 

@@ -7,6 +7,50 @@ library, a hosted account or a copy of the author's prose.
 The desktop app remains the only process that opens the library and the only process that holds a
 model key. The toolkit never calls a provider.
 
+## The studio's own tools
+
+The backend serves the writing tools the built-in agent uses — the same names, the same
+descriptions and the same JSON Schemas. A third-party agent therefore gets the built-in agent's
+verbs rather than a thinner dialect of its own:
+
+| Verb | What it does |
+| --- | --- |
+| `table_of_contents` | The chapters with their ids, order and word counts |
+| `read_story_bible` | The book description, outline, story arc, cast and memories |
+| `read_chapter` | One chapter's full text |
+| `chapter_stats` | Word and character counts |
+| `find_in_chapter` / `find_in_chapters` | Find a phrase in a chapter or the whole book |
+| `replace_in_chapter` | Replace one exact passage |
+| `insert_at_line` | Insert text at a line |
+| `append_to_chapter` | Add a passage at the end |
+| `overwrite_chapter` | Replace a chapter's whole text (destructive) |
+| `delete_lines_in_chapter` | Delete a line range (destructive) |
+| `create_chapter` / `split_chapter` / `merge_chapters` / `delete_chapter` / `move_chapter` | Chapter structure (split, merge, delete and move are destructive) |
+| `set_chapter_meta` | Change a chapter's title, synopsis or purpose |
+| `update_book_details` | Change the title, description, genres or outline |
+| `update_character` / `add_memory` / `update_memory` | The cast and the memories (`remove_memory` is destructive) |
+
+`bookwriter tools` prints the live catalog with the tier of each tool.
+
+### Safety tiers
+
+Every tool has one of three tiers:
+
+| Tier | Meaning |
+| --- | --- |
+| `read` | Only looks at the book. Always available. |
+| `write` | Changes the book. Needs `--allow-writes`. |
+| `destructive` | Removes or replaces work in a way a diff cannot recover. Needs `--allow-destructive`, which implies `--allow-writes`. |
+
+The tier is the same list the built-in agent uses for its approval prompts, so the two agents agree
+on what counts as destructive. The backend refuses a destructive tool unless the request carries an
+explicit opt-in, so a leaked token is not enough on its own.
+
+### Undo
+
+Every change a tool makes leaves an undo checkpoint in the book, in the same format the studio's own
+Undo uses. The author can revert a change made by another agent from the app.
+
 ## Build and install
 
 From the repository:
@@ -46,12 +90,23 @@ bookwriter read book_abc12345
 bookwriter read book_abc12345 ch_abc12345
 bookwriter search book_abc12345 "salt road"
 bookwriter conflicts book_abc12345
+bookwriter tools
 ```
 
 `--json` returns the backend payload for scripting. `read` without a chapter prints the book and its
 chapter ids; `read` with a chapter prints the Markdown to stdout and the version/hash to stderr.
 
-Writes are deliberate and compare-before-write:
+`bookwriter call` runs one studio tool against one book:
+
+```bash
+bookwriter call book_abc12345 append_to_chapter \
+  --args '{"chapterId":"ch_abc12345","text":"The lamp turned."}' \
+  --allow-writes
+```
+
+Write tools need `--allow-writes` and destructive tools need `--allow-destructive`.
+
+The file-level writes stay available for scripts that want a whole-file replace:
 
 ```bash
 bookwriter read book_abc12345 ch_abc12345 --json > chapter.json
@@ -88,36 +143,39 @@ land in shell history.
 }
 ```
 
-Add `--allow-writes` to expose `create_chapter` and `save_chapter`:
+Add `--allow-writes` to expose the write tools, and `--allow-destructive` for the destructive ones:
 
 ```json
 {
   "mcpServers": {
     "ai-book-studio": {
       "command": "/absolute/path/to/bookwriter",
-      "args": ["mcp", "--allow-writes"]
+      "args": ["mcp", "--allow-writes", "--allow-destructive"]
     }
   }
 }
 ```
 
-Read tools:
+The MCP tool list is the studio's catalog. Each mirrored tool takes the `bookId` it works on, so one
+server can reach any book in the library:
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "append_to_chapter",
+    "arguments": { "bookId": "book_abc12345", "chapterId": "ch_abc12345", "text": "The lamp turned." }
+  }
+}
+```
+
+Library-level tools stay alongside them:
 
 | Tool | What it returns |
 | --- | --- |
 | `library_info` | The open library, device id and device name |
 | `list_books` | Book summaries |
-| `read_book` | Book metadata, cast, outline and chapter list; chapter content is stripped |
-| `read_chapter` | One chapter with Markdown, version and hash |
-| `search_book` | Matching chapters, line numbers and text |
 | `list_conflicts` | Preserved conflict copies |
-
-Write tools, only with `--allow-writes`:
-
-| Tool | What it does |
-| --- | --- |
-| `create_chapter` | Creates a chapter at the end of a book |
-| `save_chapter` | Saves with `baseVersion` and `baseHash`; a stale write becomes the normal conflict copy |
 
 Everything is JSON text content, so any MCP client can read it. Diagnostics go to stderr; stdout is
 protocol only.

@@ -659,6 +659,11 @@ export function ChatPanel({
                       Reconnect
                     </Button>
                   ) : null}
+                  {message.errorCode === "invalid-request" ? (
+                    <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-request-model">
+                      Choose a model
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
               {message.failed && message.errorCode === "context" ? (

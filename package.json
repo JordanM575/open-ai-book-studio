@@ -27,6 +27,7 @@
     "smoke:run": "bun scripts/smoke.mjs",
     "smoke:packaged": "bun run package:dir && SMOKE_PACKAGED=1 bun scripts/smoke.mjs",
     "capture:run": "bun scripts/capture.mjs",
+    "ui:audit": "bun scripts/ui-audit.mjs",
     "package": "bun --filter @ai-book-studio/desktop package",
     "package:dir": "bun --filter @ai-book-studio/desktop package",
     "dist": "bun --filter @ai-book-studio/desktop dist",

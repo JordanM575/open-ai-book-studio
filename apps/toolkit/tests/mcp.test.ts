@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
+import type { ToolDescriptor } from "@ai-book-studio/core/agent/tools";
 import type { Chapter, SaveChapterResult } from "@ai-book-studio/core/schema";
 import { bookSchema } from "@ai-book-studio/core/schema";
 import { McpServer, serveMcp, type ToolkitClient } from "../src/mcp";
@@ -27,6 +28,37 @@ const chapter: Chapter = {
   hash: HASH
 };
 
+const catalog: ToolDescriptor[] = [
+  {
+    name: "read_story_bible",
+    description: "Read the full Story Bible.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    tier: "read"
+  },
+  {
+    name: "append_to_chapter",
+    description: "Add a passage to the end of a chapter.",
+    inputSchema: {
+      type: "object",
+      properties: { chapterId: { type: "string" }, text: { type: "string" } },
+      required: ["chapterId", "text"],
+      additionalProperties: false
+    },
+    tier: "write"
+  },
+  {
+    name: "overwrite_chapter",
+    description: "Replace a chapter's entire text in one call.",
+    inputSchema: {
+      type: "object",
+      properties: { chapterId: { type: "string" }, content: { type: "string" } },
+      required: ["chapterId", "content"],
+      additionalProperties: false
+    },
+    tier: "destructive"
+  }
+];
+
 function client(): ToolkitClient {
   return {
     library: async () => ({ root: "/library", deviceId: "dev_test0001", deviceName: "Test Mac" }),
@@ -44,7 +76,9 @@ function client(): ToolkitClient {
     search: async () => [],
     conflicts: async () => [],
     createChapter: async () => chapter,
-    saveChapter: async () => ({ status: "saved", chapter })
+    saveChapter: async () => ({ status: "saved", chapter }) satisfies SaveChapterResult,
+    tools: async () => catalog,
+    callTool: async (_bookId, name, args) => ({ ok: true, message: `ran ${name}`, args })
   };
 }
 
@@ -54,7 +88,7 @@ async function call(server: McpServer, method: string, params: unknown, id: numb
 }
 
 describe("MCP server", () => {
-  test("initializes, pings and lists read-only tools", async () => {
+  test("initializes, pings and lists the studio's read tools", async () => {
     const server = new McpServer(client());
     const initialized = await call(server, "initialize", { protocolVersion: "2025-06-18" });
     expect(initialized.result).toMatchObject({
@@ -67,67 +101,90 @@ describe("MCP server", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "library_info",
       "list_books",
-      "read_book",
-      "read_chapter",
-      "search_book",
-      "list_conflicts"
+      "list_conflicts",
+      "read_story_bible"
     ]);
   });
 
-  test("reads a chapter and strips content from read_book", async () => {
+  test("mirrors a studio tool with the book it works on as an argument", async () => {
     const server = new McpServer(client());
-    const response = await call(server, "tools/call", {
-      name: "read_chapter",
-      arguments: { bookId: BOOK, chapterId: CHAPTER }
-    });
-    expect(JSON.parse(response.result.content[0].text)).toMatchObject({ id: CHAPTER, content: "Hello world.\n" });
-
-    const book = await call(server, "tools/call", { name: "read_book", arguments: { bookId: BOOK } });
-    const parsed = JSON.parse(book.result.content[0].text) as { chapters: Array<Record<string, unknown>> };
-    expect(parsed.chapters[0]).not.toHaveProperty("content");
+    const tools = (await call(server, "tools/list", {})).result.tools as Array<{
+      name: string;
+      inputSchema: { properties?: Record<string, unknown>; required?: string[] };
+    }>;
+    const read = tools.find((tool) => tool.name === "read_story_bible")!;
+    expect(read.inputSchema.properties?.bookId).toBeDefined();
+    expect(read.inputSchema.required).toContain("bookId");
   });
 
-  test("hides write tools unless --allow-writes is set", async () => {
+  test("hides write and destructive tools unless the matching flag is set", async () => {
     const readOnly = new McpServer(client());
     const hidden = (await call(readOnly, "tools/list", {})).result.tools as Array<{ name: string }>;
-    expect(hidden.some((tool) => tool.name === "save_chapter")).toBe(false);
+    expect(hidden.some((tool) => tool.name === "append_to_chapter")).toBe(false);
+    expect(hidden.some((tool) => tool.name === "overwrite_chapter")).toBe(false);
 
     const writable = new McpServer(client(), { allowWrites: true });
-    const tools = (await call(writable, "tools/list", {})).result.tools as Array<{ name: string }>;
-    expect(tools.map((tool) => tool.name)).toContain("save_chapter");
-    expect(tools.map((tool) => tool.name)).toContain("create_chapter");
+    const writeTools = (await call(writable, "tools/list", {})).result.tools as Array<{ name: string }>;
+    expect(writeTools.map((tool) => tool.name)).toContain("append_to_chapter");
+    expect(writeTools.map((tool) => tool.name)).not.toContain("overwrite_chapter");
+
+    const destructive = new McpServer(client(), { allowDestructive: true });
+    const all = (await call(destructive, "tools/list", {})).result.tools as Array<{ name: string }>;
+    expect(all.map((tool) => tool.name)).toContain("overwrite_chapter");
   });
 
-  test("saves through the client when writes are enabled", async () => {
-    const captured: { value: { content: string; baseVersion: number; baseHash: string } | null } = { value: null };
+  test("calls a studio tool through the backend with the book id", async () => {
+    const seen: Array<{ bookId: string; name: string; args: Record<string, unknown> }> = [];
     const base = client();
     const writable = new McpServer(
       {
         ...base,
-        saveChapter: async (_book, _chapter, input) => {
-          captured.value = input;
-          return { status: "saved", chapter } satisfies SaveChapterResult;
+        callTool: async (bookId, name, args) => {
+          seen.push({ bookId, name, args });
+          return { ok: true, message: "Added the passage." };
         }
       },
       { allowWrites: true }
     );
     const response = await call(writable, "tools/call", {
-      name: "save_chapter",
-      arguments: { bookId: BOOK, chapterId: CHAPTER, content: "New.\n", baseVersion: 1, baseHash: HASH }
+      name: "append_to_chapter",
+      arguments: { bookId: BOOK, chapterId: CHAPTER, text: "A new line." }
     });
-    expect(captured.value).toEqual({ content: "New.\n", baseVersion: 1, baseHash: HASH });
-    expect(JSON.parse(response.result.content[0].text).status).toBe("saved");
+    expect(seen).toEqual([
+      { bookId: BOOK, name: "append_to_chapter", args: { chapterId: CHAPTER, text: "A new line." } }
+    ]);
+    expect(JSON.parse(response.result.content[0].text).ok).toBe(true);
+  });
+
+  test("marks a destructive call with the explicit opt-in", async () => {
+    const seen: Array<{ allowDestructive?: boolean }> = [];
+    const base = client();
+    const server = new McpServer(
+      {
+        ...base,
+        callTool: async (_bookId, _name, _args, options) => {
+          seen.push(options ?? {});
+          return { ok: true, message: "Replaced." };
+        }
+      },
+      { allowDestructive: true }
+    );
+    await call(server, "tools/call", {
+      name: "overwrite_chapter",
+      arguments: { bookId: BOOK, chapterId: CHAPTER, content: "New." }
+    });
+    expect(seen[0]?.allowDestructive).toBe(true);
   });
 
   test("returns protocol errors for unknown methods and bad arguments, and isError for tool failures", async () => {
     const server = new McpServer(client());
     expect((await call(server, "not/a/method", {})).error?.code).toBe(-32601);
     const badId = await call(server, "tools/call", {
-      name: "read_chapter",
-      arguments: { bookId: "nope", chapterId: CHAPTER }
+      name: "read_story_bible",
+      arguments: { bookId: "nope" }
     });
     expect(badId.result.isError).toBe(true);
-    const missing = await call(server, "tools/call", { name: "save_chapter", arguments: {} });
+    const missing = await call(server, "tools/call", { name: "append_to_chapter", arguments: {} });
     expect(missing.error?.code).toBe(-32602);
   });
 
@@ -151,6 +208,6 @@ describe("MCP server", () => {
     expect(lines).toHaveLength(3);
     expect(JSON.parse(lines[0]!)).toMatchObject({ id: 1, result: { serverInfo: { name: "ai-book-studio" } } });
     expect(JSON.parse(lines[1]!)).toMatchObject({ id: null, error: { code: -32700 } });
-    expect(JSON.parse(lines[2]!).result.tools).toHaveLength(6);
+    expect(JSON.parse(lines[2]!).result.tools).toHaveLength(4);
   });
 });

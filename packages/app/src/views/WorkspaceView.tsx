@@ -623,6 +623,10 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
               : undefined
           }
           onClose={() => setModelOpen(false)}
+          onOpenSettings={() => {
+            setModelOpen(false);
+            openSettings("providers");
+          }}
         />
       ) : null}
 

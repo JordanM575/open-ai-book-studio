@@ -1,6 +1,7 @@
-import { tool } from "ai";
+import { asSchema, tool } from "ai";
 import { z } from "zod";
 import type { BookMeta, Chapter } from "@ai-book-studio/core/schema";
+import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools";
 import { newId } from "../library/paths";
 import type { Library } from "../library/store";
 
@@ -22,6 +23,68 @@ interface ToolResult {
 
 function result(ok: boolean, message: string, extra: Record<string, unknown> = {}): ToolResult {
   return { ok, message, ...extra };
+}
+
+/**
+ * The safety tiers of the writing tools.
+ *
+ * `read` tools only look at the book. `write` tools change it. `destructive` tools change it in a
+ * way the author cannot recover from a diff alone, so the built-in agent asks for approval before
+ * they run and the toolkit keeps them off by default.
+ */
+export const READ_TOOL_NAMES = [
+  "table_of_contents",
+  "read_story_bible",
+  "read_chapter",
+  "chapter_stats",
+  "find_in_chapter",
+  "find_in_chapters"
+] as const;
+
+export const DESTRUCTIVE_TOOL_NAMES = [
+  "remove_memory",
+  "overwrite_chapter",
+  "delete_chapter",
+  "delete_lines_in_chapter",
+  "move_chapter",
+  "split_chapter",
+  "merge_chapters"
+] as const;
+
+export function toolTier(name: string): ToolTier {
+  if ((DESTRUCTIVE_TOOL_NAMES as readonly string[]).includes(name)) return "destructive";
+  if ((READ_TOOL_NAMES as readonly string[]).includes(name)) return "read";
+  return "write";
+}
+
+/**
+ * The catalog of writing tools.
+ *
+ * The descriptors come from the tool definitions themselves, so a tool added to the built-in agent
+ * appears here the day it is written. The library is a stub: the catalog only needs names,
+ * descriptions and schemas, never a book.
+ */
+export function chapterToolCatalog(): ToolDescriptor[] {
+  const stub = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error("The tool catalog does not read a book.");
+      }
+    }
+  ) as unknown as Library;
+  const tools = createChapterTools(stub, "") as unknown as Record<string, ToolLike>;
+  return Object.entries(tools).map(([name, definition]) => ({
+    name,
+    description: definition.description ?? "",
+    inputSchema: asSchema(definition.inputSchema as never).jsonSchema as Record<string, unknown>,
+    tier: toolTier(name)
+  }));
+}
+
+interface ToolLike {
+  description?: string;
+  inputSchema: unknown;
 }
 
 /**

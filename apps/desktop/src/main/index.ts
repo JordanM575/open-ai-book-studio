@@ -7,6 +7,7 @@ import { registerIpc } from "./ipc";
 import { DesktopCredentialVault } from "./credentials";
 import { ProviderService } from "./providers";
 import { AgentRuntime } from "./agent/runtime";
+import { ToolBridge } from "./agent/tool-bridge";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
 import { ImageService } from "./images";
@@ -319,8 +320,11 @@ app.whenReady().then(async () => {
   };
   await studio.restore();
 
-  if (!headless) {
-    backend = new LocalBackend(studio);
+  // The control plane is for the standalone CLI and MCP server. A hidden test run can start it too,
+  // with its own locator file, so the toolkit can be exercised end to end without a window.
+  if (!headless || process.env.STUDIO_BACKEND === "1") {
+    const tools = new ToolBridge(() => studio.library);
+    backend = new LocalBackend(studio, { tools });
     void backend.start().catch((error: unknown) => {
       console.warn("[backend] Could not start the agent toolkit service:", error);
       backend = null;

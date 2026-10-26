@@ -133,7 +133,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
             onClick={() => setSettingsOpen(true)}
             aria-label="Settings"
             title="Settings"
-            data-testid="open-connections"
+            data-testid="open-settings"
           >
             <Settings2 size={16} />
           </Button>

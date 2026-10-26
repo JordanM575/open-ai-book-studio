@@ -125,9 +125,12 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       if (!clicked) throw new Error("the model picker button was not found");
       await waitUntil(
-        () => evaluate<boolean>(win, inPage(`(document.body.innerText || "").includes("Connect a provider first")`)),
+        () => evaluate<boolean>(win, inPage(`(document.body.innerText || "").includes("No provider is connected yet")`)),
         "the empty model picker"
       );
+      // An author with no key must be able to reach the place where a key is added.
+      const escape = await evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="open-provider-settings"]')`));
+      if (!escape) throw new Error("the empty model picker offered no way to open Settings");
       const closed = await evaluate<boolean>(
         win,
         `(() => {
@@ -138,7 +141,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         })()`
       );
       if (!closed) throw new Error("the model picker had no Cancel button");
-      return "explained that a connection comes first";
+      return "explained that a connection comes first, with a way to add one";
     });
 
     await check("the writing agent panel opens", async () => {

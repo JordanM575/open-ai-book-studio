@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
+import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools";
 import type {
   BookDetail,
   BookSummary,
@@ -22,10 +23,20 @@ export interface ToolkitClient {
     chapterId: string,
     input: { content: string; baseVersion: number; baseHash: string }
   ): Promise<SaveChapterResult>;
+  /** The studio's own writing tools, so the toolkit never invents a second dialect. */
+  tools(): Promise<ToolDescriptor[]>;
+  callTool(
+    bookId: string,
+    name: string,
+    args: Record<string, unknown>,
+    options?: { allowDestructive?: boolean }
+  ): Promise<unknown>;
 }
 
 export interface McpOptions {
   allowWrites?: boolean;
+  /** Destructive tools need their own flag; it implies writes. */
+  allowDestructive?: boolean;
   version?: string;
 }
 
@@ -50,18 +61,19 @@ interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  write?: boolean;
+  tier?: ToolTier;
   run: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
 const ID = /^(book|ch)_[A-Za-z0-9-]{6,}$/;
-const HASH = /^[a-f0-9]{64}$/;
 
 /**
  * A deliberately small MCP server over the studio backend. It is transport-only: tool calls become
  * HTTP requests, and the desktop library remains the single writer.
  */
 export class McpServer {
+  private catalogCache: Promise<ToolDescriptor[]> | null = null;
+
   constructor(
     private readonly client: ToolkitClient,
     private readonly options: McpOptions = {}
@@ -102,7 +114,7 @@ export class McpServer {
         return {};
       case "tools/list":
         return {
-          tools: this.tools().map(({ name, description, inputSchema }) => ({
+          tools: (await this.tools()).map(({ name, description, inputSchema }) => ({
             name,
             description,
             inputSchema
@@ -112,7 +124,7 @@ export class McpServer {
         const params = asObject(request.params);
         const name = requiredString(params, "name");
         const args = asObject(params.arguments);
-        const tool = this.tools().find((entry) => entry.name === name);
+        const tool = (await this.tools()).find((entry) => entry.name === name);
         if (!tool) throw new McpFailure(-32602, `Unknown tool: ${name}`);
         try {
           const value = await tool.run(args);
@@ -136,8 +148,17 @@ export class McpServer {
     }
   }
 
-  private tools(): ToolDefinition[] {
-    const read: ToolDefinition[] = [
+  /**
+   * The MCP tool list.
+   *
+   * It is the studio's own catalog, so a third-party agent gets the same verbs as the built-in
+   * agent: read the Story Bible, find a passage, append, replace, split. Each mirrored tool takes
+   * the `bookId` the studio binds its tools to, so one server can work on any book in the library.
+   *
+   * The library-level tools stay: they are how a client finds the `bookId` the others need.
+   */
+  private async tools(): Promise<ToolDefinition[]> {
+    const libraryTools: ToolDefinition[] = [
       {
         name: "library_info",
         description: "Show the open AI Book Studio library and device.",
@@ -151,57 +172,6 @@ export class McpServer {
         run: () => this.client.books()
       },
       {
-        name: "read_book",
-        description: "Read a book's metadata, cast, outline and chapter list.",
-        inputSchema: {
-          type: "object",
-          properties: { bookId: { type: "string", description: "The book_… id." } },
-          required: ["bookId"],
-          additionalProperties: false
-        },
-        run: async (args) => {
-          const detail = await this.client.book(bookId(args, "bookId"));
-          return {
-            book: detail.book,
-            chapters: detail.chapters.map(({ content: _content, ...chapter }) => chapter)
-          };
-        }
-      },
-      {
-        name: "read_chapter",
-        description: "Read one chapter as Markdown, including its current version and hash.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            bookId: { type: "string" },
-            chapterId: { type: "string", description: "The ch_… id." }
-          },
-          required: ["bookId", "chapterId"],
-          additionalProperties: false
-        },
-        run: (args) => this.client.chapter(bookId(args, "bookId"), chapterId(args, "chapterId"))
-      },
-      {
-        name: "search_book",
-        description: "Search one book for a phrase and return matching chapters and lines.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            bookId: { type: "string" },
-            query: { type: "string" },
-            limit: { type: "number", minimum: 1, maximum: 500 }
-          },
-          required: ["bookId", "query"],
-          additionalProperties: false
-        },
-        run: (args) =>
-          this.client.search(
-            bookId(args, "bookId"),
-            requiredString(args, "query"),
-            optionalNumber(args, "limit")
-          )
-      },
-      {
         name: "list_conflicts",
         description: "List preserved conflict copies for a book.",
         inputSchema: {
@@ -213,61 +183,56 @@ export class McpServer {
         run: (args) => this.client.conflicts(bookId(args, "bookId"))
       }
     ];
-    if (!this.options.allowWrites) return read;
 
-    return [
-      ...read,
-      {
-        name: "create_chapter",
-        description: "Create a chapter at the end of a book. Only available with --allow-writes.",
-        write: true,
-        inputSchema: {
-          type: "object",
-          properties: {
-            bookId: { type: "string" },
-            title: { type: "string" },
-            content: { type: "string" }
-          },
-          required: ["bookId"],
-          additionalProperties: false
-        },
-        run: (args) => {
-          const title = optionalString(args, "title");
-          const content = optionalContent(args, "content");
-          return this.client.createChapter(bookId(args, "bookId"), {
-            ...(title !== undefined ? { title } : {}),
-            ...(content !== undefined ? { content } : {})
-          });
-        }
-      },
-      {
-        name: "save_chapter",
-        description:
-          "Save a chapter with a compare-before-write check. Supply the version and hash from the read; a stale write becomes a conflict copy. Only available with --allow-writes.",
-        write: true,
-        inputSchema: {
-          type: "object",
-          properties: {
-            bookId: { type: "string" },
-            chapterId: { type: "string" },
-            content: { type: "string" },
-            baseVersion: { type: "number", minimum: 0 },
-            baseHash: { type: "string", pattern: "^[a-f0-9]{64}$" }
-          },
-          required: ["bookId", "chapterId", "content", "baseVersion", "baseHash"],
-          additionalProperties: false
-        },
-        run: (args) => {
-          const hash = requiredString(args, "baseHash");
-          if (!HASH.test(hash)) throw new Error("baseHash must be a 64-character lowercase SHA-256.");
-          return this.client.saveChapter(bookId(args, "bookId"), chapterId(args, "chapterId"), {
-            content: requiredContent(args, "content"),
-            baseVersion: requiredNumber(args, "baseVersion"),
-            baseHash: hash
-          });
-        }
-      }
+    const mirrored: ToolDefinition[] = [];
+    for (const descriptor of await this.catalog()) {
+      if (!this.tierAllowed(descriptor.tier)) continue;
+      mirrored.push(this.mirror(descriptor));
+    }
+    return [...libraryTools, ...mirrored];
+  }
+
+  /** One studio tool, with the book it works on as an argument. */
+  private mirror(descriptor: ToolDescriptor): ToolDefinition {
+    const properties = {
+      ...((descriptor.inputSchema.properties as Record<string, unknown> | undefined) ?? {}),
+      bookId: { type: "string", description: "The book_… id this call works on." }
+    };
+    const required = [
+      ...(((descriptor.inputSchema.required as string[] | undefined) ?? [])),
+      "bookId"
     ];
+    return {
+      name: descriptor.name,
+      description: descriptor.description,
+      inputSchema: { ...descriptor.inputSchema, properties, required },
+      tier: descriptor.tier,
+      run: (args) => {
+        const { bookId: target, ...rest } = args;
+        return this.client.callTool(bookId(args, "bookId"), descriptor.name, rest, {
+          allowDestructive: this.options.allowDestructive === true
+        });
+      }
+    };
+  }
+
+  private tierAllowed(tier: ToolTier): boolean {
+    if (tier === "read") return true;
+    if (tier === "write") return this.options.allowWrites === true;
+    return this.options.allowDestructive === true;
+  }
+
+  /** The studio's catalog, fetched once per server. */
+  private async catalog(): Promise<ToolDescriptor[]> {
+    if (!this.catalogCache) {
+      this.catalogCache = this.client.tools().catch((error: unknown) => {
+        throw new McpFailure(
+          -32603,
+          `The studio did not return its tool catalog: ${error instanceof Error ? error.message : String(error)}`
+        );
+      });
+    }
+    return this.catalogCache;
   }
 }
 
@@ -323,52 +288,10 @@ function requiredString(value: Record<string, unknown>, key: string): string {
   return entry;
 }
 
-function optionalString(value: Record<string, unknown>, key: string): string | undefined {
-  const entry = value[key];
-  if (entry === undefined) return undefined;
-  if (typeof entry !== "string") throw new McpFailure(-32602, `${key} must be a string.`);
-  return entry;
-}
-
-/** Content may be empty; an empty chapter is a valid author choice. */
-function requiredContent(value: Record<string, unknown>, key: string): string {
-  const entry = value[key];
-  if (typeof entry !== "string") throw new McpFailure(-32602, `${key} must be a string.`);
-  return entry;
-}
-
-function optionalContent(value: Record<string, unknown>, key: string): string | undefined {
-  const entry = value[key];
-  if (entry === undefined) return undefined;
-  return requiredContent(value, key);
-}
-
-function requiredNumber(value: Record<string, unknown>, key: string): number {
-  const entry = value[key];
-  if (typeof entry !== "number" || !Number.isFinite(entry)) {
-    throw new McpFailure(-32602, `${key} must be a number.`);
-  }
-  return entry;
-}
-
-function optionalNumber(value: Record<string, unknown>, key: string): number | undefined {
-  const entry = value[key];
-  if (entry === undefined) return undefined;
-  return requiredNumber(value, key);
-}
-
 function bookId(args: Record<string, unknown>, key: string): string {
   const value = requiredString(args, key);
   if (!ID.test(value) || !value.startsWith("book_")) {
     throw new McpFailure(-32602, `${key} must be a book_… id.`);
-  }
-  return value;
-}
-
-function chapterId(args: Record<string, unknown>, key: string): string {
-  const value = requiredString(args, key);
-  if (!ID.test(value) || !value.startsWith("ch_")) {
-    throw new McpFailure(-32602, `${key} must be a ch_… id.`);
   }
   return value;
 }

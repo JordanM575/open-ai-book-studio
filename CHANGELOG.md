@@ -26,6 +26,19 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the studio's own writing tools to the loopback backend and the MCP server (spec 024): the
+  backend serves `GET /v1/tools` and `POST /v1/books/:bookId/tools/:tool`, and `bookwriter mcp`
+  mirrors the built-in agent's tools with a `bookId` argument, so a third-party agent gets the same
+  verbs. Read tools are always available, write tools need `--allow-writes` and destructive tools
+  need `--allow-destructive` on both the client and the request.
+- Added `bookwriter tools` and `bookwriter call`, so a script can run one studio tool against the
+  open book.
+- Fixed two dead ends in the interface: the model picker without a connection pointed at a
+  "Connections window" that does not exist and offered no way to add a key, and a failed turn in the
+  writing agent offered only "Retry request", stranding the author's prompt when no model was
+  chosen. Both now offer the action that resolves them.
+- Added `bun run ui:audit`, which drives the real app through the main flows and reports any dead
+  end, missing control or console error it finds.
 - Added the submission package (spec 023): a committed original sample library at
   `samples/the-salt-road`, `hackathon/SUBMISSION.md` with the form fields, event-built disclosure, model
   list, demo runbook and judge map, and `bun run submission:check` for branch/tree, required files,

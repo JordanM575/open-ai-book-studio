@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
+import type { ToolCallResult, ToolDescriptor } from "@ai-book-studio/core/agent/tools";
 import type {
   BookDetail,
   BookSummary,
@@ -38,12 +39,30 @@ export interface BackendSource {
   requireLibrary(): BackendLibrary;
 }
 
+/**
+ * The studio's own writing tools, reachable over the control plane.
+ *
+ * The backend does not implement a tool: it forwards to the definitions the built-in agent uses, so
+ * a third-party agent gets the same verbs and the same safety rules.
+ */
+export interface BackendToolRunner {
+  catalog(): ToolDescriptor[];
+  run(request: {
+    bookId: string;
+    name: string;
+    args: unknown;
+    allowDestructive?: boolean;
+  }): Promise<ToolCallResult>;
+}
+
 export interface LocalBackendOptions {
   /** Override for tests; production uses `~/.ai-book-studio/backend.json`. */
   locatorPath?: string;
   /** Tests use port 0; production also uses 0 so another process cannot guess it. */
   port?: number;
   token?: string;
+  /** The studio's writing tools. Without them the tool routes report that they are unavailable. */
+  tools?: BackendToolRunner;
 }
 
 export interface BackendLocator {
@@ -67,6 +86,7 @@ export class LocalBackend {
   private url: string | null = null;
   private readonly token: string;
   private readonly locatorPath: string;
+  private readonly tools: BackendToolRunner | null;
 
   constructor(
     private readonly source: BackendSource,
@@ -75,6 +95,7 @@ export class LocalBackend {
     this.token = options.token ?? randomBytes(32).toString("hex");
     this.locatorPath = options.locatorPath ?? backendLocatorPath();
     this.port = options.port ?? 0;
+    this.tools = options.tools ?? null;
   }
 
   private readonly port: number;
@@ -151,12 +172,31 @@ export class LocalBackend {
       this.send(response, 200, { books: await this.library().listBooks() });
       return;
     }
+    if (request.method === "GET" && parts.length === 2 && parts[1] === "tools") {
+      this.send(response, 200, { tools: this.toolRunner().catalog() });
+      return;
+    }
 
     const bookId = parts[2] ? idSchema.parse(parts[2]) : null;
     if (parts[1] !== "books" || !bookId) throw new HttpError(404, "not-found", "Unknown route.");
 
     if (request.method === "GET" && parts.length === 3) {
       this.send(response, 200, { book: await this.library().readBook(bookId) });
+      return;
+    }
+    if (request.method === "GET" && parts.length === 4 && parts[3] === "tools") {
+      this.send(response, 200, { tools: this.toolRunner().catalog() });
+      return;
+    }
+    if (request.method === "POST" && parts.length === 5 && parts[3] === "tools") {
+      const body = toolCall.parse(await readJson(request));
+      const result = await this.toolRunner().run({
+        bookId,
+        name: parts[4]!,
+        args: body.args ?? {},
+        ...(body.allowDestructive ? { allowDestructive: true } : {})
+      });
+      this.send(response, 200, { result });
       return;
     }
     if (request.method === "GET" && parts.length === 4 && parts[3] === "conflicts") {
@@ -201,6 +241,13 @@ export class LocalBackend {
     } catch {
       throw new HttpError(409, "no-library", "No library is open in the studio. Open a folder first.");
     }
+  }
+
+  private toolRunner(): BackendToolRunner {
+    if (!this.tools) {
+      throw new HttpError(404, "not-found", "This studio build does not expose its writing tools.");
+    }
+    return this.tools;
   }
 
   private authorized(header: string | undefined): boolean {
@@ -263,16 +310,38 @@ function asHttpError(error: unknown): HttpError {
   if (error instanceof z.ZodError) {
     return new HttpError(400, "invalid", error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; "));
   }
+  if (isToolError(error)) {
+    if (error.code === "unknown-tool") return new HttpError(404, "not-found", error.message);
+    if (error.code === "invalid-arguments") return new HttpError(400, "invalid", error.message);
+    if (error.code === "destructive-not-allowed") return new HttpError(403, "forbidden", error.message);
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (/not found|not-found|ENOENT/i.test(message)) return new HttpError(404, "not-found", message);
   if (/conflict/i.test(message)) return new HttpError(409, "conflict", message);
   return new HttpError(500, "internal", message);
 }
 
+/** The bridge's own failures, so the control plane can answer with the right status. */
+function isToolError(error: unknown): error is { code: string; message: string } {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    /^(unknown-tool|invalid-arguments|destructive-not-allowed|failed)$/.test(
+      (error as { code?: unknown }).code as string
+    )
+  );
+}
+
 const saveBody = z.object({
   content: z.string().max(20_000_000),
   baseVersion: z.number().int().min(0),
   baseHash: z.string().regex(/^[a-f0-9]{64}$/)
+});
+
+const toolCall = z.object({
+  args: z.unknown().optional(),
+  allowDestructive: z.boolean().optional()
 });
 
 const chapterBody = z.object({

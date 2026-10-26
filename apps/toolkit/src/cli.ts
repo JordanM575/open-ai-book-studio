@@ -27,19 +27,23 @@ Commands:
   conflicts <bookId>                List conflict copies
   create-chapter <bookId>           Create a chapter (requires --allow-writes)
   save <bookId> <chapterId>         Checked save (requires --allow-writes)
+  tools                             List the studio's writing tools
+  call <bookId> <tool>              Run one studio tool (requires --allow-writes)
   mcp                               Start the MCP server on stdio
 
 Options:
   --url <url>                       Backend URL (default: locator file)
   --token <token>                   Backend token (default: locator file)
   --locator <path>                  Backend locator file
-  --allow-writes                    Enable create-chapter, save and write MCP tools
+  --allow-writes                    Enable create-chapter, save, call and write MCP tools
+  --allow-destructive               Enable destructive tools (implies --allow-writes)
   --json                            Print the backend payload
   --content-file <path>             Chapter content for create/save
   --stdin                           Read chapter content from stdin
   --title <title>                   Chapter title for create-chapter
   --base-version <n>                Version returned by read (save)
   --base-hash <hash>                Hash returned by read (save)
+  --args <json>                     Arguments for call, as JSON
   --help                            Show this help
 
 Environment: BOOKWRITER_URL, BOOKWRITER_TOKEN, STUDIO_BACKEND_FILE
@@ -77,7 +81,8 @@ export async function runCli(
     ...(typeof parsed.flags.get("locator") === "string" ? { locatorPath: parsed.flags.get("locator") as string } : {})
   };
   const json = parsed.flags.has("json");
-  const writes = parsed.flags.has("allow-writes");
+  const writes = parsed.flags.has("allow-writes") || parsed.flags.has("allow-destructive");
+  const destructive = parsed.flags.has("allow-destructive");
 
   try {
     const client = await connect(overrides);
@@ -196,10 +201,37 @@ export async function runCli(
         io.stdout.write(`Saved ${result.chapter.id} · version ${result.chapter.version} · hash ${result.chapter.hash}\n`);
         return 0;
       }
+      case "tools": {
+        const tools = await client.tools();
+        if (json) return print(io, tools);
+        if (tools.length === 0) {
+          io.stdout.write("This studio exposes no writing tools.\n");
+          return 0;
+        }
+        io.stdout.write("NAME                          TIER         SUMMARY\n");
+        for (const tool of tools) {
+          io.stdout.write(
+            `${tool.name.padEnd(30)} ${tool.tier.padEnd(12)} ${firstLine(tool.description)}\n`
+          );
+        }
+        return 0;
+      }
+      case "call": {
+        if (!writes) throw new Error("call requires --allow-writes.");
+        const bookId = required(parsed.positionals[0], "call needs a bookId.");
+        const name = required(parsed.positionals[1], "call needs a tool name.");
+        const args = argsFor(parsed);
+        const result = await client.callTool(bookId, name, args, {
+          ...(destructive ? { allowDestructive: true } : {})
+        });
+        return print(io, result);
+      }
       case "mcp": {
-        const server = new McpServer(client, { allowWrites: writes });
+        const server = new McpServer(client, { allowWrites: writes, allowDestructive: destructive });
         io.stderr.write(
-          `AI Book Studio MCP server on stdio${writes ? " (writes enabled)" : " (read-only)"}.\n`
+          `AI Book Studio MCP server on stdio${
+            destructive ? " (destructive tools enabled)" : writes ? " (writes enabled)" : " (read-only)"
+          }.\n`
         );
         await serveMcp(server, io.stdin, io.stdout);
         return 0;
@@ -285,6 +317,27 @@ async function contentFor(parsed: Parsed, io: Io): Promise<string | undefined> {
   let content = "";
   for await (const chunk of io.stdin) content += Buffer.from(chunk as Buffer).toString("utf8");
   return content;
+}
+
+/** The tool arguments for `call`, as a JSON object. */
+function argsFor(parsed: Parsed): Record<string, unknown> {
+  const raw = stringFlag(parsed, "args");
+  if (!raw) return {};
+  let parsedArgs: unknown;
+  try {
+    parsedArgs = JSON.parse(raw);
+  } catch {
+    throw new Error("--args must be a JSON object.");
+  }
+  if (!parsedArgs || typeof parsedArgs !== "object" || Array.isArray(parsedArgs)) {
+    throw new Error("--args must be a JSON object.");
+  }
+  return parsedArgs as Record<string, unknown>;
+}
+
+function firstLine(value: string): string {
+  const line = value.split("\n")[0]?.trim() ?? "";
+  return line.length > 60 ? `${line.slice(0, 57)}…` : line;
 }
 
 if (import.meta.main) {

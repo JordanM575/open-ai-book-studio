@@ -18,9 +18,11 @@ interface Props {
   onPick?: (choice: { connectionId: string; modelId: string }) => void;
   /** The current one-off choice when the turn picker is reopened. */
   initial?: { connectionId: string; modelId: string } | null;
+  /** Open Settings on the provider connections, so an author with no key is not stuck. */
+  onOpenSettings?: () => void;
 }
 
-export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial }: Props) {
+export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial, onOpenSettings }: Props) {
   const turnMode = Boolean(onPick);
   const initialConnectionId = initial?.connectionId ?? book.defaultConnectionId;
   const initialModelId = initial?.modelId ?? book.defaultModelId;
@@ -157,9 +159,16 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
         className="w-[calc(100vw-48px)] max-w-[600px]"
       >
         {connections.length === 0 ? (
-          <p className="py-6 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
-            Connect a provider first from the Connections window in your library.
-          </p>
+          <div className="py-6">
+            <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              No provider is connected yet. Add a key in Settings to choose a model.
+            </p>
+            {onOpenSettings ? (
+              <Button variant="secondary" className="mt-4" onClick={onOpenSettings} data-testid="open-provider-settings">
+                Open Settings
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">

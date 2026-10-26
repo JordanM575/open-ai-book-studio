@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
+import type { ToolDescriptor } from "@ai-book-studio/core/agent/tools";
 import type {
   BookDetail,
   BookSummary,
@@ -158,6 +159,28 @@ export class BackendClient {
     const result = await this.request<{ result: SaveChapterResult }>(
       `/v1/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}`,
       { method: "POST", body: JSON.stringify(input) }
+    );
+    return result.result;
+  }
+
+  /** The studio's own writing tools, so the toolkit never invents a second dialect. */
+  async tools(): Promise<ToolDescriptor[]> {
+    const result = await this.request<{ tools: ToolDescriptor[] }>("/v1/tools");
+    return result.tools;
+  }
+
+  async callTool(
+    bookId: string,
+    name: string,
+    args: Record<string, unknown>,
+    options: { allowDestructive?: boolean } = {}
+  ): Promise<unknown> {
+    const result = await this.request<{ result: unknown }>(
+      `/v1/books/${encodeURIComponent(bookId)}/tools/${encodeURIComponent(name)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ args, ...(options.allowDestructive ? { allowDestructive: true } : {}) })
+      }
     );
     return result.result;
   }

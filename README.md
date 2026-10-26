@@ -27,8 +27,10 @@ project does not claim a passing CI badge.
   the transcript at the caret through the normal save path.
 - **Background turns** — let the agent finish after the window closes and notify you on macOS; a
   destructive tool still waits for approval.
-- **Agent toolkit** — `bookwriter` exposes the open library through a CLI and an MCP server. Read-only
-  by default; writes use compare-before-write. See [docs/TOOLKIT.md](docs/TOOLKIT.md).
+- **Agent toolkit** — `bookwriter` exposes the open library through a CLI and an MCP server. It
+  serves the *same* writing tools the built-in agent uses, so another agent gets the same verbs;
+  read-only by default, with writes and destructive changes behind their own flags. See
+  [docs/TOOLKIT.md](docs/TOOLKIT.md).
 - **Sample and submission** — [`samples/the-salt-road`](samples/README.md) is an original, complete
   library with two chapters, a Story Bible, an illustration and a cutout. The submission packet and
   readiness check are in [`hackathon/SUBMISSION.md`](hackathon/SUBMISSION.md) and
@@ -50,6 +52,7 @@ bun run typecheck  # both TypeScript projects (main/preload and renderer)
 bun test           # Bun test: library, format, conflicts, path safety
 bun run smoke      # build, then drive a hidden window through the real UI
 bun run smoke:packaged # package the app, then run the hidden suite against the packaged binary
+bun run ui:audit   # drive the real app through the main flows and report any dead end
 bun run build      # typecheck + production bundle into apps/desktop/out
 bun run build:web  # static web bundle in apps/web/dist
 bun run toolkit:build # compiled `bookwriter` CLI/MCP binary in apps/toolkit/dist
@@ -73,6 +76,11 @@ If Electron's binary was skipped, the install prints the exact command:
 profile (`STUDIO_USER_DATA`), parks the window off-screen, hides the Dock icon, points the app at a
 fixture library, then checks the preload bridge, the library view, opening a book, and an autosave
 reaching the disk. It prints one line per check and exits non-zero on failure.
+
+`bun run ui:audit` is the companion: it opens the same fixture library in a throwaway profile and
+walks the main flows — library, manuscript, model picker, agent panel, Story Bible, Settings, search
+and the illustration dialog — then prints what worked and what an author would get stuck on. It
+exits non-zero when it finds a dead end.
 
 Useful while developing:
 
