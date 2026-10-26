@@ -93,7 +93,8 @@ turn until the book opts in; the sample and film fixture are the only intended C
 
 **Code verified at:** `369afc9` on 2026-10-26, cloned fresh from Gitea at the pushed branch head.
 The clean clone installed 487 packages, `bun run verify` passed the typecheck, 470 tests, the
-desktop and web builds, and `bun run smoke` passed 16/16.
+desktop and web builds, and `bun run smoke` passed 16/16. The only commit after it is this
+documentation, so the app code did not change after the clean-clone pass.
 **Clean-clone path:** a fresh temporary directory
 (temporary; deleted after evidence was recorded).
 
