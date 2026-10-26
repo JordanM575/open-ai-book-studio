@@ -2,6 +2,7 @@ import {
   AlignmentType,
   Document,
   HeadingLevel,
+  ImageRun,
   LineRuleType,
   PageBreak,
   Packer,
@@ -21,13 +22,21 @@ function twips(inches: number): number {
   return Math.round(inches * 1440);
 }
 
+export interface DocxImage {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+  mimeType: "image/png" | "image/jpeg";
+  prompt: string;
+}
+
 /**
  * Builds a Word manuscript from the book's files.
  *
  * The Markdown body is the source of truth. A paragraph is a line, so each non-empty line becomes
  * its own paragraph with the book's manuscript settings applied. Nothing is written to the library.
  */
-export function buildDocx(detail: BookDetail): Promise<Buffer> {
+export function buildDocx(detail: BookDetail, illustrations: Map<string, DocxImage> = new Map()): Promise<Buffer> {
   const { book, chapters } = detail;
   const settings = book.settings.manuscript;
   const bodyFont = settings.bodyFont;
@@ -86,6 +95,49 @@ export function buildDocx(detail: BookDetail): Promise<Buffer> {
           children: [new TextRun({ text, font: bodyFont, size: bodySize })]
         })
       );
+    }
+
+    const illustration = illustrations.get(chapter.id);
+    if (illustration) {
+      const ratio = Math.min(480 / illustration.width, 640 / illustration.height);
+      const caption = illustration.prompt.trim();
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 240, after: 120 },
+          children: [
+            new ImageRun({
+              type: illustration.mimeType === "image/png" ? "png" : "jpg",
+              data: illustration.bytes,
+              transformation: {
+                width: Math.max(1, Math.round(illustration.width * ratio)),
+                height: Math.max(1, Math.round(illustration.height * ratio))
+              },
+              altText: {
+                name: chapter.title,
+                description: caption || `Illustration for ${chapter.title}`,
+                title: chapter.title
+              }
+            })
+          ]
+        })
+      );
+      if (caption) {
+        children.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 240 },
+            children: [
+              new TextRun({
+                text: caption.length > 160 ? `${caption.slice(0, 159)}…` : caption,
+                italics: true,
+                font: bodyFont,
+                size: 20
+              })
+            ]
+          })
+        );
+      }
     }
   });
 

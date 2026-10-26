@@ -5,6 +5,8 @@ import { z } from "zod";
 import { IPC, type Result, type StudioError } from "@ai-book-studio/core/ipc";
 import { bookSchema, idSchema } from "@ai-book-studio/core/schema";
 import { PROVIDER_LIST, providerById } from "@ai-book-studio/core/providers/registry";
+import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
+import { imageIdSchema } from "@ai-book-studio/core/images/schema";
 import { ProviderError, connectionIdSchema, providerIdSchema } from "@ai-book-studio/core/providers/types";
 import { redact } from "@ai-book-studio/core/providers/redact";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
@@ -12,6 +14,7 @@ import { buildMetadata } from "@ai-book-studio/core/build";
 import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
 import { buildDocx } from "./export";
+import type { DocxImage } from "./export";
 import { writeFileAtomic } from "./library/atomic";
 import { LegacyImportError } from "@ai-book-studio/core/legacy";
 import { importLegacyBackup } from "./legacy-import";
@@ -22,6 +25,7 @@ import type { Studio } from "./studio";
 import type { ProviderService } from "./providers";
 import type { AgentRuntime } from "./agent/runtime";
 import type { VoiceService } from "./voice";
+import type { ImageService } from "./images";
 
 const folderInput = z.string().min(1).max(4096);
 const contentInput = z.string().max(20_000_000);
@@ -81,7 +85,8 @@ export function registerIpc(
   getWindow: () => BrowserWindow | null,
   providers: ProviderService,
   agent: AgentRuntime,
-  voice: VoiceService
+  voice: VoiceService,
+  images: ImageService
 ): void {
   const handle = <T>(channel: string, handler: (payload: unknown) => Promise<T> | T): void => {
     ipcMain.handle(channel, async (_event, payload: unknown): Promise<Result<T>> => {
@@ -210,8 +215,33 @@ export function registerIpc(
 
   handle(IPC.books.exportDocx, async (payload) => {
     const bookId = idSchema.parse(payload);
-    const detail = await studio.requireLibrary().readBook(bookId);
-    const data = await buildDocx(detail);
+    const library = studio.requireLibrary();
+    const detail = await library.readBook(bookId);
+    const illustrations = new Map<string, DocxImage>();
+    try {
+      const listed = await library.listImages(bookId);
+      for (const record of listed.manifest.images) {
+        if (!record.chapterId || record.mimeType === "image/webp") continue;
+        if (illustrations.has(record.chapterId)) continue;
+        try {
+          const stored = await library.readImage(bookId, record.id);
+          if (stored) {
+            illustrations.set(record.chapterId, {
+              bytes: stored.bytes,
+              width: record.width,
+              height: record.height,
+              mimeType: record.mimeType,
+              prompt: record.prompt
+            });
+          }
+        } catch (error) {
+          console.warn("[export] Skipping an unavailable illustration:", (error as Error).message);
+        }
+      }
+    } catch (error) {
+      console.warn("[export] Could not read illustrations:", (error as Error).message);
+    }
+    const data = await buildDocx(detail, illustrations);
     const stem =
       detail.book.title
         .trim()
@@ -370,6 +400,65 @@ export function registerIpc(
       ...(input.languageBias?.length ? { languageBias: input.languageBias } : {}),
       ...(input.keywords?.length ? { keywords: input.keywords } : {})
     });
+  });
+
+  /* -------------------------------------------------------------------- images */
+
+  handle(IPC.images.list, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    return studio.requireLibrary().listImages(bookId);
+  });
+
+  handle(IPC.images.read, async (payload) => {
+    const input = z.object({ bookId: idSchema, imageId: imageIdSchema }).parse(payload);
+    const stored = await studio.requireLibrary().readImage(input.bookId, input.imageId);
+    if (!stored) return null;
+    return {
+      record: stored.record,
+      dataUrl: `data:${stored.record.mimeType};base64,${Buffer.from(stored.bytes).toString("base64")}`
+    };
+  });
+
+  const imageGenerateInput = z.object({
+    bookId: idSchema,
+    chapterId: idSchema.optional(),
+    connectionId: connectionId.optional(),
+    prompt: z.string().trim().min(1).max(4_000),
+    size: z.enum(IMAGE_SIZES).optional()
+  });
+
+  handle(IPC.images.generate, async (payload) => {
+    const input = imageGenerateInput.parse(payload);
+    const generated = await images.generate({
+      ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+      prompt: input.prompt,
+      ...(input.size ? { size: input.size } : {})
+    });
+    const library = studio.requireLibrary();
+    const record = await library.addImage(input.bookId, {
+      bytes: generated.bytes,
+      kind: "chapter",
+      prompt: input.prompt,
+      provider: "meta",
+      model: generated.model,
+      size: generated.size,
+      source: "generated",
+      costUsd: generated.costUsd
+    });
+    return input.chapterId ? library.attachImage(input.bookId, record.id, input.chapterId) : record;
+  });
+
+  handle(IPC.images.attach, async (payload) => {
+    const input = z
+      .object({ bookId: idSchema, imageId: imageIdSchema, chapterId: idSchema })
+      .parse(payload);
+    return studio.requireLibrary().attachImage(input.bookId, input.imageId, input.chapterId);
+  });
+
+  handle(IPC.images.remove, async (payload) => {
+    const input = z.object({ bookId: idSchema, imageId: imageIdSchema }).parse(payload);
+    await studio.requireLibrary().removeImage(input.bookId, input.imageId);
+    return null;
   });
 
   /* --------------------------------------------------------------------- agent */

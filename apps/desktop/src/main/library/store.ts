@@ -12,6 +12,7 @@ import type {
 } from "@ai-book-studio/core/schema";
 import { LibraryService } from "@ai-book-studio/core/library/service";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
+import { ImageStore, type AddImageInput, type ImageList, type ImageRecord, type StoredImage } from "@ai-book-studio/core/images";
 import { createFileSystemEnvironment } from "./fs-port";
 import { resolveLibraryRoot } from "./paths";
 
@@ -29,14 +30,20 @@ export class Library {
   private constructor(
     readonly root: string,
     private readonly service: LibraryService,
-    readonly threads: ThreadStore
+    readonly threads: ThreadStore,
+    readonly images: ImageStore
   ) {}
 
   static async open(folder: string): Promise<Library> {
     const root = resolveLibraryRoot(folder);
     const environment = createFileSystemEnvironment(root);
     const service = await LibraryService.open(environment);
-    return new Library(root, service, new ThreadStore(environment.storage, environment.runtime));
+    return new Library(
+      root,
+      service,
+      new ThreadStore(environment.storage, environment.runtime),
+      new ImageStore(environment)
+    );
   }
 
   get deviceId(): string {
@@ -119,5 +126,25 @@ export class Library {
 
   rebuildCatalog(): Promise<void> {
     return this.service.rebuildCatalog();
+  }
+
+  listImages(bookId: string): Promise<ImageList> {
+    return this.images.list(bookId);
+  }
+
+  readImage(bookId: string, imageId: string): Promise<StoredImage | null> {
+    return this.images.read(bookId, imageId);
+  }
+
+  addImage(bookId: string, input: AddImageInput): Promise<ImageRecord> {
+    return this.images.add(bookId, input);
+  }
+
+  attachImage(bookId: string, imageId: string, chapterId: string): Promise<ImageRecord> {
+    return this.images.attach(bookId, imageId, chapterId);
+  }
+
+  removeImage(bookId: string, imageId: string): Promise<void> {
+    return this.images.remove(bookId, imageId);
   }
 }

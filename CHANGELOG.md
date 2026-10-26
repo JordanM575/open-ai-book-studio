@@ -26,6 +26,12 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the illustration pipeline (spec 019): a versioned `images.json`, an atomic image store over
+  `LibraryPort`, PNG/WebP/JPEG inspection, Muse Image generation through Meta at a visible `$0.01`
+  per-image estimate, IPC, an Illustration dialog, an attached image below the chapter and DOCX
+  embedding with the prompt as a caption.
+- Added specs 019 and 020 for illustrations and SAM 3.1 cutouts, including the documented Meta
+  endpoints, the mask grammar and the renderer-side compositor plan.
 - Added the standalone `bookwriter` toolkit (spec 018): a loopback-only desktop backend with a per-run
   token, a CLI for info/books/read/search/conflicts/create/save, and an MCP stdio server whose read
   tools are on by default and whose write tools require `--allow-writes`. Saves carry the version and

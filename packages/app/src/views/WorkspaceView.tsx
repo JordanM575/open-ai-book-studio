@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, ChevronLeft, Cpu, Download, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, type LucideIcon } from "lucide-react";
+import { BookOpen, ChevronLeft, Cpu, Download, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, type LucideIcon } from "lucide-react";
 import type { BookDetail, BookMeta, Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
+import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { ChapterRail } from "../components/ChapterRail";
 import { ModelPickerDialog } from "../components/ModelPickerDialog";
+import { IllustrationDialog } from "../components/IllustrationDialog";
 import { StoryBibleDialog } from "../components/StoryBibleDialog";
 import { SearchDialog } from "../components/SearchDialog";
 import { ChatPanel } from "../components/ChatPanel";
@@ -54,6 +56,9 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
   const [modelMode, setModelMode] = useState<"book" | "turn">("book");
   const [turnModel, setTurnModel] = useState<{ connectionId: string; modelId: string } | null>(null);
   const [bibleOpen, setBibleOpen] = useState(false);
+  const [illustrationOpen, setIllustrationOpen] = useState(false);
+  const [illustration, setIllustration] = useState<ImageRecord | null>(null);
+  const [illustrationData, setIllustrationData] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
@@ -112,6 +117,36 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
 
   const selected = detail?.chapters.find((chapter) => chapter.id === selectedId) ?? null;
   const ordinal = selected ? detail!.chapters.filter((chapter) => chapter.order <= selected.order).length : 0;
+
+  const loadIllustration = useCallback(
+    async (chapterId: string | null) => {
+      if (!chapterId) {
+        setIllustration(null);
+        setIllustrationData(null);
+        return;
+      }
+      try {
+        const listed = await must(window.studio.images.list(bookId));
+        const attached = listed.manifest.images.find((image) => image.chapterId === chapterId) ?? null;
+        if (!attached) {
+          setIllustration(null);
+          setIllustrationData(null);
+          return;
+        }
+        const stored = await must(window.studio.images.read(bookId, attached.id));
+        setIllustration(attached);
+        setIllustrationData(stored?.dataUrl ?? null);
+      } catch {
+        setIllustration(null);
+        setIllustrationData(null);
+      }
+    },
+    [bookId]
+  );
+
+  useEffect(() => {
+    void loadIllustration(selectedId);
+  }, [selectedId, loadIllustration]);
 
   const select = async (chapterId: string): Promise<void> => {
     if (chapterId === selectedId) return;
@@ -327,6 +362,16 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             >
               <BookOpen size={16} />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIllustrationOpen(true)}
+              aria-label="Illustration"
+              title="Illustration"
+              data-testid="open-illustration"
+            >
+              <ImageIcon size={16} />
+            </Button>
             {exportNote ? (
               <span className="max-w-[180px] truncate text-[var(--text-caption-size)] text-muted-foreground" title={exportNote}>
                 {exportNote}
@@ -513,6 +558,8 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
               ordinal={ordinal}
               onSaved={onSaved}
               onStatus={setStatus}
+              illustration={illustration}
+              illustrationData={illustrationData}
             />
           ) : (
             <div className="glass mx-auto mt-10 max-w-[520px] rounded-[var(--corner-xl)] px-8 py-12 text-center">
@@ -600,6 +647,15 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         </>
       ) : null}
 
+      <IllustrationDialog
+        open={illustrationOpen}
+        bookId={bookId}
+        chapter={selected}
+        onClose={() => setIllustrationOpen(false)}
+        onChanged={() => loadIllustration(selectedId)}
+        onOpenSettings={() => openSettings("providers")}
+      />
+
       <Dialog open={moreOpen} onOpenChange={setMoreOpen}>
         <DialogContent title="More" description="Book tools, settings, and appearance.">
           <div className="grid gap-1">
@@ -626,6 +682,18 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             >
               <BookOpen size={16} />
               Story Bible
+            </Button>
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid="more-illustration"
+              onClick={() => {
+                setMoreOpen(false);
+                setIllustrationOpen(true);
+              }}
+            >
+              <ImageIcon size={16} />
+              Illustration
             </Button>
             <Button
               variant="ghost"

@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
+import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import { pushHistory, redoHistory, undoHistory } from "../lib/editor-history";
 import { countWords, formatCount, savedTime } from "../lib/utils";
 import { insertTranscript as insertAtSelection } from "../lib/voice-text";
@@ -22,6 +23,9 @@ interface Props {
   ordinal: number;
   onSaved: (chapter: Chapter) => void;
   onStatus: (status: SaveStatus) => void;
+  /** The chapter illustration, served from the book folder. */
+  illustration?: ImageRecord | null;
+  illustrationData?: string | null;
 }
 
 interface Base {
@@ -32,7 +36,7 @@ interface Base {
 }
 
 export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function ManuscriptEditor(
-  { bookId, chapter, ordinal, onSaved, onStatus },
+  { bookId, chapter, ordinal, onSaved, onStatus, illustration, illustrationData },
   ref
 ) {
   const [content, setContent] = useState(chapter.content);
@@ -263,6 +267,19 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
           placeholder="Begin wherever you like. Nothing here is read by anyone else."
           className="manuscript thin-scroll mt-8 block min-h-[52vh] w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-muted-foreground/60"
         />
+
+        {illustration && illustrationData ? (
+          <figure className="mt-10 border-t border-[var(--border)] pt-6" data-testid="chapter-illustration">
+            <img
+              src={illustrationData}
+              alt={illustration.prompt || `Illustration for ${chapter.title}`}
+              className="w-full rounded-[var(--corner-lg)] bg-[var(--secondary)] object-contain"
+            />
+            <figcaption className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+              {illustration.prompt || "Chapter illustration"} · {illustration.model}
+            </figcaption>
+          </figure>
+        ) : null}
       </div>
     </div>
   );

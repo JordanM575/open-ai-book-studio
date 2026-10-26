@@ -12,6 +12,9 @@ editor; nothing important lives in a database, in the app's profile, or in an op
       chapters/
         0001-the-door.md       YAML front matter + Markdown prose
         0002-the-lighthouse.md
+      images/                  illustrations and cutouts owned by this book
+        img_….png
+      images.json              image provenance and chapter attachments
       conflicts/               versions kept when two writers disagreed
       threads/                 agent conversations, one JSON file per thread
       checkpoints/             reserved for draft checkpoints
@@ -212,3 +215,47 @@ them as chapters. Resolving them is a deliberate act by the author, not an autom
 Library files are the only copy. The app has no account, no telemetry and no server-side copy. It
 writes exactly three things outside the library: the library path in `studio.json`, window bounds in
 the same file, and an OpenRouter key (later, in the macOS Keychain).
+
+## Images
+
+`images.json` is the source manifest for `images/`. It is versioned like `book.json`; a newer
+`schemaVersion` is refused rather than rewritten. An unknown or corrupt manifest yields an empty
+gallery with a warning, and the image files stay on disk.
+
+```json
+{
+  "schemaVersion": 1,
+  "images": [
+    {
+      "id": "img_6a1d0f9c2b7e4d13",
+      "kind": "chapter",
+      "chapterId": "ch_6a1d0f9c2b7e4d13",
+      "characterId": null,
+      "fileName": "img_6a1d0f9c2b7e4d13.png",
+      "mimeType": "image/png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 184320,
+      "sha256": "…",
+      "prompt": "a lighthouse in a storm, ink and wash",
+      "provider": "meta",
+      "model": "muse-image-1.0",
+      "size": "1024x1024",
+      "source": "generated",
+      "createdAt": "2026-10-26T12:00:00.000Z",
+      "cutoutOf": null,
+      "costUsd": 0.01
+    }
+  ]
+}
+```
+
+- Image bytes are written first, then the manifest, both atomically through the library port. A
+  failed manifest write removes the new file when it can and otherwise reports an orphan.
+- `kind` is `chapter`, `character`, `cover` or `other`; `source` is `generated`, `imported` or
+  `cutout`.
+- A chapter has at most one attached image. Attaching another clears the previous `chapterId` in the
+  same manifest commit.
+- `cutoutOf` points at the source image for a SAM cutout. The source is never modified.
+- The manifest and every image are author files and travel in the portable archive. No image is stored
+  in `book.json`, the catalog or the app profile.

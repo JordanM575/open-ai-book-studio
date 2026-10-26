@@ -48,6 +48,7 @@
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "fflate": "^0.8.3",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0",

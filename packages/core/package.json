@@ -38,6 +38,14 @@
       "types": "./src/providers/*.ts",
       "default": "./src/providers/*.ts"
     },
+    "./images": {
+      "types": "./src/images/index.ts",
+      "default": "./src/images/index.ts"
+    },
+    "./images/*": {
+      "types": "./src/images/*.ts",
+      "default": "./src/images/*.ts"
+    },
     "./library/*": {
       "types": "./src/library/*.ts",
       "default": "./src/library/*.ts"

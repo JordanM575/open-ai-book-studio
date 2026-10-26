@@ -324,3 +324,12 @@ needed and the spec or task it blocks.
 | --- | --- | --- | --- | --- | --- |
 | D-128 | Accepted | How can a standalone CLI or MCP client reach the open library without a second copy or a hosted service? | The desktop starts a loopback-only HTTP backend on a random port with a 256-bit per-run token, writes an owner-only locator at `~/.ai-book-studio/backend.json`, refuses browser origins and non-loopback Host headers, and removes the locator on quit. The toolkit is read-only by default; create and checked-save tools require `--allow-writes`. Every call goes through the open `Studio` and `Library`. | `apps/desktop/src/main/backend.ts`, `apps/toolkit/`, spec 018 FR-001–FR-014 | 018 T001–T010 |
 | D-129 | Deferred | Should an agent reach the library remotely through a tunnel or hosted MCP endpoint? | Not in v1. Remote access would add authentication, custody and revocation; the loopback backend deliberately has no LAN listener. Revisit with a dedicated ADR if the toolkit needs a remote client. | spec 018 non-goals, D-128 | None |
+
+## Illustration decisions (2026-10-26)
+
+| ID | Status | Question | Decision | Evidence | Tasks |
+| --- | --- | --- | --- | --- | --- |
+| D-130 | Accepted | One image manifest or fields inside `book.json`? | A separate versioned `images.json` beside an `images/` folder. It keeps `book.json` small, gives the archive a clean diff and lets the image store serialize its own writes. | Spec 019; `packages/core/src/images/` | 019 T001–T008 |
+| D-131 | Deferred | Multi-turn image editing, reference images and masks? | Not in v1. One-shot generation and the SAM cutout cover the demo; editing needs a conversation-state decision and a new cost model. | Spec 019 non-goals | None |
+| D-132 | Accepted | Where is the cutout PNG composited? | In the renderer from the source image and the decoded binary mask, so the desktop adds no native image library. The result is saved through the image store as a `character` image with `cutoutOf`. | Spec 020 FR-007 | 020 T004 |
+| D-133 | Deferred | Manual box/point SAM prompts? | Not in v1. Concept prompts plus an author-selected match are enough for the demo; manual prompts need a canvas coordinate UI and the documented token builder. | Spec 020 non-goals | None |

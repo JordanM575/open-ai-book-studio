@@ -9,6 +9,7 @@ import { ProviderService } from "./providers";
 import { AgentRuntime } from "./agent/runtime";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
+import { ImageService } from "./images";
 import { VoiceService } from "./voice";
 import { SettingsStore } from "./settings";
 import { Studio } from "./studio";
@@ -325,6 +326,7 @@ app.whenReady().then(async () => {
   const vault = new DesktopCredentialVault();
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
   const voice = new VoiceService(providers);
+  const images = new ImageService(providers);
   void vault.repairPermissions().then((permissions) => {
     if (permissions === "corrected") {
       console.log("[credentials] Corrected the credential file to owner-only permissions.");
@@ -357,7 +359,7 @@ app.whenReady().then(async () => {
   });
   app.on("browser-window-focus", () => notifier.clearBadge());
 
-  registerIpc(studio, () => mainWindow, providers, agentRuntime, voice);
+  registerIpc(studio, () => mainWindow, providers, agentRuntime, voice, images);
   buildMenu();
   mainWindow = createWindow();
 

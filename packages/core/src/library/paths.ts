@@ -7,6 +7,7 @@ export const LIBRARY_DIRS = {
   trash: "trash",
   chapters: "chapters",
   conflicts: "conflicts",
+  images: "images",
   threads: "threads",
   checkpoints: "checkpoints",
   sync: "sync"
@@ -15,7 +16,8 @@ export const LIBRARY_DIRS = {
 export const LIBRARY_FILES = {
   index: "library.json",
   device: "device.json",
-  fileIndex: "files.json"
+  fileIndex: "files.json",
+  images: "images.json"
 } as const;
 
 export const studioPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio]);
@@ -30,6 +32,12 @@ export const conflictsPath = (bookId: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.conflicts]);
 export const conflictPath = (bookId: string, fileName: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.conflicts, fileName]);
+export const imagesPath = (bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.images]);
+export const imageManifestPath = (bookId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_FILES.images]);
+export const imageFilePath = (bookId: string, fileName: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.images, fileName]);
 export const threadsPath = (bookId: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.threads]);
 export const checkpointsPath = (bookId: string): LibraryPath =>

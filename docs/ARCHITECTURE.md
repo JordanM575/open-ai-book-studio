@@ -271,3 +271,23 @@ Writes therefore reach the normal conflict path instead of bypassing it.
 
 The toolkit has no Electron dependency, no provider key and no model calls. Closing the app closes the
 backend. Remote access is deferred by D-129.
+
+## Illustrations
+
+`packages/core/src/images/` owns the image format and the only image writer:
+
+- `schema.ts` defines the versioned `images.json`, the image record and real byte inspection for
+  PNG, WebP and JPEG. The manifest, not a client MIME header, decides the extension and dimensions.
+- `store.ts` writes the image file first and the manifest second through `LibraryPort`, serializes
+  writes per book and removes a new file when the manifest commit fails. Attaching a chapter clears the
+  previous attachment in the same commit; removing moves the file to the library trash.
+- `apps/desktop/src/main/images.ts` calls Meta's OpenAI-compatible
+  `POST /v1/images/generations` with `muse-image-1.0`, `b64_json` and PNG output. It returns bytes and
+  provenance; the IPC handler writes through `ImageStore`. The flat cost is `$0.01` per successful
+  image and is shown before the request.
+- `IllustrationDialog` owns the prompt, shape, estimate, preview and saved-image list. The attached
+  image is rendered below the chapter and embedded in DOCX with its prompt as the caption.
+- The browser build returns a desktop-only refusal until Meta browser access is verified.
+
+The image folder and manifest are ordinary author files, included in the portable archive by the
+normal recursive walk. No image is stored in `book.json`, the catalog or the app profile.

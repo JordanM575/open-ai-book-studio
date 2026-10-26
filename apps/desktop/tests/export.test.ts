@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Library } from "../src/main/library/store";
-import { buildDocx } from "../src/main/export";
+import { buildDocx, type DocxImage } from "../src/main/export";
+import { unzipSync } from "fflate";
 
 const cleanups: string[] = [];
 
@@ -42,5 +43,26 @@ describe("docx export", () => {
     const detail = await library.readBook(book.id);
     const data = await buildDocx(detail);
     expect(data.length).toBeGreaterThan(500);
+  });
+
+  test("embeds a chapter illustration when one is attached", async () => {
+    const { library, bookId } = await fixture();
+    const detail = await library.readBook(bookId);
+    const png = new Uint8Array(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q6wAAAABJRU5ErkJggg==",
+        "base64"
+      )
+    );
+    const image: DocxImage = {
+      bytes: png,
+      width: 1,
+      height: 1,
+      mimeType: "image/png",
+      prompt: "A lighthouse in a storm"
+    };
+    const data = await buildDocx(detail, new Map([[detail.chapters[0]!.id, image]]));
+    const files = unzipSync(new Uint8Array(data));
+    expect(Object.keys(files).some((name) => /^word\/media\/.*\.png$/.test(name))).toBe(true);
   });
 });

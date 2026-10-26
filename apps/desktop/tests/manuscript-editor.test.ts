@@ -74,8 +74,7 @@ describe("ManuscriptEditor", () => {
     expect(onSaved).toHaveBeenCalledWith(saved);
   });
 
-  test("keeps the typed text and reports a conflict", async () => {
-    const conflict: ChapterConflict = {
+  test("keeps the typed text and reports a conflict", async () => {    const conflict: ChapterConflict = {
       bookId: BOOK,
       chapterId: CHAPTER.id,
       chapterTitle: "One",
@@ -98,5 +97,43 @@ describe("ManuscriptEditor", () => {
     expect(save).toHaveBeenCalledTimes(1);
     expect(onSaved).not.toHaveBeenCalled();
     expect(textarea.value).toBe("New text.\n");
+  });
+
+  test("shows an attached illustration below the manuscript", () => {
+    const { save } = mockStudio({ ok: true, data: { status: "saved", chapter: CHAPTER } });
+    testing.render(
+      React.createElement(ManuscriptEditor, {
+        bookId: BOOK,
+        chapter: CHAPTER,
+        ordinal: 1,
+        onSaved: () => {},
+        onStatus: () => {},
+        illustration: {
+          id: "img_ui000001",
+          kind: "chapter",
+          chapterId: CHAPTER.id,
+          characterId: null,
+          fileName: "img_ui000001.png",
+          mimeType: "image/png",
+          width: 1,
+          height: 1,
+          bytes: 68,
+          sha256: "c".repeat(64),
+          prompt: "A lighthouse in a storm",
+          provider: "meta",
+          model: "muse-image-1.0",
+          size: "1024x1024",
+          source: "generated",
+          createdAt: "2026-10-26T12:00:00.000Z",
+          cutoutOf: null,
+          costUsd: 0.01,
+          revisedPrompt: null,
+          confidence: null
+        },
+        illustrationData: "data:image/png;base64,iVBORw0KGgo="
+      })
+    );
+    expect(testing.screen.getByTestId("chapter-illustration")).toBeTruthy();
+    expect(save).not.toHaveBeenCalled();
   });
 });

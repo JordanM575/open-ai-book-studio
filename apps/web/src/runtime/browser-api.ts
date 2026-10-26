@@ -211,6 +211,21 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
           )
         )
     },
+    images: {
+      list: () => safe(async () => ({ manifest: { schemaVersion: 1, images: [] }, warning: null })),
+      read: () => safe(async () => null),
+      generate: () =>
+        Promise.resolve(
+          failure(
+            "invalid",
+            "Illustration generation is available in the desktop app. Meta browser access is not verified yet."
+          )
+        ),
+      attach: () =>
+        Promise.resolve(failure("invalid", "Illustrations are available in the desktop app.")),
+      remove: () =>
+        Promise.resolve(failure("invalid", "Illustrations are available in the desktop app."))
+    },
 
     agent: {
       start: () =>

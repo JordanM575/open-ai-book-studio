@@ -10,6 +10,9 @@ import type {
   SaveChapterResult
 } from "./schema";
 import type { Catalogue } from "./providers/models";
+import type { ImageSize } from "./providers/images";
+import type { ImageRecord } from "./images/schema";
+import type { ImageList } from "./images/store";
 import type { ConnectionSummary, ProviderDescription, ProviderId } from "./providers/types";
 import type { UsageSummary } from "./providers/usage";
 import type { VoiceTranscript } from "./providers/speech";
@@ -81,6 +84,13 @@ export const IPC = {
   voice: {
     connections: "voice:connections",
     transcribe: "voice:transcribe"
+  },
+  images: {
+    list: "images:list",
+    read: "images:read",
+    generate: "images:generate",
+    attach: "images:attach",
+    remove: "images:remove"
   },
   agent: {
     start: "agent:start",
@@ -233,6 +243,20 @@ export interface StudioApi {
       languageBias?: string[];
       keywords?: string[];
     }): Promise<Result<VoiceTranscript>>;
+  };
+  images: {
+    list(bookId: string): Promise<Result<ImageList>>;
+    /** The record plus a data URL for a preview. No secret or host path is included. */
+    read(bookId: string, imageId: string): Promise<Result<{ record: ImageRecord; dataUrl: string } | null>>;
+    generate(input: {
+      bookId: string;
+      chapterId?: string;
+      connectionId?: string;
+      prompt: string;
+      size?: ImageSize;
+    }): Promise<Result<ImageRecord>>;
+    attach(bookId: string, imageId: string, chapterId: string): Promise<Result<ImageRecord>>;
+    remove(bookId: string, imageId: string): Promise<Result<null>>;
   };
   agent: {
     start(input: AgentTurnInput): Promise<Result<AgentTurnStarted>>;
