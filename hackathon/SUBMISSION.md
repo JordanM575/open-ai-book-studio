@@ -88,11 +88,12 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
 | Smoke | `bun run smoke` | **16/16** |
 | UI audit | `bun run ui:audit` | **no dead ends** |
-| Submission check | `bun run submission:check` | **ready** · 136 commits · 489 tracked files |
+| Submission check | `bun run submission:check` | **ready** · 139 commits · 513 tracked files |
 | Clean clone | `bun install && bun run verify && bun run smoke` | **Pass** · 487 packages · verify pass · smoke 16/16 |
 
-**Code verified at:** `16a20e5` on 2026-10-26. The verification table and this packet are the
-documentation-only commits that follow; the app code did not change after the clean-clone pass.
+**Code verified at:** `369afc9` on 2026-10-26, cloned fresh from Gitea at the pushed branch head.
+The clean clone installed 487 packages, `bun run verify` passed the typecheck, 470 tests, the
+desktop and web builds, and `bun run smoke` passed 16/16.
 **Clean-clone path:** a fresh temporary directory
 (temporary; deleted after evidence was recorded).
 
@@ -102,11 +103,13 @@ documentation-only commits that follow; the app code did not change after the cl
 2. Show the library and the Finder folder: `book.json`, chapters, `images.json`.
 3. Open the Story Bible: outline, cast, memory.
 4. Ask the agent for the next scene; show tool calls, the checked save and the undo checkpoint.
-5. Dictate a sentence; show the transcript at the caret.
-6. Tick Background, close the window, show the notification, reopen and show the stored thread.
-7. Open the illustration: generate with Muse Image, then cut out Mara with SAM 3.1 and attach her.
-8. Run `bookwriter books` and show the MCP tool list against the same open book.
-9. Export DOCX and show the illustration; close on the folder and the tagline.
+5. Open **Agent** (the bot icon in the header): the tool metrics, the cache hit rate, the switch that
+   withdraws a tool, and the plugin folder. Turn a tool off and show the toolkit refusing it.
+6. Dictate a sentence; show the transcript at the caret.
+7. Tick Background, close the window, show the notification, reopen and show the stored thread.
+8. Open the illustration: generate with Muse Image, then cut out Mara with SAM 3.1 and attach her.
+9. Run `bookwriter books` and show the MCP tool list against the same open book.
+10. Export DOCX and show the illustration; close on the folder and the tagline.
 
 **Offline fallback:** open the sample, edit and save a chapter, and play the recorded film for model
 features. Never fake a provider response or a save.
@@ -117,7 +120,7 @@ features. Never fake a provider response or a save.
 | --- | --- |
 | Impact (30%) | A real author workflow: files, chapters, Story Bible, agent edits, export. The sample opens without an account. |
 | Meta AI tooling (25%) | Muse text, Muse Image, SAM 3.1, Muse Voice Transcribe and Contributor mode, each behind a capability and consent boundary. |
-| Technical depth (20%) | Atomic library writes, conflict copies, checkpoints, provider adapter seam, loopback toolkit token, tests and smoke. |
+| Technical depth (20%) | Atomic library writes, conflict copies, checkpoints, provider adapter seam, loopback toolkit token, a cacheable prompt prefix with its hit rate, per-tool metrics, a plugin seam, tests and smoke. |
 | Demo (25%) | One continuous story from prompt to illustration to a file in Finder; the film and live demo show the app, not a mock. |
 
 ## Links and final checklist
