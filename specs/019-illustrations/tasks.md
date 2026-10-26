@@ -36,8 +36,10 @@
 - [x] T009 Add a UI test for the panel states and attachment selection, then run the full verification.
   `manuscript-editor.test.ts` now covers the missing-connection state, an attached image, generation with
   the chapter id, attaching an existing image and the SAM match list; the full suite is 394 tests.
-- [ ] T010 Manual pass with a Meta key: generate one image, reopen the book, export DOCX and archive.
-  Record the result in `docs/research/illustrations-2026-10-26.md`.
+- [x] T010a Live Muse Image generation: 3.8 MB of PNG at 1024×1024 from `muse-image-1.0`, through the
+  app's own image service. Recorded in `docs/research/live-meta-2026-10-26.md`.
+- [ ] T010b The rest of the pass: reopen the book, and export DOCX and archive with the new image.
+  Pending: a person at the machine.
 
 ## Dependencies
 

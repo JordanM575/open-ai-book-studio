@@ -42,7 +42,7 @@
     "plugin:probe": "node scripts/plugin-probe.mjs",
     "glasses:check": "node scripts/glasses-check.mjs",
     "ambient:check": "node scripts/ambient-check.mjs",
-    "live:check": "node scripts/live-check.mjs",
+    "live:check": "bun scripts/live-check.mjs",
     "video:motion": "node video/motion/render.mjs",
     "video:motion:preview": "node video/motion/render.mjs --preview --ambient",
     "submission:check": "bun scripts/submission-check.ts",

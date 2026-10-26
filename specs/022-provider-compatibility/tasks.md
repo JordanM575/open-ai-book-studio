@@ -23,8 +23,10 @@
 
 - [x] T007 Add the Contributor facts and privacy note to `docs/ARCHITECTURE.md`, D-138/D-139 to
   `docs/DECISIONS.md`, the hackathon plan and the changelog.
-- [ ] T008 Opt-in live run on the fixture book with `muse-spark-1.3-contributor`: record the exact
-  model, prices, usage, consent flag and that no author data was used. Blocked without a Meta key.
+- [x] T008 Opt-in live run on the sample book with a Contributor model: the agent replied and the
+  chapter file on disk changed. Recorded in `docs/research/live-meta-2026-10-26.md`, along with the
+  catalogue of nine models the key offers and the consent flag the run set. No author data was used:
+  the run worked on a temporary copy of the committed sample.
 
 ## Dependencies
 

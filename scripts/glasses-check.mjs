@@ -57,6 +57,11 @@ await writeFile(join(profile, "studio.json"), `${JSON.stringify({ libraryRoot },
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+// This shell may carry a fetch proxy installed for the coding agent itself. The app must not
+// inherit it: the proxy authorises the agent's own traffic, not the app's, and every provider
+// request would come back as an unauthorised refusal that has nothing to do with the app.
+delete env.NODE_OPTIONS;
+for (const key of Object.keys(env)) if (key.startsWith("HEADROOM_")) delete env[key];
 env.STUDIO_TEST = "1";
 env.STUDIO_HEADLESS = "1";
 env.STUDIO_BACKEND = "1";

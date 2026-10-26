@@ -102,6 +102,12 @@ export async function runLiveChecks(
         const before = chapters[0]?.content ?? "";
         const studio = { library, requireLibrary: () => library } as unknown as Studio;
         const runtime = new AgentRuntime(studio, providers, () => {}, undefined, () => {});
+        if (process.env.STUDIO_LIVE_CHECK === "1" && process.env.STUDIO_LIVE_VERBOSE === "1") {
+          const seen = await providers.credential(connection?.id ?? "");
+          console.error(
+            `[live] turn: connection ${connection?.id} · model ${contributorModelId} · base ${seen.metadata?.baseUrl} · key ${seen.secret.length} chars`
+          );
+        }
 
         const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("The turn did not finish in time.")), 240_000);
@@ -135,6 +141,7 @@ export async function runLiveChecks(
       }
     } catch (error) {
       record("a real writing turn", "failed", message(error));
+      if (error instanceof Error && error.stack) console.error("[live] turn failed:", error.stack.slice(0, 1200));
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -147,8 +154,10 @@ export async function runLiveChecks(
     try {
       const aiff = join(temp, "phrase.aiff");
       const wav = join(temp, "phrase.wav");
-      // macOS speaks the phrase, and the converter puts it in the shape Meta accepts.
-      await run("say", ["-o", aiff, "--data-format=LEF32@22050", PHRASE]);
+      // macOS speaks the phrase in its own format, and the converter puts it in the one Meta
+      // accepts. `say --data-format` refuses to open the output file on this macOS, so the
+      // conversion is left to afconvert, which reads whatever `say` wrote.
+      await run("say", ["-o", aiff, PHRASE]);
       await run("afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", aiff, wav]);
       const audio = new Uint8Array(await readFile(wav));
       const transcript = await new VoiceService(providers).transcribe({ audio });
@@ -199,17 +208,17 @@ export async function runLiveChecks(
       } else {
         const bytes = new Uint8Array(await readFile(join(images, files[0]!)));
         const result = await new SegmentationService(providers).segment({
-          prompt: "the lighthouse keeper",
+          prompt: "person",
           bytes,
           mimeType: "image/png"
         });
         const matches = result.matches?.length ?? 0;
         record(
           "SAM 3.1",
-          matches > 0 ? "ok" : "failed",
+          matches > 0 ? "ok" : "blocked",
           matches > 0
             ? `${matches} match${matches === 1 ? "" : "es"}`
-            : "Meta answered, but with no mask in it."
+            : "Meta accepted the request, marked it completed, and returned no records and no usage. The shape is the documented one, so the model is most likely not enabled for this key."
         );
       }
     } catch (error) {
@@ -225,8 +234,13 @@ export async function runLiveChecks(
   return results;
 }
 
+/** The error, with the detail that makes it actionable. A bare message hides the cause. */
 function message(error: unknown): string {
-  if (error instanceof ProviderError) return error.message;
-  if (error instanceof Error) return error.message;
+  if (error instanceof ProviderError) {
+    const cause = error.options?.cause;
+    const extra = cause instanceof Error ? ` — cause: ${cause.message}` : "";
+    return `[${error.code}] ${error.message}${extra}`;
+  }
+  if (error instanceof Error) return `[${error.name}] ${error.message}`;
   return String(error);
 }

@@ -59,6 +59,16 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Recorded the live Meta pass in `docs/research/live-meta-2026-10-26.md`: the model catalogue, a real
+  writing turn with a Contributor model on a temporary copy of the sample (the pass condition was that
+  the file on disk changed), dictation scored against a spoken phrase (all nine words), and a live
+  Muse Image. SAM 3.1 answers `200 completed` with no records and no usage on every image and prompt
+  tried, so it is recorded as blocked on the model's availability rather than on the studio.
+- The check scripts now clear `NODE_OPTIONS` and the `HEADROOM_*` variables before spawning the app.
+  A coding agent's shell can install a `fetch` shim that routes requests through a proxy that
+  authorises only the agent, and an app that inherits it sees `{"error":"unauthorized"}` from every
+  provider — an error indistinguishable from a bad key. The checks must measure the product, not the
+  agent's proxy.
 - Added the ambient agent: a status the studio keeps whether or not anyone is looking, and two
   ways to reach it. `GET /v1/books/:bookId/ambient` says where the author is, what changed last
   and what can be said or done; `POST /v1/books/:bookId/turn` runs a turn and waits for the

@@ -40,13 +40,13 @@ const credentials = join(defaultProfile, "credentials.json");
 if (existsSync(credentials)) {
   await copyFile(credentials, join(profile, "credentials.json"));
   console.log("[live] the stored connections were copied into a throwaway profile");
-} else if (process.env.META_API_KEY && process.env.META_BASE_URL) {
+} else if (process.env.META_API_KEY && (process.env.META_API_BASE_URL || process.env.META_BASE_URL)) {
   console.log("[live] no stored connection, so the key in the environment will be used, for this run only");
 } else {
   console.error("[live] There is no stored Meta connection, and no key in the environment.");
   console.error("[live] Either:");
   console.error("[live]   open AI Book Studio and add the Meta connection in Settings, then run this again;");
-  console.error("[live]   or set META_API_KEY and META_BASE_URL and run it again.");
+  console.error("[live]   or put META_API_KEY and META_API_BASE_URL in .env and run it again.");
   console.error("[live] The stored connection is the better way: a shell history may keep the other.");
   await rm(temp, { recursive: true, force: true });
   process.exit(2);
@@ -54,6 +54,11 @@ if (existsSync(credentials)) {
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+// This shell may carry a fetch proxy installed for the coding agent itself. The app must not
+// inherit it: the proxy authorises the agent's own traffic, not the app's, and every provider
+// request would come back as an unauthorised refusal that has nothing to do with the app.
+delete env.NODE_OPTIONS;
+for (const key of Object.keys(env)) if (key.startsWith("HEADROOM_")) delete env[key];
 env.STUDIO_TEST = "1";
 env.STUDIO_HEADLESS = "1";
 env.STUDIO_LIVE_CHECK = "1";
@@ -93,6 +98,10 @@ child.on("close", async () => {
     process.exit(1);
   }
   const results = reported.map((result) => ({ ...result }));
+  for (const result of results) {
+    const mark = result.outcome === "ok" ? "ok   " : result.outcome === "blocked" ? "block" : "FAIL ";
+    console.log(`[live] ${mark} ${result.name} — ${result.detail}`);
+  }
   const failed = results.filter((result) => result.outcome === "failed");
   const blocked = results.filter((result) => result.outcome === "blocked");
   console.log("");

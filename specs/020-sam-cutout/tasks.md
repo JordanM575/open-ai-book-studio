@@ -32,7 +32,12 @@
   changelog entry. `THIRD_PARTY_NOTICES.md` records the SAM License dependency; the full docs pass
   still needs the final packaging check.
 - [ ] T008 Manual pass with a Meta key: segment a generated illustration, choose a match, save the
-  transparent PNG and reopen the book. Record it in `docs/research/sam-cutout-2026-10-26.md`.
+  transparent PNG and reopen the book. **Blocked differently than before.** The request reaches Meta
+  and is accepted — `200`, `status: completed` — but the response carries no records and no usage, on
+  the sample's illustration, on its cutout, and on a synthetic white disc with the plain nouns
+  "person", "lighthouse", "circle" and "character". The request shape is the one Meta's own
+  segmenting guide documents. The likely cause is that `sam-3.1` is listed in the catalogue but not
+  enabled for this key. Recorded in `docs/research/live-meta-2026-10-26.md`.
 
 ## Dependencies
 

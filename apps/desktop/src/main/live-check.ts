@@ -28,7 +28,23 @@ export async function runLiveCheckInApp(
   const service = (await hasMetaConnection(providers))
     ? providers
     : (fromEnvironment() ?? providers);
-  const results = await runLiveChecks(service, { sampleRoot });
+
+  // While the check runs, any request the provider refuses is reported with the status the
+  // provider gave and what it said, so a failure names the cause instead of guessing at it.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const response = await originalFetch(input, init);
+    if (!response.ok && url.includes("meta")) {
+      const body = await response.clone().text().catch(() => "");
+      console.error(`[live] refused ${response.status} ${url} — ${body.slice(0, 400).replace(/\s+/g, " ")}`);
+    }
+    return response;
+  }) as typeof fetch;
+
+  const results = await runLiveChecks(service, { sampleRoot }).finally(() => {
+    globalThis.fetch = originalFetch;
+  });
   for (const result of results) {
     const mark = result.outcome === "ok" ? "ok   " : result.outcome === "blocked" ? "block" : "FAIL ";
     console.log(`[live] ${mark} ${result.name} — ${result.detail}`);
@@ -54,7 +70,8 @@ async function hasMetaConnection(providers: ProviderService): Promise<boolean> {
 /** A provider service for a key that is only in the environment. */
 function fromEnvironment(): ProviderService | null {
   const secret = process.env.META_API_KEY?.trim();
-  const baseUrl = process.env.META_BASE_URL?.trim();
+  // `.env` names it META_API_BASE_URL; the shorter name is accepted too.
+  const baseUrl = process.env.META_API_BASE_URL?.trim() ?? process.env.META_BASE_URL?.trim();
   if (!secret || !baseUrl) return null;
   console.log("[live] using the Meta key from the environment, for this run only.");
   const credential: StoredCredential = {

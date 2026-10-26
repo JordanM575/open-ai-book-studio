@@ -50,10 +50,12 @@ A task blocked on an open decision must not start until it is accepted.
 
 - [x] T011 Add the voice/background sections to `docs/ARCHITECTURE.md`, the audio decisions to
   `docs/DECISIONS.md` (D-125–D-127), the spec link to `specs/README.md` and the changelog entry.
-- [ ] T012 Manual pass with a Meta key: dictate one paragraph, deny the microphone once, force a 401,
-  close the window during a turn and confirm the notification and stored thread. Record the result in
-  `docs/research/voice-and-background-2026-10-26.md`. Pending: this environment has no Meta key and a
-  notification pass needs a signed or locally permitted macOS app.
+- [x] T012a Dictation with a real recording: the check speaks a known phrase, converts it to the
+  16 kHz mono WAV Meta accepts, and transcribes it. The transcript matched all nine words. Recorded in
+  `docs/research/live-meta-2026-10-26.md`.
+- [ ] T012b The rest of the manual pass: deny the microphone once, force a 401, close the window
+  during a turn and confirm the notification and the stored thread. Pending: a notification pass
+  needs a signed or locally permitted macOS app and a person at the machine.
 
 ## Dependencies
 
