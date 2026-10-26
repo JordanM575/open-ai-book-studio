@@ -59,6 +59,16 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added the voice pipeline (spec D-159): a text-to-speech seam in `packages/core/src/providers/tts.ts`
+  with two services behind it — OpenAI's `/audio/speech` for the studio's voice, and OpenRouter's
+  `openai/gpt-audio-mini` as a cheap optional path that streams 24 kHz PCM which the studio wraps in
+  a WAV itself. A chapter is longer than one request, so the text is split at sentence boundaries and
+  the audio is joined back into one sound. The minimal mode now speaks through it, offers the voices,
+  and falls back to the device's own voice when no service is connected. Documented in
+  [`docs/VOICE.md`](docs/VOICE.md).
+- Retired the SAM cutout (D-158): the request reaches Meta and is accepted, but returns no records
+  and no usage on real and synthetic images alike, so nothing is built on it and spec 020 is marked
+  superseded. The implementation and its tests stay where they are.
 - Recorded the live Meta pass in `docs/research/live-meta-2026-10-26.md`: the model catalogue, a real
   writing turn with a Contributor model on a temporary copy of the sample (the pass condition was that
   the file on disk changed), dictation scored against a spoken phrase (all nine words), and a live

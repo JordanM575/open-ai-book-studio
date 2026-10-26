@@ -18,6 +18,7 @@ import { AmbientService } from "./agent/ambient";
 import { ImageService } from "./images";
 import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
+import { SpeechService } from "./speech";
 import { SettingsStore } from "./settings";
 import { Studio } from "./studio";
 import { runSmoke } from "./smoke";
@@ -406,6 +407,7 @@ app.whenReady().then(async () => {
   const vault = new DesktopCredentialVault();
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
   const voice = new VoiceService(providers);
+  const speech = new SpeechService(providers);
   const images = new ImageService(providers);
   const segmentation = new SegmentationService(providers);
   void vault.repairPermissions().then((permissions) => {
@@ -459,6 +461,7 @@ app.whenReady().then(async () => {
     segmentation,
     toolsBridge,
     settings,
+    speech,
     () => backend,
     bridgeControl
   );

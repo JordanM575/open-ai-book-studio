@@ -9,6 +9,7 @@ import { AgentRuntime } from "./agent/runtime";
 import { ImageService } from "./images";
 import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
+import { SpeechService } from "./speech";
 import { Library } from "./library/store";
 import type { ProviderService } from "./providers";
 import type { Studio } from "./studio";
@@ -177,6 +178,37 @@ export async function runLiveChecks(
     }
   }
 
+  /* ------------------------------------------------------------- speaking */
+
+  {
+    try {
+      const speakers = await new SpeechService(providers).connections();
+      if (speakers.length === 0) {
+        record("speaking", "blocked", "No voice service is connected, so there is nothing to speak with.");
+      } else {
+        const spoken = await new SpeechService(providers).speak({
+          text: "The lighthouse keeper counted the ships that never came. Shall I read it to you?"
+        });
+        const level = loudness(spoken.bytes, spoken.mimeType);
+        // A file of the right size can still be silence, so the check measures it.
+        const plausible = spoken.bytes.byteLength > 2_000 && level > 100;
+        record(
+          "speaking",
+          plausible ? "ok" : "failed",
+          plausible
+            ? `${spoken.bytes.byteLength} bytes of ${spoken.mimeType} in ${spoken.chunks} request${
+                spoken.chunks === 1 ? "" : "s"
+              }, ${spoken.model}, level ${Math.round(level)}`
+            : `The voice service returned ${spoken.bytes.byteLength} bytes at level ${Math.round(
+                level
+              )}, which is not audible speech.`
+        );
+      }
+    } catch (error) {
+      record("speaking", "failed", message(error));
+    }
+  }
+
   /* ------------------------------------------------------------- an image */
 
   try {
@@ -232,6 +264,26 @@ export async function runLiveChecks(
   }
 
   return results;
+}
+
+/**
+ * How loud the audio is, as the root mean square of its 16-bit samples.
+ *
+ * A file of the right size proves nothing: a service that returns silence returns a file. This
+ * reads past the header and measures what is actually in it.
+ */
+function loudness(audio: Uint8Array, mimeType: string): number {
+  // MP3 is compressed, so there is nothing cheap to measure; the size is the only signal there.
+  if (!mimeType.includes("wav") || audio.byteLength <= 44) return audio.byteLength > 2_000 ? 1_000 : 0;
+  const view = new DataView(audio.buffer, audio.byteOffset, audio.byteLength);
+  let sum = 0;
+  let count = 0;
+  for (let offset = 44; offset + 1 < audio.byteLength; offset += 2) {
+    const sample = view.getInt16(offset, true);
+    sum += sample * sample;
+    count += 1;
+  }
+  return count === 0 ? 0 : Math.sqrt(sum / count);
 }
 
 /** The error, with the detail that makes it actionable. A bare message hides the cause. */

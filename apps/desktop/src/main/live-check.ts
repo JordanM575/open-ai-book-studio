@@ -67,36 +67,91 @@ async function hasMetaConnection(providers: ProviderService): Promise<boolean> {
   }
 }
 
-/** A provider service for a key that is only in the environment. */
+/**
+ * A provider service for the keys that are only in the environment.
+ *
+ * The studio itself only reads its own vault, so this exists for a one-off run: the keys are held
+ * in memory for the length of the check and written nowhere. A shell history may keep them, which
+ * is why the stored connection is the better way.
+ */
 function fromEnvironment(): ProviderService | null {
-  const secret = process.env.META_API_KEY?.trim();
+  const credentials: StoredCredential[] = [];
+
+  const metaKey = process.env.META_API_KEY?.trim();
   // `.env` names it META_API_BASE_URL; the shorter name is accepted too.
-  const baseUrl = process.env.META_API_BASE_URL?.trim() ?? process.env.META_BASE_URL?.trim();
-  if (!secret || !baseUrl) return null;
-  console.log("[live] using the Meta key from the environment, for this run only.");
-  const credential: StoredCredential = {
-    id: "conn_livecheck01",
-    provider: "meta",
-    label: "Live check",
-    kind: "api-key",
-    createdAt: new Date().toISOString(),
-    secret,
-    metadata: { baseUrl }
-  };
-  const connection: ConnectionSummary = {
-    id: credential.id,
-    provider: "meta",
-    label: "Live check",
-    kind: "api-key",
-    createdAt: credential.createdAt
-  };
+  const metaBase = process.env.META_API_BASE_URL?.trim() ?? process.env.META_BASE_URL?.trim();
+  if (metaKey && metaBase) {
+    credentials.push({
+      id: "conn_livecheck01",
+      provider: "meta",
+      label: "Live check (Meta)",
+      kind: "api-key",
+      createdAt: new Date().toISOString(),
+      secret: metaKey,
+      metadata: { baseUrl: metaBase }
+    });
+  }
+
+  // The cheap path first: OpenRouter's speech model costs a fraction of a cent a sentence, which
+  // is what makes a check that runs often affordable. OpenAI stays the production voice.
+  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openRouterKey) {
+    credentials.push({
+      id: "conn_livecheck03",
+      provider: "openrouter",
+      label: "Live check (OpenRouter)",
+      kind: "api-key",
+      createdAt: new Date().toISOString(),
+      secret: openRouterKey
+    });
+  }
+
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openaiKey) {
+    credentials.push({
+      id: "conn_livecheck02",
+      provider: "openai",
+      label: "Live check (OpenAI)",
+      kind: "api-key",
+      createdAt: new Date().toISOString(),
+      secret: openaiKey,
+      ...(process.env.OPENAI_API_BASE_URL?.trim()
+        ? { metadata: { baseUrl: process.env.OPENAI_API_BASE_URL.trim() } }
+        : {})
+    });
+  }
+
+  if (credentials.length === 0) return null;
+  console.log(
+    `[live] using ${credentials.length} key${credentials.length === 1 ? "" : "s"} from the environment, for this run only.`
+  );
+
+  const summaries: ConnectionSummary[] = credentials.map((entry) => ({
+    id: entry.id,
+    provider: entry.provider,
+    label: entry.label,
+    kind: entry.kind,
+    createdAt: entry.createdAt
+  }));
+
+  const byId = new Map(credentials.map((entry) => [entry.id, entry]));
+
   return {
-    list: async () => [connection],
+    list: async () => summaries,
     credential: async (id: string) => {
-      if (id !== credential.id) throw new ProviderError("auth", "No such connection.");
-      return credential;
+      const entry = byId.get(id);
+      if (!entry) throw new ProviderError("auth", "No such connection.");
+      return entry;
     },
-    models: async () => {
+    models: async (id: string) => {
+      const entry = byId.get(id);
+      if (entry?.provider !== "meta") {
+        // The checks that need a catalogue only need Meta's; another provider answers with an
+        // empty list rather than a guess at an endpoint.
+        return { models: [], fetchedAt: new Date().toISOString() };
+      }
+      const secret = entry.secret;
+      const baseUrl = entry.metadata?.baseUrl ?? "";
       const endpoint = endpointFor("meta", secret, baseUrl);
       const response = await fetch(endpoint.url, { headers: endpoint.headers });
       if (!response.ok) {

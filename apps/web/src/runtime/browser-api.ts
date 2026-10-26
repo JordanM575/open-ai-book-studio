@@ -218,6 +218,14 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
             "invalid",
             "Voice dictation is available in the desktop app. Meta browser access is not verified yet."
           )
+        ),
+      speakers: () => safe(async () => ({ available: false, connectionLabel: null, endpoint: null, model: null, voices: [] })),
+      speak: () =>
+        Promise.resolve(
+          failure(
+            "invalid",
+            "Speaking is available in the desktop app. The browser uses the device's own voice."
+          )
         )
     },
     images: {

@@ -2,7 +2,15 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
-import { IPC, type BridgeControl, type BridgeStatus, type Result, type StudioError } from "@ai-book-studio/core/ipc";
+import {
+  IPC,
+  type BridgeControl,
+  type BridgeStatus,
+  type Result,
+  type SpokenReply,
+  type StudioError,
+  type VoiceSpeakers
+} from "@ai-book-studio/core/ipc";
 import { bookSchema, idSchema } from "@ai-book-studio/core/schema";
 import { PROVIDER_LIST, providerById } from "@ai-book-studio/core/providers/registry";
 import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
@@ -35,6 +43,8 @@ import type { Studio } from "./studio";
 import type { ProviderService } from "./providers";
 import type { AgentRuntime } from "./agent/runtime";
 import type { VoiceService } from "./voice";
+import type { SpeechService } from "./speech";
+import { ttsCapability } from "@ai-book-studio/core/providers/tts";
 import type { ImageService } from "./images";
 import type { SegmentationService } from "./segmentation";
 
@@ -43,6 +53,13 @@ const contentInput = z.string().max(20_000_000);
 const versionInput = z.number().int().min(0);
 const hashInput = z.string().regex(/^[a-f0-9]{64}$/);
 const connectionId = connectionIdSchema;
+
+const speakInput = z.object({
+  connectionId: connectionIdSchema.optional(),
+  text: z.string().min(1).max(200_000),
+  voice: z.string().min(1).max(40).optional(),
+  speed: z.number().min(0.25).max(4).optional()
+});
 
 const saveInput = z.object({
   bookId: idSchema,
@@ -101,6 +118,7 @@ export function registerIpc(
   segmentation: SegmentationService,
   toolsBridge: ToolBridge,
   settings: SettingsStore,
+  speech: SpeechService,
   getBackend: () => LocalBackend | null = () => null,
   bridge: BridgeControl = { status: null, start: async () => undefined, stop: async () => undefined }
 ): void {
@@ -558,6 +576,43 @@ export function registerIpc(
       ...(input.languageBias?.length ? { languageBias: input.languageBias } : {}),
       ...(input.keywords?.length ? { keywords: input.keywords } : {})
     });
+  });
+
+  handle(IPC.voice.speakers, async (): Promise<VoiceSpeakers> => {
+    const available = await speech.connections();
+    const first = available[0];
+    if (!first) {
+      return { available: false, connectionLabel: null, endpoint: null, model: null, voices: [] };
+    }
+    const credential = await providers.credential(first.id);
+    const capability = ttsCapability(credential.provider, credential.metadata?.baseUrl);
+    return {
+      available: capability !== null,
+      connectionLabel: first.label,
+      endpoint: capability?.endpoint ?? null,
+      model: capability?.model ?? null,
+      voices: capability ? [...capability.voices] : []
+    };
+  });
+
+  handle(IPC.voice.speak, async (payload) => {
+    const input = speakInput.parse(payload);
+    const result = await speech.speak({
+      text: input.text,
+      ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+      ...(input.voice ? { voice: input.voice as never } : {}),
+      ...(input.speed !== undefined ? { speed: input.speed } : {})
+    });
+    // The audio goes back as a data URL so the renderer can play it without a second request.
+    const dataUrl = `data:${result.mimeType};base64,${Buffer.from(result.bytes).toString("base64")}`;
+    return {
+      dataUrl,
+      mimeType: result.mimeType,
+      characters: result.characters,
+      chunks: result.chunks,
+      connectionLabel: result.connectionLabel,
+      model: result.model
+    } satisfies SpokenReply;
   });
 
   /* -------------------------------------------------------------------- images */

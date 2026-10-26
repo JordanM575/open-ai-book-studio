@@ -1,6 +1,14 @@
 # Character cutouts with SAM 3.1
 
-**Status:** Planned (2026-10-26)
+**Status:** Superseded (2026-10-26), see D-158
+
+> **Superseded by D-158.** A live run of this request reaches Meta and is accepted — `200`,
+> `status: completed` — but returns no records and no usage, on real and synthetic images alike,
+> in the shape Meta's own segmenting guide documents. The studio cannot fix that from its side, and
+> the cutout was never on the critical path. The implementation and its tests stay; nothing is
+> built on it, and the submission does not claim a cutout. See
+> [`docs/research/live-meta-2026-10-26.md`](../../docs/research/live-meta-2026-10-26.md).
+
 **Number:** 020
 **Depends on:** [019](../019-illustrations/spec.md) image store and illustration panel,
 [011](../011-model-access/spec.md) Meta connection.

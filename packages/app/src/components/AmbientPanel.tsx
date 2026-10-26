@@ -41,6 +41,7 @@ export function AmbientPanel({
   const [note, setNote] = useState("");
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
+  const [voice, setVoice] = useState<string>("");
   const turnRef = useRef<string | null>(null);
   const speech = useSpeech();
 
@@ -103,14 +104,14 @@ export function AmbientPanel({
       return;
     }
     setNote("");
-    speech.speak(`${chapterTitle}. ${text}`);
-  }, [chapterContent, chapterTitle, speech]);
+    void speech.speak(`${chapterTitle}. ${text}`, voice ? { voice } : {});
+  }, [chapterContent, chapterTitle, speech, voice]);
 
   const whereAmI = useCallback(() => {
     if (!status) return;
     setNote("");
-    speech.speak(status.say);
-  }, [status, speech]);
+    void speech.speak(status.say, voice ? { voice } : {});
+  }, [status, speech, voice]);
 
   const undo = useCallback(async () => {
     try {
@@ -252,6 +253,30 @@ export function AmbientPanel({
               Tell it
             </Button>
           </div>
+          {speech.using === "tts" && speech.voices.length > 0 ? (
+            <label className="mt-3 flex items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+              <span>Voice</span>
+              <select
+                className="rounded-[var(--corner-md)] border border-border bg-[var(--secondary)] px-2 py-1 text-[var(--text-caption-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                value={voice}
+                onChange={(event) => setVoice(event.target.value)}
+                data-testid="ambient-voice"
+              >
+                <option value="">The studio&apos;s default</option>
+                {speech.voices.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {speech.using === "device" ? (
+            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+              Speaking with this computer&apos;s own voice. Connect a voice service in Settings for
+              the studio&apos;s voice instead.
+            </p>
+          ) : null}
           {!speech.supported ? (
             <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
               This device cannot speak, so the agent shows its status instead of saying it.

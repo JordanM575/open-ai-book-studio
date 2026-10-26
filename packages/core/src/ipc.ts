@@ -23,6 +23,33 @@ import type { ThreadSummary } from "./agent/threads";
 import type { AgentStatus, PluginStatus } from "./agent/metrics";
 import type { AmbientStatus } from "./agent/ambient";
 
+/** What the studio can speak with, and in which voices. */
+export interface VoiceSpeakers {
+  /** Whether any connection can speak at all. */
+  available: boolean;
+  /** The connection the voice would come from. */
+  connectionLabel: string | null;
+  /** Where the audio goes. */
+  endpoint: string | null;
+  /** The model that will read. */
+  model: string | null;
+  /** The voices to offer. */
+  voices: string[];
+}
+
+/** One spoken reply, ready to play. */
+export interface SpokenReply {
+  /** `data:audio/mpeg;base64,…` */
+  dataUrl: string;
+  mimeType: string;
+  /** How many characters were spoken. */
+  characters: number;
+  /** How many requests it took. */
+  chunks: number;
+  connectionLabel: string;
+  model: string;
+}
+
 /** The bridge to the phone, as the app's settings panel drives it. */
 export interface BridgeControl {
   /** The running bridge's address, token and port, or null when it is off. */
@@ -117,7 +144,11 @@ export const IPC = {
   },
   voice: {
     connections: "voice:connections",
-    transcribe: "voice:transcribe"
+    transcribe: "voice:transcribe",
+    /** Connections that can speak, and the voices they offer. */
+    speakers: "voice:speakers",
+    /** Speak text and return the audio, so the renderer can play it. */
+    speak: "voice:speak"
   },
   images: {
     list: "images:list",
@@ -307,6 +338,20 @@ export interface StudioApi {
       languageBias?: string[];
       keywords?: string[];
     }): Promise<Result<VoiceTranscript>>;
+    /** The connections that can speak, and the voices they offer. */
+    speakers(): Promise<Result<VoiceSpeakers>>;
+    /**
+     * Speak text and return the audio as a data URL.
+     *
+     * A chapter is more than one request; the main process splits it at sentence boundaries and
+     * joins the audio back into one sound, so the caller plays one thing and stops one thing.
+     */
+    speak(input: {
+      connectionId?: string;
+      text: string;
+      voice?: string;
+      speed?: number;
+    }): Promise<Result<SpokenReply>>;
   };
   images: {
     list(bookId: string): Promise<Result<ImageList>>;
