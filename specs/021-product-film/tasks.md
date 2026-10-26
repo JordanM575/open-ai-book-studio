@@ -4,11 +4,11 @@
 
 ## Phase 1 — Story and brand
 
-- [ ] T001 Record the competitor/brand review in `docs/research/branding-2026-10-26.md` and add the
+- [x] T001 Record the competitor/brand review in `docs/research/branding-2026-10-26.md` and add the
   positioning paragraph to `docs/DESIGN.md`. Done in this slice.
-- [ ] T002 Lock `video/script.md` against the actual build: timed narration, on-screen text and the
+- [x] T002 Lock `video/script.md` against the actual build: timed narration, on-screen text and the
   benefit line for each shot.
-- [ ] T003 Lock `video/storyboard.md`: every UI state, capture method, motion plate and transition.
+- [x] T003 Lock `video/storyboard.md`: every UI state, capture method, motion plate and transition.
 
 ## Phase 2 — Capture
 
@@ -18,12 +18,15 @@
   covers the book, cast, chapters, illustration, cutout and manifest.
 - [ ] T005 Record the library, workspace, Story Bible, agent turn, save status, dictation, background
   toggle, notification, illustration dialog, SAM match picker, cutout, CLI, MCP and DOCX export.
-- [ ] T006 Capture the Finder/file-tree proof and the export result.
+  Blocked on a manual screen-recording session; the fixture and hidden capture harness are ready.
+- [ ] T006 Capture the Finder/file-tree proof and the export result. Blocked on the same capture
+  session; it uses the fixture folder and a throwaway profile.
 
 ## Phase 3 — Motion and voice
 
-- [ ] T007 Build the HTML/CSS motion plates with the design tokens and capture them frame-exactly
-  through Playwright.
+- [x] T007 Build the HTML/CSS motion plates with the design tokens and capture them frame-exactly
+  through Playwright. `video/motion/index.html` has eight scenes; `render.mjs` renders preview stills
+  or deterministic PNG sequences; previews were checked at 1920×1080.
 - [ ] T008 Record the narration or generate the licensed synthetic track; transcribe it with Muse
   Voice Transcribe and lock the timing.
 - [ ] T009 Licence and credit the music; mix to −14 LUFS / −1 dBTP.

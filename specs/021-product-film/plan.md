@@ -10,6 +10,8 @@ video/
   script.md            locked timed narration and on-screen text
   storyboard.md        shot list, UI state, motion, capture method
   assets.md            music, voice, fonts, icons and licences
+  fixture/             deterministic film fixture generator notes
+  motion/              HTML/CSS plates and the Playwright frame renderer
   source/              project files and capture scripts
   renders/             generated masters and cuts (not committed)
 ```
@@ -54,6 +56,11 @@ plates are:
 
 All plates use the same type scale, one accent and no gradient beyond the ambient wash. Motion is
 short, purposeful and reduced-motion friendly.
+
+The implementation is [`video/motion/index.html`](../../video/motion/index.html). It exposes
+`window.renderAt(ms)` so every reveal is deterministic; `render.mjs` drives Playwright at 1920×1080 and
+writes either preview stills or a 30 fps PNG sequence to `video/renders/motion/`. Scenes: problem,
+files, trust, background, visuals, voice, interop and close.
 
 ## Voice
 

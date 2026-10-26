@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Book Studio — motion plates</title>
+    <link rel="stylesheet" href="../../packages/ui/src/styles/tokens.generated.css" />
+    <style>
+      :root {
+        --plate-ink: #12141a;
+        --plate-muted: #5f636b;
+        --plate-line: rgba(18, 20, 26, 0.12);
+        --plate-card: rgba(255, 255, 255, 0.82);
+        --plate-wash: radial-gradient(1200px 760px at 18% 12%, #e8f0ff 0%, transparent 62%),
+          radial-gradient(1000px 700px at 84% 74%, #fff2df 0%, transparent 58%),
+          linear-gradient(145deg, #f7f8fb 0%, #eef1f6 100%);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+      body {
+        font-family: var(--font-ui);
+        color: var(--plate-ink);
+        background: transparent;
+      }
+      body.ambient { background: var(--plate-wash); }
+      .stage { position: relative; width: 100%; height: 100%; padding: 92px 104px; }
+      .scene { position: absolute; inset: 0; padding: 92px 104px; display: none; }
+      .scene.active { display: block; }
+      .eyebrow {
+        font-size: 20px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--blue-600);
+      }
+      h1 {
+        margin: 18px 0 0; max-width: 1320px; font-size: 88px; line-height: 1.02;
+        letter-spacing: -2.8px; font-weight: 700;
+      }
+      h1.small { font-size: 74px; }
+      .sub {
+        margin-top: 24px; max-width: 1080px; font-size: 30px; line-height: 1.3;
+        color: var(--plate-muted);
+      }
+      [data-reveal] { opacity: 0; transform: translateY(18px); }
+      .row { display: flex; gap: 28px; }
+      .card {
+        border: 1px solid var(--plate-line); background: var(--plate-card);
+        border-radius: 28px; box-shadow: var(--elevation-glass); padding: 30px;
+      }
+      .card h2 { margin: 0; font-size: 25px; letter-spacing: -0.3px; }
+      .card p { margin: 8px 0 0; font-size: 20px; line-height: 1.35; color: var(--plate-muted); }
+      .muted { color: var(--plate-muted); }
+      .mono { font-family: var(--font-code); }
+      .bottom { position: absolute; left: 104px; bottom: 84px; font-size: 19px; color: var(--plate-muted); }
+
+      /* problem */
+      .problem-grid { display: grid; grid-template-columns: 1fr 90px 1fr; gap: 18px; align-items: center; margin-top: 64px; }
+      .chat { height: 300px; display: flex; flex-direction: column; gap: 14px; }
+      .bubble { border-radius: 18px; background: #eef1f6; padding: 14px 16px; font-size: 19px; color: #4a4e57; }
+      .bubble.me { align-self: flex-end; background: #dce9ff; }
+      .folder { height: 300px; display: flex; flex-direction: column; gap: 12px; }
+      .file { display: flex; align-items: center; gap: 12px; font-size: 19px; color: #42464e; }
+      .file i { width: 22px; height: 16px; border-radius: 4px; background: #c9d2e2; display: inline-block; }
+      .arrow { text-align: center; color: var(--plate-muted); font-size: 16px; line-height: 1.6; }
+      .arrow b { display: block; font-size: 34px; color: var(--blue-600); }
+
+      /* file tree */
+      .tree { margin-top: 58px; width: 1050px; padding: 36px 42px; }
+      .tree-line { display: flex; gap: 16px; align-items: center; font-size: 25px; line-height: 1.8; }
+      .tree-line .glyph { width: 34px; color: var(--blue-600); font-family: var(--font-code); }
+      .tree-line .tag { margin-left: 12px; font-size: 16px; color: var(--plate-muted); }
+      .tree-line.child { padding-left: 44px; }
+      .tree-line.deep { padding-left: 88px; }
+
+      /* trust */
+      .trust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 58px; }
+      .status-dot { width: 12px; height: 12px; border-radius: 999px; background: var(--green-500); display: inline-block; }
+      .big-line { font-size: 34px; font-weight: 600; letter-spacing: -0.4px; }
+      .undo { display: flex; align-items: center; gap: 14px; margin-top: 22px; font-size: 21px; color: var(--plate-muted); }
+      .undo b { color: var(--plate-ink); }
+
+      /* background */
+      .timeline { position: relative; display: flex; gap: 0; margin-top: 78px; width: 1440px; }
+      .node { flex: 1; position: relative; padding-top: 34px; }
+      .node:before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--plate-line); }
+      .node .dot { position: absolute; top: -8px; left: 0; width: 18px; height: 18px; border-radius: 50%; background: #c9cfda; }
+      .node.on .dot { background: var(--blue-600); box-shadow: 0 0 0 8px rgba(0, 113, 227, 0.14); }
+      .node h3 { margin: 0; font-size: 24px; }
+      .node p { margin: 6px 0 0; font-size: 18px; color: var(--plate-muted); }
+      .notification { margin-top: 54px; width: 760px; display: flex; gap: 20px; align-items: center; }
+      .app-icon { width: 54px; height: 54px; border-radius: 14px; background: linear-gradient(145deg, #1b2a5e, #0071e3); }
+      .notification h3 { margin: 0; font-size: 22px; }
+      .notification p { margin: 4px 0 0; font-size: 18px; color: var(--plate-muted); }
+
+      /* visuals */
+      .visual-grid { display: grid; grid-template-columns: 1fr 70px 1fr 70px 1fr; gap: 12px; align-items: center; margin-top: 46px; }
+      .thumb { height: 270px; border-radius: 22px; overflow: hidden; position: relative; }
+      .thumb.image { background: linear-gradient(160deg, #1b2a4a 0%, #f2b56b 58%, #173042 100%); }
+      .thumb.image:after { content: ""; position: absolute; left: 34%; top: 18%; width: 16%; height: 62%; background: repeating-linear-gradient(180deg, #f3e6d2 0 18px, #b4443a 18px 36px); border-radius: 8px 8px 4px 4px; }
+      .thumb.mask { background: #10141d; display: grid; place-items: center; }
+      .thumb.mask:after { content: ""; width: 130px; height: 190px; border-radius: 70px 70px 30px 30px; background: rgba(255, 255, 255, 0.9); clip-path: polygon(25% 0, 75% 0, 100% 100%, 0 100%); }
+      .thumb.alpha { background: conic-gradient(#d8dbe2 25%, #f6f7fa 0 50%, #d8dbe2 0 75%, #f6f7fa 0) 0 0 / 36px 36px; display: grid; place-items: center; }
+      .thumb.alpha:after { content: ""; width: 120px; height: 180px; border-radius: 60px 60px 26px 26px; background: #263247; clip-path: polygon(25% 0, 75% 0, 100% 100%, 0 100%); }
+      .step { text-align: center; font-size: 18px; color: var(--plate-muted); }
+      .step b { display: block; margin-top: 12px; color: var(--plate-ink); font-size: 22px; }
+      .chev { text-align: center; font-size: 36px; color: var(--blue-600); }
+
+      /* interop */
+      .terminal { margin-top: 46px; width: 1160px; padding: 28px 34px; background: #10141d; border-radius: 24px; color: #d8e0ee; box-shadow: var(--elevation-overlay); }
+      .terminal .bar { display: flex; gap: 8px; margin-bottom: 18px; }
+      .terminal .bar i { width: 12px; height: 12px; border-radius: 50%; background: #465164; display: block; }
+      .terminal pre { margin: 0; font-family: var(--font-code); font-size: 22px; line-height: 1.65; white-space: pre-wrap; }
+      .terminal .prompt { color: #7cc7ff; }
+      .badge { display: inline-flex; gap: 10px; align-items: center; margin-top: 26px; padding: 12px 18px; border-radius: 999px; border: 1px solid var(--plate-line); background: var(--plate-card); font-size: 18px; }
+      .cloud { color: #b23a3a; text-decoration: line-through; }
+
+      /* voice */
+      .wave { display: flex; align-items: center; gap: 10px; height: 190px; margin-top: 58px; }
+      .wave i { display: block; width: 16px; border-radius: 10px; background: var(--blue-600); height: 18px; }
+      .transcript { margin-top: 26px; width: 1120px; font-family: var(--font-reading); font-size: 38px; line-height: 1.35; }
+      .transcript span { color: var(--plate-muted); }
+
+      /* close */
+      .close { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+      .close h1 { font-size: 112px; max-width: 1500px; letter-spacing: -4px; }
+      .wordmark { display: flex; align-items: center; gap: 18px; margin-top: 52px; font-size: 26px; font-weight: 600; }
+      .mark { width: 46px; height: 46px; border-radius: 13px; background: linear-gradient(145deg, #1b2a5e, #0071e3); }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <section class="scene" data-scene="problem">
+        <div class="eyebrow" data-reveal="0">The old way</div>
+        <h1 data-reveal="120">The book is somewhere else.</h1>
+        <div class="problem-grid">
+          <div class="card chat" data-reveal="260">
+            <h2>Chat</h2>
+            <div class="bubble">Here is a paragraph you can paste…</div>
+            <div class="bubble me">Great, now where does it live?</div>
+            <div class="bubble">In this conversation.</div>
+            <p>No version. No file. No undo.</p>
+          </div>
+          <div class="arrow" data-reveal="420"><b>→</b>copy · paste</div>
+          <div class="card folder" data-reveal="360">
+            <h2>Your book</h2>
+            <div class="file"><i></i>book.json</div>
+            <div class="file"><i></i>chapters/0001-the-door.md</div>
+            <div class="file"><i></i>images.json</div>
+            <div class="file"><i></i>images/img_….png</div>
+            <p class="muted">A folder you can open anywhere.</p>
+          </div>
+        </div>
+        <div class="bottom" data-reveal="560">The work lives in one place. The assistant lives in another.</div>
+      </section>
+
+      <section class="scene" data-scene="files">
+        <div class="eyebrow" data-reveal="0">Ownership</div>
+        <h1 data-reveal="120">A folder, not an account.</h1>
+        <div class="card tree" data-reveal="260">
+          <div class="tree-line"><span class="glyph">▸</span><b>The Salt Road/</b></div>
+          <div class="tree-line child"><span class="glyph">▸</span>book.json <span class="tag">idea, cast, outline</span></div>
+          <div class="tree-line child"><span class="glyph">▸</span>chapters/ <span class="tag">one Markdown file per chapter</span></div>
+          <div class="tree-line deep"><span class="glyph">·</span>0001-the-light.md</div>
+          <div class="tree-line deep"><span class="glyph">·</span>0002-the-door.md</div>
+          <div class="tree-line child"><span class="glyph">▸</span>images.json <span class="tag">provenance</span></div>
+          <div class="tree-line child"><span class="glyph">▸</span>images/ <span class="tag">the illustration and the cutout</span></div>
+        </div>
+        <div class="bottom" data-reveal="520">Markdown + JSON. Open it in Finder. Keep it forever.</div>
+      </section>
+
+      <section class="scene" data-scene="trust">
+        <div class="eyebrow" data-reveal="0">Agency with a safety net</div>
+        <h1 class="small" data-reveal="120">The agent edits the book,<br />not a chat transcript.</h1>
+        <div class="trust-grid">
+          <div class="card" data-reveal="300">
+            <h2>Checked save</h2>
+            <p class="big-line" style="margin-top: 28px"><span class="status-dot"></span> Saved</p>
+            <p>The file changed on disk first? The save stops and keeps both versions.</p>
+          </div>
+          <div class="card" data-reveal="400">
+            <h2>Undo checkpoint</h2>
+            <div class="undo"><b>↶</b> Restore every chapter this turn changed</div>
+            <p>One conversation. One undo. No mystery diffs.</p>
+          </div>
+        </div>
+        <div class="bottom" data-reveal="560">Powerful because it is reversible.</div>
+      </section>
+
+      <section class="scene" data-scene="background">
+        <div class="eyebrow" data-reveal="0">Background</div>
+        <h1 data-reveal="120">It keeps working after you close the window.</h1>
+        <div class="timeline">
+          <div class="node" data-node="0" data-reveal="300"><span class="dot"></span><h3>Window closed</h3><p>The draft is saved.</p></div>
+          <div class="node" data-node="1" data-reveal="380"><span class="dot"></span><h3>Agent working</h3><p>Tools run in the main process.</p></div>
+          <div class="node" data-node="2" data-reveal="460"><span class="dot"></span><h3>Scene ready</h3><p>A native notification.</p></div>
+        </div>
+        <div class="card notification" data-reveal="620">
+          <div class="app-icon"></div>
+          <div><h3>The Salt Road — ready</h3><p>The scene is on the page. Open the studio to read it.</p></div>
+        </div>
+        <div class="bottom" data-reveal="760">A colleague, not a tab.</div>
+      </section>
+
+      <section class="scene" data-scene="visuals">
+        <div class="eyebrow" data-reveal="0">Visuals</div>
+        <h1 class="small" data-reveal="120">From a prompt to a file you own.</h1>
+        <div class="visual-grid">
+          <div data-reveal="260"><div class="thumb image"></div><div class="step"><b>Muse Image</b>chapter illustration</div></div>
+          <div class="chev" data-reveal="340">→</div>
+          <div data-reveal="380"><div class="thumb mask"></div><div class="step"><b>SAM 3.1</b>choose a character</div></div>
+          <div class="chev" data-reveal="460">→</div>
+          <div data-reveal="500"><div class="thumb alpha"></div><div class="step"><b>Transparent PNG</b>beside the book</div></div>
+        </div>
+        <div class="bottom" data-reveal="680">The illustration and the cutout stay in the library.</div>
+      </section>
+
+      <section class="scene" data-scene="voice">
+        <div class="eyebrow" data-reveal="0">Voice</div>
+        <h1 data-reveal="120">Write without typing.</h1>
+        <div class="wave" data-wave>
+          <i data-reveal="220"></i><i data-reveal="240"></i><i data-reveal="260"></i><i data-reveal="280"></i><i data-reveal="300"></i><i data-reveal="320"></i><i data-reveal="340"></i><i data-reveal="360"></i><i data-reveal="380"></i><i data-reveal="400"></i><i data-reveal="420"></i><i data-reveal="440"></i><i data-reveal="460"></i><i data-reveal="480"></i><i data-reveal="500"></i><i data-reveal="520"></i><i data-reveal="540"></i><i data-reveal="560"></i><i data-reveal="580"></i><i data-reveal="600"></i><i data-reveal="620"></i><i data-reveal="640"></i><i data-reveal="660"></i><i data-reveal="680"></i>
+        </div>
+        <div class="transcript" data-reveal="640">“The storm came in low over the water, and the lamp would not turn.” <span>— inserted at the caret</span></div>
+        <div class="bottom" data-reveal="760">Muse Voice Transcribe · the audio is not kept.</div>
+      </section>
+
+      <section class="scene" data-scene="interop">
+        <div class="eyebrow" data-reveal="0">Interop</div>
+        <h1 class="small" data-reveal="120">Your library is a platform.</h1>
+        <div class="terminal" data-reveal="260">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <pre><span class="prompt">$</span> bookwriter books
+book_…  The Salt Road        2 chapters
+
+<span class="prompt">$</span> bookwriter mcp
+AI Book Studio MCP server on stdio (read-only).</pre>
+        </div>
+        <div class="badge" data-reveal="520">Loopback only · per-run token · <span class="cloud">hosted copy</span></div>
+        <div class="bottom" data-reveal="680">Other agents use the same book. No second copy.</div>
+      </section>
+
+      <section class="scene" data-scene="close">
+        <div class="close">
+          <div class="eyebrow" data-reveal="0">AI Book Studio</div>
+          <h1 data-reveal="140">Your book.<br />Your files.<br />Your agent.</h1>
+          <div class="wordmark" data-reveal="520"><span class="mark"></span> AI Book Studio · local-first · no account</div>
+        </div>
+      </section>
+    </main>
+    <script>
+      const scenes = [...document.querySelectorAll(".scene")];
+      const params = new URLSearchParams(location.search);
+      if (params.get("bg") !== "transparent") document.body.classList.add("ambient");
+      const active = params.get("scene") || "problem";
+      function setScene(name) {
+        for (const scene of scenes) scene.classList.toggle("active", scene.dataset.scene === name);
+      }
+      setScene(active);
+      const ease = (t) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+      window.motionScenes = scenes.map((scene) => scene.dataset.scene);
+      window.renderAt = (ms) => {
+        const scene = document.querySelector(".scene.active");
+        if (!scene) return;
+        for (const element of scene.querySelectorAll("[data-reveal]")) {
+          const start = Number(element.dataset.reveal || 0);
+          const p = ease((ms - start) / 620);
+          element.style.opacity = String(p);
+          element.style.transform = `translateY(${(1 - p) * 18}px)`;
+        }
+        for (const node of scene.querySelectorAll("[data-node]")) {
+          const index = Number(node.dataset.node || 0);
+          node.classList.toggle("on", ms >= 320 + index * 300);
+        }
+        const bars = scene.querySelectorAll("[data-wave] i");
+        bars.forEach((bar, index) => {
+          const p = ease((ms - 200) / 500);
+          const height = 18 + Math.abs(Math.sin(ms / 260 + index * 0.55)) * 128 * p;
+          bar.style.height = `${height}px`;
+          bar.style.opacity = String(0.35 + p * 0.65);
+        });
+      };
+      window.renderAt(0);
+      window.motionReady = true;
+    </script>
+  </body>
+</html>

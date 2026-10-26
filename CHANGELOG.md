@@ -26,6 +26,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the film motion plates (spec 021 T007): eight HTML/CSS scenes using the studio tokens, a
+  deterministic `window.renderAt(ms)` timeline, and a Playwright renderer for 1920×1080 preview stills or
+  30 fps PNG sequences. Previews checked for problem, files, trust, background, visuals, voice, interop
+  and close.
 - Added a credential-vault health check and macOS runbook: `connections:status`, a non-secret
   `safeStorage` encrypt/decrypt probe, a **Check keychain** action in Settings, `STUDIO_VISIBLE=1` for a
   visible throwaway profile, and [`docs/KEYCHAIN.md`](docs/KEYCHAIN.md) covering unlock, locked-state

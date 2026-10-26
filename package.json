@@ -38,6 +38,8 @@
     "toolkit": "bun --filter @ai-book-studio/toolkit start",
     "toolkit:build": "bun --filter @ai-book-studio/toolkit build",
     "film:fixture": "bun scripts/film-fixture.ts",
+    "video:motion": "node video/motion/render.mjs",
+    "video:motion:preview": "node video/motion/render.mjs --preview --ambient",
     "build:web": "bun --filter @ai-book-studio/web build",
     "smoke:web": "bun run build:web && node scripts/web-smoke.mjs",
     "gallery:build": "bun --filter @ai-book-studio/web build:gallery",
