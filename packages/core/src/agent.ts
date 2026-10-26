@@ -31,6 +31,20 @@ export interface AgentTurnStarted {
   threadId: string;
 }
 
+/** The answer to a turn, for a caller that waited for it rather than watching the stream. */
+export interface AgentTurnResult {
+  turnId: string;
+  threadId: string;
+  /** What the agent said. Empty when the turn was stopped. */
+  text: string;
+  /** How many chapters the turn changed. */
+  changed: number;
+  /** The turn's cost, when the provider reported one. */
+  costUsd?: number | null;
+  /** True when the author stopped the turn. */
+  stopped?: boolean;
+}
+
 /** The model a turn actually ran with, independent of what is selected now. */
 export interface AgentTurnModel {
   provider: string;

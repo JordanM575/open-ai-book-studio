@@ -334,6 +334,9 @@ app.whenReady().then(async () => {
     backend = new LocalBackend(studio, {
       tools: toolsBridge,
       ambient: new AmbientService(() => studio.library),
+      agent: {
+        run: (input) => agentRuntime.runToCompletion(input)
+      },
       glassesPage,
       glassesManifest
     });

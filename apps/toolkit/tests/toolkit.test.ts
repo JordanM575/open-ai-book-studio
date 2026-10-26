@@ -31,6 +31,24 @@ const chapter: Chapter = {
   hash: HASH
 };
 
+const ambientStatus = {
+  book: { id: BOOK, title: "The Salt Road", stage: "drafting" },
+  chapter: { id: CHAPTER, title: "One", order: 1, wordCount: 2 },
+  progress: { chapters: 1, words: 2, lastOrder: 1 },
+  lastChange: null,
+  lastSaid: null,
+  working: false,
+  actions: [],
+  say: "You're in Chapter One of The Salt Road."
+};
+
+const turnResult = {
+  turnId: "turn_test0001",
+  threadId: "thread_test0001",
+  text: "I tightened the opening.",
+  changed: 0
+};
+
 function client(): ToolkitClient {
   return {
     library: async () => ({ root: "/library", deviceId: "dev_test0001", deviceName: "Test Mac" }),
@@ -59,6 +77,8 @@ function client(): ToolkitClient {
         tier: "read" as const
       }
     ],
+    ambient: async () => ambientStatus,
+    turn: async () => turnResult,
     bookTools: async () => [
       {
         name: "read_story_bible",

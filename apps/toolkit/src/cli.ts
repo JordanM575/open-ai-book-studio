@@ -29,6 +29,8 @@ Commands:
   create-chapter <bookId>           Create a chapter (requires --allow-writes)
   save <bookId> <chapterId>         Checked save (requires --allow-writes)
   tools                             List the studio's writing tools
+  where <bookId>                    Say where the author is, and what can be done
+  ask <bookId> <prompt>             Ask the agent, and wait for its answer
   call <bookId> <tool>              Run one studio tool (requires --allow-writes)
   mcp                               Start the MCP server on stdio
 
@@ -223,6 +225,25 @@ export async function runCli(
             `${tool.name.padEnd(30)} ${tool.tier.padEnd(12)} ${firstLine(tool.description)}\n`
           );
         }
+        return 0;
+      }
+      case "where": {
+        const bookId = required(parsed.positionals[0], "where needs a bookId.");
+        const status = await client.ambient(bookId);
+        if (json) return print(io, status);
+        io.stdout.write(`${status.say}\n`);
+        for (const action of status.actions) {
+          if (!action.available) continue;
+          io.stdout.write(`  ${action.label} — say “${action.spoken}”\n`);
+        }
+        return 0;
+      }
+      case "ask": {
+        const bookId = required(parsed.positionals[0], "ask needs a bookId.");
+        const prompt = required(parsed.positionals.slice(1).join(" "), "ask needs something to say.");
+        const result = await client.turn(bookId, prompt);
+        if (json) return print(io, result);
+        io.stdout.write(`${result.text}\n`);
         return 0;
       }
       case "call": {

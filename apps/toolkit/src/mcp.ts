@@ -1,6 +1,8 @@
 import { createInterface } from "node:readline";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools";
+import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
+import type { AgentTurnResult } from "@ai-book-studio/core/agent";
 import type {
   BookDetail,
   BookSummary,
@@ -27,6 +29,14 @@ export interface ToolkitClient {
   tools(): Promise<ToolDescriptor[]>;
   /** The tools the studio will run for one book, with the withdrawn ones left out. */
   bookTools(bookId: string): Promise<ToolDescriptor[]>;
+  /** The ambient agent's status of a book: where the author is and what changed. */
+  ambient(bookId: string): Promise<AmbientStatus>;
+  /** Run a turn and wait for the agent's answer. */
+  turn(
+    bookId: string,
+    prompt: string,
+    options?: { chapterId?: string; threadId?: string }
+  ): Promise<AgentTurnResult>;
   callTool(
     bookId: string,
     name: string,

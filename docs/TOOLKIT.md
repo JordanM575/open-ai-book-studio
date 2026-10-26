@@ -129,6 +129,33 @@ bookwriter call book_abc12345 append_to_chapter \
 
 Write tools need `--allow-writes` and destructive tools need `--allow-destructive`.
 
+## The ambient agent
+
+The studio knows where the author is in the book, what the agent last changed and what it would
+do next, whether or not anyone has opened the chat panel. Two commands reach it:
+
+```bash
+bookwriter where book_abc12345
+bookwriter ask book_abc12345 "carry on with the next scene"
+```
+
+`where` prints the line the agent would say — the book, the chapter, the progress, the last
+change, and the offer to read the prose — followed by the actions that are available and how to
+ask for them. `ask` runs a turn through the same runtime the app uses and prints the answer.
+
+The same two things are available over the backend, for anything that is not a command line:
+
+| Route | What it does |
+| --- | --- |
+| `GET /v1/books/:bookId/ambient` | The ambient status: where the author is, what changed, what can be said or done. |
+| `POST /v1/books/:bookId/turn` | Run a turn and wait for the answer. The body is `{ "prompt": "…" }`. |
+
+A turn that needs the author's approval for a destructive tool is refused with a sentence saying
+so, because only the app can ask them.
+
+The glasses' phone app uses exactly these two routes: it polls the status over the local network,
+renders it on the lenses, and sends the author's taps back through the studio's own tools.
+
 The file-level writes stay available for scripts that want a whole-file replace:
 
 ```bash

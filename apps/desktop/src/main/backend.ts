@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolCallResult, ToolDescriptor } from "@ai-book-studio/core/agent/tools";
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
+import type { AgentTurnResult } from "@ai-book-studio/core/agent";
 import type {
   BookDetail,
   BookSummary,
@@ -68,6 +69,21 @@ export interface BackendAmbient {
   status(bookId: string): Promise<AmbientStatus>;
 }
 
+/**
+ * The writing agent, for a caller that wants an answer rather than a stream.
+ *
+ * The glasses' phone app and the command line both need this: "keep going", and then the
+ * sentence the agent said.
+ */
+export interface BackendAgent {
+  run(input: {
+    bookId: string;
+    prompt: string;
+    chapterId?: string | null;
+    threadId?: string | null;
+  }): Promise<AgentTurnResult>;
+}
+
 export interface LocalBackendOptions {
   /** Override for tests; production uses `~/.ai-book-studio/backend.json`. */
   locatorPath?: string;
@@ -78,6 +94,8 @@ export interface LocalBackendOptions {
   tools?: BackendToolRunner;
   /** The ambient agent's status. Without it the route reports that it is unavailable. */
   ambient?: BackendAmbient;
+  /** The writing agent, for a caller that wants an answer. */
+  agent?: BackendAgent;
   /**
    * The origins allowed to call the API from a browser, besides the page's own origin.
    *
@@ -118,6 +136,7 @@ export class LocalBackend {
   private readonly locatorPath: string;
   private readonly tools: BackendToolRunner | null;
   private readonly ambient: BackendAmbient | null;
+  private readonly agent: BackendAgent | null;
   private readonly allowedOrigins: Set<string>;
   private readonly glassesPage: string | null;
   private readonly glassesManifest: string;
@@ -131,6 +150,7 @@ export class LocalBackend {
     this.port = options.port ?? 0;
     this.tools = options.tools ?? null;
     this.ambient = options.ambient ?? null;
+    this.agent = options.agent ?? null;
     this.allowedOrigins = new Set(options.allowedOrigins ?? []);
     this.glassesPage = options.glassesPage ?? null;
     this.glassesManifest = options.glassesManifest ?? "{}";
@@ -295,6 +315,18 @@ export class LocalBackend {
     if (request.method === "GET" && parts.length === 4 && parts[3] === "ambient") {
       if (!this.ambient) throw new HttpError(404, "not-found", "This studio build has no ambient agent.");
       this.send(response, 200, { ambient: await this.ambient.status(bookId) });
+      return;
+    }
+    if (request.method === "POST" && parts.length === 4 && parts[3] === "turn") {
+      if (!this.agent) throw new HttpError(404, "not-found", "This studio build has no writing agent.");
+      const body = turnBody.parse(await readJson(request));
+      const result = await this.agent.run({
+        bookId,
+        prompt: body.prompt,
+        ...(body.chapterId ? { chapterId: body.chapterId } : {}),
+        ...(body.threadId ? { threadId: body.threadId } : {})
+      });
+      this.send(response, 200, { result });
       return;
     }
     if (request.method === "GET" && parts.length === 4 && parts[3] === "conflicts") {
@@ -471,6 +503,12 @@ const saveBody = z.object({
 const toolCall = z.object({
   args: z.unknown().optional(),
   allowDestructive: z.boolean().optional()
+});
+
+const turnBody = z.object({
+  prompt: z.string().min(1).max(20_000),
+  chapterId: idSchema.optional(),
+  threadId: z.string().max(200).optional()
 });
 
 const chapterBody = z.object({

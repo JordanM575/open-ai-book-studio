@@ -6,7 +6,7 @@ import {
   type ToolApprovalResponse,
   type ToolSet
 } from "ai";
-import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "@ai-book-studio/core/agent";
+import type { AgentEvent, AgentTurnInput, AgentTurnResult, AgentTurnStarted } from "@ai-book-studio/core/agent";
 import {
   agentMessageSchema,
   messageText,
@@ -109,6 +109,7 @@ export type AgentModelFactory = (credential: StoredCredential, modelId: string) 
  */
 export class AgentRuntime {
   private readonly active = new Map<string, ActiveTurn>();
+  private readonly listeners = new Set<(event: AgentEvent) => void>();
 
   constructor(
     private readonly studio: Studio,
@@ -180,6 +181,86 @@ export class AgentRuntime {
     } catch (error) {
       console.warn("[agent] Could not report the turn outcome:", redact((error as Error).message));
     }
+  }
+
+  /**
+   * Listen to a turn's events.
+   *
+   * The renderer watches them through the app's own channel. This is for the callers that want
+   * the same events without a window: the control plane, and anything reaching the studio over
+   * it.
+   */
+  onEvent(listener: (event: AgentEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /** Send an event to the window and to every listener. */
+  private publish(event: AgentEvent): void {
+    try {
+      this.emit(event);
+    } catch (error) {
+      console.warn("[agent] Could not report an event:", redact((error as Error).message));
+    }
+    for (const listener of [...this.listeners]) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.warn("[agent] Could not deliver an event:", redact((error as Error).message));
+      }
+    }
+  }
+
+  /**
+   * Run a turn and wait for its answer.
+   *
+   * The renderer wants the stream, so it watches the events. A caller on the control plane wants
+   * the answer, so it waits for the turn to finish. It is the same turn, with the same rules,
+   * the same checkpoints and the same approvals.
+   */
+  async runToCompletion(input: AgentTurnInput): Promise<AgentTurnResult> {
+    const started = await this.start(input);
+    return new Promise<AgentTurnResult>((resolve, reject) => {
+      const unsubscribe = this.onEvent((event) => {
+        if (event.turnId !== started.turnId) return;
+        if (event.type === "done") {
+          unsubscribe();
+          resolve({
+            turnId: started.turnId,
+            threadId: started.threadId,
+            text: event.text,
+            changed: event.changed ?? 0,
+            costUsd: event.costUsd
+          });
+        } else if (event.type === "error") {
+          unsubscribe();
+          reject(new ProviderError("unknown", event.message));
+        } else if (event.type === "stopped") {
+          unsubscribe();
+          resolve({
+            turnId: started.turnId,
+            threadId: started.threadId,
+            text: "",
+            changed: event.changed ?? 0,
+            stopped: true
+          });
+        } else if (event.type === "approval") {
+          /*
+           * The turn is waiting for the author, and the author can only approve in the app. The
+           * turn stays paused; the caller is told why it is not finished.
+           */
+          unsubscribe();
+          reject(
+            new ProviderError(
+              "invalid-request",
+              `The agent needs your approval for ${event.name} in the app before it can carry on.`
+            )
+          );
+        }
+      });
+    });
   }
 
   async start(input: AgentTurnInput): Promise<AgentTurnStarted> {    const library = this.studio.requireLibrary();
@@ -311,7 +392,7 @@ export class AgentRuntime {
     const pending = turn.pending;
     if (pending) {
       await this.setApprovalStatus(turn, pending.approvalId, "expired");
-      this.emit({
+      this.publish({
         type: "stopped",
         turnId,
         changed: turn.state.changes.length,
@@ -470,10 +551,10 @@ export class AgentRuntime {
       for await (const part of stream.fullStream) {
         if (part.type === "text-delta") {
           state.text += part.text;
-          this.emit({ type: "text", turnId, delta: part.text });
+          this.publish({ type: "text", turnId, delta: part.text });
         } else if (part.type === "reasoning-delta") {
           state.reasoning += part.text;
-          this.emit({ type: "reasoning", turnId, delta: part.text });
+          this.publish({ type: "reasoning", turnId, delta: part.text });
         } else if (part.type === "tool-call") {
           state.toolParts.push({
             type: "tool-call",
@@ -481,7 +562,7 @@ export class AgentRuntime {
             name: part.toolName,
             input: part.input
           });
-          this.emit({
+          this.publish({
             type: "tool",
             turnId,
             id: part.toolCallId,
@@ -499,7 +580,7 @@ export class AgentRuntime {
             ...(output?.ok === false ? { isError: true } : {})
           });
           await this.recordToolCall(input.bookId, part.toolName, output?.ok !== false);
-          this.emit({
+          this.publish({
             type: "tool",
             turnId,
             id: part.toolCallId,
@@ -589,7 +670,7 @@ export class AgentRuntime {
             }
           };
         }
-        this.emit({
+        this.publish({
           type: "approval",
           turnId,
           approvalId: approval.approvalId,
@@ -614,7 +695,7 @@ export class AgentRuntime {
         usage: usageRecord,
         checkpoint: state.changes.length > 0 && undoAvailable
       });
-      this.emit({
+      this.publish({
         type: "done",
         turnId,
         text: state.text,
@@ -658,7 +739,7 @@ export class AgentRuntime {
         await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, stopped), ...state.approvals], {
           checkpoint: state.changes.length > 0 && undoAvailable
         });
-        this.emit({ type: "stopped", turnId, changed: state.changes.length, undoAvailable });
+        this.publish({ type: "stopped", turnId, changed: state.changes.length, undoAvailable });
         this.reportOutcome(turnId, "stopped", state);
       } else {
         const normalized = normalizeProviderError({
@@ -684,7 +765,7 @@ export class AgentRuntime {
             checkpoint: state.changes.length > 0 && undoAvailable
           });
         }
-        this.emit({ type: "error", turnId, code: normalized.code, message, changed: state.changes.length, undoAvailable });
+        this.publish({ type: "error", turnId, code: normalized.code, message, changed: state.changes.length, undoAvailable });
         this.reportOutcome(turnId, "error", state, { message });
       }
     } finally {

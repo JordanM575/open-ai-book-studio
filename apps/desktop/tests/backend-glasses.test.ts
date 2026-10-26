@@ -232,3 +232,86 @@ describe("the per-book tool list", () => {
     expect(body.tools.map((tool) => tool.name)).toEqual(["read_story_bible", "append_to_chapter"]);
   });
 });
+
+describe("the ambient agent on the control plane", () => {
+  const ambient = {
+    book: { id: BOOK_ID, title: "The Salt Road", stage: "drafting" },
+    chapter: { id: CHAPTER_ID, title: "One", order: 1, wordCount: 2 },
+    progress: { chapters: 1, words: 2, lastOrder: 1 },
+    lastChange: null,
+    lastSaid: null,
+    working: false,
+    actions: [],
+    say: "You're in Chapter One of The Salt Road."
+  };
+
+  const asked: string[] = [];
+  let agentUrl = "";
+  let agentToken = "";
+
+  beforeAll(async () => {
+    const withAgent = new LocalBackend(source, {
+      locatorPath: join(directory, "agent.json"),
+      token: "agent-token",
+      port: 0,
+      ambient: { status: async () => ambient },
+      agent: {
+        run: async (input) => {
+          asked.push(input.prompt);
+          return {
+            turnId: "turn_test0001",
+            threadId: "thread_test0001",
+            text: "I tightened the opening.",
+            changed: 1
+          };
+        }
+      }
+    });
+    const started = await withAgent.start();
+    agentUrl = started.url;
+    agentToken = started.token;
+    // The backend is stopped in the suite's own afterAll, through the main one.
+    agentBackend = withAgent;
+  });
+
+  let agentBackend: LocalBackend | null = null;
+
+  afterAll(async () => {
+    await agentBackend?.stop();
+  });
+
+  test("tells a caller where the author is", async () => {
+    const response = await fetch(`${agentUrl}/v1/books/${BOOK_ID}/ambient`, {
+      headers: { authorization: `Bearer ${agentToken}` }
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ambient: typeof ambient };
+    expect(body.ambient.say).toContain("The Salt Road");
+  });
+
+  test("runs a turn and returns the answer", async () => {
+    const response = await fetch(`${agentUrl}/v1/books/${BOOK_ID}/turn`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${agentToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Carry on with the next scene." })
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { text: string; changed: number } };
+    expect(body.result.text).toBe("I tightened the opening.");
+    expect(asked).toEqual(["Carry on with the next scene."]);
+  });
+
+  test("refuses a turn with nothing to say", async () => {
+    const response = await fetch(`${agentUrl}/v1/books/${BOOK_ID}/turn`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${agentToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "" })
+    });
+    expect(response.status).toBe(400);
+  });
+
+  test("is not there when the studio was built without it", async () => {
+    const response = await call(`/v1/books/${BOOK_ID}/ambient`);
+    expect(response.status).toBe(404);
+  });
+});

@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolDescriptor } from "@ai-book-studio/core/agent/tools";
+import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
+import type { AgentTurnResult } from "@ai-book-studio/core/agent";
 import type {
   BookDetail,
   BookSummary,
@@ -175,6 +177,32 @@ export class BackendClient {
       `/v1/books/${encodeURIComponent(bookId)}/tools`
     );
     return result.tools;
+  }
+
+  async ambient(bookId: string): Promise<AmbientStatus> {
+    const result = await this.request<{ ambient: AmbientStatus }>(
+      `/v1/books/${encodeURIComponent(bookId)}/ambient`
+    );
+    return result.ambient;
+  }
+
+  async turn(
+    bookId: string,
+    prompt: string,
+    options: { chapterId?: string; threadId?: string } = {}
+  ): Promise<AgentTurnResult> {
+    const result = await this.request<{ result: AgentTurnResult }>(
+      `/v1/books/${encodeURIComponent(bookId)}/turn`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          prompt,
+          ...(options.chapterId ? { chapterId: options.chapterId } : {}),
+          ...(options.threadId ? { threadId: options.threadId } : {})
+        })
+      }
+    );
+    return result.result;
   }
 
   async callTool(

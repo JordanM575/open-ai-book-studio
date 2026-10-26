@@ -37,6 +37,10 @@ Update the `Unreleased` section before every commit.
   ones marked sensitive. `bookwriter tools --format webmcp` and `--format connector` produce them
   from a live studio. The studio's own tier was already the classification Meta asks for, so this
   is a renaming rather than a translation.
+- Added a minimal mode to the workspace: a strip that knows where you are in the book, says it
+  out loud when you ask, offers to read the prose, and takes a sentence when you have something to
+  say. The speech is the browser's own, through the system voices, so it needs no voice service,
+  and every word it says is also on the screen.
 - Added the agent's own capabilities (spec 025): a cacheable prompt prefix where the provider
   supports one, with the hit rate, the cached and fresh token counts and the turns that hit it
   shown per book, and a switch to turn the prefix off; per-tool call, success and failure counts; a
@@ -55,6 +59,11 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added the ambient agent: a status the studio keeps whether or not anyone is looking, and two
+  ways to reach it. `GET /v1/books/:bookId/ambient` says where the author is, what changed last
+  and what can be said or done; `POST /v1/books/:bookId/turn` runs a turn and waits for the
+  answer, through the same runtime the app uses. The toolkit gained `bookwriter where` and
+  `bookwriter ask`. The glasses' phone app needs exactly these two routes.
 - Added the glasses page (spec 026): a 600×600 interface for Meta Ray-Ban Display glasses, served
   by the studio itself so it is the same origin as the API. It is dark because the display is an
   additive waveguide, it never scrolls because there is no scrollbar the wearer can see, it moves
