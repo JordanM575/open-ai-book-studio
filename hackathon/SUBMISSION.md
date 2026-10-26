@@ -93,7 +93,7 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Check | Command | Result at submission |
 | --- | --- | --- |
 | Typecheck | `bun run typecheck` | Pass (desktop, web, toolkit) |
-| Tests | `bun test` | **567 pass, 0 fail** |
+| Tests | `bun test` | **568 pass, 0 fail** |
 | Desktop build | `bun run build` | Pass |
 | Web build | `bun run build:web` | Pass |
 | Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
@@ -102,13 +102,16 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | UI audit | `bun run ui:audit` | **no dead ends**; every control named, every image with an `alt`, one `h1`, keyboard focus visible |
 | Coverage | `bun run coverage` | **81.4% functions, 88.3% lines**, floor 80/87 |
 | Plugin probe | `bun run plugin:probe` | **ok** — the plugin's tool listed, run, and a broken plugin left the others working |
-| Submission check | `bun run submission:check` | **ready** · 143 commits · 515 tracked files |
-| Clean clone | `bun install && bun run verify && bun run smoke` | **Pass** · 487 packages · verify pass · smoke 16/16 |
+| Submission check | `bun run submission:check` | **ready** · 162 commits · 549 tracked files |
+| Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | **Pass** · 487 packages · verify 568 tests · e2e 8/8 · coverage above the floor |
 
-**Code verified at:** `dfc54f9` on 2026-10-26, cloned fresh from Gitea at the pushed branch head.
-The clean clone installed 487 packages, `bun run verify` passed the typecheck, 475 tests, the
-desktop and web builds, `bun run smoke` passed 16/16 and `bun run plugin:probe` passed. The only
-commit after it is this documentation, so the app code did not change after the clean-clone pass.
+**Code verified at:** `8a42620` on 2026-10-26, cloned fresh from Gitea at the pushed branch head.
+The clean clone installed 487 packages and passed all three gates: `bun run verify` (typecheck,
+568 tests, the desktop and toolkit builds, the web build), `bun run e2e` (8/8 — the app, the web
+build, the audit at 1440×900 and at 390×844, the glasses page, the ambient agent, plugins, and the
+bridge from a separate process), and `bun run coverage` (81.4% of functions, 88.3% of lines, above
+the 80/87 floor). The only commit after it is this documentation, so the app code did not change
+after the clean-clone pass.
 **Clean-clone path:** a fresh temporary directory
 (temporary; deleted after evidence was recorded).
 
