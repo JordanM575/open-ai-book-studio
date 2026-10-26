@@ -27,9 +27,10 @@
 
 ## Phase 4 — Evidence and docs
 
-- [ ] T007 Add the format and provenance fields to `docs/FORMAT.md`, the SAM path to
+- [x] T007 Add the format and provenance fields to `docs/FORMAT.md`, the SAM path to
   `docs/ARCHITECTURE.md`, D-132/D-133 to `docs/DECISIONS.md`, the spec to `specs/README.md` and the
-  changelog entry.
+  changelog entry. `THIRD_PARTY_NOTICES.md` records the SAM License dependency; the full docs pass
+  still needs the final packaging check.
 - [ ] T008 Manual pass with a Meta key: segment a generated illustration, choose a match, save the
   transparent PNG and reopen the book. Record it in `docs/research/sam-cutout-2026-10-26.md`.
 

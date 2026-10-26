@@ -54,6 +54,11 @@ author choose one and save the cutout as another author-owned image.
   cost as unknown and does not invent a figure. The request is initiated by the author.
 - **FR-012** No mask, source bytes or prompt is stored in logs, the thread store, telemetry or a
   studio-controlled server.
+- **FR-013** The official `@meta-sam/parser` is under Meta's SAM License, not Apache-2.0. Its notice MUST
+  be included in the distribution and reviewed before publishing. If it is incompatible with the
+  project licence, replace it with a clean-room parser for the documented grammar or keep SAM as an
+  optional desktop-only download. The feature must not silently make the repository's licence claim
+  false.
 
 ## Non-goals
 

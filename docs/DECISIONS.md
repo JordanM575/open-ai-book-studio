@@ -333,3 +333,9 @@ needed and the spec or task it blocks.
 | D-131 | Deferred | Multi-turn image editing, reference images and masks? | Not in v1. One-shot generation and the SAM cutout cover the demo; editing needs a conversation-state decision and a new cost model. | Spec 019 non-goals | None |
 | D-132 | Accepted | Where is the cutout PNG composited? | In the renderer from the source image and the decoded binary mask, so the desktop adds no native image library. The result is saved through the image store as a `character` image with `cutoutOf`. | Spec 020 FR-007 | 020 T004 |
 | D-133 | Deferred | Manual box/point SAM prompts? | Not in v1. Concept prompts plus an author-selected match are enough for the demo; manual prompts need a canvas coordinate UI and the documented token builder. | Spec 020 non-goals | None |
+
+## Licensing decisions (2026-10-26)
+
+| ID | Status | Question | Decision | Evidence | Tasks |
+| --- | --- | --- | --- | --- | --- |
+| D-137 | Accepted | May the desktop use Meta's `@meta-sam/parser` when the project is Apache-2.0? | Yes for the hackathon build, with the SAM License included in `THIRD_PARTY_NOTICES.md` and the distribution. The feature is optional and desktop-only. Before a public release, review compatibility or replace the parser with a clean-room implementation; do not claim the repository is Apache-2.0 while silently shipping an incompatible dependency. | `THIRD_PARTY_NOTICES.md`, spec 020 FR-013 | 020 T007 and release review |
