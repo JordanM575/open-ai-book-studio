@@ -26,6 +26,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added the submission package (spec 023): a committed original sample library at
+  `samples/the-salt-road`, `hackathon/SUBMISSION.md` with the form fields, event-built disclosure, model
+  list, demo runbook and judge map, and `bun run submission:check` for branch/tree, required files,
+  forbidden paths, secret patterns and sample integrity.
 - Added the film motion plates (spec 021 T007): eight HTML/CSS scenes using the studio tokens, a
   deterministic `window.renderAt(ms)` timeline, and a Playwright renderer for 1920×1080 preview stills or
   30 fps PNG sequences. Previews checked for problem, files, trust, background, visuals, voice, interop

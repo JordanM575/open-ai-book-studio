@@ -29,6 +29,10 @@ project does not claim a passing CI badge.
   destructive tool still waits for approval.
 - **Agent toolkit** — `bookwriter` exposes the open library through a CLI and an MCP server. Read-only
   by default; writes use compare-before-write. See [docs/TOOLKIT.md](docs/TOOLKIT.md).
+- **Sample and submission** — [`samples/the-salt-road`](samples/README.md) is an original, complete
+  library with two chapters, a Story Bible, an illustration and a cutout. The submission packet and
+  readiness check are in [`hackathon/SUBMISSION.md`](hackathon/SUBMISSION.md) and
+  `bun run submission:check`.
 - **Liquid Glass interface** — the AI Book Studio design kit compiled into tokens, with
   light, dark, reduced-transparency and reduced-motion support.
 
@@ -50,6 +54,7 @@ bun run build      # typecheck + production bundle into apps/desktop/out
 bun run build:web  # static web bundle in apps/web/dist
 bun run toolkit:build # compiled `bookwriter` CLI/MCP binary in apps/toolkit/dist
 bun run toolkit    # run the CLI from source
+bun run submission:check # branch/tree, required files, secret scan and sample integrity
 bun run smoke:web  # build the web bundle and drive the browser shell
 bun run gallery:build # shared-component light/dark gallery in apps/web/check/gallery-dist
 bun run package    # unpacked app in release/

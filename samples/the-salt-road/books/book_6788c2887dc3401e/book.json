@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "book_6788c2887dc3401e",
+  "title": "The Salt Road",
+  "workingTitle": "",
+  "description": "A lighthouse keeper keeps a light for a ship that may never come.",
+  "genres": [
+    "literary fiction",
+    "coastal"
+  ],
+  "influences": [],
+  "isErotica": false,
+  "chapterRange": {
+    "minimum": null,
+    "maximum": null
+  },
+  "outline": "1. Mara keeps the light through a storm.\n2. A door under the stairs opens onto a colder shore.\n3. The ship answers.",
+  "storyArc": {
+    "beginning": {
+      "overview": "Mara keeps the light and counts the ships that do not come.",
+      "keyMoments": "The storm arrives; the lamp will not turn.",
+      "openQuestions": "Who is the ship for?"
+    },
+    "middle": {
+      "overview": "A door under the stairs opens onto a shore that should not be there.",
+      "keyMoments": "Mara steps through and finds the keeper's log from a future year.",
+      "openQuestions": "Is the other shore a memory or a warning?"
+    },
+    "end": {
+      "overview": "The ship answers the light, and Mara chooses what to keep.",
+      "keyMoments": "The lamp turns; the door closes.",
+      "openQuestions": "What does she leave on the other shore?"
+    }
+  },
+  "characters": [
+    {
+      "id": "char_film0001",
+      "name": "Mara Venn",
+      "role": "Lighthouse keeper",
+      "description": "Practical, salt-weathered, keeps a ledger of every ship she has not seen.",
+      "motivations": "Keep the light turning and finish her father's log.",
+      "notes": "Left-handed. Wears a red wool hat."
+    }
+  ],
+  "memories": [
+    {
+      "id": "mem_film0001",
+      "text": "The lamp turns clockwise; the door under the stairs opens the other way.",
+      "importance": "high",
+      "createdAt": "2026-10-01T09:00:00.000Z",
+      "updatedAt": "2026-10-01T09:00:00.000Z"
+    }
+  ],
+  "stage": "drafting",
+  "defaultProvider": null,
+  "defaultConnectionId": null,
+  "defaultModelId": null,
+  "allowContributorTraining": false,
+  "settings": {
+    "manuscript": {
+      "bodyFont": "Times New Roman",
+      "bodyFontSize": 12,
+      "firstLineIndent": 0.2,
+      "lineSpacing": "Double",
+      "chapterTitleAlignment": "Center",
+      "includeTableOfContents": false,
+      "preserveLineBreaks": true
+    }
+  },
+  "frontMatter": {},
+  "createdAt": "2026-10-26T18:32:33.090Z",
+  "updatedAt": "2026-10-26T18:32:33.094Z"
+}

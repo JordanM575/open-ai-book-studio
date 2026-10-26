@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "images": [
+    {
+      "id": "img_432d838917394915",
+      "kind": "chapter",
+      "chapterId": "ch_d384a862f2394cca",
+      "characterId": null,
+      "fileName": "img_432d838917394915.png",
+      "mimeType": "image/png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 20754,
+      "sha256": "ad085ec9e6761684821729e4a4806fb4c64ddde9f77f431b6ff272c101a03a8a",
+      "prompt": "A lighthouse in a storm, warm lantern light against a cold sea, ink and wash",
+      "provider": "fixture",
+      "model": "film-fixture",
+      "size": "1024x1024",
+      "source": "imported",
+      "createdAt": "2026-10-26T18:32:33.147Z",
+      "cutoutOf": null,
+      "costUsd": null,
+      "revisedPrompt": null,
+      "confidence": null
+    },
+    {
+      "id": "img_7d70206f04da45ea",
+      "kind": "character",
+      "chapterId": null,
+      "characterId": "char_film0001",
+      "fileName": "img_7d70206f04da45ea.png",
+      "mimeType": "image/png",
+      "width": 512,
+      "height": 512,
+      "bytes": 3037,
+      "sha256": "0bfe5453e685d19833b79cad013ae0b6c909b06ad5fe07363765dd60fa0897c3",
+      "prompt": "Mara Venn, lighthouse keeper",
+      "provider": "fixture",
+      "model": "film-fixture",
+      "size": "512x512",
+      "source": "cutout",
+      "createdAt": "2026-10-26T18:32:33.153Z",
+      "cutoutOf": "img_432d838917394915",
+      "costUsd": null,
+      "revisedPrompt": null,
+      "confidence": null
+    }
+  ]
+}
