@@ -110,6 +110,12 @@ export const IPC = {
     status: "agent:status",
     /** Change this book's agent settings. */
     setSettings: "agent:setSettings",
+    /**
+     * The address of the glasses page, with the per-run token in its fragment.
+     *
+     * `null` when the control plane is not running.
+     */
+    glassesUrl: "agent:glassesUrl",
     /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
     choosePluginFolder: "agent:choosePluginFolder",
     /** Point the app at a folder of TypeScript tools, or clear it with null. */
@@ -315,6 +321,12 @@ export interface StudioApi {
         cachePrefixMode?: "off" | "auto";
       }
     ): Promise<Result<AgentStatus>>;
+    /**
+     * The address of the glasses page, with the per-run token in its fragment.
+     *
+     * `null` when the control plane is not running.
+     */
+    glassesUrl(): Promise<Result<string | null>>;
     /** Choose a folder of TypeScript tools. Returns null when the author cancels. */
     choosePluginFolder(): Promise<Result<string | null>>;
     /** Point the app at a folder of TypeScript tools, or clear it with null. */

@@ -55,6 +55,14 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added the glasses page (spec 026): a 600×600 interface for Meta Ray-Ban Display glasses, served
+  by the studio itself so it is the same origin as the API. It is dark because the display is an
+  additive waveguide, it never scrolls because there is no scrollbar the wearer can see, it moves
+  focus with the D-pad, it speaks through `speechSynthesis` while keeping the text visible, it
+  registers the studio's own read tools with the browser's model context so an assistant on the
+  glasses can call them by voice, it asks the wearer before every write, and it says plainly when
+  the device cannot do something. `bun run glasses:check` drives it in a real browser at 600×600
+  against the real studio: twelve checks, no dead ends.
 - Recorded the plugin manual pass in `docs/research/plugins-2026-10-26.md`: the built app pointed at
   a folder of TypeScript plugins, the plugin's tool listed in the backend's catalog, the tool run
   against the open book, and a plugin that cannot resolve its imports left the others working.

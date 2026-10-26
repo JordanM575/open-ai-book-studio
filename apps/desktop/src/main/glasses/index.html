@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=600, height=600, initial-scale=1.0, user-scalable=no"
+    />
+    <!-- Lets the glasses know this page is built for their display and input. -->
+    <meta name="mrbd-web-app-capable" content="yes" />
+    <meta name="description" content="AI Book Studio, on your glasses." />
+    <title>AI Book Studio</title>
+    <link rel="manifest" href="manifest.json" />
+    <style>
+      /*
+       * The display is an additive waveguide: a pixel rendered pure black contributes no light and
+       * disappears, while a bright background glares against the real world. So the page is dark
+       * and the text is light, and nothing here is ever a dark grey on a dark grey.
+       */
+      :root {
+        --ink: #f4f1ea;
+        --ink-dim: #b9b3a6;
+        --accent: #7fd4c1;
+        --line: #3a3730;
+        --warn: #ffb27f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 600px;
+        height: 600px;
+        overflow: hidden;
+        background: #000;
+        color: var(--ink);
+        font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+
+      body {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 10px;
+        padding: 18px 20px 16px;
+      }
+
+      /* The header: the book, and what the page can currently do. */
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.2;
+        font-weight: 600;
+        letter-spacing: -0.2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #status {
+        flex: none;
+        font-size: 13px;
+        color: var(--ink-dim);
+      }
+
+      /* The main panel: the current passage, sized so it never scrolls. */
+      main {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #chapter {
+        font-size: 15px;
+        line-height: 1.25;
+        color: var(--ink-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #passage {
+        flex: 1;
+        min-height: 0;
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.32;
+        overflow: hidden;
+      }
+
+      #note {
+        min-height: 20px;
+        font-size: 14px;
+        line-height: 1.3;
+        color: var(--accent);
+      }
+
+      #note.warn {
+        color: var(--warn);
+      }
+
+      /* The actions. Every one of them is reachable with the D-pad alone. */
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+      }
+
+      button,
+      input {
+        font: inherit;
+        color: var(--ink);
+        background: #16150f;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 14px;
+        font-size: 16px;
+        min-height: 44px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      input {
+        flex: 1 1 100%;
+      }
+
+      /* The D-pad moves focus. A visible ring is the only way the wearer knows where they are. */
+      :focus-visible,
+      .focusable:focus {
+        outline: 3px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* The confirmation panel, for a write the agent asked for. */
+      #confirm {
+        position: fixed;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        gap: 16px;
+        padding: 28px;
+        background: rgba(0, 0, 0, 0.94);
+        border: 2px solid var(--accent);
+        border-radius: 18px;
+      }
+
+      #confirm.open {
+        display: flex;
+      }
+
+      #confirm h2 {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+
+      #confirm p {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.35;
+        color: var(--ink-dim);
+      }
+
+      #confirm nav {
+        border: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="book">AI Book Studio</h1>
+      <span id="status">connecting…</span>
+    </header>
+
+    <main>
+      <div id="chapter">No chapter open</div>
+      <p id="passage">Opening the library…</p>
+      <div id="note"></div>
+    </main>
+
+    <nav>
+      <button class="focusable" id="read-aloud">Read aloud</button>
+      <button class="focusable" id="next-chapter">Next chapter</button>
+      <button class="focusable" id="story-bible">Story Bible</button>
+      <button class="focusable" id="append">Write…</button>
+      <input
+        class="focusable"
+        id="composer"
+        type="text"
+        placeholder="Dictate here, then press Write…"
+        aria-label="Text to append"
+      />
+    </nav>
+
+    <div id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Allow this change?</h2>
+      <p id="confirm-body"></p>
+      <nav>
+        <button class="focusable" id="confirm-yes">Yes</button>
+        <button class="focusable" id="confirm-no">No</button>
+      </nav>
+    </div>
+
+    <script>
+      /*
+       * AI Book Studio, on Meta Ray-Ban Display glasses.
+       *
+       * The page is written to the glasses' rules, not to a browser's:
+       *
+       * - 600x600, fixed, no scrolling. The display has no scrollbar the wearer can see.
+       * - A dark background, because the display adds light rather than blocking it.
+       * - The D-pad is the pointer. Arrow keys move focus in a ring; Enter activates.
+       * - The text is always visible as well as spoken. Someone who cannot or will not listen
+       *   must still get the passage.
+       * - Every capability is feature-detected, and every action is reachable by hand. WebMCP is
+       *   an accelerator, never the only path to something.
+       *
+       * The studio's own tools are the tools. The page registers them with the browser's model
+       * context so an assistant on the glasses can call them by voice, and it calls the very same
+       * verbs by hand.
+       */
+
+      const config = window.STUDIO || readConfigFromUrl();
+
+      /*
+       * The token arrives in the URL fragment, which a browser never sends to a server and never
+       * puts in a server log. The page is a shell: it holds no prose and no token of its own, and
+       * the studio's API still refuses everything without it.
+       */
+      function readConfigFromUrl() {
+        const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+        const params = new URLSearchParams(location.search);
+        return {
+          api: params.get("api") || hash.get("api") || location.origin,
+          token: hash.get("token") || params.get("token") || "",
+          bookId: hash.get("book") || params.get("book") || ""
+        };
+      }
+
+      const state = {
+        books: [],
+        book: null,
+        chapters: [],
+        chapterIndex: 0,
+        tools: []
+      };
+
+      const el = {
+        book: document.getElementById("book"),
+        status: document.getElementById("status"),
+        chapter: document.getElementById("chapter"),
+        passage: document.getElementById("passage"),
+        note: document.getElementById("note"),
+        composer: document.getElementById("composer"),
+        confirm: document.getElementById("confirm"),
+        confirmTitle: document.getElementById("confirm-title"),
+        confirmBody: document.getElementById("confirm-body")
+      };
+
+      /* ------------------------------------------------------------------ the studio */
+
+      async function call(path, options = {}) {
+        if (!config.api) throw new Error("No studio address.");
+        const response = await fetch(`${config.api}${path}`, {
+          ...options,
+          headers: {
+            authorization: `Bearer ${config.token}`,
+            ...(options.body ? { "content-type": "application/json" } : {}),
+            ...(options.headers || {})
+          }
+        });
+        if (!response.ok) {
+          let detail = `The studio refused the request (${response.status}).`;
+          try {
+            const body = await response.json();
+            if (body?.error?.message) detail = body.error.message;
+          } catch {
+            // The body was not the studio's own error shape. The status is the whole answer.
+          }
+          throw new Error(detail);
+        }
+        return response.json();
+      }
+
+      /** Run one of the studio's own tools, through the same route every other agent uses. */
+      async function runTool(name, args) {
+        const bookId = state.book?.id ?? config.bookId;
+        if (!bookId) throw new Error("No book is open.");
+        const body = await call(`/v1/books/${encodeURIComponent(bookId)}/tools/${name}`, {
+          method: "POST",
+          body: JSON.stringify({ args: args || {} })
+        });
+        return body.result;
+      }
+
+      /* ------------------------------------------------------------------ the display */
+
+      function say(text, warn = false) {
+        el.note.textContent = text || "";
+        el.note.classList.toggle("warn", warn);
+      }
+
+      function showPassage(text) {
+        // The display does not scroll, so the passage is cut to what fits and marked as cut.
+        const limit = 460;
+        el.passage.textContent =
+          text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text;
+      }
+
+      function speak(text) {
+        if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+          say("This device cannot speak. The passage is on the display.", true);
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "en-US";
+        utterance.onerror = (event) => {
+          say(`The voice failed (${event.error}). The passage is on the display.`, true);
+        };
+        window.speechSynthesis.speak(utterance);
+      }
+
+      /* ------------------------------------------------------------------ the actions */
+
+      async function openChapter(index) {
+        const chapter = state.chapters[index];
+        if (!chapter) {
+          showPassage("This book has no chapters yet.");
+          return;
+        }
+        state.chapterIndex = index;
+        el.chapter.textContent = `${chapter.order}. ${chapter.title} · ${chapter.wordCount} words`;
+        const payload = await call(
+          `/v1/books/${encodeURIComponent(state.book.id)}/chapters/${encodeURIComponent(chapter.id)}`
+        );
+        showPassage((payload.chapter ?? payload).content.trim());
+        say("");
+      }
+
+      async function nextChapter() {
+        if (state.chapters.length === 0) return;
+        await openChapter((state.chapterIndex + 1) % state.chapters.length);
+      }
+
+      async function readStoryBible() {
+        const result = await runTool("read_story_bible", {});
+        const book = result?.book ?? result;
+        const lines = [];
+        if (book?.title) lines.push(book.title);
+        if (book?.description) lines.push(book.description);
+        if (book?.outline) lines.push(book.outline);
+        const characters = Array.isArray(book?.characters) ? book.characters : [];
+        if (characters.length) {
+          lines.push(characters.map((c) => `${c.name}${c.role ? `, ${c.role}` : ""}`).join("; "));
+        }
+        const text = lines.join(". ");
+        showPassage(text || "The Story Bible is empty.");
+        say("The Story Bible.");
+        speak(text);
+      }
+
+      async function appendComposerText() {
+        const text = el.composer.value.trim();
+        if (!text) {
+          say("Nothing to write. Use the field first.", true);
+          el.composer.focus();
+          return;
+        }
+        const chapter = state.chapters[state.chapterIndex];
+        if (!chapter) {
+          say("There is no chapter to write into.", true);
+          return;
+        }
+        const allowed = await confirmWrite(
+          `Append ${text.length} characters to “${chapter.title}”?`
+        );
+        if (!allowed) {
+          say("Not written.");
+          return;
+        }
+        const result = await runTool("append_to_chapter", { chapterId: chapter.id, text });
+        el.composer.value = "";
+        say(result?.ok ? "Written." : result?.message || "Not written.", !result?.ok);
+        await openChapter(state.chapterIndex);
+      }
+
+      /** A write the agent asked for is confirmed by the wearer, every time. */
+      function confirmWrite(question) {
+        return new Promise((resolve) => {
+          el.confirmTitle.textContent = "Allow this change?";
+          el.confirmBody.textContent = question;
+          el.confirm.classList.add("open");
+          const yes = document.getElementById("confirm-yes");
+          const no = document.getElementById("confirm-no");
+          const finish = (answer) => {
+            el.confirm.classList.remove("open");
+            yes.removeEventListener("click", onYes);
+            no.removeEventListener("click", onNo);
+            resolve(answer);
+          };
+          const onYes = () => finish(true);
+          const onNo = () => finish(false);
+          yes.addEventListener("click", onYes);
+          no.addEventListener("click", onNo);
+          yes.focus();
+        });
+      }
+
+      document.getElementById("read-aloud").addEventListener("click", () => {
+        const chapter = state.chapters[state.chapterIndex];
+        const text = el.passage.textContent || "";
+        speak(chapter ? `${chapter.title}. ${text}` : text);
+        say("Reading aloud.");
+      });
+      document.getElementById("next-chapter").addEventListener("click", () => {
+        void nextChapter();
+      });
+      document.getElementById("story-bible").addEventListener("click", () => {
+        void readStoryBible();
+      });
+      document.getElementById("append").addEventListener("click", () => {
+        void appendComposerText();
+      });
+
+      /* ------------------------------------------------------------------ the D-pad */
+
+      const FOCUSABLE = ".focusable:not([disabled])";
+
+      function focusables() {
+        if (el.confirm.classList.contains("open")) {
+          return Array.from(document.querySelectorAll("#confirm " + FOCUSABLE));
+        }
+        return Array.from(document.querySelectorAll("nav " + FOCUSABLE));
+      }
+
+      function moveFocus(direction) {
+        const items = focusables();
+        if (items.length === 0) return;
+        const index = items.indexOf(document.activeElement);
+        let next = index;
+        if (direction === "up" || direction === "left") {
+          next = index <= 0 ? items.length - 1 : index - 1;
+        } else {
+          next = index === -1 || index === items.length - 1 ? 0 : index + 1;
+        }
+        items[next].focus();
+        items[next].scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+
+      document.addEventListener("keydown", (event) => {
+        switch (event.key) {
+          case "ArrowUp":
+            moveFocus("up");
+            break;
+          case "ArrowDown":
+            moveFocus("down");
+            break;
+          case "ArrowLeft":
+            moveFocus("left");
+            break;
+          case "ArrowRight":
+            moveFocus("right");
+            break;
+          case "Enter":
+            if (document.activeElement?.classList?.contains("focusable")) {
+              document.activeElement.click();
+            }
+            break;
+          default:
+            return;
+        }
+        event.preventDefault();
+      });
+
+      /* ------------------------------------------------------------------ the model context */
+
+      /*
+       * The tools the assistant on the glasses may call. They are the studio's own read verbs plus
+       * one write, and the destructive ones are not among them: a tool that removes or replaces
+       * work needs a person to ask for it, not an assistant.
+       *
+       * The names, descriptions and schemas are the studio's, not a copy of them. The page asks
+       * the studio for its catalog for this book, which already leaves out the tools the author
+       * withdrew.
+       */
+      const WEB_MCP_EXCLUDED = new Set([
+        "overwrite_chapter",
+        "delete_chapter",
+        "delete_lines_in_chapter",
+        "merge_chapters",
+        "remove_memory"
+      ]);
+
+      async function registerTools() {
+        if (!("modelContext" in document) || typeof document.modelContext.registerTool !== "function") {
+          say("This device cannot be spoken to. Use the buttons.", true);
+          return 0;
+        }
+        let count = 0;
+        for (const tool of state.tools) {
+          if (WEB_MCP_EXCLUDED.has(tool.name)) continue;
+          try {
+            await document.modelContext.registerTool({
+              name: tool.name,
+              title: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+              annotations: {
+                readOnlyHint: tool.tier === "read",
+                untrustedContentHint: false,
+                consequentialHint: tool.tier === "destructive"
+              },
+              execute: async (args) => {
+                const result = await runTool(tool.name, args || {});
+                if (result?.ok === false) {
+                  return `The studio refused: ${result.message || "no reason given."}`;
+                }
+                return describe(result);
+              }
+            });
+            count += 1;
+          } catch (error) {
+            say(`The assistant could not be given ${tool.name}.`, true);
+          }
+        }
+        say(
+          count > 0
+            ? `${count} tool${count === 1 ? "" : "s"} ready. Ask by voice, or use the buttons.`
+            : "This device cannot be spoken to. Use the buttons.",
+          count === 0
+        );
+        return count;
+      }
+
+      /** Turn a tool's result into something worth reading aloud. */
+      function describe(result) {
+        if (!result) return "Nothing came back.";
+        if (result.message && Object.keys(result).length <= 2) return result.message;
+        if (result.chapter) {
+          return `${result.chapter.title}: ${result.chapter.wordCount} words.`;
+        }
+        if (Array.isArray(result.chapters)) {
+          return result.chapters
+            .map((chapter) => `${chapter.order}. ${chapter.title}, ${chapter.wordCount} words`)
+            .join(". ");
+        }
+        if (result.book) {
+          const book = result.book;
+          const cast = Array.isArray(book.characters)
+            ? book.characters.map((c) => c.name).join(", ")
+            : "";
+          return [book.title, book.description, cast ? `Cast: ${cast}` : ""]
+            .filter(Boolean)
+            .join(". ");
+        }
+        if (result.hits && Array.isArray(result.hits)) {
+          return result.hits.length
+            ? result.hits.map((hit) => `${hit.chapterTitle}: ${hit.text}`).join(". ")
+            : "No matches.";
+        }
+        if (result.words !== undefined) return `${result.words} words.`;
+        return result.message || "Done.";
+      }
+
+      /* ------------------------------------------------------------------ the start */
+
+      async function start() {
+        try {
+          const listed = await call("/v1/books");
+          state.books = listed.books ?? [];
+          if (state.books.length === 0) {
+            el.status.textContent = "no books";
+            showPassage("The library has no books yet.");
+            return;
+          }
+          const wanted = state.books.find((book) => book.id === config.bookId) || state.books[0];
+          const payload = await call(`/v1/books/${encodeURIComponent(wanted.id)}`);
+          // The studio wraps the detail in "book", and the detail itself holds "book" and
+          // "chapters". Both are read, so a flatter shape would work too.
+          const detail = payload.book ?? payload;
+          state.book = detail.book ?? detail;
+          state.chapters = detail.chapters ?? [];
+          el.book.textContent = state.book.title || "Untitled book";
+          el.status.textContent = `${state.chapters.length} chapter${state.chapters.length === 1 ? "" : "s"}`;
+
+          const catalog = await call(`/v1/books/${encodeURIComponent(wanted.id)}/tools`);
+          state.tools = catalog.tools ?? [];
+
+          await openChapter(0);
+          await registerTools();
+        } catch (error) {
+          el.status.textContent = "not reachable";
+          showPassage(
+            "The studio is not reachable. Open AI Book Studio with a library, then try again."
+          );
+          say(error?.message || "The studio is not reachable.", true);
+        }
+      }
+
+      void start();
+    </script>
+  </body>
+</html>

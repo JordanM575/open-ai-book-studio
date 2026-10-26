@@ -14,38 +14,47 @@
 
 ## Phase 2 — Reaching the studio
 
-- [ ] T005 Let the author allow one exact browser origin on the loopback backend, off by default,
-  with CORS headers and the per-run token unchanged.
-- [ ] T006 Show the origin and the URL in Settings, and say plainly that the page carries the
-  token and that the token never leaves the machine.
+- [x] T005 Serve the glasses page from the studio itself, so it is the same origin as the API and
+  needs no cross-origin request and no public host.
+- [x] T006 Allow a browser origin that is the studio's own, and refuse every other one, exactly
+  as before. The list of extra origins is empty by default.
+- [x] T007 Put the per-run token in the URL fragment, which a browser never sends to a server, and
+  keep the page itself free of prose and of the token.
+- [x] T008 Leave a tool the author withdrew out of the per-book catalog, so the page never sees it.
 
 ## Phase 3 — The Web App
 
-- [ ] T007 Build the 600×600 page: dark, no scrolling, the arrow-key focus ring, the chapter
-  list and the current paragraph.
-- [ ] T008 Speak the current paragraph and the agent's reply through `speechSynthesis`, and keep
+- [x] T009 Build the 600×600 page: dark, no scrolling, the arrow-key focus ring, the chapter
+  list and the current passage.
+- [x] T010 Speak the current paragraph and the agent's reply through `speechSynthesis`, and keep
   the text visible.
-- [ ] T009 Register the studio's read tools as WebMCP tools through `document.modelContext`, and
+- [x] T011 Register the studio's read tools as WebMCP tools through `document.modelContext`, and
   keep every one of them reachable by hand in the interface.
-- [ ] T010 Work without WebMCP, without speech and without a network, and say so.
+- [x] T012 Work without WebMCP, without speech and without a network, and say so.
+- [x] T013 Ask the wearer before a write, every time, and do not write when they say no.
 
-## Phase 4 — The connector
+## Phase 4 — Proof
 
-- [ ] T011 Write the connector application note: the manifest, the account-linking story, the
+- [x] T014 Drive the page in a real browser at 600×600 against the real studio: `bun run
+  glasses:check`. Twelve checks, no dead ends.
+
+## Phase 5 — The connector
+
+- [ ] T015 Write the connector application note: the manifest, the account-linking story, the
   scopes, the side effects and the test credentials.
-- [ ] T012 Record the WebMCP and connector surfaces in `docs/TOOLKIT.md` and the changelog.
+- [ ] T016 Record the WebMCP and connector surfaces in `docs/TOOLKIT.md` and the changelog.
 
-## Phase 5 — The real glasses
+## Phase 6 — The real glasses
 
-- [ ] T013 Host the page on a public HTTPS URL and load it on the glasses through the Meta AI
-  app's Developer Mode.
-- [ ] T014 Publish a studio instance serving the sample library only, and point the page at it.
-  **Blocked on D-157.**
+- [ ] T017 Host the page on a public HTTPS URL and load it on the glasses through the Meta AI
+  app's Developer Mode. **The page holds no prose, so hosting it exposes nothing.**
+- [ ] T018 Build the phone app that is the server and the glasses the client, so the author's own
+  book reaches the glasses without a public endpoint. **This is the Device Access Toolkit route,
+  and it is a native app.**
 
 ## Dependencies
 
 - T001–T004 need no key, no network and no glasses. They are done.
-- T005–T010 need no key and no network, and can be developed in the Meta Ray-Ban Display
-  Simulator.
-- T013–T014 need the glasses, the Meta AI app in Developer Mode, a public host and a decision
-  (D-157).
+- T005–T014 need no key, no network and no glasses. They are done.
+- T017 needs the glasses, the Meta AI app in Developer Mode and a public host for the shell.
+- T018 needs a native iOS or Android app and the glasses.

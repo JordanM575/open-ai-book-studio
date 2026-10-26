@@ -47,6 +47,8 @@ export interface BackendSource {
  */
 export interface BackendToolRunner {
   catalog(): Promise<ToolDescriptor[]>;
+  /** The tools the studio will actually run for one book, with the withdrawn ones left out. */
+  catalogFor(bookId: string): Promise<ToolDescriptor[]>;
   run(request: {
     bookId: string;
     name: string;
@@ -63,6 +65,17 @@ export interface LocalBackendOptions {
   token?: string;
   /** The studio's writing tools. Without them the tool routes report that they are unavailable. */
   tools?: BackendToolRunner;
+  /**
+   * The origins allowed to call the API from a browser, besides the page's own origin.
+   *
+   * The list is empty by default, so a browser origin is refused exactly as it always was. An
+   * entry is an exact origin, never a wildcard.
+   */
+  allowedOrigins?: string[];
+  /** The glasses page, served from the studio so it is the same origin as the API. */
+  glassesPage?: string;
+  /** The glasses page's web app manifest. */
+  glassesManifest?: string;
 }
 
 export interface BackendLocator {
@@ -80,6 +93,10 @@ export interface BackendLocator {
  * It listens on loopback only, requires a per-run bearer token, refuses browser origins and writes
  * the token to an owner-only file. It never listens on a LAN address and never holds a second copy
  * of the library: every call goes through the open `Studio` and its `Library`.
+ *
+ * The one exception to "refuses browser origins" is the glasses page the studio serves itself: it
+ * is the same origin as the API, so a browser can call it without a cross-origin request. Every
+ * other origin is still refused.
  */
 export class LocalBackend {
   private server: Server | null = null;
@@ -87,6 +104,9 @@ export class LocalBackend {
   private readonly token: string;
   private readonly locatorPath: string;
   private readonly tools: BackendToolRunner | null;
+  private readonly allowedOrigins: Set<string>;
+  private readonly glassesPage: string | null;
+  private readonly glassesManifest: string;
 
   constructor(
     private readonly source: BackendSource,
@@ -96,6 +116,9 @@ export class LocalBackend {
     this.locatorPath = options.locatorPath ?? backendLocatorPath();
     this.port = options.port ?? 0;
     this.tools = options.tools ?? null;
+    this.allowedOrigins = new Set(options.allowedOrigins ?? []);
+    this.glassesPage = options.glassesPage ?? null;
+    this.glassesManifest = options.glassesManifest ?? "{}";
   }
 
   private readonly port: number;
@@ -145,19 +168,73 @@ export class LocalBackend {
     return this.locatorPath;
   }
 
+  /**
+   * The address of the glasses page, with the per-run token in its fragment.
+   *
+   * The fragment is never sent to a server, so the token does not end up in a request line or a
+   * log. `null` when the control plane is not running.
+   */
+  get glassesUrl(): string | null {
+    if (!this.url || !this.glassesPage) return null;
+    return `${this.url}/glasses#token=${this.token}`;
+  }
+
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    if (request.headers.origin) {
+    const origin = request.headers.origin;
+
+    // The preflight carries no credentials, so it is answered before the token is checked, and
+    // only for an origin the studio allows.
+    if (request.method === "OPTIONS") {
+      if (!origin || !this.originAllowed(origin, request.headers.host)) {
+        throw new HttpError(403, "forbidden", "The local backend does not accept browser origins.");
+      }
+      response.writeHead(204, {
+        "access-control-allow-origin": origin,
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "authorization, content-type",
+        "access-control-max-age": "600",
+        "cache-control": "no-store"
+      });
+      response.end();
+      return;
+    }
+
+    if (origin && !this.originAllowed(origin, request.headers.host)) {
       throw new HttpError(403, "forbidden", "The local backend does not accept browser origins.");
     }
     if (!this.hostAllowed(request.headers.host)) {
       throw new HttpError(403, "forbidden", "The local backend only accepts loopback requests.");
     }
+
+    const url = new URL(request.url ?? "/", this.url ?? "http://127.0.0.1");
+    const parts = url.pathname.split("/").filter(Boolean);
+
+    /*
+     * The glasses page. It is the studio's own interface for Meta Ray-Ban Display glasses, served
+     * from the studio so that it is the same origin as the API and needs no cross-origin request
+     * at all.
+     *
+     * The page carries no prose and no token: it is a shell. The token arrives in the URL
+     * fragment, which a browser never sends to a server, and the API still refuses everything
+     * without it.
+     */
+    if (parts[0] === "glasses") {
+      if (!this.glassesPage) throw new HttpError(404, "not-found", "Unknown route.");
+      if (request.method === "GET" && parts.length === 2 && parts[1] === "manifest.json") {
+        this.sendText(response, 200, this.glassesManifest, "application/manifest+json; charset=utf-8");
+        return;
+      }
+      if (request.method === "GET" && parts.length <= 2) {
+        this.sendText(response, 200, this.glassesPage, "text/html; charset=utf-8");
+        return;
+      }
+      throw new HttpError(404, "not-found", "Unknown route.");
+    }
+
     if (!this.authorized(request.headers.authorization)) {
       throw new HttpError(401, "unauthorized", "A valid backend token is required.");
     }
 
-    const url = new URL(request.url ?? "/", this.url ?? "http://127.0.0.1");
-    const parts = url.pathname.split("/").filter(Boolean);
     if (parts[0] !== "v1") throw new HttpError(404, "not-found", "Unknown route.");
 
     if (request.method === "GET" && parts.length === 2 && parts[1] === "health") {
@@ -185,7 +262,8 @@ export class LocalBackend {
       return;
     }
     if (request.method === "GET" && parts.length === 4 && parts[3] === "tools") {
-      this.send(response, 200, { tools: await this.toolRunner().catalog() });
+      // The per-book list, so a tool the author withdrew for this book is not even offered.
+      this.send(response, 200, { tools: await this.toolRunner().catalogFor(bookId) });
       return;
     }
     if (request.method === "POST" && parts.length === 5 && parts[3] === "tools") {
@@ -257,6 +335,23 @@ export class LocalBackend {
     return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
+  /**
+   * Whether a browser origin may call the API.
+   *
+   * The page the studio serves is the same origin as the API, so it is allowed: a browser sends
+   * an `Origin` header on every write, and a same-origin request is not a cross-origin one. Any
+   * other origin has to be on the list, which is empty by default.
+   */
+  private originAllowed(origin: string, host: string | undefined): boolean {
+    if (this.allowedOrigins.has(origin)) return true;
+    if (!host) return false;
+    try {
+      return new URL(origin).host === host;
+    } catch {
+      return false;
+    }
+  }
+
   private hostAllowed(host: string | undefined): boolean {
     if (!host) return false;
     return /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host);
@@ -272,6 +367,20 @@ export class LocalBackend {
       "x-content-type-options": "nosniff"
     });
     response.end(payload);
+  }
+
+  private sendText(response: ServerResponse, status: number, body: string, contentType: string): void {
+    if (response.writableEnded) return;
+    response.writeHead(status, {
+      "content-type": contentType,
+      "content-length": Buffer.byteLength(body),
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'",
+      "referrer-policy": "no-referrer"
+    });
+    response.end(body);
   }
 
   private async writeLocator(locator: BackendLocator): Promise<void> {

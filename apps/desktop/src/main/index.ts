@@ -11,6 +11,8 @@ import { ToolBridge } from "./agent/tool-bridge";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
 import { MetricsStore } from "./metrics";
+import glassesPage from "./glasses/index.html?raw";
+import glassesManifest from "./glasses/manifest.json?raw";
 import { ImageService } from "./images";
 import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
@@ -328,7 +330,11 @@ app.whenReady().then(async () => {
     () => settings.get().pluginFolder ?? null
   );
   if (!headless || process.env.STUDIO_BACKEND === "1") {
-    backend = new LocalBackend(studio, { tools: toolsBridge });
+    backend = new LocalBackend(studio, {
+      tools: toolsBridge,
+      glassesPage,
+      glassesManifest
+    });
     void backend.start().catch((error: unknown) => {
       console.warn("[backend] Could not start the agent toolkit service:", error);
       backend = null;
@@ -390,7 +396,8 @@ app.whenReady().then(async () => {
     images,
     segmentation,
     toolsBridge,
-    settings
+    settings,
+    () => backend
   );
   buildMenu();
   mainWindow = createWindow();

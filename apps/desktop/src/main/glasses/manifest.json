@@ -1,0 +1,11 @@
+{
+  "name": "AI Book Studio",
+  "short_name": "Book Studio",
+  "description": "Your book, on your glasses.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}

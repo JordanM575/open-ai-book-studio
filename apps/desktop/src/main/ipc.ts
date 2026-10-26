@@ -27,6 +27,7 @@ import type { AgentStatus, PluginStatus } from "@ai-book-studio/core/agent/metri
 import { loadPlugins, pluginTools, validatePluginFolder } from "./agent/plugins";
 import { readBookSkills } from "./agent/skills";
 import type { ToolBridge } from "./agent/tool-bridge";
+import type { LocalBackend } from "./backend";
 import type { SettingsStore } from "./settings";
 import type { Studio } from "./studio";
 import type { ProviderService } from "./providers";
@@ -97,7 +98,8 @@ export function registerIpc(
   images: ImageService,
   segmentation: SegmentationService,
   toolsBridge: ToolBridge,
-  settings: SettingsStore
+  settings: SettingsStore,
+  getBackend: () => LocalBackend | null = () => null
 ): void {
   /** What the plugin folder currently provides, for the settings panel. */
   const pluginStatus = async (): Promise<PluginStatus> => {
@@ -476,6 +478,8 @@ export function registerIpc(
     await library.updateBook(input.bookId, { settings: { ...book.settings, agent, cache } });
     return agentStatus(input.bookId);
   });
+
+  handle(IPC.agent.glassesUrl, () => getBackend()?.glassesUrl ?? null);
 
   handle(IPC.agent.choosePluginFolder, async () => {
     const window = getWindow();

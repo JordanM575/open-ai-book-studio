@@ -154,21 +154,44 @@ eight-day event.
 
 ## Open decisions
 
-- **D-154** The first slice is Route A, against the sample library, with the simulator for
-  development and the real glasses for the demonstration. Accepted.
+- **D-154** The first slice is Route A, with the page served by the studio itself, so it is the
+  same origin as the API and needs no public host. Accepted: the page holds no prose, and the
+  token travels in the URL fragment, which a browser never sends to a server.
 - **D-155** The connector manifest is produced now and the application is sent when the endpoint
   and the account-linking story exist. Access is a wave process, so the submission does not depend
   on it. Accepted.
 - **D-156** The author's own book reaches the glasses only through the phone, in a later slice.
   Accepted: the alternative is a hosted copy, which the product's promise forbids.
-- **D-157** Whether the public instance of the sample library is published at all, and where it
-  lives, is the author's decision. It is a hosted service, even if it holds only public-domain
-  sample text. **Open.**
+- **D-157** No public instance of the studio is published. The author chose a local-network
+  instance on their own machine. The consequence is stated plainly below.
+- **D-158** The phone is the server and the glasses the client, through the Device Access
+  Toolkit. Accepted: the toolkit sends UI content to the glasses over Bluetooth and routes the
+  interactions back, and it is the only route that keeps the author's own book private.
+
+## The consequence of D-157, stated plainly
+
+**The glasses cannot fetch live prose from a private network.** A Web App must be loaded from a
+public HTTPS URL, so its own requests are made from the public internet; a private address is
+both unreachable through the phone's tether and refused by the browser's mixed-content rules. The
+author's decision not to publish an instance therefore has one honest outcome:
+
+- **On the computer, everything works.** The page is served by the studio, it reads the real
+  book, it calls the real tools, and the whole thing is proven in a browser at 600×600 by
+  `bun run glasses:check`.
+- **On the glasses, the page can be loaded and shown** once the shell is hosted, because the
+  shell holds no prose. What it cannot do is fetch the author's own book, because the studio is
+  not on the public internet and will not be put there.
+- **The author's own book reaches the glasses through the phone**, in the Device Access Toolkit
+  slice: the phone app reaches the studio over the local network and pushes the interface to the
+  glasses over Bluetooth. That is the route that needs no public endpoint, and it is a native
+  app.
+
+This is stated here so the submission never claims a live on-device read of a private book.
 
 ## What the WebMCP route depends on that this repository cannot promise
 
 - Meta's glasses runtime, the Developer Mode in the Meta AI app, and WebMCP being on for the
   device. WebMCP is off by default and is enabled per device.
-- A public HTTPS host for the page, and a public instance of the studio for the sample library.
-- A working Microphone is not needed. The composer is enough.
+- A public HTTPS host for the shell. The shell holds no prose, so hosting it exposes nothing.
+- A working microphone is not needed. The composer is enough.
 - The simulator, for the part that can be done without the hardware.
