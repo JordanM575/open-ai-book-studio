@@ -420,9 +420,9 @@ export function registerIpc(
       usage.map((record) => ({
         cachedInputTokens: record.cachedInputTokens,
         inputTokens: record.inputTokens,
-        // A provider that does not report a cache leaves the count at zero; that is "not reported",
-        // not "no cache" (D-147).
-        reported: record.costBasis !== "unknown" || record.cachedInputTokens > 0
+        // A provider that does not report a cache says so; that is "not reported", not "no cache"
+        // (D-147).
+        reported: record.cacheReported === true
       }))
     );
     const skills = await readBookSkills(root, bookId, true);

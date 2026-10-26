@@ -26,11 +26,14 @@ Update the `Unreleased` section before every commit.
 - The book's `settings` now carry the agent's own settings, and every setting is defaulted on the
   *input*, so a book written before a setting existed still opens. The committed sample library
   proves it, and a test guards it.
+- The usage log now records whether the provider reported its cache at all, so a measured cache of
+  zero is never shown as a provider that measures no cache.
 
 ### Added
 
 - Added the agent's own capabilities (spec 025): a cacheable prompt prefix where the provider
-  supports one, with the hit rate shown per book; per-tool call, success and failure counts; a
+  supports one, with the hit rate, the cached and fresh token counts and the turns that hit it
+  shown per book, and a switch to turn the prefix off; per-tool call, success and failure counts; a
   switch per built-in tool, per book, that withdraws the tool from the model, the backend and the
   MCP server alike; an optional `SKILLS.md` in the book folder, given to the agent as the author's
   own instructions; and a plugin folder of TypeScript tools the author points the app at.

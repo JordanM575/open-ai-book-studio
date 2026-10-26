@@ -15,6 +15,7 @@ import {
   validatePluginArgs
 } from "../src/agent/plugins";
 import { bookSchema } from "../src/schema";
+import { usageRecordSchema } from "../src/providers/usage";
 
 describe("the per-book agent settings", () => {
   test("default to no withdrawn tools and the skills file on", () => {
@@ -113,6 +114,50 @@ describe("the cache summary", () => {
     const summary = summarizeCache([{ cachedInputTokens: 0, inputTokens: 100, reported: true }]);
     expect(summary.hitRate).toBe(0);
     expect(summary.turnsWithCache).toBe(0);
+  });
+
+  test("keep the tokens apart, so the app can show what was sent and what was cached", () => {
+    const summary = summarizeCache([
+      { cachedInputTokens: 60, inputTokens: 100, reported: true },
+      { cachedInputTokens: 20, inputTokens: 100, reported: true }
+    ]);
+    expect(summary.cachedInputTokens).toBe(80);
+    expect(summary.freshInputTokens).toBe(120);
+  });
+});
+
+describe("the usage record and the cache", () => {
+  test("records whether the provider reported its cache", () => {
+    const parsed = usageRecordSchema.parse({
+      at: "2026-10-26T00:00:00.000Z",
+      bookId: "book_test0001",
+      provider: "anthropic",
+      connectionId: "conn_test0001",
+      modelId: "test-model",
+      inputTokens: 100,
+      outputTokens: 10,
+      cachedInputTokens: 80,
+      cacheReported: true,
+      costUsd: null,
+      costBasis: "unknown"
+    });
+    expect(parsed.cacheReported).toBe(true);
+  });
+
+  test("treats a record without the flag as a provider that measures no cache", () => {
+    const parsed = usageRecordSchema.parse({
+      at: "2026-10-26T00:00:00.000Z",
+      bookId: "book_test0001",
+      provider: "openrouter",
+      connectionId: "conn_test0001",
+      modelId: "test-model",
+      inputTokens: 100,
+      outputTokens: 10,
+      cachedInputTokens: 0,
+      costUsd: null,
+      costBasis: "unknown"
+    });
+    expect(parsed.cacheReported).toBeUndefined();
   });
 });
 

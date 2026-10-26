@@ -19,6 +19,13 @@ export const usageRecordSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   cachedInputTokens: z.number().int().nonnegative().default(0),
+  /**
+   * Whether the provider reported its cache at all.
+   *
+   * `false` or absent means the provider measures no cache, which is different from a measured
+   * cache of zero. The app must never show the second as the first (D-147).
+   */
+  cacheReported: z.boolean().optional(),
   /** `null` when the provider did not report a cost. Never zero as a stand-in for unknown. */
   costUsd: z.number().nonnegative().nullable(),
   costBasis: z.enum(COST_BASES),

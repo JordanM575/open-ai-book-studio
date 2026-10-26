@@ -16,14 +16,16 @@ The app shows the hit rate for the book:
 
 - The share of input tokens the provider served from its cache.
 - How many turns hit the cache at all.
+- How many tokens were served from the cache and how many were sent.
 
 A provider that does not report a cache — OpenAI and the OpenAI-compatible providers included — is
 shown as **"This provider does not report a prompt cache."** That is not a rate of zero. The
 difference matters: a zero would say the cache did nothing, when the truth is that nothing was
-measured.
+measured. The usage log records whether the provider reported its cache at all, so a measured zero
+and a missing measurement never look the same.
 
-The prefix can be turned off for a book. The setting is `settings.cache.prefixMode`, either `auto`
-or `off`.
+The prefix can be turned off for a book, in **More → Agent**. The setting is
+`settings.cache.prefixMode`, either `auto` or `off`.
 
 ## The tool metrics
 
@@ -31,7 +33,8 @@ Every tool call is counted per book: how many times the agent called the tool, h
 and how many failed. The numbers live beside the usage log in the library's derived `.studio`
 folder, and they are derived data: losing them loses the metrics, never the prose.
 
-**More → Agent** shows the totals and the per-tool numbers, next to the cache rate.
+**More → Agent** shows the totals and the per-tool numbers, next to the cache rate. Each tool row
+shows how many times the agent called it, how many succeeded and how many failed.
 
 ## Turning a tool off
 

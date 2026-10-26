@@ -84,6 +84,8 @@ interface TurnState {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
+  /** Whether the provider reported its cache at all. A measured zero is not the same thing. */
+  cacheReported: boolean;
   costUsd: number | null;
   contextLength: number | null;
   context: ContextBreakdown;
@@ -235,6 +237,7 @@ export class AgentRuntime {
       inputTokens: 0,
       outputTokens: 0,
       cachedInputTokens: 0,
+      cacheReported: false,
       costUsd: null,
       contextLength,
       context,
@@ -520,7 +523,11 @@ export class AgentRuntime {
       const usage = await stream.totalUsage;
       state.inputTokens += usage.inputTokens ?? 0;
       state.outputTokens += usage.outputTokens ?? 0;
-      state.cachedInputTokens += usage.inputTokenDetails.cacheReadTokens ?? 0;
+      // The provider reports its cache as an optional count. A missing count means the provider
+      // measures no cache, which is not the same as a measured zero (D-147).
+      const cacheRead = usage.inputTokenDetails.cacheReadTokens;
+      state.cachedInputTokens += cacheRead ?? 0;
+      if (cacheRead !== undefined) state.cacheReported = true;
       state.steps += Math.max(1, (await stream.steps).length);
       const finalStep = await stream.finalStep;
       const cost = reportedCost(provider, finalStep.providerMetadata);
@@ -598,6 +605,7 @@ export class AgentRuntime {
         inputTokens: state.inputTokens,
         outputTokens: state.outputTokens,
         cachedInputTokens: state.cachedInputTokens,
+        cacheReported: state.cacheReported,
         costUsd: state.costUsd,
         costBasis,
         contextLength: state.contextLength
@@ -633,6 +641,7 @@ export class AgentRuntime {
           inputTokens: state.inputTokens,
           outputTokens: state.outputTokens,
           cachedInputTokens: state.cachedInputTokens,
+          cacheReported: state.cacheReported,
           costUsd: state.costUsd,
           costBasis,
           contextLength: state.contextLength,

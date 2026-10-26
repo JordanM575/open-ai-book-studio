@@ -104,6 +104,8 @@ export const agentUsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   cachedInputTokens: z.number().int().nonnegative().default(0),
+  /** Whether the provider reported its cache at all. A measured zero is not the same thing. */
+  cacheReported: z.boolean().optional(),
   costUsd: z.number().nonnegative().nullable(),
   costBasis: z.enum(COST_BASES),
   /** The selected model's context window when the catalogue reported one. */

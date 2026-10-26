@@ -267,6 +267,18 @@ if (pluginPicker === 0) {
 } else {
   notes.push("the agent panel offers a plugin folder");
 }
+const cacheOption = await page.locator('[data-testid="agent-cache-prefix"]').count();
+if (cacheOption === 0) {
+  problem("agent panel", "there is no way to turn the cacheable prefix on or off");
+} else {
+  notes.push("the agent panel offers the cache prefix option");
+}
+const toolSwitch = await page.locator('[data-testid^="agent-tool-"]').count();
+if (toolSwitch === 0) {
+  problem("agent panel", "no tool has a switch");
+} else {
+  notes.push("every tool has a switch");
+}
 await closeDialogs();
 
 if (consoleErrors.length > 0) {

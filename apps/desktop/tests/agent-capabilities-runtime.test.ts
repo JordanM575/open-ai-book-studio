@@ -12,6 +12,7 @@ import type { Studio } from "../src/main/studio";
 import { AgentRuntime } from "../src/main/agent/runtime";
 import { Library } from "../src/main/library/store";
 import { MetricsStore } from "../src/main/metrics";
+import { UsageStore } from "../src/main/usage";
 import { cachePrefixFor } from "../src/main/agent/cache";
 
 let root = "";
@@ -247,6 +248,53 @@ describe("the runtime and the tool metrics", () => {
 });
 
 describe("the cache prefix", () => {
+  /** The usage log is written after the turn reports itself, so wait for it. */
+  async function usageRecords(): Promise<Awaited<ReturnType<UsageStore["read"]>>> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const records = await new UsageStore(root).read(book.id);
+      if (records.length > 0) return records;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return [];
+  }
+
+  test("records that the provider reported its cache, so a measured zero is not a missing one", async () => {
+    const withCache = new MockLanguageModelV4({
+      doStream: {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "text-1" },
+            { type: "text-delta", id: "text-1", delta: "Done." },
+            { type: "text-end", id: "text-1" },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: undefined },
+              logprobs: undefined,
+              usage: {
+                inputTokens: { total: 120, noCache: 80, cacheRead: 40, cacheWrite: undefined },
+                outputTokens: { total: 12, text: 12, reasoning: undefined }
+              }
+            }
+          ]
+        })
+      }
+    });
+    await runTurn({ model: withCache });
+    const records = await usageRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.cacheReported).toBe(true);
+    expect(records[0]?.cachedInputTokens).toBe(40);
+  });
+
+  test("records that a provider reported no cache at all", async () => {
+    await runTurn();
+    const records = await usageRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.cacheReported).toBeFalsy();
+    expect(records[0]?.cachedInputTokens).toBe(0);
+  });
+
   test("marks the stable prefix for a provider that supports it", () => {
     const prefix = cachePrefixFor("anthropic", true);
     expect(prefix.systemProviderOptions).toBeDefined();

@@ -125,6 +125,23 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
           >
             {status ? <PerformanceLine status={status} /> : "Reading…"}
           </p>
+          {status ? <CacheDetail status={status} /> : null}
+          {status ? (
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={status.cache.mode === "auto"}
+                onChange={(event) =>
+                  void setSettings({ cachePrefixMode: event.target.checked ? "auto" : "off" })
+                }
+                disabled={busy}
+                className="size-4 accent-[var(--primary)]"
+                data-testid="agent-cache-prefix"
+                aria-label="Mark the prompt for the provider's cache"
+              />
+              <span>Mark the prompt for the provider&apos;s cache</span>
+            </label>
+          ) : null}
         </section>
 
         <section className="mt-6">
@@ -232,6 +249,15 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
                   <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
                     {TIER_LABEL[tool.tier]}
                   </p>
+                  {tool.calls > 0 ? (
+                    <p
+                      className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground"
+                      data-testid={`agent-tool-counts-${tool.name}`}
+                    >
+                      {tool.calls} call{tool.calls === 1 ? "" : "s"} · {tool.successes} ok
+                      {tool.failures > 0 ? ` · ${tool.failures} failed` : ""}
+                    </p>
+                  ) : null}
                 </div>
                 <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
                   <span>{tool.enabled ? "On" : "Off"}</span>
@@ -283,5 +309,36 @@ function PerformanceLine({ status }: { status: AgentStatus }) {
     <>
       {cacheText} {toolText}
     </>
+  );
+}
+
+/** The cache numbers, when there are any. */
+function CacheDetail({ status }: { status: AgentStatus }) {
+  const cache = status.cache;
+  if (cache.turns === 0) return null;
+  return (
+    <dl
+      className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[var(--text-caption-size)] text-muted-foreground sm:grid-cols-4"
+      data-testid="agent-cache-detail"
+    >
+      <div>
+        <dt className="sr-only">Cached input tokens</dt>
+        <dd>{cache.cachedInputTokens.toLocaleString()} cached tokens</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Fresh input tokens</dt>
+        <dd>{cache.freshInputTokens.toLocaleString()} sent</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Turns that hit the cache</dt>
+        <dd>
+          {cache.turnsWithCache} of {cache.turns} turns hit
+        </dd>
+      </div>
+      <div>
+        <dt className="sr-only">Cache mode</dt>
+        <dd>{cache.mode === "auto" ? "Prefix marked" : "Prefix not marked"}</dd>
+      </div>
+    </dl>
   );
 }
