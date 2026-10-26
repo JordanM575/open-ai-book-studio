@@ -28,8 +28,9 @@ Planning folder for the Meta Global AI Developer Hackathon, October 26 – Novem
 
 ## Open decisions
 
-1. **Track:** Indie developer if submitting solo; Startup only if the team and company are the
-   submission. The judging criteria differ.
+1. **Track and team:** Indie developer if submitting solo; Startup only if the team and company are the
+   submission. A team of up to four is allowed, and every contributor must be listed. The judging
+   criteria differ.
 2. **Repository shape:** three worktrees (recommended) or a new `meta-hackathon-2026` repository.
 3. **Meta access:** Meta Model API directly, or Meta open weights through Baseten, Modal or Fireworks.
    This decides the provider adapter and the demo's cost profile.

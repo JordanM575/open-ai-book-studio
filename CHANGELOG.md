@@ -26,6 +26,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Recorded the Meta participant guide in `hackathon/EVENT.md`: the full schedule and Discord channels,
+  the four-person team cap, the open-source and event-only-work rules, the anti-project list, the $150
+  credit and partner offers, the three-stage judging rubric, both prize tracks and the bonus prizes, and
+  the submission requirements including the three-minute demo video.
 - Added spec 009 for desktop packaging, signing, notarisation, release provenance and the gated
   update path; D-115 keeps signing and updates deferred.
 - Added the automated-verification plan and task ledger for spec 012, covering the existing Bun,
