@@ -137,3 +137,181 @@ describe("ManuscriptEditor", () => {
     expect(save).not.toHaveBeenCalled();
   });
 });
+
+const { IllustrationDialog } = await import("@ai-book-studio/app/components/IllustrationDialog");
+type IllustrationRecord = import("@ai-book-studio/core/images/schema").ImageRecord;
+
+function illustrationImage(overrides: Partial<IllustrationRecord> = {}): IllustrationRecord {
+  return {
+    id: "img_ui000001",
+    kind: "chapter",
+    chapterId: null,
+    characterId: null,
+    fileName: "img_ui000001.png",
+    mimeType: "image/png",
+    width: 1,
+    height: 1,
+    bytes: 68,
+    sha256: "b".repeat(64),
+    prompt: "A lighthouse in a storm",
+    provider: "meta",
+    model: "muse-image-1.0",
+    size: "1024x1024",
+    source: "generated",
+    createdAt: "2026-10-26T12:00:00.000Z",
+    cutoutOf: null,
+    costUsd: 0.01,
+    revisedPrompt: null,
+    confidence: null,
+    ...overrides
+  };
+}
+
+function mockIllustrationStudio(options: { connections?: unknown[]; initial?: IllustrationRecord[] } = {}) {
+  let images = [...(options.initial ?? [])];
+  const list = mock(() =>
+    Promise.resolve({
+      ok: true as const,
+      data: { manifest: { schemaVersion: 1, images }, warning: null }
+    })
+  );
+  const read = mock((_bookId: string, imageId: string) =>
+    Promise.resolve({
+      ok: true as const,
+      data: {
+        record: images.find((entry) => entry.id === imageId) ?? illustrationImage(),
+        dataUrl: "data:image/png;base64,iVBORw0KGgo="
+      }
+    })
+  );
+  const generate = mock((input: { prompt: string; chapterId?: string }) => {
+    const created = illustrationImage({
+      id: "img_ui000002",
+      prompt: input.prompt,
+      chapterId: input.chapterId ?? null
+    });
+    images = [...images, created];
+    return Promise.resolve({ ok: true as const, data: created });
+  });
+  const attach = mock((_bookId: string, imageId: string) => {
+    images = images.map((entry) => ({ ...entry, chapterId: entry.id === imageId ? CHAPTER.id : null }));
+    return Promise.resolve({
+      ok: true as const,
+      data: images.find((entry) => entry.id === imageId) ?? illustrationImage()
+    });
+  });
+  const segment = mock(() =>
+    Promise.resolve({
+      ok: true as const,
+      data: {
+        prompt: "the keeper",
+        model: "sam-3.1",
+        costUsd: null,
+        matches: [
+          {
+            objectId: "1",
+            confidence: 0.9,
+            width: 1,
+            height: 1,
+            bounds: { left: 0, top: 0, right: 1, bottom: 1 },
+            raster: new Uint8Array([1])
+          }
+        ]
+      }
+    })
+  );
+  (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
+    connections: {
+      list: mock(() =>
+        Promise.resolve({
+          ok: true as const,
+          data: options.connections ?? [{ id: "conn_meta0001", provider: "meta", label: "Meta" }]
+        })
+      )
+    },
+    images: {
+      list,
+      read,
+      generate,
+      attach,
+      remove: mock(() => Promise.resolve({ ok: true as const, data: null })),
+      saveCutout: mock(() =>
+        Promise.resolve({ ok: true as const, data: illustrationImage({ id: "img_ui000003", kind: "character" }) })
+      )
+    },
+    segmentation: { segment }
+  };
+  return { generate, attach, segment };
+}
+
+function renderIllustration() {
+  return testing.render(
+    React.createElement(IllustrationDialog, {
+      open: true,
+      bookId: BOOK,
+      chapter: CHAPTER,
+      onClose: () => {},
+      onChanged: () => {},
+      onOpenSettings: () => {}
+    })
+  );
+}
+
+describe("IllustrationDialog", () => {
+  test("explains the missing Meta connection and disables generation", async () => {
+    mockIllustrationStudio({ connections: [] });
+    renderIllustration();
+    await testing.waitFor(() => testing.screen.getByText("Connect Meta to generate images"));
+    expect((testing.screen.getByTestId("generate-illustration") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("shows the attached chapter image", async () => {
+    mockIllustrationStudio({ initial: [illustrationImage({ chapterId: CHAPTER.id })] });
+    renderIllustration();
+    await testing.waitFor(() => testing.screen.getByAltText("Illustration: A lighthouse in a storm"));
+    expect((testing.screen.getByTestId("attach-illustration") as HTMLButtonElement).disabled).toBe(true);
+    expect(testing.screen.getByTestId("attach-illustration").textContent).toBe("Attached");
+  });
+
+  test("generates with the chapter id and reports the save", async () => {
+    const studio = mockIllustrationStudio();
+    renderIllustration();
+    const prompt = (await testing.screen.findByTestId("illustration-prompt")) as HTMLTextAreaElement;
+    testing.fireEvent.change(prompt, { target: { value: "A storm over the harbor" } });
+    testing.fireEvent.click(testing.screen.getByTestId("generate-illustration"));
+    await testing.waitFor(() => expect(studio.generate).toHaveBeenCalledTimes(1));
+    expect(studio.generate).toHaveBeenCalledWith({
+      bookId: BOOK,
+      chapterId: CHAPTER.id,
+      prompt: "A storm over the harbor",
+      size: "1024x1024"
+    });
+    await testing.waitFor(() => testing.screen.getByText("Illustration saved to this book."));
+  });
+
+  test("attaches an existing image to the chapter", async () => {
+    const studio = mockIllustrationStudio({ initial: [illustrationImage()] });
+    renderIllustration();
+    await testing.waitFor(() => testing.screen.getByAltText("Illustration: A lighthouse in a storm"));
+    testing.fireEvent.click(testing.screen.getByTestId("attach-illustration"));
+    await testing.waitFor(() => expect(studio.attach).toHaveBeenCalledWith(BOOK, "img_ui000001", CHAPTER.id));
+    await testing.waitFor(() => testing.screen.getByText("This image is now the chapter illustration."));
+  });
+
+  test("shows SAM matches for the selected image", async () => {
+    const studio = mockIllustrationStudio({ initial: [illustrationImage({ chapterId: CHAPTER.id })] });
+    renderIllustration();
+    const prompt = (await testing.screen.findByTestId("cutout-prompt")) as HTMLInputElement;
+    testing.fireEvent.change(prompt, { target: { value: "the keeper" } });
+    testing.fireEvent.click(testing.screen.getByTestId("find-cutouts"));
+    await testing.waitFor(() =>
+      expect(studio.segment).toHaveBeenCalledWith({
+        bookId: BOOK,
+        imageId: "img_ui000001",
+        prompt: "the keeper"
+      })
+    );
+    await testing.waitFor(() => testing.screen.getByText("Object 1 · 90%"));
+    expect(testing.screen.getByTestId("save-cutout-1")).toBeTruthy();
+  });
+});

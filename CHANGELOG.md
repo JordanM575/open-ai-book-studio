@@ -35,7 +35,8 @@ Update the `Unreleased` section before every commit.
 - Added the illustration pipeline (spec 019): a versioned `images.json`, an atomic image store over
   `LibraryPort`, PNG/WebP/JPEG inspection, Muse Image generation through Meta at a visible `$0.01`
   per-image estimate, IPC, an Illustration dialog, an attached image below the chapter and DOCX
-  embedding with the prompt as a caption.
+  embedding with the prompt as a caption. The dialog’s missing-connection, attached-image, generation,
+  attach and SAM-match states are covered under happy-dom.
 - Added specs 019 and 020 for illustrations and SAM 3.1 cutouts, including the documented Meta
   endpoints, the mask grammar and the renderer-side compositor plan.
 - Added the standalone `bookwriter` toolkit (spec 018): a loopback-only desktop backend with a per-run
