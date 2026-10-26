@@ -10,7 +10,7 @@ import { AgentRuntime } from "./agent/runtime";
 import { ToolBridge } from "./agent/tool-bridge";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
-import { LocalBridge, type BridgeLocator } from "./bridge";
+import { LocalBridge, localAddresses, type BridgeLocator } from "./bridge";
 import { MetricsStore } from "./metrics";
 import glassesPage from "./glasses/index.html?raw";
 import glassesManifest from "./glasses/manifest.json?raw";
@@ -465,6 +465,27 @@ app.whenReady().then(async () => {
     () => backend,
     bridgeControl
   );
+
+  /*
+   * A headless run can turn the bridge on at launch, the way `STUDIO_BACKEND=1` starts the control
+   * plane. It is how the phone's half is proved from a separate process before there is a phone:
+   * the run prints where it is listening, and a client outside this process speaks to it.
+   */
+  if (process.env.STUDIO_BRIDGE === "1") {
+    const address = localAddresses()[0];
+    if (!address) {
+      console.error("[bridge] This computer has no local network address, so nothing can reach it.");
+    } else {
+      void bridgeControl
+        .start(address)
+        .then((started) => {
+          console.log(`[bridge] result ${JSON.stringify({ url: started.url, address: started.address })}`);
+        })
+        .catch((error: unknown) => {
+          console.error("[bridge] Could not start:", error);
+        });
+    }
+  }
   buildMenu();
   mainWindow = createWindow();
 

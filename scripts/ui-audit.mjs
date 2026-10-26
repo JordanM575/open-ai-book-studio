@@ -227,6 +227,103 @@ if (ambientInput === 0) {
   notes.push("the minimal mode can be talked to");
 }
 
+// Accessibility: the things a keyboard or a screen reader needs, which look fine to the eye.
+const a11y = await page.evaluate(() => {
+  const visible = (el) => el.offsetParent !== null || el.getClientRects().length > 0;
+  const nameOf = (el) => {
+    const aria = el.getAttribute("aria-label");
+    if (aria && aria.trim()) return aria.trim();
+    const labelledBy = el.getAttribute("aria-labelledby");
+    if (labelledBy) {
+      const text = labelledBy
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join(" ")
+        .trim();
+      if (text) return text;
+    }
+    const title = el.getAttribute("title");
+    if (title && title.trim()) return title.trim();
+    if (el.id) {
+      const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      const text = label?.textContent?.trim();
+      if (text) return text;
+    }
+    const wrapping = el.closest("label");
+    if (wrapping) {
+      const text = wrapping.textContent?.trim();
+      if (text) return text;
+    }
+    const text = (el.textContent ?? "").trim();
+    if (text) return text;
+    return (el.querySelector("img[alt]")?.getAttribute("alt") ?? "").trim();
+  };
+  const label = (el) =>
+    `${el.tagName.toLowerCase()}${el.dataset.testid ? `[${el.dataset.testid}]` : ""}`;
+
+  const controls = [...document.querySelectorAll("button, a[href], input, select, textarea, [role=button]")].filter(
+    visible
+  );
+  const unnamed = controls.filter((el) => !nameOf(el)).map(label);
+  const tooSmall = controls
+    .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.width > 0 && (rect.width < 20 || rect.height < 20))
+    .map(({ el, rect }) => `${label(el)} ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+  const images = [...document.querySelectorAll("img")].filter((img) => !img.hasAttribute("alt")).length;
+  const headings = {
+    h1: document.querySelectorAll("h1").length,
+    h2: document.querySelectorAll("h2").length
+  };
+  return { total: controls.length, unnamed, tooSmall, images, headings };
+});
+
+if (a11y.total === 0) {
+  problem("accessibility", "the workspace has no interactive controls at all");
+} else {
+  notes.push(`accessibility: ${a11y.total} controls inspected`);
+}
+if (a11y.unnamed.length > 0) {
+  problem("accessibility", `controls with no accessible name: ${a11y.unnamed.slice(0, 6).join(", ")}`);
+} else {
+  notes.push("every control has an accessible name");
+}
+if (a11y.tooSmall.length > 0) {
+  problem("accessibility", `controls smaller than 20px: ${a11y.tooSmall.slice(0, 6).join(", ")}`);
+} else {
+  notes.push("every control is big enough to hit");
+}
+if (a11y.images > 0) {
+  problem("accessibility", `${a11y.images} image${a11y.images === 1 ? "" : "s"} without an alt attribute`);
+} else {
+  notes.push("every image has an alt attribute");
+}
+if (a11y.headings.h1 !== 1) {
+  problem("accessibility", `the view has ${a11y.headings.h1} h1 elements rather than one`);
+} else {
+  notes.push("the view has exactly one h1");
+}
+
+// The keyboard has to work: one Tab must land on something, and the ring must show.
+await page.evaluate(() => document.body.focus());
+await page.keyboard.press("Tab");
+const focusRing = await page.evaluate(() => {
+  const el = document.activeElement;
+  if (!el || el === document.body) return { reached: false, outline: "" };
+  const style = getComputedStyle(el);
+  return {
+    reached: true,
+    outline: `${style.outlineStyle} ${style.outlineWidth}`,
+    shadow: style.boxShadow
+  };
+});
+if (!focusRing.reached) {
+  problem("accessibility", "Tab does not reach any control");
+} else if (focusRing.outline.startsWith("none") && (focusRing.shadow === "none" || !focusRing.shadow)) {
+  problem("accessibility", `the focused control has no visible ring (${focusRing.outline})`);
+} else {
+  notes.push(`the keyboard reaches a control with a visible ring (${focusRing.outline})`);
+}
+
 // The Story Bible.
 await click('[data-testid="open-story-bible"]');
 if (!(await waitFor('[data-testid="save-story-bible"]'))) {

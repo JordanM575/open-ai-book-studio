@@ -308,6 +308,17 @@ export function registerIpc(
       defaultPath: `${stem}.docx`,
       filters: [{ name: "Word document", extensions: ["docx"] }]
     };
+    /*
+     * A headless run cannot answer a save dialog, so it names the folder instead. The hook only
+     * exists for the checks: otherwise the export is never exercised end to end, and the parts
+     * that go wrong are the ones nobody clicked.
+     */
+    const forced = process.env.STUDIO_EXPORT_PATH;
+    if (forced) {
+      const target = join(forced, `${stem}.docx`);
+      await writeFileAtomic(target, data);
+      return target;
+    }
     const window = getWindow();
     const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
     if (choice.canceled || !choice.filePath) return null;

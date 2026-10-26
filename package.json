@@ -38,6 +38,8 @@
     "dev:web": "bun --filter @ai-book-studio/web dev",
     "toolkit": "bun --filter @ai-book-studio/toolkit start",
     "toolkit:build": "bun --filter @ai-book-studio/toolkit build",
+    "e2e": "node scripts/e2e.mjs",
+    "bridge:probe": "node scripts/bridge-probe.mjs",
     "film:fixture": "bun scripts/film-fixture.ts",
     "plugin:probe": "node scripts/plugin-probe.mjs",
     "glasses:check": "node scripts/glasses-check.mjs",

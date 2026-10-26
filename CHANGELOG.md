@@ -59,6 +59,18 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Added one end-to-end gate, `bun run e2e`, which builds the app, the web build and the toolkit and
+  then runs seven checks against them: the built app through its own renderer, the browser build over
+  its own storage, the real window for dead ends, the 600×600 glasses page, the ambient agent and the
+  toolkit, a folder of plugins, and the phone's bridge **from a separate process**. Documented in
+  [`docs/TESTING.md`](docs/TESTING.md).
+- Added an accessibility pass to the UI audit: every control has an accessible name, is at least
+  20 px to hit, every image has an `alt`, the view has exactly one `h1`, and one Tab reaches a control
+  with a visible focus ring. The app passes all of them (33 controls).
+- Added a real Word-export check to the smoke run, which needed a way to export without a save
+  dialog: `STUDIO_EXPORT_PATH` names a folder for a headless run. The check unzips the file it
+  produced and looks for the text and the picture, because the thing that goes wrong is never the
+  writer's opinion of what it wrote. The fixture now carries an illustration.
 - Added the voice pipeline (spec D-159): a text-to-speech seam in `packages/core/src/providers/tts.ts`
   with two services behind it, both using OpenAI's `audio/speech` shape — OpenAI directly for the
   studio's voice, and OpenRouter, whose free `fish-audio/s2.1-pro-free:free` makes a check that runs

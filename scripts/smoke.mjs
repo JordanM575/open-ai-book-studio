@@ -11,6 +11,8 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { deflateSync } from "node:zlib";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -89,11 +91,100 @@ The door opened onto a colder corridor.
 `;
 
 await mkdir(join(profile), { recursive: true });
+await mkdir(join(temp, "exports"), { recursive: true });
 await mkdir(join(libraryRoot, "books", bookId, "chapters"), { recursive: true });
+await mkdir(join(libraryRoot, "books", bookId, "images"), { recursive: true });
 await writeFile(join(profile, "studio.json"), `${JSON.stringify({ libraryRoot }, null, 2)}\n`);
 await writeFile(join(libraryRoot, "books", bookId, "book.json"), `${JSON.stringify(book, null, 2)}\n`);
 await writeFile(join(libraryRoot, "books", bookId, "chapters", "0001-the-light.md"), chapter);
 await writeFile(join(libraryRoot, "books", bookId, "chapters", "0002-the-door.md"), chapterTwo);
+
+/*
+ * One illustration, so the export check has a picture to embed. The point of the check is the
+ * whole path — the image store, the exporter and the DOCX a reader would open — so the fixture
+ * carries a real image rather than the check trusting the writer.
+ */
+const image = pngSquare(96, [244, 214, 138]);
+const imageId = "img_smoke000001";
+const imageName = `${imageId}.png`;
+await writeFile(join(libraryRoot, "books", bookId, "images", imageName), image);
+await writeFile(
+  join(libraryRoot, "books", bookId, "images.json"),
+  `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      images: [
+        {
+          id: imageId,
+          kind: "chapter",
+          chapterId,
+          characterId: null,
+          fileName: imageName,
+          mimeType: "image/png",
+          width: 96,
+          height: 96,
+          bytes: image.length,
+          sha256: createHash("sha256").update(image).digest("hex"),
+          prompt: "A lamp in the dark",
+          provider: "fixture",
+          model: "smoke",
+          size: "96x96",
+          source: "imported",
+          createdAt: now,
+          cutoutOf: null,
+          costUsd: null,
+          revisedPrompt: null,
+          confidence: null
+        }
+      ]
+    },
+    null,
+    2
+  )}\n`
+);
+
+/** A square PNG of one colour, so the fixture needs no binary file in the repository. */
+function pngSquare(size, [r, g, b]) {
+  const raw = Buffer.alloc((size * 3 + 1) * size);
+  for (let y = 0; y < size; y += 1) {
+    raw[y * (size * 3 + 1)] = 0;
+    for (let x = 0; x < size; x += 1) {
+      const offset = y * (size * 3 + 1) + 1 + x * 3;
+      raw[offset] = r;
+      raw[offset + 1] = g;
+      raw[offset + 2] = b;
+    }
+  }
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buffer) c = table[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const typed = Buffer.concat([Buffer.from(type), data]);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc(typed));
+    return Buffer.concat([length, typed, checksum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0))
+  ]);
+}
 
 const env = { ...process.env };
 // T3 Code and some terminals export this; it would start Electron as plain Node.
@@ -107,6 +198,7 @@ env.STUDIO_TEST = "1";
 env.STUDIO_HEADLESS = "1";
 env.STUDIO_SMOKE = "1";
 env.STUDIO_USER_DATA = profile;
+env.STUDIO_EXPORT_PATH = join(temp, "exports");
 
 console.log(`[smoke] ${packaged ? "packaged" : "hidden"} run · profile ${profile}`);
 // stdout is piped so the runner can see the machine-readable result even when Electron's

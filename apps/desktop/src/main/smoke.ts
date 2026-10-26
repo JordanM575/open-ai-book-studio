@@ -40,6 +40,38 @@ function inPage(expression: string): string {
   return `(() => { try { return Boolean(${expression}); } catch { return false; } })()`;
 }
 
+/**
+ * Read a zip's entries without a dependency.
+ *
+ * The central directory is scanned for each file's name and local header, then the entry is
+ * inflated. A DOCX is a zip, so this is how the check reads the document a reader would open
+ * rather than what the writer thought it wrote.
+ */
+function unzip(bytes: Buffer, inflateRaw: (input: Uint8Array) => Buffer): Map<string, Buffer> {
+  const entries = new Map<string, Buffer>();
+  const end = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (end < 0) throw new Error("the zip has no central directory");
+  const count = bytes.readUInt16LE(end + 10);
+  let offset = bytes.readUInt32LE(end + 16);
+  for (let index = 0; index < count; index += 1) {
+    if (bytes.readUInt32LE(offset) !== 0x02014b50) break;
+    const method = bytes.readUInt16LE(offset + 10);
+    const compressed = bytes.readUInt32LE(offset + 20);
+    const nameLength = bytes.readUInt16LE(offset + 28);
+    const extraLength = bytes.readUInt16LE(offset + 30);
+    const commentLength = bytes.readUInt16LE(offset + 32);
+    const localOffset = bytes.readUInt32LE(offset + 42);
+    const name = bytes.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    const localNameLength = bytes.readUInt16LE(localOffset + 26);
+    const localExtraLength = bytes.readUInt16LE(localOffset + 28);
+    const start = localOffset + 30 + localNameLength + localExtraLength;
+    const raw = bytes.subarray(start, start + compressed);
+    entries.set(name, method === 0 ? Buffer.from(raw) : inflateRaw(raw));
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
 export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void> {
   const checks: Check[] = [];
   const check = async (name: string, run: () => Promise<string | void>): Promise<void> => {
@@ -662,6 +694,44 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       const detail = await studio.requireLibrary().readBook(book.id);
       if (detail.chapters[0]?.id !== before[1]) throw new Error("the file order did not follow the drag");
       return "the second chapter was dragged to the top";
+    });
+
+    await check("the manuscript exports to Word with its illustration", async () => {
+      const bookId = await evaluate<string | null>(
+        win,
+        `(() => { const el = document.querySelector('[data-testid="book-card"]'); return el ? null : null; })()`
+      );
+      void bookId;
+      // The export button lives in the workspace header, and the hook sends the file to a folder
+      // the check can read rather than to a save dialog.
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => { const button = document.querySelector('[data-testid="export-docx"]'); if (!button) return false; button.click(); return true; })()`
+      );
+      if (!clicked) throw new Error("the export control was not on screen");
+      const folder = process.env.STUDIO_EXPORT_PATH;
+      if (!folder) throw new Error("STUDIO_EXPORT_PATH is not set");
+      let file = "";
+      await waitUntil(async () => {
+        const { readdir } = await import("node:fs/promises");
+        const names = await readdir(folder).catch(() => [] as string[]);
+        const found = names.find((name) => name.endsWith(".docx"));
+        if (!found) return false;
+        file = join(folder, found);
+        return true;
+      }, "the exported file");
+
+      // A DOCX is a zip. The text is in document.xml and the picture is under word/media.
+      const bytes = await readFile(file);
+      if (bytes.subarray(0, 2).toString("latin1") !== "PK") throw new Error("the file is not a zip");
+      const { inflateRawSync } = await import("node:zlib");
+      const entries = unzip(bytes, inflateRawSync);
+      const document = entries.get("word/document.xml")?.toString("utf8") ?? "";
+      if (!/<w:t[^>]*>/.test(document)) throw new Error("the document has no text runs");
+      const media = [...entries.keys()].filter((name) => name.startsWith("word/media/"));
+      if (media.length === 0) throw new Error("the illustration is not in the file");
+      const words = (document.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? []).length;
+      return `${media.length} image${media.length === 1 ? "" : "s"}, ${words} text runs`;
     });
 
     await check("a book can be renamed and moved to the trash", async () => {
