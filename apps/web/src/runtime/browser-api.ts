@@ -224,7 +224,18 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       attach: () =>
         Promise.resolve(failure("invalid", "Illustrations are available in the desktop app.")),
       remove: () =>
-        Promise.resolve(failure("invalid", "Illustrations are available in the desktop app."))
+        Promise.resolve(failure("invalid", "Illustrations are available in the desktop app.")),
+      saveCutout: () =>
+        Promise.resolve(failure("invalid", "Character cutouts are available in the desktop app."))
+    },
+    segmentation: {
+      segment: () =>
+        Promise.resolve(
+          failure(
+            "invalid",
+            "Character cutouts are available in the desktop app. Meta browser access is not verified yet."
+          )
+        )
     },
 
     agent: {

@@ -291,3 +291,19 @@ backend. Remote access is deferred by D-129.
 
 The image folder and manifest are ordinary author files, included in the portable archive by the
 normal recursive walk. No image is stored in `book.json`, the catalog or the app profile.
+
+## SAM 3.1 cutouts
+
+`apps/desktop/src/main/segmentation.ts` sends one concept prompt and the source image to Meta's
+Responses API as `sam-3.1`, with `metadata.mask_encoding = "one_bit"` and confidence on. The official
+`@meta-sam/parser` turns the returned token text into box and mask records; the service maps them to
+serializable matches with the decoded 0/1 raster. The studio does not reimplement the base85 codec.
+
+The renderer composes the cutout: `applyCutoutMask` copies the source RGBA pixels, maps the mask raster
+over its source bounds and clears alpha outside it; `cutoutPng` draws the result to a canvas and
+returns a PNG blob. The main process saves it through `ImageStore` as a `character` image with
+`cutoutOf` pointing at the source. The source file and record are never modified.
+
+Concept prompts are validated in `packages/core/src/images/segmentation.ts`: one short noun phrase,
+no lists, negation, questions or commands. Zero matches is a normal result and writes nothing. The web
+build refuses until Meta browser access is verified.

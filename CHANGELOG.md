@@ -26,6 +26,9 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added SAM 3.1 character cutouts (spec 020): prompt validation, the official `@meta-sam/parser` for the
+  mask grammar, a `segmentation:segment` IPC route, the renderer `applyCutoutMask`/PNG compositor and
+  cutout mode in the Illustration dialog. Cutouts save as `character` images with `cutoutOf`.
 - Added the illustration pipeline (spec 019): a versioned `images.json`, an atomic image store over
   `LibraryPort`, PNG/WebP/JPEG inspection, Muse Image generation through Meta at a visible `$0.01`
   per-image estimate, IPC, an Illustration dialog, an attached image below the chapter and DOCX

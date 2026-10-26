@@ -3,10 +3,12 @@ import { Image as ImageIcon, Loader2, Sparkles } from "lucide-react";
 import type { Chapter } from "@ai-book-studio/core/schema";
 import type { ConnectionSummary } from "@ai-book-studio/core/providers/types";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
+import type { SegmentationMatch } from "@ai-book-studio/core/images/segmentation";
 import type { ImageSize } from "@ai-book-studio/core/providers/images";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { must } from "../lib/utils";
+import { cutoutPng } from "../lib/cutout";
 
 interface Props {
   open: boolean;
@@ -37,6 +39,10 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
   const [preview, setPreview] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState<ImageSize>("1024x1024");
+  const [cutoutPrompt, setCutoutPrompt] = useState("");
+  const [matches, setMatches] = useState<SegmentationMatch[]>([]);
+  const [cutoutBusy, setCutoutBusy] = useState(false);
+  const [cutoutError, setCutoutError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +51,8 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
   const showImage = useCallback(async (record: ImageRecord) => {
     setSelected(record);
     setPreview(null);
+    setMatches([]);
+    setCutoutError(null);
     const stored = await must(window.studio.images.read(bookId, record.id));
     setPreview(stored?.dataUrl ?? null);
   }, [bookId]);
@@ -133,6 +141,57 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
 
   const attached = Boolean(selected && chapter && selected.chapterId === chapter.id);
   const connected = connections.length > 0;
+
+  const findCutouts = async (): Promise<void> => {
+    if (!selected || cutoutBusy) return;
+    const prompt = cutoutPrompt.trim();
+    if (!prompt) {
+      setCutoutError("Name the object you want to cut out.");
+      return;
+    }
+    setCutoutBusy(true);
+    setCutoutError(null);
+    setMatches([]);
+    try {
+      const result = await must(
+        window.studio.segmentation.segment({ bookId, imageId: selected.id, prompt })
+      );
+      setMatches(result.matches);
+      if (result.matches.length === 0) {
+        setCutoutError("No matches. Try a shorter noun phrase that names one thing.");
+      }
+    } catch (failure) {
+      setCutoutError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setCutoutBusy(false);
+    }
+  };
+
+  const saveCutout = async (match: SegmentationMatch): Promise<void> => {
+    if (!selected || !preview || cutoutBusy) return;
+    setCutoutBusy(true);
+    setCutoutError(null);
+    try {
+      const blob = await cutoutPng(preview, match);
+      const record = await must(
+        window.studio.images.saveCutout({
+          bookId,
+          sourceImageId: selected.id,
+          bytes: await blob.arrayBuffer(),
+          prompt: cutoutPrompt.trim(),
+          confidence: match.confidence
+        })
+      );
+      setSavedNote("Cutout saved as a character image.");
+      await refresh();
+      await showImage(record);
+      await onChanged();
+    } catch (failure) {
+      setCutoutError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setCutoutBusy(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -269,6 +328,67 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
             ) : null}
           </div>
         </div>
+
+        {selected && connected ? (
+          <div className="mt-4 rounded-[var(--corner-lg)] border border-border p-3">
+            <p className="text-[var(--text-subheadline-size)] font-medium">Cut out a character</p>
+            <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+              SAM 3.1 finds one object from a short noun phrase. The source image stays untouched.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="cutout-prompt">
+                Object to cut out
+              </label>
+              <input
+                id="cutout-prompt"
+                value={cutoutPrompt}
+                onChange={(event) => setCutoutPrompt(event.target.value)}
+                maxLength={200}
+                placeholder="the lighthouse keeper"
+                className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-2 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                data-testid="cutout-prompt"
+              />
+              <Button
+                variant="secondary"
+                onClick={() => void findCutouts()}
+                disabled={cutoutBusy || !cutoutPrompt.trim()}
+                data-testid="find-cutouts"
+              >
+                {cutoutBusy ? <Loader2 size={15} className="animate-spin" /> : null}
+                {cutoutBusy ? "Finding…" : "Find objects"}
+              </Button>
+            </div>
+            {cutoutError ? (
+              <p role="alert" className="mt-2 text-[var(--text-caption-size)] text-[var(--destructive-text)]">
+                {cutoutError}
+              </p>
+            ) : null}
+            {matches.length > 0 ? (
+              <ul className="mt-2 space-y-1">
+                {matches.map((match) => (
+                  <li
+                    key={match.objectId}
+                    className="flex items-center justify-between gap-2 rounded-[var(--corner-sm)] bg-[var(--secondary)] px-2 py-1"
+                  >
+                    <span className="text-[var(--text-caption-size)]">
+                      Object {match.objectId}
+                      {match.confidence !== null ? ` · ${Math.round(match.confidence * 100)}%` : ""}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void saveCutout(match)}
+                      disabled={cutoutBusy}
+                      data-testid={`save-cutout-${match.objectId}`}
+                    >
+                      Save cutout
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

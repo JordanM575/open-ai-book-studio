@@ -5,8 +5,8 @@
 ## Files
 
 ```
-packages/core/src/images/segmentation.ts   SAM response grammar, box/mask parser, base85 decoder
-apps/desktop/src/main/segmentation.ts     Meta Responses request, connection selection, errors
+packages/core/src/images/segmentation.ts   serializable match types and prompt validation
+apps/desktop/src/main/segmentation.ts     Meta Responses request + @meta-sam/parser decode
 apps/desktop/src/main/ipc.ts              segmentation:segment and image:save-cutout
 packages/app/src/lib/cutout.ts             Canvas composition of source + mask -> PNG
 packages/app/src/components/IllustrationDialog.tsx  cutout mode and match picker
@@ -34,14 +34,10 @@ packages/app/src/components/IllustrationDialog.tsx  cutout mode and match picker
 }
 ```
 
-The response's `output` array carries an `output_text` item with one line per frame. `parseSegmentation`
-extracts each record. The mask payload is base85 and may use either the lossless (`~`) or one-bit (`!`)
-encoding; the marker decides the decoder. The parser returns boxes, object ids, confidence, raster
-height/width and the decoded `Uint8Array` mask. Zero records is an empty success.
-
-The base85 alphabet and one-bit packing follow the Meta client-library format; the implementation must
-have fixture tests with a known small mask before any live call. If the one-bit decoder is wrong, fall
-back to the default lossless encoding rather than guessing.
+The response's `output` array carries an `output_text` item with one line per frame. The service feeds
+that text to `parseImageStream` from the official `@meta-sam/parser`, then uses `recordsOfKind` and
+`decodeMaskToRaster`. The library owns the base85 and one-bit/lossless decoders, so the studio does not
+reimplement the wire format. Zero records is an empty success.
 
 ## Cutout
 

@@ -10,6 +10,7 @@ import { AgentRuntime } from "./agent/runtime";
 import { BackgroundNotifier } from "./background";
 import { LocalBackend } from "./backend";
 import { ImageService } from "./images";
+import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
 import { SettingsStore } from "./settings";
 import { Studio } from "./studio";
@@ -327,6 +328,7 @@ app.whenReady().then(async () => {
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
   const voice = new VoiceService(providers);
   const images = new ImageService(providers);
+  const segmentation = new SegmentationService(providers);
   void vault.repairPermissions().then((permissions) => {
     if (permissions === "corrected") {
       console.log("[credentials] Corrected the credential file to owner-only permissions.");
@@ -359,7 +361,7 @@ app.whenReady().then(async () => {
   });
   app.on("browser-window-focus", () => notifier.clearBadge());
 
-  registerIpc(studio, () => mainWindow, providers, agentRuntime, voice, images);
+  registerIpc(studio, () => mainWindow, providers, agentRuntime, voice, images, segmentation);
   buildMenu();
   mainWindow = createWindow();
 

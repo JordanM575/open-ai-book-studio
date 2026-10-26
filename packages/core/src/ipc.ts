@@ -12,6 +12,7 @@ import type {
 import type { Catalogue } from "./providers/models";
 import type { ImageSize } from "./providers/images";
 import type { ImageRecord } from "./images/schema";
+import type { SegmentationResult } from "./images/segmentation";
 import type { ImageList } from "./images/store";
 import type { ConnectionSummary, ProviderDescription, ProviderId } from "./providers/types";
 import type { UsageSummary } from "./providers/usage";
@@ -90,7 +91,11 @@ export const IPC = {
     read: "images:read",
     generate: "images:generate",
     attach: "images:attach",
-    remove: "images:remove"
+    remove: "images:remove",
+    saveCutout: "images:saveCutout"
+  },
+  segmentation: {
+    segment: "segmentation:segment"
   },
   agent: {
     start: "agent:start",
@@ -257,6 +262,21 @@ export interface StudioApi {
     }): Promise<Result<ImageRecord>>;
     attach(bookId: string, imageId: string, chapterId: string): Promise<Result<ImageRecord>>;
     remove(bookId: string, imageId: string): Promise<Result<null>>;
+    saveCutout(input: {
+      bookId: string;
+      sourceImageId: string;
+      bytes: ArrayBuffer;
+      prompt: string;
+      confidence?: number | null;
+    }): Promise<Result<ImageRecord>>;
+  };
+  segmentation: {
+    segment(input: {
+      bookId: string;
+      imageId: string;
+      connectionId?: string;
+      prompt: string;
+    }): Promise<Result<SegmentationResult>>;
   };
   agent: {
     start(input: AgentTurnInput): Promise<Result<AgentTurnStarted>>;
