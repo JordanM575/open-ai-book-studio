@@ -25,11 +25,14 @@ const isDev = !app.isPackaged;
  *   overwrites the author's real library, window bounds or settings.
  * - `STUDIO_HEADLESS=1` opens the window off-screen and never shows it. The renderer still paints
  *   and runs, so `executeJavaScript` can inspect it without stealing focus.
+ * - `STUDIO_VISIBLE=1` with `STUDIO_TEST=1` keeps the throwaway profile but shows the window, for a
+ *   manual keychain or credential pass. It is the only way to see a test profile on screen.
  * - `STUDIO_SMOKE=1` runs the built-in smoke checks once the renderer has loaded, prints them and
  *   exits with a status code.
  */
 const isTest = process.env.STUDIO_TEST === "1";
-const headless = isTest || process.env.STUDIO_HEADLESS === "1";
+const visibleTest = isTest && process.env.STUDIO_VISIBLE === "1";
+const headless = !visibleTest && (isTest || process.env.STUDIO_HEADLESS === "1");
 const smoke = process.env.STUDIO_SMOKE === "1";
 const capturePath = process.env.STUDIO_CAPTURE;
 const windowSize = parseWindowSize(process.env.STUDIO_WINDOW_SIZE);

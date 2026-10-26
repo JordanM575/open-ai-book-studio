@@ -398,6 +398,15 @@ either working or disabled with a reason, and that no request is attempted to a 
 - **FR-055**: The web build MUST NOT attempt a request to a provider known to block browser origins.
 - **FR-056**: Connection availability MUST be derived from one capability description used by both builds,
   so documentation and interface cannot disagree.
+- **FR-057**: The desktop build MUST expose a non-secret credential-vault status: available/locked,
+  backend label, connection count and one actionable sentence. The status probe MUST exercise an
+  in-memory encrypt/decrypt round-trip so a locked macOS login keychain is reported, not assumed healthy.
+  It MUST NOT return a key, keychain password or host path.
+- **FR-058**: The macOS keychain unlock and manual-test process MUST be documented in
+  [`docs/KEYCHAIN.md`](../../docs/KEYCHAIN.md): how to add a key, unlock the login keychain without
+  passing a password on a command line, test the locked state, use a throwaway visible profile, recover
+  from a lost keychain item, and the limits of the legacy keychain. The app copy MUST point the author
+  to the status check, not ask for a keychain password.
 
 ### Key Entities
 

@@ -32,6 +32,11 @@ async function filesUnder(dir: string): Promise<string[]> {
 }
 
 describe("credential vault", () => {
+  test("reports protected storage status without a secret", async () => {
+    const { vault } = await workspace();
+    expect(await vault.status()).toEqual({ available: true, backend: "Protected storage", detail: "" });
+  });
+
   test("repairs a vault file that others can read", async () => {
     const dir = await mkdtemp(join(tmpdir(), "abs-credentials-mode-"));
     const path = join(dir, "credentials.json");

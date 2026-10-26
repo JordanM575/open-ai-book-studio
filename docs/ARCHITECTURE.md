@@ -120,6 +120,10 @@ The writing agent runs in the main process. The boundary is:
 - Provider calls happen in the main process (no CORS, no exposed key, streamed to the renderer over
   IPC events). The renderer never sees the key, only connection summaries.
 - The key lives in the OS keychain via `safeStorage`, not in `localStorage` (the old app's mistake).
+  On macOS the ciphertext is `<userData>/credentials.json` (`0600`) and the master key is the
+  `<app name> Safe Storage` login-keychain item. Settings shows a non-secret status and a **Check
+  keychain** probe. The unlock and test runbook is [`KEYCHAIN.md`](KEYCHAIN.md); it is the legacy
+  keychain, not the Data Protection Keychain or Touch ID.
   The browser build uses an origin-scoped IndexedDB vault with an explicit disclosure; it makes no
   keychain or encryption claim. Browser OpenRouter sign-in uses a same-origin popup with PKCE, checked
   state and a single-use code exchange; the verifier stays in the tab's sessionStorage.

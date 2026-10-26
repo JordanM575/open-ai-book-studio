@@ -174,6 +174,15 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
     connections: {
       list: () => safe(() => credentials.list()),
       available: () => safe(() => credentials.isAvailable()),
+      status: () =>
+        safe(async () => {
+          const state = (await credentials.status?.()) ?? {
+            available: await credentials.isAvailable(),
+            backend: "Browser origin storage",
+            detail: ""
+          };
+          return { ...state, connections: (await credentials.list()).length };
+        }),
       addKey: () =>
         Promise.resolve(
           failure(

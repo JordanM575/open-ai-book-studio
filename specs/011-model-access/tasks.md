@@ -154,3 +154,12 @@ tasks rather than interface-blocked. T039 remains blocked on D-101.
   the new optional book fields, `AGENTS.md` for the provider boundary, `CHANGELOG.md`, and the
   provider section of `docs/ARCHITECTURE.md`. D-105 no longer blocks T037; D-116 remains proposed and
   the cost-ceiling task stays unstarted until it is accepted.
+- [x] T043 Add a non-secret credential-vault status probe (`connections:status`) and a **Check keychain**
+  action in Settings. The desktop probe performs an in-memory `safeStorage` encrypt/decrypt round-trip so
+  a locked login keychain reports “Locked or unavailable”; the web build reports browser origin storage.
+  `FileCredentialVault`, `DesktopCredentialVault`, `MemoryVault` and `BrowserCredentialVault` expose
+  status; tests cover the status shape and connection count without a secret.
+- [x] T044 Document the macOS unlock and manual-test runbook in [`docs/KEYCHAIN.md`](../../docs/KEYCHAIN.md)
+  and add `STUDIO_VISIBLE=1` for a visible throwaway profile. The doc covers the ciphertext file, the
+  `<app name> Safe Storage` item, `security unlock-keychain` without a password argument, locked-state
+  testing, dev/packaged identity differences, recovery and the legacy-keychain limits.

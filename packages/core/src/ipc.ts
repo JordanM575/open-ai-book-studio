@@ -14,7 +14,7 @@ import type { ImageSize } from "./providers/images";
 import type { ImageRecord } from "./images/schema";
 import type { SegmentationResult } from "./images/segmentation";
 import type { ImageList } from "./images/store";
-import type { ConnectionSummary, ProviderDescription, ProviderId } from "./providers/types";
+import type { ConnectionSummary, CredentialStatus, ProviderDescription, ProviderId } from "./providers/types";
 import type { UsageSummary } from "./providers/usage";
 import type { VoiceTranscript } from "./providers/speech";
 import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
@@ -73,6 +73,7 @@ export const IPC = {
   connections: {
     list: "connections:list",
     available: "connections:available",
+    status: "connections:status",
     addKey: "connections:addKey",
     startOpenRouter: "connections:startOpenRouter",
     cancelOpenRouter: "connections:cancelOpenRouter",
@@ -228,6 +229,8 @@ export interface StudioApi {
     list(): Promise<Result<ConnectionSummary[]>>;
     /** False when the operating system's protected storage cannot encrypt a secret. */
     available(): Promise<Result<boolean>>;
+    /** Non-secret health check: protected storage, backend label, connection count. */
+    status(): Promise<Result<CredentialStatus>>;
     /** Validate a key with the provider before saving it. Rejected keys are never stored. */
     addKey(input: { provider: ProviderId; secret: string; label?: string; baseUrl?: string }): Promise<Result<ConnectionSummary>>;
     /** Opens the system browser and resolves when the author finishes signing in. */

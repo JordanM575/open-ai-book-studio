@@ -350,6 +350,8 @@ export function registerIpc(
 
   handle(IPC.connections.available, async () => providers.available());
 
+  handle(IPC.connections.status, async () => providers.status());
+
   handle(IPC.connections.addKey, async (payload) => {
     const input = z
       .object({

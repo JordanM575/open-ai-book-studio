@@ -280,3 +280,16 @@ describe("API key connections", () => {
     expect(seen.headers["anthropic-version"]).toBeTruthy();
   });
 });
+
+describe("credential status", () => {
+  test("reports the backend and connection count without a secret", async () => {
+    const vault = new MemoryVault();
+    await vault.set(credential());
+    const service = new ProviderService(vault, async () => {}, (async () => {
+      throw new Error("must not call");
+    }) as unknown as typeof fetch);
+    const status = await service.status();
+    expect(status).toMatchObject({ available: true, backend: "In-memory test vault", connections: 1 });
+    expect(JSON.stringify(status)).not.toContain(KEY);
+  });
+});

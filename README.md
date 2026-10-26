@@ -74,11 +74,16 @@ Useful while developing:
 ```bash
 STUDIO_TEST=1 STUDIO_HEADLESS=1 \
   STUDIO_USER_DATA=/tmp/abs-profile bun run dev   # hidden window, isolated profile
+
+STUDIO_TEST=1 STUDIO_VISIBLE=1 \
+  STUDIO_USER_DATA=/tmp/abs-keychain-profile bun run dev
+  # visible isolated profile for a manual provider/keychain test
 ```
 
 `STUDIO_TEST=1` gives the run its own settings file and skips the single-instance lock, so a hidden
-run can sit beside your real window without touching it. `SMOKE_KEEP=1 bun run smoke:run` keeps the
-temp library for inspection.
+run can sit beside your real window without touching it. `STUDIO_VISIBLE=1` keeps that isolation but
+shows the window. The macOS keychain process is in [docs/KEYCHAIN.md](docs/KEYCHAIN.md).
+`SMOKE_KEEP=1 bun run smoke:run` keeps the temp library for inspection.
 
 To see the real renderer at a device size, capture it without showing a window:
 

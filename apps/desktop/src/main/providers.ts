@@ -6,7 +6,7 @@ import { endpointFor, parseProviderModels } from "@ai-book-studio/core/providers
 import { applyModelPreset } from "@ai-book-studio/core/providers/compatibility";
 import { providerById } from "@ai-book-studio/core/providers/registry";
 import type { CredentialVault } from "@ai-book-studio/core/providers/credentials";
-import { ProviderError, type ConnectionSummary, type ProviderId, type StoredCredential } from "@ai-book-studio/core/providers/types";
+import { ProviderError, type ConnectionSummary, type CredentialStatus, type ProviderId, type StoredCredential } from "@ai-book-studio/core/providers/types";
 import { normalizeProviderError } from "@ai-book-studio/core/providers/errors";
 import {
   OPENROUTER_KEY_EXCHANGE_URL,
@@ -48,6 +48,14 @@ export class ProviderService {
   /** Whether this computer can store a secret at all. The UI explains the refusal before a flow. */
   async available(): Promise<boolean> {
     return this.vault.isAvailable();
+  }
+
+  /** A non-secret health check for Settings; it never returns a key or a host path. */
+  async status(): Promise<CredentialStatus> {
+    const state = this.vault.status
+      ? await this.vault.status()
+      : { available: await this.vault.isAvailable(), backend: "Protected storage", detail: "" };
+    return { ...state, connections: (await this.vault.list()).length };
   }
 
   /** The secret itself. Only the main process may call this, for a provider request. */

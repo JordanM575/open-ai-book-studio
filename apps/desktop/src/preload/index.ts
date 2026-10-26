@@ -91,6 +91,7 @@ const api: StudioApi = {
   connections: {
     list: () => invoke(IPC.connections.list),
     available: () => invoke(IPC.connections.available),
+    status: () => invoke(IPC.connections.status),
     addKey: (input: { provider: ProviderId; secret: string; label?: string; baseUrl?: string }) =>
       invoke(IPC.connections.addKey, input),
     startOpenRouter: () => invoke(IPC.connections.startOpenRouter),

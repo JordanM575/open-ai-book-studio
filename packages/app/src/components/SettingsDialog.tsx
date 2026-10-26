@@ -2,7 +2,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle2, KeyRound, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import type { BuildMetadata } from "@ai-book-studio/core/build";
 import { BROWSER_CREDENTIAL_DISCLOSURE } from "@ai-book-studio/core/providers/credentials";
-import type { ConnectionSummary, ModelInfo, ProviderDescription, ProviderId } from "@ai-book-studio/core/providers/types";
+import type { ConnectionSummary, CredentialStatus, ModelInfo, ProviderDescription, ProviderId } from "@ai-book-studio/core/providers/types";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { browserAvailabilityCopy } from "@ai-book-studio/core/providers/registry";
 import { Button } from "@ai-book-studio/ui/button";
@@ -77,6 +77,8 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
   const [result, setResult] = useState<Record<string, string>>({});
   const [models, setModels] = useState<Record<string, ModelInfo[]>>({});
   const [storageAvailable, setStorageAvailable] = useState<boolean | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState<CredentialStatus | null>(null);
+  const [checkingKeychain, setCheckingKeychain] = useState(false);
   const [keyProvider, setKeyProvider] = useState<ProviderId>("openai");
   const [keySecret, setKeySecret] = useState("");
   const [keyLabel, setKeyLabel] = useState("");
@@ -86,19 +88,33 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
 
   const refresh = useCallback(async () => {
     try {
-      const [providerList, connectionList, available] = await Promise.all([
+      const [providerList, connectionList, status] = await Promise.all([
         must(window.studio.providers.list()),
         must(window.studio.connections.list()),
-        must(window.studio.connections.available())
+        must(window.studio.connections.status())
       ]);
       setProviders(providerList);
       setConnections(connectionList);
-      setStorageAvailable(available);
+      setCredentialStatus(status);
+      setStorageAvailable(status.available);
     } catch (error) {
       onNotice(error);
       setConnections([]);
     }
   }, [onNotice]);
+
+  const checkKeychain = async (): Promise<void> => {
+    setCheckingKeychain(true);
+    try {
+      const status = await must(window.studio.connections.status());
+      setCredentialStatus(status);
+      setStorageAvailable(status.available);
+    } catch (error) {
+      onNotice(error);
+    } finally {
+      setCheckingKeychain(false);
+    }
+  };
 
   useEffect(() => {
     if (open) void refresh();
@@ -258,6 +274,35 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               ? "Bring your own account. Keys are kept in this browser's origin storage, never in your book folder."
               : "Bring your own account. Keys are kept on this computer, never in your book folder."}
           </p>
+          {credentialStatus ? (
+            <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-[var(--corner-lg)] border border-border bg-card/60 p-3">
+              <div className="min-w-0">
+                <p className="text-[var(--text-subheadline-size)] font-medium">
+                  {credentialStatus.available ? "Unlocked" : "Locked or unavailable"} · {credentialStatus.backend}
+                </p>
+                <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
+                  {credentialStatus.connections} {credentialStatus.connections === 1 ? "connection" : "connections"} · secrets are
+                  encrypted before they reach the credential file.
+                </p>
+                {credentialStatus.detail ? (
+                  <p className="mt-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-destructive-text">
+                    {credentialStatus.detail}
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="shrink-0"
+                onClick={() => void checkKeychain()}
+                disabled={checkingKeychain}
+                data-testid="check-keychain"
+              >
+                {checkingKeychain ? <Loader2 size={13} className="animate-spin" /> : null}
+                Check keychain
+              </Button>
+            </div>
+          ) : null}
           <div className="mt-3 flex items-start justify-between gap-4 rounded-[var(--corner-lg)] border border-border bg-card/60 p-4">
             <div className="min-w-0">
               <h3 className="flex items-center gap-2 text-[var(--text-headline-size)] font-semibold">

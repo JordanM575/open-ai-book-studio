@@ -1,4 +1,4 @@
-import type { ConnectionSummary, ProviderId, StoredCredential } from "./types";
+import type { ConnectionSummary, ProviderId, StoredCredential, CredentialStatus } from "./types";
 
 /** Shown wherever the browser build offers credentials. It is deliberately not a security claim. */
 export const BROWSER_CREDENTIAL_DISCLOSURE =
@@ -16,6 +16,8 @@ export interface CredentialVault {
   remove(id: string): Promise<void>;
   /** Record that a connection was used, without rewriting the secret. */
   touch(id: string, at?: string): Promise<void>;
+  /** Probe the protected storage without exposing a secret. */
+  status?(): Promise<Omit<CredentialStatus, "connections">>;
 }
 
 export class MemoryVault implements CredentialVault {
@@ -47,6 +49,10 @@ export class MemoryVault implements CredentialVault {
   async touch(id: string, at: string = new Date().toISOString()): Promise<void> {
     const record = this.records.get(id);
     if (record) this.records.set(id, { ...record, lastUsedAt: at });
+  }
+
+  async status(): Promise<Omit<CredentialStatus, "connections">> {
+    return { available: true, backend: "In-memory test vault", detail: "" };
   }
 }
 

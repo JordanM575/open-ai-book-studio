@@ -1,6 +1,6 @@
 import { chmod, readFile, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import type { ConnectionSummary, ProviderId, StoredCredential } from "@ai-book-studio/core/providers/types";
+import type { ConnectionSummary, ProviderId, StoredCredential, CredentialStatus } from "@ai-book-studio/core/providers/types";
 import type { CredentialVault } from "@ai-book-studio/core/providers/credentials";
 import { writeFileAtomic } from "./library/atomic";
 
@@ -43,6 +43,10 @@ export class FileCredentialVault implements CredentialVault {
 
   async isAvailable(): Promise<boolean> {
     return await this.cipher.available();
+  }
+
+  async status(): Promise<Omit<CredentialStatus, "connections">> {
+    return { available: await this.cipher.available(), backend: "Protected storage", detail: "" };
   }
 
   /**

@@ -26,6 +26,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added a credential-vault health check and macOS runbook: `connections:status`, a non-secret
+  `safeStorage` encrypt/decrypt probe, a **Check keychain** action in Settings, `STUDIO_VISIBLE=1` for a
+  visible throwaway profile, and [`docs/KEYCHAIN.md`](docs/KEYCHAIN.md) covering unlock, locked-state
+  testing, recovery and the legacy-keychain limits.
 - Added the provider compatibility layer (spec 022): one `modelFor` AI SDK adapter registry, Meta model
   presets for Muse Spark 1.3 Contributor/Standard, cached prices and reasoning facts, and a per-book
   Contributor training consent with a model-picker warning and an agent guard.
@@ -259,9 +263,6 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
-- Added the provider compatibility layer (spec 022): one `modelFor` AI SDK adapter registry, Meta model
-  presets for Muse Spark 1.3 Contributor/Standard, cached prices and reasoning facts, and a per-book
-  Contributor training consent with a model-picker warning and an agent guard.
 - Added the Capacitor iOS shell (`apps/mobile`) around the real web build. It runs on the iPhone 17 Pro
   and iPad mini simulators with no native plugins, honors safe-area insets, and hides or explains
   actions WebKit cannot support instead of failing at the moment of use. `bun run ios:iphone`,
@@ -420,9 +421,6 @@ and shows them in the Liquid Glass interface from the design kit. No agent, expo
 
 ### Added
 
-- Added the provider compatibility layer (spec 022): one `modelFor` AI SDK adapter registry, Meta model
-  presets for Muse Spark 1.3 Contributor/Standard, cached prices and reasoning facts, and a per-book
-  Contributor training consent with a model-picker warning and an agent guard.
 - Electron 45 application scaffolded with electron-vite, React 19, Tailwind 4 and TypeScript.
 - Library format: `book.json` per book, one Markdown file per chapter with YAML front matter, and a
   derived `library.json` catalog that is never read as truth.

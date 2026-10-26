@@ -61,6 +61,9 @@ Quirks:
   first and prints the exact command.
 - If `ELECTRON_RUN_AS_NODE=1` is set (some terminals and agent harnesses set it), Electron starts as
   plain Node and crashes in `app.isPackaged`. Launch with `env -u ELECTRON_RUN_AS_NODE bun run dev`.
+- `STUDIO_TEST=1 STUDIO_VISIBLE=1 STUDIO_USER_DATA=/tmp/... bun run dev` shows an isolated, throwaway
+  profile for a manual provider/keychain test; `STUDIO_TEST` alone is headless. The macOS unlock runbook
+  is [`docs/KEYCHAIN.md`](docs/KEYCHAIN.md).
 - `main` and `preload` must be CommonJS. `electron.vite.config.ts` emits `index.cjs` on purpose;
   changing it back to ESM breaks `BrowserWindow` imports.
 - `packages/core` ships TypeScript source and is excluded from `externalizeDepsPlugin`, so

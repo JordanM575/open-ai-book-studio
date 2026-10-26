@@ -1,5 +1,5 @@
 import type { CredentialVault } from "@ai-book-studio/core/providers/credentials";
-import type { ConnectionSummary, StoredCredential } from "@ai-book-studio/core/providers/types";
+import type { ConnectionSummary, CredentialStatus, StoredCredential } from "@ai-book-studio/core/providers/types";
 
 const DEFAULT_DB = "ai-book-studio-credentials";
 const STORE = "connections";
@@ -18,6 +18,17 @@ export class BrowserCredentialVault implements CredentialVault {
 
   async isAvailable(): Promise<boolean> {
     return typeof indexedDB !== "undefined";
+  }
+
+  async status(): Promise<Omit<CredentialStatus, "connections">> {
+    const available = await this.isAvailable();
+    return {
+      available,
+      backend: "Browser origin storage",
+      detail: available
+        ? "Same-origin scripts can read this vault; clearing site data removes it."
+        : "This browser cannot store credentials."
+    };
   }
 
   async list(): Promise<ConnectionSummary[]> {

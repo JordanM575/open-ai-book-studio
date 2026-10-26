@@ -69,6 +69,16 @@ export interface ModelInfo {
   note?: string | null;
 }
 
+/** What the credential vault can safely tell the interface about its protected storage. */
+export interface CredentialStatus {
+  available: boolean;
+  /** Human label such as “macOS Keychain” or “Browser origin storage”. */
+  backend: string;
+  /** Empty when healthy; otherwise one sentence the author can act on. */
+  detail: string;
+  connections: number;
+}
+
 export type ProviderErrorCode =
   | "auth"
   | "rate-limit"
