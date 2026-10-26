@@ -10,6 +10,12 @@ colour, radius or shadow that is not in the tokens.
 Calm, quiet, Apple-grade. The manuscript is the only solid surface on screen; everything that floats
 above the window is glass. No orange, no brown, no gradient other than the ambient window wash.
 
+**Positioning:** the agent works on the actual book, and the author keeps the actual files. The
+category’s editing tools sell feedback, the hosted AI tools sell generation, and the planning tools sell
+world-building; this product sells **ownership plus agency plus interop**. Lead with the folder, the
+save status, the tool call and the finished file, not with an AI gradient. The full competitor review is
+in [`research/branding-2026-10-26.md`](research/branding-2026-10-26.md).
+
 Three layers, in order:
 
 1. **Ambient** — `.window-wash`: six radial glows over `--ambient-base`, fixed attachment.

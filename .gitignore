@@ -11,3 +11,4 @@ tsconfig.tsbuildinfo
 
 apps/web/check/dist/
 apps/web/check/gallery-dist/
+video/renders/
