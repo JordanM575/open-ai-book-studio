@@ -1,0 +1,156 @@
+import { describe, expect, test } from "bun:test";
+import {
+  MAX_SPEECH_DURATION_MS,
+  inspectWav,
+  parseSpeechResponse,
+  speechCapability,
+  speechForm
+} from "../src/providers/speech";
+
+function wav(options: {
+  sampleRate?: number;
+  channels?: number;
+  bits?: number;
+  seconds?: number;
+  format?: number;
+  truncate?: number;
+} = {}): Uint8Array {
+  const sampleRate = options.sampleRate ?? 16_000;
+  const channels = options.channels ?? 1;
+  const bits = options.bits ?? 16;
+  const seconds = options.seconds ?? 1;
+  const blockAlign = channels * (bits / 8);
+  const dataBytes = Math.round(sampleRate * seconds) * blockAlign;
+  const bytes = new Uint8Array(44 + dataBytes);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+  view.setUint32(4, 36 + dataBytes, true);
+  bytes.set([0x57, 0x41, 0x56, 0x45], 8); // WAVE
+  bytes.set([0x66, 0x6d, 0x74, 0x20], 12); // fmt
+  view.setUint32(16, 16, true);
+  view.setUint16(20, options.format ?? 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bits, true);
+  bytes.set([0x64, 0x61, 0x74, 0x61], 36); // data
+  view.setUint32(40, dataBytes, true);
+  return options.truncate ? bytes.slice(0, options.truncate) : bytes;
+}
+
+describe("WAV validation", () => {
+  test("accepts mono 16-bit PCM at 16 kHz and reports the duration", () => {
+    const result = inspectWav(wav({ seconds: 2 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.info).toMatchObject({ sampleRate: 16_000, channels: 1, bitsPerSample: 16, durationMs: 2000 });
+    }
+  });
+
+  test("accepts 24 kHz", () => {
+    const result = inspectWav(wav({ sampleRate: 24_000 }));
+    expect(result.ok).toBe(true);
+  });
+
+  test("refuses a non-WAV recording before the request", () => {
+    const result = inspectWav(new TextEncoder().encode("this is not audio, but it is long enough to have a header."));
+    expect(result).toEqual({ ok: false, reason: expect.stringMatching(/not a WAV/i) });
+  });
+
+  test("refuses stereo, 8-bit, compressed and wrong-rate audio", () => {
+    expect(inspectWav(wav({ channels: 2 }))).toMatchObject({ ok: false });
+    expect(inspectWav(wav({ channels: 2 }))).toEqual({ ok: false, reason: expect.stringMatching(/mono/i) });
+    expect(inspectWav(wav({ bits: 8 }))).toEqual({ ok: false, reason: expect.stringMatching(/16-bit/i) });
+    expect(inspectWav(wav({ format: 3 }))).toEqual({ ok: false, reason: expect.stringMatching(/PCM/i) });
+    expect(inspectWav(wav({ sampleRate: 44_100 }))).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/16 kHz or 24 kHz/i)
+    });
+  });
+
+  test("refuses a truncated recording", () => {
+    expect(inspectWav(wav({ truncate: 30 }))).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/complete WAV/i)
+    });
+    expect(inspectWav(wav({ truncate: 100 }))).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/truncated/i)
+    });
+  });
+
+  test("refuses audio longer than ten minutes", () => {
+    const result = inspectWav(wav({ seconds: MAX_SPEECH_DURATION_MS / 1000 + 1 }));
+    expect(result).toEqual({ ok: false, reason: expect.stringMatching(/longer than 10 minutes/i) });
+  });
+});
+
+describe("Meta speech request", () => {
+  test("builds the documented request and audio parts", async () => {
+    const form = speechForm(wav(), { languageBias: ["English"], keywords: ["Muse"] });
+    const request = form.get("request");
+    const audio = form.get("audio");
+    expect(request).toBeInstanceOf(Blob);
+    expect(audio).toBeInstanceOf(Blob);
+    expect(await (request as Blob).text()).toBe(
+      JSON.stringify({
+        mode: "PUSH_TO_TALK",
+        model: "muse-voice-transcribe-1.0",
+        audioEncoding: "WAV",
+        languageBias: ["English"],
+        keywords: ["Muse"]
+      })
+    );
+    expect((audio as Blob).type).toBe("audio/wav");
+    expect((audio as Blob).size).toBe(wav().byteLength);
+  });
+
+  test("omits empty bias and keyword lists", async () => {
+    const form = speechForm(wav(), { languageBias: [], keywords: [] });
+    const request = JSON.parse(await (form.get("request") as Blob).text()) as Record<string, unknown>;
+    expect(request).not.toHaveProperty("languageBias");
+    expect(request).not.toHaveProperty("keywords");
+  });
+
+  test("resolves the Meta endpoint with or without a /v1 base", () => {
+    expect(speechCapability("meta", "https://api.meta.ai/v1")).toMatchObject({
+      endpoint: "https://api.meta.ai/v1/asr/transcribe",
+      model: "muse-voice-transcribe-1.0"
+    });
+    expect(speechCapability("meta", "https://api.meta.ai")).toMatchObject({
+      endpoint: "https://api.meta.ai/v1/asr/transcribe"
+    });
+    expect(speechCapability("openai", "https://api.openai.com/v1")).toBeNull();
+  });
+});
+
+describe("Meta speech response", () => {
+  test("parses the transcript, turns and duration", () => {
+    expect(
+      parseSpeechResponse({
+        transcript: " How is the weather? It is raining. ",
+        audioDurationMs: 8240,
+        turns: [
+          { turnId: 1, startMs: 1520, endMs: 4640, transcript: "How is the weather?", speaker: "A" },
+          { turnId: 2, startMs: 5900, endMs: 8240, transcript: "It is raining.", speaker: "B" }
+        ]
+      })
+    ).toEqual({
+      text: "How is the weather? It is raining.",
+      providerDurationMs: 8240,
+      turns: [
+        { turnId: 1, startMs: 1520, endMs: 4640, transcript: "How is the weather?", speaker: "A" },
+        { turnId: 2, startMs: 5900, endMs: 8240, transcript: "It is raining.", speaker: "B" }
+      ]
+    });
+  });
+
+  test("keeps an empty transcript instead of inventing speech", () => {
+    expect(parseSpeechResponse({ transcript: "" })).toMatchObject({ text: "", turns: [] });
+  });
+
+  test("refuses a response without a transcript", () => {
+    expect(() => parseSpeechResponse({ turns: [] })).toThrow(/without a transcript/);
+  });
+});

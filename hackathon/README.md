@@ -22,8 +22,12 @@ Planning folder for the Meta Global AI Developer Hackathon, October 26 – Novem
 - Build on AI Book Studio, not a new app. It already has a local-first library, a writing agent,
   Story Bible, DOCX export and a tested desktop/web foundation.
 - Add Meta's models where they change the product: Muse Spark and Muse Wonder for planning and prose,
-  Muse Image for chapter illustrations and covers, SAM 3.1 for selecting and cutting out what the
-  image contains, and Meta open weights through Baseten, Modal or Fireworks for cost and privacy.
+  Muse Voice Transcribe for dictation, Muse Image for chapter illustrations and covers, SAM 3.1 for
+  selecting and cutting out what the image contains, and Meta open weights through Baseten, Modal or
+  Fireworks for cost and privacy.
+- Let the agent finish a turn after the window closes and notify the author. Expose the same library
+  to other agents through a standalone CLI and MCP server with a loopback-only backend and a per-run
+  token; no hosted library and no account.
 - Apache-2.0 is already the project licence.
 
 ## Open decisions

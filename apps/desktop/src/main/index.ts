@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, shell } from "electron";
+import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENT_EVENT_CHANNEL, LIBRARY_EVENT_CHANNEL } from "@ai-book-studio/core/ipc";
@@ -7,6 +7,8 @@ import { registerIpc } from "./ipc";
 import { DesktopCredentialVault } from "./credentials";
 import { ProviderService } from "./providers";
 import { AgentRuntime } from "./agent/runtime";
+import { BackgroundNotifier } from "./background";
+import { VoiceService } from "./voice";
 import { SettingsStore } from "./settings";
 import { Studio } from "./studio";
 import { runSmoke } from "./smoke";
@@ -41,6 +43,7 @@ let mainWindow: BrowserWindow | null = null;
 let studio: Studio;
 let providers: ProviderService;
 let agentRuntime: AgentRuntime;
+let notifier: BackgroundNotifier;
 let flushed = false;
 
 // A hidden test run may sit beside the author's real window, so it does not claim the lock.
@@ -249,8 +252,18 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-function parseWindowSize(value: string | undefined): { width: number; height: number } | null {
-  if (!value) return null;
+/** Bring back the existing window, or recreate it after a background notification. */
+function showStudioWindow(): void {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+  mainWindow = createWindow();
+}
+
+function parseWindowSize(value: string | undefined): { width: number; height: number } | null {  if (!value) return null;
   const match = /^(\d{3,4})x(\d{3,4})$/.exec(value);
   if (!match) return null;
   const width = Number(match[1]);
@@ -301,6 +314,7 @@ app.whenReady().then(async () => {
 
   const vault = new DesktopCredentialVault();
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
+  const voice = new VoiceService(providers);
   void vault.repairPermissions().then((permissions) => {
     if (permissions === "corrected") {
       console.log("[credentials] Corrected the credential file to owner-only permissions.");
@@ -313,14 +327,32 @@ app.whenReady().then(async () => {
       console.warn("[credentials] Protected storage is unavailable; model connections cannot be saved on this computer.");
     }
   });
+  notifier = new BackgroundNotifier(() => mainWindow, showStudioWindow);
   agentRuntime = new AgentRuntime(studio, providers, (event) => {
     mainWindow?.webContents.send(AGENT_EVENT_CHANNEL, event);
+  }, undefined, (outcome) => notifier.handle(outcome));
+
+  // The studio only needs the microphone. Camera, geolocation, notifications and every other
+  // permission stay denied; there is no remote content that could ask for them.
+  session.defaultSession.setPermissionCheckHandler((_contents, permission, _origin, details) => {
+    return permission === "media" && details.mediaType === "audio";
   });
-  registerIpc(studio, () => mainWindow, providers, agentRuntime);
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    if (permission !== "media" || !("mediaTypes" in details)) {
+      callback(false);
+      return;
+    }
+    const types = details.mediaTypes ?? [];
+    callback(types.length > 0 && types.every((type) => type === "audio"));
+  });
+  app.on("browser-window-focus", () => notifier.clearBadge());
+
+  registerIpc(studio, () => mainWindow, providers, agentRuntime, voice);
   buildMenu();
   mainWindow = createWindow();
 
   app.on("activate", () => {
+    notifier?.clearBadge();
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
   });
 });
@@ -338,5 +370,9 @@ app.on("before-quit", (event) => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin" || headless) app.quit();
+  if (headless) {
+    app.quit();
+    return;
+  }
+  if (process.platform !== "darwin" && !agentRuntime?.hasActiveBackgroundTurns()) app.quit();
 });

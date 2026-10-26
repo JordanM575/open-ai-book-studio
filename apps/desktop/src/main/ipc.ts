@@ -21,6 +21,7 @@ import { UsageStore } from "./usage";
 import type { Studio } from "./studio";
 import type { ProviderService } from "./providers";
 import type { AgentRuntime } from "./agent/runtime";
+import type { VoiceService } from "./voice";
 
 const folderInput = z.string().min(1).max(4096);
 const contentInput = z.string().max(20_000_000);
@@ -79,7 +80,8 @@ export function registerIpc(
   studio: Studio,
   getWindow: () => BrowserWindow | null,
   providers: ProviderService,
-  agent: AgentRuntime
+  agent: AgentRuntime,
+  voice: VoiceService
 ): void {
   const handle = <T>(channel: string, handler: (payload: unknown) => Promise<T> | T): void => {
     ipcMain.handle(channel, async (_event, payload: unknown): Promise<Result<T>> => {
@@ -349,6 +351,27 @@ export function registerIpc(
     return new UsageStore(() => studio.library?.root ?? null).summary(bookId);
   });
 
+  /* --------------------------------------------------------------------- voice */
+
+  handle(IPC.voice.connections, () => voice.connections());
+
+  const voiceInput = z.object({
+    connectionId: connectionId.optional(),
+    audio: z.union([z.instanceof(ArrayBuffer), z.instanceof(Uint8Array)]),
+    languageBias: z.array(z.string().trim().min(1).max(40)).max(4).optional(),
+    keywords: z.array(z.string().trim().min(1).max(80)).max(50).optional()
+  });
+
+  handle(IPC.voice.transcribe, async (payload) => {
+    const input = voiceInput.parse(payload);
+    return voice.transcribe({
+      ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+      audio: new Uint8Array(input.audio),
+      ...(input.languageBias?.length ? { languageBias: input.languageBias } : {}),
+      ...(input.keywords?.length ? { keywords: input.keywords } : {})
+    });
+  });
+
   /* --------------------------------------------------------------------- agent */
 
   const agentInput = z.object({
@@ -356,6 +379,7 @@ export function registerIpc(
     chapterId: idSchema.nullable().optional(),
     prompt: z.string().min(1).max(50_000),
     threadId: idSchema.nullable().optional(),
+    background: z.boolean().optional(),
     model: z
       .object({
         connectionId: z.string().min(1).max(200),

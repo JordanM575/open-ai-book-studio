@@ -309,3 +309,11 @@ needed and the spec or task it blocks.
 3. `Proposed` → `Accepted`: the user accepts; if the decision is significant, write an ADR and link it.
 4. `Accepted` → task: the spec that depends on it gets a task citing the decision ID.
 5. If it later proves wrong: mark `Superseded`, keep the text, link the replacement. Do not delete history.
+
+## Voice and background decisions (2026-10-26)
+
+| ID | Status | Question | Decision | Evidence | Tasks |
+| --- | --- | --- | --- | --- | --- |
+| D-125 | Accepted | Does the studio keep the audio a dictation sends to Meta? | No. Audio exists in renderer and main memory for one request, is converted to the WAV Meta documents and is discarded. It is never written to the library, thread store, archive or a temporary file. A future kept-recording feature needs its own format, consent copy and deletion path. | `packages/core/src/providers/speech.ts`, `apps/desktop/src/main/voice.ts`, spec 017 FR-004 | 017 T001–T006 |
+| D-126 | Accepted | What may a background turn do, and how does it reach the author? | A turn is background only when the author opts in for that turn. It notifies on finish, failure or an approval pause, focuses the window on click and never auto-approves a destructive tool. "Reach out" means a native notification, not email or a network message. A quit app stops all work. | `apps/desktop/src/main/background-copy.ts`, `background.ts`, `agent/runtime.ts`, spec 017 FR-010–FR-017 | 017 T008–T010 |
+| D-127 | Accepted | Can the browser build dictate? | Not yet. The browser surface returns a specific refusal until Meta's browser access passes the D-101 table. Recording first and failing afterwards is forbidden. | `apps/web/src/runtime/browser-api.ts`, spec 017 FR-008 | 017 T006; D-101 browser test |

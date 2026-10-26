@@ -26,6 +26,12 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Added Muse Voice Transcribe dictation (spec 017): a Meta ASR service in the main process, strict
+  mono 16-bit PCM WAV validation, browser-side decode/resample/encode, a microphone button with a
+  ten-minute cap, and insertion at the editor caret through the normal save path.
+- Added background agent turns: an opt-in per-turn flag, an outcome callback after finish, failure,
+  stop or approval pause, native notifications with a short preview, a dock badge and focus-on-click.
+  Destructive approvals still wait for the author.
 - Recorded the Meta participant guide in `hackathon/EVENT.md`: the full schedule and Discord channels,
   the four-person team cap, the open-source and event-only-work rules, the anti-project list, the $150
   credit and partner offers, the three-stage judging rubric, both prize tracks and the bonus prizes, and

@@ -44,10 +44,28 @@ interface PendingApproval {
 interface ActiveTurn {
   controller: AbortController;
   bookId: string;
+  bookTitle: string;
   threadId: string;
   messageId: string;
+  background: boolean;
   state: TurnState;
   pending?: PendingApproval;
+}
+
+export type AgentOutcomeKind = "done" | "error" | "stopped" | "approval";
+
+/** What the main process needs for a notification. It carries no key and no full manuscript. */
+export interface AgentOutcome {
+  kind: AgentOutcomeKind;
+  turnId: string;
+  bookId: string;
+  bookTitle: string;
+  threadId: string;
+  background: boolean;
+  text: string;
+  changed: number;
+  message?: string;
+  approvalName?: string;
 }
 
 interface TurnState {
@@ -87,11 +105,46 @@ export class AgentRuntime {
     private readonly studio: Studio,
     private readonly providers: ProviderService,
     private readonly emit: (event: AgentEvent) => void,
-    private readonly makeModel: AgentModelFactory = modelFor
+    private readonly makeModel: AgentModelFactory = modelFor,
+    private readonly onOutcome: (outcome: AgentOutcome) => void = () => {}
   ) {}
 
-  async start(input: AgentTurnInput): Promise<AgentTurnStarted> {
-    const library = this.studio.requireLibrary();
+  /** True while a turn the author explicitly marked as background is still alive. */
+  hasActiveBackgroundTurns(): boolean {
+    return [...this.active.values()].some((turn) => turn.background);
+  }
+
+  /**
+   * Tell the shell what happened so it can notify when the window is hidden. The callback is
+   * best-effort: a failed notification must never fail a turn or lose its saved message.
+   */
+  private reportOutcome(
+    turnId: string,
+    kind: AgentOutcomeKind,
+    state: TurnState,
+    extra: { message?: string; approvalName?: string } = {}
+  ): void {
+    const turn = this.active.get(turnId);
+    if (!turn) return;
+    try {
+      this.onOutcome({
+        kind,
+        turnId,
+        bookId: turn.bookId,
+        bookTitle: turn.bookTitle,
+        threadId: turn.threadId,
+        background: turn.background,
+        text: state.text,
+        changed: state.changes.length,
+        ...(extra.message ? { message: extra.message } : {}),
+        ...(extra.approvalName ? { approvalName: extra.approvalName } : {})
+      });
+    } catch (error) {
+      console.warn("[agent] Could not report the turn outcome:", redact((error as Error).message));
+    }
+  }
+
+  async start(input: AgentTurnInput): Promise<AgentTurnStarted> {    const library = this.studio.requireLibrary();
     const { book, chapters } = await library.readBook(input.bookId);
     const connectionId = input.model?.connectionId ?? book.defaultConnectionId;
     const modelId = input.model?.modelId ?? book.defaultModelId;
@@ -169,8 +222,10 @@ export class AgentRuntime {
     this.active.set(turnId, {
       controller,
       bookId: input.bookId,
+      bookTitle: book.title,
       threadId: prepared.thread.id,
       messageId,
+      background: input.background === true,
       state
     });
 
@@ -479,6 +534,7 @@ export class AgentRuntime {
           name: approval.name,
           input: approval.input
         });
+        this.reportOutcome(turnId, "approval", state, { approvalName: approval.name });
         return;
       }
 
@@ -509,6 +565,7 @@ export class AgentRuntime {
         changed: state.changes.length,
         undoAvailable
       });
+      this.reportOutcome(turnId, "done", state);
 
       try {
         await new UsageStore(() => this.studio.library?.root ?? null).append({
@@ -538,6 +595,7 @@ export class AgentRuntime {
           checkpoint: state.changes.length > 0 && undoAvailable
         });
         this.emit({ type: "stopped", turnId, changed: state.changes.length, undoAvailable });
+        this.reportOutcome(turnId, "stopped", state);
       } else {
         const normalized = normalizeProviderError({
           provider,
@@ -563,6 +621,7 @@ export class AgentRuntime {
           });
         }
         this.emit({ type: "error", turnId, code: normalized.code, message, changed: state.changes.length, undoAvailable });
+        this.reportOutcome(turnId, "error", state, { message });
       }
     } finally {
       if (!waiting) this.active.delete(turnId);

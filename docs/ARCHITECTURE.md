@@ -224,3 +224,32 @@ host profile before the review UI claims the journal is per-device.
 - Single window, no tabs, no multi-library switching without reopening.
 - Autosave debounce is 700 ms with a draft buffer behind it. The editor keeps a per-chapter in-memory
   undo/redo history; it is not persisted across relaunch.
+
+## Voice dictation
+
+Dictation is a desktop capability with one provider path:
+
+- `packages/core/src/providers/speech.ts` owns the Meta contract: `POST /v1/asr/transcribe`, the
+  `muse-voice-transcribe-1.0` model, the `request` JSON part plus the `audio` WAV part, the 32 MB and
+  ten-minute caps, and the WAV header/duration checks. It is pure and has no key.
+- `apps/desktop/src/main/voice.ts` selects a Meta connection, reads the secret in main, posts the form
+  and normalizes provider errors. The renderer sends an `ArrayBuffer` over IPC; it never receives the
+  secret or the raw provider response.
+- `packages/app/src/lib/audio.ts` decodes the `MediaRecorder` blob, mixes to mono, resamples to 16 kHz
+  and writes 16-bit PCM WAV in memory. `useDictation` owns the microphone lifecycle and the ten-minute
+  cap. `VoiceButton` shows the recording timer and the transcription state.
+- The transcript enters `ManuscriptEditor` through the same `applyText` path as typing, so the draft
+  buffer, debounce, version check and conflict copy are unchanged. A failed request changes nothing.
+- The web build returns a desktop-only refusal until Meta browser access is verified (D-127).
+
+## Background turns and notifications
+
+The Electron main process already owned the turn; `AgentTurnInput.background` makes the author's
+intent explicit. `AgentRuntime` calls an outcome callback after `done`, `error`, `stopped` or an
+approval pause. `BackgroundNotifier` decides whether the author can see the window, shows a native
+notification with the book title and a short preview, sets the dock badge and focuses the existing
+window on click. A paused destructive tool is reported but never approved automatically.
+
+A background turn uses the same thread, checkpoint and usage stores as an interactive one. Closing the
+window on macOS leaves the process alive; quitting the app stops all work. The web build does not
+promise background execution.

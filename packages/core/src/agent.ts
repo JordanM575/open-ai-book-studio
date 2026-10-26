@@ -14,6 +14,11 @@ export interface AgentTurnInput {
    */
   model?: { connectionId: string; modelId: string };
   /**
+   * Keep the turn running when the window closes and notify the author when it finishes. The
+   * desktop main process owns the turn either way; this flag makes the intent explicit.
+   */
+  background?: boolean;
+  /**
    * Plain text of earlier turns, used only when a new thread starts without stored history.
    * A stored thread is the source of truth once it exists.
    */

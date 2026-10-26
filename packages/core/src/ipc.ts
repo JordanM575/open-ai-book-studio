@@ -12,6 +12,7 @@ import type {
 import type { Catalogue } from "./providers/models";
 import type { ConnectionSummary, ProviderDescription, ProviderId } from "./providers/types";
 import type { UsageSummary } from "./providers/usage";
+import type { VoiceTranscript } from "./providers/speech";
 import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
 import type { AgentThread } from "./agent/messages";
 import type { ThreadSummary } from "./agent/threads";
@@ -76,6 +77,10 @@ export const IPC = {
   },
   usage: {
     summary: "usage:summary"
+  },
+  voice: {
+    connections: "voice:connections",
+    transcribe: "voice:transcribe"
   },
   agent: {
     start: "agent:start",
@@ -217,6 +222,17 @@ export interface StudioApi {
   };
   usage: {
     summary(bookId: string): Promise<Result<UsageSummary>>;
+  };
+  voice: {
+    /** Connections that can accept audio. Empty means dictation is not configured. */
+    connections(): Promise<Result<ConnectionSummary[]>>;
+    transcribe(input: {
+      connectionId?: string;
+      /** Mono 16-bit PCM WAV at 16 kHz or 24 kHz. The main process validates it. */
+      audio: ArrayBuffer;
+      languageBias?: string[];
+      keywords?: string[];
+    }): Promise<Result<VoiceTranscript>>;
   };
   agent: {
     start(input: AgentTurnInput): Promise<Result<AgentTurnStarted>>;

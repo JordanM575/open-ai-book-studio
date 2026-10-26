@@ -2,6 +2,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 import { pushHistory, redoHistory, undoHistory } from "../lib/editor-history";
 import { countWords, formatCount, savedTime } from "../lib/utils";
+import { insertTranscript as insertAtSelection } from "../lib/voice-text";
+import { VoiceButton } from "./VoiceButton";
 
 export type SaveStatus =
   | { kind: "saved"; at: number }
@@ -36,11 +38,13 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const [content, setContent] = useState(chapter.content);
   const [title, setTitle] = useState(chapter.title);
   const [status, setStatus] = useState<SaveStatus>({ kind: "saved", at: Date.now() });
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const base = useRef<Base>({ version: chapter.version, hash: chapter.hash, content: chapter.content, title: chapter.title });
   const latest = useRef(content);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textarea = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     onStatus(status);
@@ -128,6 +132,28 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     applyText(next);
   };
 
+  /**
+   * Insert a transcript where the author left the caret. Spacing is added only when the surrounding
+   * text needs it; the insert then takes the normal applyText -> draft -> save path.
+   */
+  const insertTranscript = (text: string): void => {
+    const element = textarea.current;
+    const start = element?.selectionStart ?? latest.current.length;
+    const end = element?.selectionEnd ?? start;
+    const current = latest.current;
+    const insertion = insertAtSelection(current, text, start, end);
+    if (!insertion) return;
+    setVoiceError(null);
+    pushHistory(chapter.id, current, Date.now(), true);
+    applyText(insertion.text);
+    requestAnimationFrame(() => {
+      const next = textarea.current;
+      if (!next) return;
+      next.focus();
+      next.setSelectionRange(insertion.caret, insertion.caret);
+    });
+  };
+
   const commitTitle = async (): Promise<void> => {
     const next = title.trim();
     if (!next || next === base.current.title) {
@@ -170,7 +196,18 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
           <span>{formatCount(words)} words</span>
           <span className="opacity-50">·</span>
           <span>{formatCount(lines)} lines</span>
+          <span className="ml-auto">
+            <VoiceButton
+              onText={insertTranscript}
+              onError={(error) => setVoiceError(error.message)}
+            />
+          </span>
         </div>
+        {voiceError ? (
+          <p role="alert" className="mb-3 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-destructive">
+            {voiceError}
+          </p>
+        ) : null}
 
         <input
           value={title}
@@ -190,6 +227,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         />
 
         <textarea
+          ref={textarea}
           value={content}
           data-testid="manuscript-text"
           onChange={(event) => onChange(event.target.value)}

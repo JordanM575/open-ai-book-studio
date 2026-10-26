@@ -67,6 +67,10 @@ const api: StudioApi = {
   usage: {
     summary: (bookId) => invoke(IPC.usage.summary, bookId)
   },
+  voice: {
+    connections: () => invoke(IPC.voice.connections),
+    transcribe: (input) => invoke(IPC.voice.transcribe, input)
+  },
   providers: {
     list: () => invoke(IPC.providers.list),
     models: (connectionId) => invoke(IPC.providers.models, connectionId)

@@ -66,6 +66,7 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [background, setBackground] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -386,8 +387,10 @@ export function ChatPanel({
       prompt,
       threadId: threadId ?? undefined,
       history,
+      ...(background ? { background: true } : {}),
       ...(turnModel ? { model: turnModel } : {})
     };
+    setBackground(false);
     loadToken.current += 1;
     retryRequestsRef.current.set(assistant.id, request);
     setMessages((current) => [...current, user, assistant]);
@@ -732,6 +735,20 @@ export function ChatPanel({
                 {turnModel ? `This turn: ${turnModel.modelId.split("/").pop()}` : "Model: book default"}
               </span>
             </button>
+            <label
+              className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[var(--text-caption-size)] text-muted-foreground"
+              title="Keep the turn running after the window closes and notify you when it finishes"
+            >
+              <input
+                type="checkbox"
+                checked={background}
+                onChange={(event) => setBackground(event.target.checked)}
+                disabled={running}
+                data-testid="agent-background"
+                className="size-4 accent-[var(--primary)]"
+              />
+              <span className="hidden min-[520px]:inline">Background</span>
+            </label>
             <p className="hidden min-w-0 text-[var(--text-caption-size)] text-muted-foreground min-[520px]:block">
               Enter sends · Shift Enter adds a line
             </p>
