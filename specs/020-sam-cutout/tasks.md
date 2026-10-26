@@ -22,7 +22,7 @@
 - [x] T005 Add Cutout mode to `IllustrationDialog`: noun-phrase prompt, segmented boxes, object id and
   confidence, match picker, preview and Save cutout. Show zero-match, source-missing, refusal and
   provider-error states.
-- [ ] T006 Attach the saved cutout to a character when one is selected; otherwise save it as a
+- [x] T006 Attach the saved cutout to a character when one is selected; otherwise save it as a
   character image with `cutoutOf` and let the author attach it later.
 
 ## Phase 4 — Evidence and docs

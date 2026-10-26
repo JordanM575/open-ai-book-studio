@@ -226,6 +226,8 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       remove: () =>
         Promise.resolve(failure("invalid", "Illustrations are available in the desktop app.")),
       saveCutout: () =>
+        Promise.resolve(failure("invalid", "Character cutouts are available in the desktop app.")),
+      attachCharacter: () =>
         Promise.resolve(failure("invalid", "Character cutouts are available in the desktop app."))
     },
     segmentation: {

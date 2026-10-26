@@ -92,7 +92,8 @@ export const IPC = {
     generate: "images:generate",
     attach: "images:attach",
     remove: "images:remove",
-    saveCutout: "images:saveCutout"
+    saveCutout: "images:saveCutout",
+    attachCharacter: "images:attachCharacter"
   },
   segmentation: {
     segment: "segmentation:segment"
@@ -268,7 +269,9 @@ export interface StudioApi {
       bytes: ArrayBuffer;
       prompt: string;
       confidence?: number | null;
+      characterId?: string | null;
     }): Promise<Result<ImageRecord>>;
+    attachCharacter(bookId: string, imageId: string, characterId: string): Promise<Result<ImageRecord>>;
   };
   segmentation: {
     segment(input: {

@@ -651,6 +651,7 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         open={illustrationOpen}
         bookId={bookId}
         chapter={selected}
+        characters={detail?.book.characters ?? []}
         onClose={() => setIllustrationOpen(false)}
         onChanged={() => loadIllustration(selectedId)}
         onOpenSettings={() => openSettings("providers")}

@@ -9,6 +9,14 @@ const testing = await import("@testing-library/react");
 const { ManuscriptEditor } = await import("@ai-book-studio/app/components/ManuscriptEditor");
 
 const BOOK = "book_ui000001";
+const CHARACTER = {
+  id: "char_test0001",
+  name: "Mara",
+  role: "protagonist",
+  description: "",
+  motivations: "",
+  notes: ""
+};
 const CHAPTER: Chapter = {
   id: "ch_ui00000001",
   title: "One",
@@ -200,6 +208,13 @@ function mockIllustrationStudio(options: { connections?: unknown[]; initial?: Il
       data: images.find((entry) => entry.id === imageId) ?? illustrationImage()
     });
   });
+  const attachCharacter = mock((_bookId: string, imageId: string, characterId: string) => {
+    images = images.map((entry) => (entry.id === imageId ? { ...entry, characterId } : entry));
+    return Promise.resolve({
+      ok: true as const,
+      data: images.find((entry) => entry.id === imageId) ?? illustrationImage()
+    });
+  });
   const segment = mock(() =>
     Promise.resolve({
       ok: true as const,
@@ -237,11 +252,12 @@ function mockIllustrationStudio(options: { connections?: unknown[]; initial?: Il
       remove: mock(() => Promise.resolve({ ok: true as const, data: null })),
       saveCutout: mock(() =>
         Promise.resolve({ ok: true as const, data: illustrationImage({ id: "img_ui000003", kind: "character" }) })
-      )
+      ),
+      attachCharacter
     },
     segmentation: { segment }
   };
-  return { generate, attach, segment };
+  return { generate, attach, segment, attachCharacter };
 }
 
 function renderIllustration() {
@@ -250,6 +266,7 @@ function renderIllustration() {
       open: true,
       bookId: BOOK,
       chapter: CHAPTER,
+      characters: [CHARACTER],
       onClose: () => {},
       onChanged: () => {},
       onOpenSettings: () => {}
@@ -313,5 +330,32 @@ describe("IllustrationDialog", () => {
     );
     await testing.waitFor(() => testing.screen.getByText("Object 1 · 90%"));
     expect(testing.screen.getByTestId("save-cutout-1")).toBeTruthy();
+  });
+});
+
+describe("IllustrationDialog character attachment", () => {
+  test("attaches a saved cutout to a cast member", async () => {
+    const studio = mockIllustrationStudio({
+      initial: [
+        illustrationImage({
+          id: "img_ui000003",
+          kind: "character",
+          source: "cutout",
+          cutoutOf: "img_ui000001",
+          prompt: "the keeper"
+        })
+      ]
+    });
+    renderIllustration();
+    await testing.waitFor(() => testing.screen.getByText("No illustration for this chapter yet."));
+    testing.fireEvent.click(testing.screen.getByTitle("the keeper"));
+    await testing.waitFor(() => testing.screen.getByAltText("Illustration: the keeper"));
+    const select = document.getElementById("cutout-character") as HTMLSelectElement;
+    testing.fireEvent.change(select, { target: { value: CHARACTER.id } });
+    testing.fireEvent.click(testing.screen.getByTestId("attach-cutout-character"));
+    await testing.waitFor(() =>
+      expect(studio.attachCharacter).toHaveBeenCalledWith(BOOK, "img_ui000003", CHARACTER.id)
+    );
+    await testing.waitFor(() => testing.screen.getByText("Character image attached to the cast member."));
   });
 });

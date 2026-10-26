@@ -43,7 +43,9 @@ author choose one and save the cutout as another author-owned image.
   shows the object id and confidence; it never silently picks the first.
 - **FR-007** The transparent PNG MUST be produced in the renderer from the source image and the decoded
   mask, then saved through the image store as a new record with `kind: "character"`, `cutoutOf` and the
-  source dimensions. The source file and manifest record are not modified.
+  source dimensions. When a cast member is selected, the record also carries `characterId`; otherwise
+  it is saved unattached and can be attached later. The source file and manifest record are not
+  modified.
 - **FR-008** A cutout is limited to 20 MB and the source's dimensions. The alpha channel is binary:
   masked pixels are transparent, the rest are fully opaque. Edge feathering is a later feature.
 - **FR-009** If the source image is missing, unreadable or not PNG/WebP/JPEG, the panel says the file is

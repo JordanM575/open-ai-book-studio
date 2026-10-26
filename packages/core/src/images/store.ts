@@ -159,6 +159,23 @@ export class ImageStore {
     });
   }
 
+  /** Attach a character image or cutout to a cast member. */
+  async attachCharacter(bookId: string, imageId: string, characterId: string): Promise<ImageRecord> {
+    return this.serialize(bookId, async () => {
+      const state = await this.readManifest(bookId);
+      const target = state.manifest.images.find((image) => image.id === imageId);
+      if (!target) throw new LibraryError("not-found", "That image is not in this book.");
+      if (target.kind !== "character") {
+        throw new LibraryError("invalid", "Only a character image can be attached to a cast member.");
+      }
+      const images = state.manifest.images.map((image) =>
+        image.id === imageId ? { ...image, characterId } : image
+      );
+      await this.commitManifest(bookId, { ...state.manifest, images }, state.hash);
+      return images.find((image) => image.id === imageId)!;
+    });
+  }
+
   /** Move an image file to the library trash and remove its record. */
   async remove(bookId: string, imageId: string): Promise<void> {
     await this.serialize(bookId, async () => {

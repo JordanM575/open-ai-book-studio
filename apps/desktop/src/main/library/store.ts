@@ -144,6 +144,10 @@ export class Library {
     return this.images.attach(bookId, imageId, chapterId);
   }
 
+  attachCharacterImage(bookId: string, imageId: string, characterId: string): Promise<ImageRecord> {
+    return this.images.attachCharacter(bookId, imageId, characterId);
+  }
+
   removeImage(bookId: string, imageId: string): Promise<void> {
     return this.images.remove(bookId, imageId);
   }

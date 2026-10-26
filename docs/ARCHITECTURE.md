@@ -302,7 +302,8 @@ serializable matches with the decoded 0/1 raster. The studio does not reimplemen
 The renderer composes the cutout: `applyCutoutMask` copies the source RGBA pixels, maps the mask raster
 over its source bounds and clears alpha outside it; `cutoutPng` draws the result to a canvas and
 returns a PNG blob. The main process saves it through `ImageStore` as a `character` image with
-`cutoutOf` pointing at the source. The source file and record are never modified.
+`cutoutOf` pointing at the source. A cast member can be chosen when saving, or the image can be attached
+later with `images:attachCharacter`; the character id is stored on the image record. The source file and record are never modified.
 
 Concept prompts are validated in `packages/core/src/images/segmentation.ts`: one short noun phrase,
 no lists, negation, questions or commands. Zero matches is a normal result and writes nothing. The web

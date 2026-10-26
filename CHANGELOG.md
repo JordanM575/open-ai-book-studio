@@ -31,7 +31,9 @@ Update the `Unreleased` section before every commit.
   and motion-plate production plan. Added the brand-positioning paragraph to `docs/DESIGN.md`.
 - Added SAM 3.1 character cutouts (spec 020): prompt validation, the official `@meta-sam/parser` for the
   mask grammar, a `segmentation:segment` IPC route, the renderer `applyCutoutMask`/PNG compositor and
-  cutout mode in the Illustration dialog. Cutouts save as `character` images with `cutoutOf`.
+  cutout mode in the Illustration dialog. Cutouts save as `character` images with `cutoutOf`; a cutout
+  can be attached to a cast member at save time or from the image list, and the character id is stored on
+  the image record.
 - Added the illustration pipeline (spec 019): a versioned `images.json`, an atomic image store over
   `LibraryPort`, PNG/WebP/JPEG inspection, Muse Image generation through Meta at a visible `$0.01`
   per-image estimate, IPC, an Illustration dialog, an attached image below the chapter and DOCX

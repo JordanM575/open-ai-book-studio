@@ -470,7 +470,8 @@ export function registerIpc(
         sourceImageId: imageIdSchema,
         bytes: z.union([z.instanceof(ArrayBuffer), z.instanceof(Uint8Array)]),
         prompt: z.string().trim().min(1).max(200),
-        confidence: z.number().min(0).max(1).nullable().optional()
+        confidence: z.number().min(0).max(1).nullable().optional(),
+        characterId: z.string().regex(/^char_[A-Za-z0-9-]{6,}$/).nullable().optional()
       })
       .parse(payload);
     const library = studio.requireLibrary();
@@ -485,8 +486,20 @@ export function registerIpc(
       size: "",
       source: "cutout",
       cutoutOf: input.sourceImageId,
-      confidence: input.confidence ?? null
+      confidence: input.confidence ?? null,
+      characterId: input.characterId ?? null
     });
+  });
+
+  handle(IPC.images.attachCharacter, async (payload) => {
+    const input = z
+      .object({
+        bookId: idSchema,
+        imageId: imageIdSchema,
+        characterId: z.string().regex(/^char_[A-Za-z0-9-]{6,}$/)
+      })
+      .parse(payload);
+    return studio.requireLibrary().attachCharacterImage(input.bookId, input.imageId, input.characterId);
   });
 
   handle(IPC.segmentation.segment, async (payload) => {

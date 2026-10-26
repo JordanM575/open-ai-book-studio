@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Image as ImageIcon, Loader2, Sparkles } from "lucide-react";
-import type { Chapter } from "@ai-book-studio/core/schema";
+import type { Chapter, Character } from "@ai-book-studio/core/schema";
 import type { ConnectionSummary } from "@ai-book-studio/core/providers/types";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { SegmentationMatch } from "@ai-book-studio/core/images/segmentation";
@@ -14,6 +14,7 @@ interface Props {
   open: boolean;
   bookId: string;
   chapter: Chapter | null;
+  characters: Character[];
   onClose: () => void;
   onChanged: () => Promise<void> | void;
   onOpenSettings: () => void;
@@ -32,7 +33,7 @@ const SIZES: Array<{ value: ImageSize; label: string }> = [
  * shows the flat $0.01 estimate, the current image and the saved records. The image bytes are
  * served from the library through `images.read`, never from a provider URL.
  */
-export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, onOpenSettings }: Props) {
+export function IllustrationDialog({ open, bookId, chapter, characters, onClose, onChanged, onOpenSettings }: Props) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [images, setImages] = useState<ImageRecord[]>([]);
   const [selected, setSelected] = useState<ImageRecord | null>(null);
@@ -40,6 +41,7 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState<ImageSize>("1024x1024");
   const [cutoutPrompt, setCutoutPrompt] = useState("");
+  const [characterId, setCharacterId] = useState("");
   const [matches, setMatches] = useState<SegmentationMatch[]>([]);
   const [cutoutBusy, setCutoutBusy] = useState(false);
   const [cutoutError, setCutoutError] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
     setPreview(null);
     setMatches([]);
     setCutoutError(null);
+    setCharacterId(record.characterId ?? "");
     const stored = await must(window.studio.images.read(bookId, record.id));
     setPreview(stored?.dataUrl ?? null);
   }, [bookId]);
@@ -179,12 +182,30 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
           sourceImageId: selected.id,
           bytes: await blob.arrayBuffer(),
           prompt: cutoutPrompt.trim(),
-          confidence: match.confidence
+          confidence: match.confidence,
+          ...(characterId ? { characterId } : {})
         })
       );
       setSavedNote("Cutout saved as a character image.");
       await refresh();
       await showImage(record);
+      await onChanged();
+    } catch (failure) {
+      setCutoutError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setCutoutBusy(false);
+    }
+  };
+
+  const attachToCharacter = async (): Promise<void> => {
+    if (!selected || selected.kind !== "character" || !characterId || cutoutBusy) return;
+    setCutoutBusy(true);
+    setCutoutError(null);
+    try {
+      await must(window.studio.images.attachCharacter(bookId, selected.id, characterId));
+      setSavedNote("Character image attached to the cast member.");
+      await refresh();
+      await showImage(selected);
       await onChanged();
     } catch (failure) {
       setCutoutError(failure instanceof Error ? failure.message : String(failure));
@@ -358,6 +379,37 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
                 {cutoutBusy ? "Finding…" : "Find objects"}
               </Button>
             </div>
+            {characters.length > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label className="text-[var(--text-caption-size)] text-muted-foreground" htmlFor="cutout-character">
+                  Attach to
+                </label>
+                <select
+                  id="cutout-character"
+                  value={characterId}
+                  onChange={(event) => setCharacterId(event.target.value)}
+                  className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-2 py-1.5 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                >
+                  <option value="">No character yet</option>
+                  {characters.map((character) => (
+                    <option key={character.id} value={character.id}>
+                      {character.name || "Unnamed character"}
+                    </option>
+                  ))}
+                </select>
+                {selected.kind === "character" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void attachToCharacter()}
+                    disabled={!characterId || selected.characterId === characterId || cutoutBusy}
+                    data-testid="attach-cutout-character"
+                  >
+                    Attach
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             {cutoutError ? (
               <p role="alert" className="mt-2 text-[var(--text-caption-size)] text-[var(--destructive-text)]">
                 {cutoutError}

@@ -160,4 +160,19 @@ describe("ImageStore", () => {
     const trash = await port.listDirectory([...trashPath(BOOK), "images"] as LibraryPath);
     expect(trash.some((entry) => entry.name.endsWith(record.fileName))).toBe(true);
   });
+
+  test("attaches a character image to a cast member and refuses chapter images", async () => {
+    const { store } = setup();
+    const cutout = await store.add(
+      BOOK,
+      addInput({ kind: "character", source: "cutout", cutoutOf: "img_source0001", prompt: "the keeper" })
+    );
+    const attached = await store.attachCharacter(BOOK, cutout.id, "char_image001");
+    expect(attached.characterId).toBe("char_image001");
+
+    const chapterImage = await store.add(BOOK, addInput());
+    await expect(store.attachCharacter(BOOK, chapterImage.id, "char_image001")).rejects.toMatchObject({
+      code: "invalid"
+    });
+  });
 });
