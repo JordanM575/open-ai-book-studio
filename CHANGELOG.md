@@ -59,6 +59,14 @@ Update the `Unreleased` section before every commit.
   for the Ray-Ban Display, the Web App's documented constraints, the one constraint that decides
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
+- Proved the glasses page's assistant half without the hardware. The page's normal path in a
+  browser is the buttons-only one, which left WebMCP — the part that only runs on the glasses —
+  untested. A stub model context installed before the page's own script records what it is given:
+  the read verbs are there with their schemas and handlers, the write verb is marked as a write, the
+  destructive tools are not offered to an assistant at all, and calling one through the assistant's
+  path comes back with the book.
+- Added the phone-width walk to the end-to-end gate: the same dead-end and accessibility audit at
+  390×844, because the phone layout is a surface people use and it strands people differently.
 - Added `.github/workflows/verify.yml`: the typecheck, tests, builds and the coverage floor on every
   push, and the end-to-end checks under a virtual display. The e2e job is marked allowed-to-fail
   until it has been watched passing on Linux, because every check so far has been run on macOS and

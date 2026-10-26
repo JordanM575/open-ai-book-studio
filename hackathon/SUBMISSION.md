@@ -98,7 +98,7 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Web build | `bun run build:web` | Pass |
 | Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
 | Smoke | `bun run smoke` | **18/18** |
-| End to end | `bun run e2e` | **7/7** — app, web, audit, glasses, ambient, plugins, bridge |
+| End to end | `bun run e2e` | **8/8** — app, web, audit, phone width, glasses, ambient, plugins, bridge |
 | UI audit | `bun run ui:audit` | **no dead ends**; every control named, every image with an `alt`, one `h1`, keyboard focus visible |
 | Coverage | `bun run coverage` | **81.4% functions, 88.3% lines**, floor 80/87 |
 | Plugin probe | `bun run plugin:probe` | **ok** — the plugin's tool listed, run, and a broken plugin left the others working |

@@ -36,7 +36,11 @@
 ## Phase 4 — Proof
 
 - [x] T014 Drive the page in a real browser at 600×600 against the real studio: `bun run
-  glasses:check`. Twelve checks, no dead ends.
+  glasses:check`. Twenty-one checks, no dead ends.
+- [x] T014a Prove the assistant's half without the hardware: a stub model context records what the
+  page registers, and one of those tools is called through the assistant's own path and comes back
+  with the book. The read verbs are there, the write verb is marked as a write, and the destructive
+  tools are not offered to an assistant at all.
 
 ## Phase 5 — The connector
 

@@ -45,7 +45,8 @@ order:
 | `smoke` | The built app through its own renderer: the preload bridge, the library, editing, autosave, undo, chapter moves, **a Word export with its illustration**, a rename and a delete. |
 | `web` | The browser build over its own storage: create, save, reopen, conflict copies, a portable archive, reduced motion. |
 | `audit` | The real window at 1440×900 for dead ends, missing controls, console errors, and the accessibility basics: every control named, big enough to hit, every image with an `alt`, one `h1`, and a keyboard that reaches something with a visible focus ring. |
-| `glasses` | The 600×600 page for Meta Ray-Ban Display, in a browser at that size: the book, the passage, no scrolling, the D-pad, a write that asks first. |
+| `phone` | The same walk at 390×844, because the phone layout is a surface people use and it has its own ways to strand someone. |
+| `glasses` | The 600×600 page for Meta Ray-Ban Display, in a browser at that size: the book, the passage, no scrolling, the D-pad, a write that asks first, and — with a stub model context — the tools the page hands an assistant, and one of them called through the assistant's own path. |
 | `ambient` | The ambient agent over the control plane, and the toolkit saying the same thing. |
 | `plugins` | A folder of TypeScript tools, loaded by the built app, called, and a broken plugin that must not take the others with it. |
 | `bridge` | The phone's half: a **separate process** speaking to the running app over the local network with the per-run token. |

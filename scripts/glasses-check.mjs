@@ -176,6 +176,92 @@ check(
   ((await page.textContent("#passage")) ?? "").includes("A line the author dictated.") === false
 );
 
+/*
+ * The half that only runs on the glasses.
+ *
+ * WebMCP is off by default and the browser here does not have it, so the page's normal path is the
+ * buttons-only one above. That leaves the interesting half untested: what the page hands the
+ * assistant when the device *can* be spoken to. A stub model context, installed before the page's
+ * own script runs, records what it is given and lets the check call it.
+ */
+const assistant = await browser.newPage({ viewport: { width: 600, height: 600 } });
+const assistantErrors = [];
+assistant.on("console", (message) => {
+  if (message.type() === "error") assistantErrors.push(message.text());
+});
+assistant.on("pageerror", (error) => assistantErrors.push(error.message));
+await assistant.addInitScript(() => {
+  window.__tools = [];
+  Object.defineProperty(document, "modelContext", {
+    configurable: true,
+    value: {
+      registerTool: async (tool) => {
+        window.__tools.push(tool);
+      }
+    }
+  });
+});
+await assistant.goto(glassesUrl, { waitUntil: "networkidle" });
+await assistant.waitForTimeout(700);
+
+const registered = await assistant.evaluate(() =>
+  (window.__tools ?? []).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    annotations: tool.annotations,
+    hasSchema: Boolean(tool.inputSchema && tool.inputSchema.type === "object"),
+    hasExecute: typeof tool.execute === "function"
+  }))
+);
+const names = registered.map((tool) => tool.name);
+
+check("the page gives the assistant the studio's tools", registered.length >= 5, `${registered.length} tools`);
+check(
+  "the read verbs are among them",
+  ["table_of_contents", "read_story_bible", "read_chapter"].every((name) => names.includes(name)),
+  names.slice(0, 6).join(", ")
+);
+check(
+  "the write verb is offered, marked as a write",
+  (() => {
+    const append = registered.find((tool) => tool.name === "append_to_chapter");
+    return Boolean(append) && append.annotations.readOnlyHint === false;
+  })()
+);
+check(
+  "the destructive tools are not offered to an assistant",
+  !["overwrite_chapter", "delete_chapter", "remove_memory", "merge_chapters"].some((name) =>
+    names.includes(name)
+  )
+);
+check(
+  "every tool carries a schema and an executable handler",
+  registered.every((tool) => tool.hasSchema && tool.hasExecute && tool.description.length > 20)
+);
+check(
+  "a read tool is marked read-only",
+  registered.find((tool) => tool.name === "read_story_bible")?.annotations.readOnlyHint === true
+);
+
+// Calling one has to reach the studio and come back as something worth saying.
+const spoken = await assistant.evaluate(async () => {
+  const tool = (window.__tools ?? []).find((entry) => entry.name === "read_story_bible");
+  if (!tool) return null;
+  try {
+    const value = await tool.execute({});
+    return typeof value === "string" ? value : JSON.stringify(value);
+  } catch (error) {
+    return `ERROR: ${error instanceof Error ? error.message : String(error)}`;
+  }
+});
+check(
+  "calling a tool from the assistant reaches the book",
+  typeof spoken === "string" && spoken.includes("The Salt Road"),
+  typeof spoken === "string" ? spoken.slice(0, 74) : "no answer"
+);
+check("the assistant page logged no errors", assistantErrors.length === 0);
+for (const error of assistantErrors) problems.push(`assistant console: ${error}`);
+
 check("the page logged no errors", consoleErrors.length === 0);
 for (const error of consoleErrors) problems.push(`console: ${error}`);
 

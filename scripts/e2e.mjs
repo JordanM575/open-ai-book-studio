@@ -8,7 +8,8 @@
  *
  *   smoke       the built desktop app, driven through its own renderer
  *   web         the browser build, over its own storage
- *   audit       the real window, for dead ends and missing controls
+ *   audit       the real window at 1440x900, for dead ends and missing controls
+ *   phone       the same window at 390x844, because the phone layout is a real surface
  *   glasses     the 600x600 page for Meta Ray-Ban Display, in a browser at that size
  *   ambient     the ambient agent over the control plane and the toolkit
  *   plugins     a folder of TypeScript tools, loaded by the built app
@@ -30,7 +31,13 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const CHECKS = [
   { id: "smoke", script: "scripts/smoke.mjs", what: "the built app, through its own renderer" },
   { id: "web", script: "scripts/web-smoke.mjs", what: "the browser build and its storage" },
-  { id: "audit", script: "scripts/ui-audit.mjs", what: "the real window, for dead ends" },
+  { id: "audit", script: "scripts/ui-audit.mjs", what: "the real window at 1440x900, for dead ends" },
+  {
+    id: "phone",
+    script: "scripts/ui-audit.mjs",
+    args: ["--width", "390", "--height", "844"],
+    what: "the same window at phone width, for dead ends"
+  },
   { id: "glasses", script: "scripts/glasses-check.mjs", what: "the 600x600 page for the glasses" },
   { id: "ambient", script: "scripts/ambient-check.mjs", what: "the ambient agent and the toolkit" },
   { id: "plugins", script: "scripts/plugin-probe.mjs", what: "a plugin folder in the built app" },
@@ -84,7 +91,7 @@ for (const check of selection) {
   }
   console.log(`\n[e2e] ── ${check.id}: ${check.what}`);
   const started = Date.now();
-  const code = await run(process.execPath, [script]);
+  const code = await run(process.execPath, [script, ...(check.args ?? [])]);
   results.push({
     ...check,
     ok: code === 0,
