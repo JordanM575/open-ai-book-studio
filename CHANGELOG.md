@@ -60,12 +60,14 @@ Update the `Unreleased` section before every commit.
   the design, and the live check that rendered the studio's 22 tools into both the WebMCP and the
   connector shapes.
 - Added the voice pipeline (spec D-159): a text-to-speech seam in `packages/core/src/providers/tts.ts`
-  with two services behind it — OpenAI's `/audio/speech` for the studio's voice, and OpenRouter's
-  `openai/gpt-audio-mini` as a cheap optional path that streams 24 kHz PCM which the studio wraps in
-  a WAV itself. A chapter is longer than one request, so the text is split at sentence boundaries and
-  the audio is joined back into one sound. The minimal mode now speaks through it, offers the voices,
-  and falls back to the device's own voice when no service is connected. Documented in
-  [`docs/VOICE.md`](docs/VOICE.md).
+  with two services behind it, both using OpenAI's `audio/speech` shape — OpenAI directly for the
+  studio's voice, and OpenRouter, whose free `fish-audio/s2.1-pro-free:free` makes a check that runs
+  on every change cost nothing. OpenRouter has fifteen dedicated TTS models, discoverable with
+  `GET /api/v1/models?output_modalities=speech`; they are listed under `"speech"`, not `"audio"`,
+  which is easy to miss. A provider that answers with raw `audio/pcm` is wrapped in a WAV. A chapter
+  is longer than one request, so the text is split at sentence boundaries and the audio is joined
+  back into one sound. The minimal mode speaks through it, offers the voices, and falls back to the
+  device's own voice when no service is connected. Documented in [`docs/VOICE.md`](docs/VOICE.md).
 - Retired the SAM cutout (D-158): the request reaches Meta and is accepted, but returns no records
   and no usage on real and synthetic images alike, so nothing is built on it and spec 020 is marked
   superseded. The implementation and its tests stay where they are.

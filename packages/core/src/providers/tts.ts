@@ -52,14 +52,15 @@ export const DEFAULT_TTS_MODEL: TtsModel = "gpt-4o-mini-tts";
 export const MAX_TTS_CHARACTERS = 4_000;
 
 /**
- * The cheap testing path.
+ * The free path.
  *
- * OpenRouter's speech models stream PCM rather than returning an audio file, so the studio wraps
- * the samples in a WAV header. `gpt-audio-mini` costs a few hundredths of a cent for a sentence,
- * which is what makes it useful for a check that runs often. It is a speech model being asked to
- * read, not a text-to-speech endpoint, so it can deviate from the text; OpenAI stays the default.
+ * OpenRouter has a real text-to-speech endpoint — the same `audio/speech` shape as OpenAI's — with
+ * fifteen models behind it, and one of them is free. `fish-audio/s2.1-pro-free:free` needs no
+ * voice, takes the words, and returns MP3, so a check that runs on every change costs nothing and
+ * says exactly what it was given. Some of the other models there require a voice and reject one
+ * they do not know, so a voice is only sent when the caller asked for it.
  */
-export const OPENROUTER_TTS_MODEL = "openai/gpt-audio-mini";
+export const OPENROUTER_TTS_MODEL = "fish-audio/s2.1-pro-free:free";
 export const OPENROUTER_TTS_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] as const;
 export const OPENROUTER_TTS_SAMPLE_RATE = 24_000;
 
@@ -67,47 +68,44 @@ export const OPENROUTER_TTS_SAMPLE_RATE = 24_000;
 export const MIN_TTS_SPEED = 0.25;
 export const MAX_TTS_SPEED = 4;
 
-/**
- * The shape of the service.
- *
- * `speech` is a text-to-speech endpoint: it takes the words and returns audio, and it will not
- * change them. `chat-audio` is a speech model asked to read: the words are a message and the audio
- * is the reply, so it can deviate — a paraphrase, an added greeting — and it is only good enough
- * because it is cheap. The two are kept apart so nobody mistakes one for the other.
- */
-export type TtsKind = "speech" | "chat-audio";
-
 export interface TtsCapability {
   provider: ProviderId;
-  kind: TtsKind;
   endpoint: string;
   model: string;
+  /** The voices worth offering. Empty when the provider picks its own. */
   voices: readonly string[];
-  /** For `chat-audio`, the sample rate of the PCM the service streams. */
+  /**
+   * The voice to send when the caller did not choose one.
+   *
+   * OpenAI requires a voice, so it names one. OpenRouter's free model does not, and its other
+   * models want voices the studio does not know, so the choice is left alone there.
+   */
+  defaultVoice?: string;
+  /** The sample rate of raw PCM, when a provider may answer with that instead of a file. */
   sampleRate?: number;
 }
 
 /**
  * Where a connection's speech requests go.
  *
- * Only OpenAI is enabled in v1. Another provider is a separate adapter, not a silent guess at
- * whether it is OpenAI-compatible.
+ * Both services use OpenAI's `audio/speech` shape — OpenRouter added the same endpoint — so there
+ * is one request and one set of responses to handle, not two. What differs is the model, and
+ * whether a voice has to be named.
  */
 export function ttsCapability(provider: ProviderId, baseUrl?: string): TtsCapability | null {
   if (provider === "openai") {
     return {
       provider,
-      kind: "speech",
       endpoint: `${normalizeTtsBase(baseUrl, "https://api.openai.com/v1")}/audio/speech`,
       model: DEFAULT_TTS_MODEL,
-      voices: TTS_VOICES
+      voices: TTS_VOICES,
+      defaultVoice: DEFAULT_TTS_VOICE
     };
   }
   if (provider === "openrouter") {
     return {
       provider,
-      kind: "chat-audio",
-      endpoint: `${normalizeTtsBase(baseUrl, "https://openrouter.ai/api/v1")}/chat/completions`,
+      endpoint: `${normalizeTtsBase(baseUrl, "https://openrouter.ai/api/v1")}/audio/speech`,
       model: OPENROUTER_TTS_MODEL,
       voices: OPENROUTER_TTS_VOICES,
       sampleRate: OPENROUTER_TTS_SAMPLE_RATE
@@ -137,7 +135,8 @@ function normalizeTtsBase(baseUrl: string | undefined, fallback: string): string
 
 export interface TtsOptions {
   voice?: TtsVoice;
-  model?: TtsModel;
+  /** The model to use. Each provider names its own, so this is not limited to OpenAI's three. */
+  model?: string;
   /** 0.25 to 4. */
   speed?: number;
   /**
@@ -162,7 +161,9 @@ export function ttsRequestBody(text: string, options: TtsOptions = {}): Record<s
   return {
     model,
     input,
-    voice: options.voice ?? DEFAULT_TTS_VOICE,
+    // Some providers require a voice and others reject one they do not know, so it is only sent
+    // when the caller named it. The capability supplies the default where one is required.
+    ...(options.voice ? { voice: options.voice } : {}),
     response_format: "mp3",
     ...(options.speed !== undefined
       ? { speed: clampSpeed(options.speed) }
@@ -266,109 +267,6 @@ export function joinAudio(parts: Uint8Array[]): Uint8Array {
     offset += part.byteLength;
   }
   return joined;
-}
-
-/* ------------------------------------------------------------------ the cheap path */
-
-/**
- * The body for a speech model that streams audio in a chat completion.
- *
- * The words are a message, so they are wrapped in an instruction. `modalities` has to name audio
- * or no audio comes back, and the format has to be `pcm16` because the service refuses anything
- * else while streaming — so the studio turns the samples into a WAV itself.
- */
-export function chatAudioRequestBody(text: string, options: TtsOptions = {}): Record<string, unknown> {
-  const input = text.trim();
-  if (!input) throw new ProviderError("invalid-request", "There is nothing to say.");
-  if (input.length > MAX_TTS_CHARACTERS) {
-    throw new ProviderError(
-      "invalid-request",
-      `One request may carry at most ${MAX_TTS_CHARACTERS} characters. Split the text first.`
-    );
-  }
-  return {
-    model: OPENROUTER_TTS_MODEL,
-    modalities: ["text", "audio"],
-    audio: { voice: options.voice ?? "nova", format: "pcm16" },
-    stream: true,
-    messages: [
-      {
-        role: "user",
-        content: `Read the following aloud exactly as written, adding nothing and saying nothing else:\n\n${input}`
-      }
-    ]
-  };
-}
-
-export interface ChatAudio {
-  /** Raw 16-bit little-endian PCM. */
-  pcm: Uint8Array;
-  /** Whatever text the model said alongside the audio, if any. */
-  text: string;
-  /** What the request cost, when the service reports it. */
-  costUsd: number | null;
-}
-
-/**
- * Read a streamed chat completion that carries audio chunks.
- *
- * The service sends server-sent events; each one may carry a base64 slice of the audio. The slices
- * are decorded and joined in order. A line that is not the shape expected is skipped rather than
- * thrown, because one malformed event must not lose the audio that did arrive.
- */
-export function readChatAudio(stream: string): ChatAudio {
-  const slices: Uint8Array[] = [];
-  let text = "";
-  let costUsd: number | null = null;
-
-  for (const line of stream.split("\n")) {
-    if (!line.startsWith("data:")) continue;
-    const payload = line.slice("data:".length).trim();
-    if (!payload || payload === "[DONE]") continue;
-    let event: unknown;
-    try {
-      event = JSON.parse(payload);
-    } catch {
-      continue;
-    }
-    const record = event as {
-      choices?: Array<{ delta?: { content?: unknown; audio?: { data?: unknown } } }>;
-      usage?: { cost?: unknown };
-    };
-    const delta = record.choices?.[0]?.delta;
-    if (typeof delta?.content === "string") text += delta.content;
-    const data = delta?.audio?.data;
-    if (typeof data === "string" && data) {
-      slices.push(base64Bytes(data));
-    }
-    const cost = record.usage?.cost;
-    if (typeof cost === "number" && Number.isFinite(cost)) costUsd = cost;
-  }
-
-  return { pcm: joinAudio(slices), text: text.trim(), costUsd };
-}
-
-/** Base64 to bytes, in the browser-free way: a small table rather than `atob`. */
-function base64Bytes(value: string): Uint8Array {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  const lookup = new Map<string, number>();
-  for (let index = 0; index < alphabet.length; index += 1) lookup.set(alphabet[index]!, index);
-
-  const clean = value.replace(/[^A-Za-z0-9+/]/g, "");
-  const length = Math.floor((clean.length * 3) / 4);
-  const bytes = new Uint8Array(length);
-  let byte = 0;
-  for (let index = 0; index < clean.length; index += 4) {
-    const a = lookup.get(clean[index] ?? "") ?? 0;
-    const b = lookup.get(clean[index + 1] ?? "") ?? 0;
-    const c = lookup.get(clean[index + 2] ?? "") ?? 0;
-    const d = lookup.get(clean[index + 3] ?? "") ?? 0;
-    const triple = (a << 18) | (b << 12) | (c << 6) | d;
-    if (byte < length) bytes[byte++] = (triple >> 16) & 0xff;
-    if (byte < length) bytes[byte++] = (triple >> 8) & 0xff;
-    if (byte < length) bytes[byte++] = triple & 0xff;
-  }
-  return bytes;
 }
 
 /**

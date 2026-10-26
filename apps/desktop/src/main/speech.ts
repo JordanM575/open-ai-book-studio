@@ -1,9 +1,7 @@
 import { normalizeProviderError } from "@ai-book-studio/core/providers/errors";
 import {
-  chatAudioRequestBody,
   chunkForSpeech,
   joinAudio,
-  readChatAudio,
   ttsCapability,
   ttsRequestBody,
   wrapPcmAsWav,
@@ -40,16 +38,13 @@ export interface SpeakResult extends SpokenAudio {
  * needs — the author talks, the agent answers, and the answer comes back in a voice rather than
  * as a silent line of text.
  *
- * Two kinds of service are supported, and they are not the same thing:
+ * There are two text-to-speech services — OpenAI directly, and OpenRouter, which offers the same
+ * endpoint with fifteen models behind it and one of them free. The shape is the same, so there is
+ * one request and one set of responses, and the difference is only the model and whether a voice
+ * has to be named.
  *
- * - A **text-to-speech endpoint** takes the words and returns audio, and will not change them.
- * - A **speech model asked to read** takes the words as a message and streams the audio back, so
- *   it can deviate. It is far cheaper, which is why it is worth having, and it is honest about
- *   what it is.
- *
- * Either way the text is split at sentence boundaries before it is sent, because one request
- * carries a few thousand characters and a chapter is far longer, and the audio is joined back
- * into one sound.
+ * The text is split at sentence boundaries before it is sent, because one request carries a few
+ * thousand characters and a chapter is far longer, and the audio is joined back into one sound.
  */
 export class SpeechService {
   constructor(
@@ -83,22 +78,21 @@ export class SpeechService {
       throw new ProviderError("unsupported", "This build cannot speak with that connection.");
     }
 
+    // A voice is sent only when the caller chose one or the provider requires one.
+    const voice = input.voice ?? capability.defaultVoice;
+
     const chunks = chunkForSpeech(text);
     const parts: Uint8Array[] = [];
-    let mimeType = capability.kind === "speech" ? "audio/mpeg" : "audio/wav";
-    let costUsd: number | null = null;
+    let mimeType = "audio/mpeg";
 
     for (const chunk of chunks) {
-      const body =
-        capability.kind === "speech"
-          ? ttsRequestBody(chunk, {
-              ...(input.voice ? { voice: input.voice as TtsOptions["voice"] } : {}),
-              ...(input.speed !== undefined ? { speed: input.speed } : {}),
-              ...(input.instructions ? { instructions: input.instructions } : {})
-            })
-          : chatAudioRequestBody(chunk, {
-              ...(input.voice ? { voice: input.voice as TtsOptions["voice"] } : {})
-            });
+      const body = ttsRequestBody(chunk, {
+        // The capability names the model: OpenRouter's ids are not OpenAI's.
+        model: capability.model,
+        ...(voice ? { voice: voice as TtsOptions["voice"] } : {}),
+        ...(input.speed !== undefined ? { speed: input.speed } : {}),
+        ...(input.instructions ? { instructions: input.instructions } : {})
+      });
 
       let response: Response;
       try {
@@ -106,8 +100,7 @@ export class SpeechService {
           method: "POST",
           headers: {
             authorization: `Bearer ${credential.secret}`,
-            "content-type": "application/json",
-            ...(capability.kind === "chat-audio" ? { accept: "text/event-stream" } : {})
+            "content-type": "application/json"
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(SPEAK_TIMEOUT_MS)
@@ -127,31 +120,26 @@ export class SpeechService {
         });
       }
 
-      if (capability.kind === "speech") {
-        const type = response.headers.get("content-type");
-        if (type) mimeType = type.split(";")[0]!.trim();
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (bytes.byteLength === 0) {
-          throw new ProviderError("unknown", "The voice service returned no audio.");
-        }
-        parts.push(bytes);
-      } else {
-        // The samples arrive as events; the studio turns them into a WAV itself.
-        const streamed = readChatAudio(await response.text());
-        if (streamed.pcm.byteLength === 0) {
-          throw new ProviderError(
-            "unknown",
-            "The voice model returned no audio. It may have answered in text only."
-          );
-        }
-        if (streamed.costUsd !== null) costUsd = (costUsd ?? 0) + streamed.costUsd;
+      const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim();
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength === 0) {
+        throw new ProviderError("unknown", "The voice service returned no audio.");
+      }
+
+      // A few providers answer with raw samples rather than a file. A WAV header turns those into
+      // something the renderer can play, rather than a blob it cannot.
+      if (type === "audio/pcm" || type === "audio/l16") {
         parts.push(
-          wrapPcmAsWav(streamed.pcm, {
+          wrapPcmAsWav(bytes, {
             sampleRate: capability.sampleRate ?? 24_000,
             channels: 1,
             bitsPerSample: 16
           })
         );
+        mimeType = "audio/wav";
+      } else {
+        if (type) mimeType = type;
+        parts.push(bytes);
       }
     }
 
@@ -162,7 +150,7 @@ export class SpeechService {
       connectionLabel: connection.label,
       model: capability.model,
       chunks: chunks.length,
-      costUsd
+      costUsd: null
     };
   }
 }

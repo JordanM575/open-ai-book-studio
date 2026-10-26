@@ -40,30 +40,30 @@ OpenAI's `/audio/speech` takes a JSON body and returns audio. The studio asks fo
 voice, and optionally an instruction about how to read — which only the `gpt-4o-mini-tts` model
 understands, so it is omitted for the older ones rather than silently ignored.
 
-### Two services, and they are not the same thing
+### Two services, one shape
 
-| | A text-to-speech endpoint | A speech model asked to read |
+| | OpenAI, direct | OpenRouter |
 | --- | --- | --- |
-| **Provider** | OpenAI — `POST /audio/speech` | OpenRouter — a chat completion with `modalities: ["text","audio"]` |
-| **Model** | `gpt-4o-mini-tts` | `openai/gpt-audio-mini` |
-| **What it does** | Takes the words, returns audio. It will not change them. | Takes the words as a message and *reads* them. It can deviate. |
-| **Returns** | MP3 | 24 kHz mono 16-bit PCM, streamed as events |
-| **Cost, a sentence** | — | about **$0.0002** |
+| **Endpoint** | `/audio/speech` | `/audio/speech` — the same shape |
+| **Model** | `gpt-4o-mini-tts` | `fish-audio/s2.1-pro-free:free` |
+| **Cost, a sentence** | — | **free** |
+| **Voice** | Required; the studio sends `nova` unless the caller chose | The free model takes none; other models there want voices the studio does not know |
+| **Returns** | MP3 | MP3 |
 
-The second is honest about what it is: the words go in as an instruction — *"Read the following
-aloud exactly as written, adding nothing"* — and a model decides how to obey it. It can paraphrase,
-or add a greeting. That is why OpenAI stays the default voice, and why the cheap path is the one
-the check runs often. Both are behind the same seam, and the caller does not have to care which.
+Both are text-to-speech endpoints: the words go in and the audio comes out, unchanged. OpenRouter
+is the default for the check because it costs nothing, and OpenAI is the default for a real
+reading because it can be told how to read.
 
-Nothing about the cheap path is hidden from the reader of the audio: it is the same pipeline, the
-same chunking, the same joined sound.
+**OpenRouter has fifteen TTS models**, discoverable with
+`GET /api/v1/models?output_modalities=speech` — the speech models are listed under `"speech"`, not
+`"audio"`, which is what a first look at the catalogue misses. The free one,
+`fish-audio/s2.1-pro-free:free`, needs no voice and answers in MP3. Named alternatives such as
+`hexgrad/kokoro-82m` work too but require a voice, and some reject one they do not know, so a voice
+is only sent when the caller asked for it.
 
-### The PCM the cheap path streams
-
-The service refuses any audio format but `pcm16` while streaming, so it does not send a file. The
-studio wraps the samples in a 44-byte RIFF/WAVE header itself, at the sample rate the capability
-names, so the renderer still gets one playable sound. A malformed event in the stream is skipped
-rather than thrown, because one bad line must not lose the audio that did arrive.
+`audio/speech` is not the only shape a provider might answer with: a few return raw
+`audio/pcm`. The service wraps those in a 44-byte RIFF/WAVE header so the renderer still gets one
+playable sound.
 
 ### A chapter is longer than one request
 
@@ -106,6 +106,11 @@ so a key never sits in plaintext next to the code.
 OpenRouter is optional, and it is there because a check that runs on every change should not cost
 a dollar. A user who never adds it gets the device's own voice and nothing breaks.
 
+**Correction, 2026-10-26.** An earlier version of this page said OpenRouter had no text-to-speech
+endpoint and used a speech model through a chat completion instead. That was wrong: OpenRouter
+added `/api/v1/audio/speech` in May 2026, with dedicated TTS models behind it. The chat-completion
+path was removed.
+
 ## The panel
 
 The minimal mode's **Read aloud** and **Where am I?** both go through the pipeline. When a voice
@@ -127,6 +132,6 @@ and where to change it.
 - `bun test apps/desktop/tests/speech.test.ts` — one request, many requests joined, the voice and
   speed, an empty reply, a refused key, an unreachable service.
 - `bun run live:check` — speaks a sentence, and measures it. A file of the right size proves
-  nothing, because a service that returns silence returns a file, so the check computes the root
-  mean square of the 16-bit samples and reports it. The cheap path measured **level 2967**: speech,
-  not silence.
+  nothing, because a service that returns silence returns a file. For raw PCM the check computes
+  the root mean square of the samples; for a compressed stream it cannot, cheaply, so it says
+  "compressed, size checked" rather than inventing a number.

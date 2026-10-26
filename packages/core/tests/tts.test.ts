@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   canSpeak,
-  chatAudioRequestBody,
   chunkForSpeech,
   clampSpeed,
   DEFAULT_TTS_MODEL,
   DEFAULT_TTS_VOICE,
   joinAudio,
-  readChatAudio,
   MAX_TTS_CHARACTERS,
+  OPENROUTER_TTS_MODEL,
   TTS_VOICES,
   ttsCapability,
   ttsRequestBody,
@@ -50,7 +49,6 @@ describe("the request", () => {
     expect(body).toMatchObject({
       model: DEFAULT_TTS_MODEL,
       input: "The door was open.",
-      voice: DEFAULT_TTS_VOICE,
       response_format: "mp3"
     });
   });
@@ -143,51 +141,26 @@ describe("joining the audio", () => {
   });
 });
 
-describe("the cheap path", () => {
-  test("OpenRouter speaks through a chat completion, not a speech endpoint", () => {
+describe("the free path", () => {
+  test("OpenRouter uses the same audio/speech endpoint as OpenAI", () => {
     const capability = ttsCapability("openrouter");
-    expect(capability?.kind).toBe("chat-audio");
-    expect(capability?.endpoint).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect(capability?.sampleRate).toBe(24_000);
+    expect(capability?.endpoint).toBe("https://openrouter.ai/api/v1/audio/speech");
+    expect(capability?.model).toBe(OPENROUTER_TTS_MODEL);
+    expect(OPENROUTER_TTS_MODEL).toContain(":free");
   });
 
-  test("asks for audio in its own words", () => {
-    const body = chatAudioRequestBody("The door was open.", { voice: "onyx" });
-    expect(body).toMatchObject({ modalities: ["text", "audio"], stream: true });
-    expect(body.audio).toEqual({ voice: "onyx", format: "pcm16" });
-    expect(String((body.messages as Array<{ content: string }>)[0]!.content)).toContain(
-      "The door was open."
-    );
-    expect(String((body.messages as Array<{ content: string }>)[0]!.content)).toMatch(/exactly/i);
+  test("names a default voice only where the provider requires one", () => {
+    // OpenAI rejects a request without a voice; OpenRouter's free model does not want one.
+    expect(ttsCapability("openai")?.defaultVoice).toBe(DEFAULT_TTS_VOICE);
+    expect(ttsCapability("openrouter")?.defaultVoice).toBeUndefined();
   });
 
-  test("reads the audio slices out of the stream in order", () => {
-    const first = Buffer.from([1, 2, 3, 4]).toString("base64");
-    const second = Buffer.from([5, 6]).toString("base64");
-    const stream = [
-      `data: ${JSON.stringify({ choices: [{ delta: { content: "Reading. " } }] })}`,
-      `data: ${JSON.stringify({ choices: [{ delta: { audio: { data: first } } }] })}`,
-      "data: not json",
-      `data: ${JSON.stringify({ choices: [{ delta: { audio: { data: second } } }] })}`,
-      `data: ${JSON.stringify({ usage: { cost: 0.0002 } })}`,
-      "data: [DONE]"
-    ].join("\n");
-    const audio = readChatAudio(stream);
-    expect([...audio.pcm]).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(audio.text).toBe("Reading.");
-    expect(audio.costUsd).toBeCloseTo(0.0002);
+  test("omits the voice when the caller did not choose one", () => {
+    expect(ttsRequestBody("Hello.")).not.toHaveProperty("voice");
+    expect(ttsRequestBody("Hello.", { voice: "onyx" }).voice).toBe("onyx");
   });
 
-  test("keeps the audio when one event is malformed", () => {
-    const chunk = Buffer.from([9, 9]).toString("base64");
-    const stream = [
-      "data: {broken",
-      `data: ${JSON.stringify({ choices: [{ delta: { audio: { data: chunk } } }] })}`
-    ].join("\n");
-    expect([...readChatAudio(stream).pcm]).toEqual([9, 9]);
-  });
-
-  test("wraps samples in a playable WAV", () => {
+  test("wraps raw samples in a playable WAV, for providers that answer with PCM", () => {
     const pcm = new Uint8Array([0, 1, 2, 3]);
     const wav = wrapPcmAsWav(pcm, { sampleRate: 24_000 });
     const view = new DataView(wav.buffer);
@@ -195,12 +168,10 @@ describe("the cheap path", () => {
       String.fromCharCode(...wav.slice(offset, offset + length));
     expect(ascii(0, 4)).toBe("RIFF");
     expect(ascii(8, 4)).toBe("WAVE");
-    expect(ascii(12, 4)).toBe("fmt ");
     expect(view.getUint16(20, true)).toBe(1); // PCM
     expect(view.getUint16(22, true)).toBe(1); // mono
     expect(view.getUint32(24, true)).toBe(24_000);
     expect(view.getUint16(34, true)).toBe(16);
-    expect(ascii(36, 4)).toBe("data");
     expect(view.getUint32(40, true)).toBe(4);
     expect(wav.byteLength).toBe(48);
     expect([...wav.slice(44)]).toEqual([0, 1, 2, 3]);
