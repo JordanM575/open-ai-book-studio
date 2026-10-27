@@ -4,13 +4,12 @@ import type {
   BookSummary,
   Chapter,
   ChapterConflict,
-  ChapterMeta,
   ReorderChapterResult,
   ReorderDirection,
   SearchHit,
   SaveChapterResult
 } from "@ai-book-studio/core/schema";
-import { LibraryService } from "@ai-book-studio/core/library/service";
+import { LibraryService, type BookPatch, type ChapterMetaPatch } from "@ai-book-studio/core/library/service";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import { ImageStore, type AddImageInput, type ImageList, type ImageRecord, type StoredImage } from "@ai-book-studio/core/images";
 import { createFileSystemEnvironment } from "./fs-port";
@@ -62,7 +61,11 @@ export class Library {
     return this.service.listBooks();
   }
 
-  createBook(input: { title: string; description?: string; outline?: string }): Promise<BookMeta> {
+  createBook(input: {
+    title: string;
+    description?: string | undefined;
+    outline?: string | undefined;
+  }): Promise<BookMeta> {
     return this.service.createBook(input);
   }
 
@@ -70,7 +73,7 @@ export class Library {
     return this.service.readBook(bookId);
   }
 
-  updateBook(bookId: string, patch: Partial<BookMeta>): Promise<BookMeta> {
+  updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {
     return this.service.updateBook(bookId, patch);
   }
 
@@ -78,7 +81,10 @@ export class Library {
     return this.service.readChapter(bookId, chapterId);
   }
 
-  createChapter(bookId: string, input: { title?: string; content?: string } = {}): Promise<Chapter> {
+  createChapter(
+    bookId: string,
+    input: { title?: string | undefined; content?: string | undefined } = {}
+  ): Promise<Chapter> {
     return this.service.createChapter(bookId, input);
   }
 
@@ -94,7 +100,7 @@ export class Library {
   updateChapterMeta(
     bookId: string,
     chapterId: string,
-    patch: Partial<Pick<ChapterMeta, "title" | "synopsis" | "purpose" | "notes" | "arc" | "order" | "isPrologue" | "color">>,
+    patch: ChapterMetaPatch,
     expected: { baseVersion: number; baseHash: string }
   ): Promise<SaveChapterResult> {
     return this.service.updateChapterMeta(bookId, chapterId, patch, expected);

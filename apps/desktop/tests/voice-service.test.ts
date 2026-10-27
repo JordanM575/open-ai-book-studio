@@ -50,7 +50,7 @@ function service(fetchImpl: typeof fetch, stored: StoredCredential[] = [credenti
 
 describe("VoiceService", () => {
   test("posts the documented Meta form and returns the transcript", async () => {
-    const captured: { url?: string; init?: RequestInit } = {};
+    const captured: { url?: string; init?: RequestInit | undefined } = {};
     const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       captured.url = String(url);
       captured.init = init;

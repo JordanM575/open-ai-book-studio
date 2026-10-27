@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Readable, Writable } from "node:stream";
 import type { Chapter } from "@ai-book-studio/core/schema";
-import { BackendClient, BackendError, resolveBackend } from "../src/backend-client";
+import { BackendError, resolveBackend } from "../src/backend-client";
 import { runCli } from "../src/cli";
 import type { ToolkitClient } from "../src/mcp";
 

@@ -38,7 +38,7 @@ function service(fetchImpl: typeof fetch, stored: StoredCredential[] = [credenti
 
 describe("ImageService", () => {
   test("posts the Muse Image request and returns real bytes", async () => {
-    const captured: { url?: string; init?: RequestInit } = {};
+    const captured: { url?: string; init?: RequestInit | undefined } = {};
     const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       captured.url = String(url);
       captured.init = init;

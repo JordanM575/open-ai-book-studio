@@ -36,7 +36,7 @@ const PNG = new Uint8Array(
 
 describe("SegmentationService", () => {
   test("sends the SAM request with a data URL and returns zero matches", async () => {
-    const captured: { url?: string; init?: RequestInit } = {};
+    const captured: { url?: string; init?: RequestInit | undefined } = {};
     const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       captured.url = String(url);
       captured.init = init;

@@ -4,25 +4,25 @@ import type { CostBasis } from "./providers/usage";
 export interface AgentTurnInput {
   bookId: string;
   /** The chapter the author is looking at. The agent may still read or edit others. */
-  chapterId?: string | null;
+  chapterId?: string | null | undefined;
   prompt: string;
   /** Continue this conversation. Omit to start a new one. */
-  threadId?: string | null;
+  threadId?: string | null | undefined;
   /**
    * A one-off connection and model for this turn. The book default is unchanged; the runtime
    * validates the model and records it on the stored turn.
    */
-  model?: { connectionId: string; modelId: string };
+  model?: { connectionId: string; modelId: string } | undefined;
   /**
    * Keep the turn running when the window closes and notify the author when it finishes. The
    * desktop main process owns the turn either way; this flag makes the intent explicit.
    */
-  background?: boolean;
+  background?: boolean | undefined;
   /**
    * Plain text of earlier turns, used only when a new thread starts without stored history.
    * A stored thread is the source of truth once it exists.
    */
-  history?: Array<{ role: "user" | "assistant"; text: string }>;
+  history?: Array<{ role: "user" | "assistant"; text: string }> | undefined;
 }
 
 export interface AgentTurnStarted {

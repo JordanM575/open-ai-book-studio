@@ -60,6 +60,21 @@ const textEncoder = new TextEncoder();
  * primitives. Everything promised about the format — checked saves, conflict copies, trash,
  * the derived catalog — is implemented here once.
  */
+/**
+ * A chapter field change where "leave it alone" and "clear it" are different things.
+ *
+ * `Partial<Pick<…>>` says a key may be missing; this says a key may also be present and
+ * undefined, which is what a parsed request body actually produces.
+ */
+export type ChapterMetaPatch = {
+  [K in "title" | "synopsis" | "purpose" | "notes" | "arc" | "order" | "isPrologue" | "color"]?:
+    | ChapterMeta[K]
+    | undefined;
+};
+
+/** A book field change where a key may be missing *or* present and undefined. */
+export type BookPatch = { [K in keyof BookMeta]?: BookMeta[K] | undefined };
+
 export class LibraryService {
   private readonly writes = new Map<string, Promise<unknown>>();
 
@@ -121,7 +136,11 @@ export class LibraryService {
     return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  async createBook(input: { title: string; description?: string; outline?: string }): Promise<BookMeta> {
+  async createBook(input: {
+    title: string;
+    description?: string | undefined;
+    outline?: string | undefined;
+  }): Promise<BookMeta> {
     const now = this.env.runtime.now();
     const id = this.env.runtime.newId("book");
     const book = bookSchema.parse({
@@ -150,7 +169,7 @@ export class LibraryService {
     return { book, chapters };
   }
 
-  async updateBook(bookId: string, patch: Partial<BookMeta>): Promise<BookMeta> {
+  async updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {
     return this.serializeWrite(bookId, async () => {
       const current = await this.readBook(bookId);
       const next = bookSchema.parse({
@@ -173,7 +192,10 @@ export class LibraryService {
     return (await this.locateChapter(bookId, chapterId)).chapter;
   }
 
-  async createChapter(bookId: string, input: { title?: string; content?: string } = {}): Promise<Chapter> {
+  async createChapter(
+    bookId: string,
+    input: { title?: string | undefined; content?: string | undefined } = {}
+  ): Promise<Chapter> {
     return this.serializeWrite(bookId, async () => {
       const existing = await this.readChapters(bookId);
       const order = existing.reduce((max, chapter) => Math.max(max, chapter.order), 0) + 1;
@@ -249,7 +271,7 @@ export class LibraryService {
   async updateChapterMeta(
     bookId: string,
     chapterId: string,
-    patch: Partial<Pick<ChapterMeta, "title" | "synopsis" | "purpose" | "notes" | "arc" | "order" | "isPrologue" | "color">>,
+    patch: ChapterMetaPatch,
     expected: { baseVersion: number; baseHash: string }
   ): Promise<SaveChapterResult> {
     return this.serializeWrite(bookId, () => this.updateChapterMetaUnlocked(bookId, chapterId, patch, expected));
@@ -364,7 +386,7 @@ export class LibraryService {
   private async updateChapterMetaUnlocked(
     bookId: string,
     chapterId: string,
-    patch: Partial<Pick<ChapterMeta, "title" | "synopsis" | "purpose" | "notes" | "arc" | "order" | "isPrologue" | "color">>,
+    patch: ChapterMetaPatch,
     expected: { baseVersion: number; baseHash: string }
   ): Promise<SaveChapterResult> {
     const { chapter: disk, fileName } = await this.locateChapter(bookId, chapterId);

@@ -2,8 +2,6 @@ import { z } from "zod";
 import {
   agentSettingsSchema,
   cacheSettingsSchema,
-  DEFAULT_AGENT_SETTINGS,
-  DEFAULT_CACHE_SETTINGS
 } from "./agent/settings";
 
 /**

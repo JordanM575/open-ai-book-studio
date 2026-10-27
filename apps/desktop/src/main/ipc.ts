@@ -11,8 +11,8 @@ import {
   type StudioError,
   type VoiceSpeakers
 } from "@ai-book-studio/core/ipc";
-import { bookSchema, idSchema } from "@ai-book-studio/core/schema";
-import { PROVIDER_LIST, providerById } from "@ai-book-studio/core/providers/registry";
+import { idSchema } from "@ai-book-studio/core/schema";
+import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
 import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
 import { imageIdSchema } from "@ai-book-studio/core/images/schema";
 import { ProviderError, connectionIdSchema, providerIdSchema } from "@ai-book-studio/core/providers/types";
@@ -24,7 +24,6 @@ import { safeJoin } from "./library/paths";
 import { buildDocx } from "./export";
 import type { DocxImage } from "./export";
 import { writeFileAtomic } from "./library/atomic";
-import { LegacyImportError } from "@ai-book-studio/core/legacy";
 import { importLegacyBackup } from "./legacy-import";
 import { importLibraryArchiveToFolder, writeLibraryArchive } from "./library/archive";
 import { ArchiveError } from "@ai-book-studio/core/archive/errors";

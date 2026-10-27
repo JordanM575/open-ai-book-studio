@@ -213,7 +213,7 @@ describe("the tool bridge", () => {
   });
 
   test("lists the plugin's tools in the catalog", async () => {
-    const { library, book } = await libraryFixture();
+    const { library } = await libraryFixture();
     const folder = await temporary();
     await writeFile(join(folder, "demo.ts"), JSON_PLUGIN, "utf8");
     const bridge = new ToolBridge(() => library, () => folder);

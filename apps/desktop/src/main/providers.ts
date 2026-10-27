@@ -169,7 +169,12 @@ export class ProviderService {
    * Validate a key before it is saved. A rejected or unreachable provider writes nothing; the caller
    * gets the normalized reason and can try again.
    */
-  async addKey(input: { provider: ProviderId; secret: string; label?: string; baseUrl?: string }): Promise<ConnectionSummary> {
+  async addKey(input: {
+    provider: ProviderId;
+    secret: string;
+    label?: string | undefined;
+    baseUrl?: string | undefined;
+  }): Promise<ConnectionSummary> {
     const secret = input.secret.trim();
     if (secret.length < 8) {
       throw new ProviderError("invalid-request", "That key looks too short. Paste the whole key.", { provider: input.provider });

@@ -66,7 +66,10 @@ let backend: LocalBackend;
 let url = "";
 let token = "";
 let saves: Array<{ bookId: string; chapterId: string; content: string; baseVersion: number; baseHash: string }> = [];
-let creates: Array<{ bookId: string; input: { title?: string; content?: string } }> = [];
+let creates: Array<{
+  bookId: string;
+  input: { title?: string | undefined; content?: string | undefined };
+}> = [];
 
 const library: BackendLibrary = {
   listBooks: async () => [book],

@@ -25,7 +25,10 @@ export interface BackendLibrary {
   listBooks(): Promise<BookSummary[]>;
   readBook(bookId: string): Promise<BookDetail>;
   readChapter(bookId: string, chapterId: string): Promise<Chapter>;
-  createChapter(bookId: string, input: { title?: string; content?: string }): Promise<Chapter>;
+  createChapter(
+    bookId: string,
+    input: { title?: string | undefined; content?: string | undefined }
+  ): Promise<Chapter>;
   saveChapter(
     bookId: string,
     chapterId: string,

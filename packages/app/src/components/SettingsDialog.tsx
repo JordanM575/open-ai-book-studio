@@ -18,9 +18,9 @@ interface Props {
   onNotice: (error: unknown) => void;
   theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void };
   libraryRoot?: string;
-  storage?: StorageSummary;
+  storage?: StorageSummary | undefined;
   /** Open on a particular section; reconnect uses "providers". */
-  section?: SettingsSection;
+  section?: SettingsSection | undefined;
 }
 
 const THEMES: Array<{ id: ThemeChoice; label: string; icon: typeof Sun }> = [

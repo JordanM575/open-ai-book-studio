@@ -12,8 +12,7 @@ import {
   toolLabel,
   usageNote,
   type Approval,
-  type Message,
-  type ToolNote
+  type Message
 } from "../lib/chat-view";
 
 interface Props {

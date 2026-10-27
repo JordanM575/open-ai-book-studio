@@ -13,13 +13,13 @@ interface Props {
   book: BookMeta;
   onClose: () => void;
   /** Save the book default. Omit when choosing a one-off model. */
-  onSaved?: (book: BookMeta) => void;
+  onSaved?: ((book: BookMeta) => void) | undefined;
   /** Choose a model for the next turn only. Omit when saving the book default. */
-  onPick?: (choice: { connectionId: string; modelId: string }) => void;
+  onPick?: ((choice: { connectionId: string; modelId: string }) => void) | undefined;
   /** The current one-off choice when the turn picker is reopened. */
   initial?: { connectionId: string; modelId: string } | null;
   /** Open Settings on the provider connections, so an author with no key is not stuck. */
-  onOpenSettings?: () => void;
+  onOpenSettings?: (() => void) | undefined;
 }
 
 export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial, onOpenSettings }: Props) {

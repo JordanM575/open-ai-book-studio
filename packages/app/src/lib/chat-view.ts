@@ -30,19 +30,19 @@ export interface Message {
   role: "user" | "assistant";
   text: string;
   tools: ToolNote[];
-  note?: string;
-  failed?: boolean;
-  retryable?: boolean;
-  errorCode?: string;
-  turnId?: string;
-  changed?: number;
-  undoAvailable?: boolean;
+  note?: string | undefined;
+  failed?: boolean | undefined;
+  retryable?: boolean | undefined;
+  errorCode?: string | undefined;
+  turnId?: string | undefined;
+  changed?: number | undefined;
+  undoAvailable?: boolean | undefined;
   /** Destructive tool calls waiting for, or answered by, the author. */
-  approvals?: Approval[];
+  approvals?: Approval[] | undefined;
   /** Where the request's estimated context went. */
-  context?: ContextBreakdown;
+  context?: ContextBreakdown | undefined;
   /** Connection label and model id used for this turn; shown when it changes. */
-  model?: string;
+  model?: string | undefined;
 }
 
 const TOOL_LABELS: Record<string, string> = {

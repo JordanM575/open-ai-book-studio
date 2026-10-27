@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, Bot, ChevronLeft, Cpu, Download, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, type LucideIcon } from "lucide-react";
-import type { BookDetail, BookMeta, Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
+import type { BookDetail, Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { Button } from "@ai-book-studio/ui/button";
@@ -23,7 +23,7 @@ interface Props {
   bookId: string;
   theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void; cycle: () => void };
   libraryRoot: string;
-  libraryStorage?: StorageSummary;
+  libraryStorage?: StorageSummary | undefined;
   onBack: () => void;
   onNotice: (error: unknown) => void;
 }

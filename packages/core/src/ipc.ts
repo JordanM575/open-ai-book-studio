@@ -78,7 +78,6 @@ export interface BridgeStatus {
   /** The address it is listening on. */
   address: string | null;
 }
-import type { ToolDescriptor } from "./agent/tools";
 import type { StorageSummary } from "./library/storage";
 import type { BuildMetadata } from "./build";
 
@@ -216,8 +215,11 @@ export interface LibraryInfo {
   root: string;
   deviceId: string;
   deviceName: string;
-  /** Browser builds disclose durability; desktop folders omit it. */
-  storage?: StorageSummary;
+  /**
+   * Browser builds disclose durability; desktop folders omit it. `| undefined` so a build that has
+   * a library but no summary yet can say so explicitly rather than omit the key.
+   */
+  storage?: StorageSummary | undefined;
 }
 
 export interface StudioError {
@@ -318,7 +320,12 @@ export interface StudioApi {
     /** Non-secret health check: protected storage, backend label, connection count. */
     status(): Promise<Result<CredentialStatus>>;
     /** Validate a key with the provider before saving it. Rejected keys are never stored. */
-    addKey(input: { provider: ProviderId; secret: string; label?: string; baseUrl?: string }): Promise<Result<ConnectionSummary>>;
+    addKey(input: {
+      provider: ProviderId;
+      secret: string;
+      label?: string | undefined;
+      baseUrl?: string | undefined;
+    }): Promise<Result<ConnectionSummary>>;
     /** Opens the system browser and resolves when the author finishes signing in. */
     startOpenRouter(): Promise<Result<ConnectionSummary>>;
     cancelOpenRouter(): Promise<Result<null>>;

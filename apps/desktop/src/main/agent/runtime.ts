@@ -34,7 +34,7 @@ import { UsageStore } from "../usage";
 import { newId } from "../library/paths";
 import { modelFor } from "./transport";
 import { CheckpointStore } from "./checkpoints";
-import { createChapterTools, DESTRUCTIVE_TOOL_NAMES, type ChapterChange } from "./tools";
+import { DESTRUCTIVE_TOOL_NAMES, type ChapterChange } from "./tools";
 import { buildToolSet } from "./tool-set";
 import { buildPrompt } from "./prompt";
 import { readBookSkills } from "./skills";
@@ -56,7 +56,7 @@ interface ActiveTurn {
   messageId: string;
   background: boolean;
   state: TurnState;
-  pending?: PendingApproval;
+  pending?: PendingApproval | undefined;
 }
 
 export type AgentOutcomeKind = "done" | "error" | "stopped" | "approval";
@@ -153,7 +153,7 @@ export class AgentRuntime {
    * A folder that fails to load is reported to the caller and the turn carries on with the built-in
    * tools (FR-010).
    */
-  private async pluginToolsFor(bookId: string): Promise<PluginTool[]> {
+  private async pluginToolsFor(): Promise<PluginTool[]> {
     const loaded = await loadPlugins(this.pluginFolder());
     this.lastPluginLoad = loaded;
     return pluginTools(loaded.plugins);
@@ -353,7 +353,7 @@ export class AgentRuntime {
     );
     const tools = buildToolSet(library, input.bookId, {
       disabledTools: book.settings?.agent?.disabledTools ?? [],
-      pluginTools: await this.pluginToolsFor(book.id),
+      pluginTools: await this.pluginToolsFor(),
       ...(cache.toolProviderOptions ? { toolProviderOptions: cache.toolProviderOptions } : {}),
       onBeforeChange: (change) => {
         if (!state.changes.some((existing) => existing.chapterId === change.chapterId)) state.changes.push(change);

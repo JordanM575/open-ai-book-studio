@@ -134,11 +134,11 @@ function normalizeTtsBase(baseUrl: string | undefined, fallback: string): string
 }
 
 export interface TtsOptions {
-  voice?: TtsVoice;
+  voice?: TtsVoice | undefined;
   /** The model to use. Each provider names its own, so this is not limited to OpenAI's three. */
-  model?: string;
+  model?: string | undefined;
   /** 0.25 to 4. */
-  speed?: number;
+  speed?: number | undefined;
   /**
    * How to read it, in plain words, for a model that understands them.
    *

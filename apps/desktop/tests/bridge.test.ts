@@ -1,7 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { LocalBridge, localAddresses, type BridgeStudio } from "../src/main/bridge";
 
 const BOOK_ID = "book_test0001";

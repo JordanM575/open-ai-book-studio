@@ -3,10 +3,10 @@ import { ProviderError } from "./types";
 
 interface NormalizeInput {
   provider: ProviderId;
-  status?: number;
-  body?: string;
-  message?: string;
-  retryAfterSeconds?: number;
+  status?: number | undefined;
+  body?: string | undefined;
+  message?: string | undefined;
+  retryAfterSeconds?: number | undefined;
 }
 
 const AUTH = /invalid.*(key|token)|unauthor|forbidden|authentication|expired/i;
