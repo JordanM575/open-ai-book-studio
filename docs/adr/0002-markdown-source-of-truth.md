@@ -1,10 +1,10 @@
 # 0002 — Markdown files are the source of truth
 
-- **Status:** Accepted (2026-10-24)
+- **Status:** Accepted
 
 ## Context
 
-The old app stored `SceneIdea.draftContent` inside a single JSON document. Any schema change meant rewriting the whole library; any write rewrote everything; diffs were unusable; a corrupt byte
+An earlier studio stored each scene's draft inside a single JSON document. Any schema change meant rewriting the whole library; any write rewrote everything; diffs were unusable; a corrupt byte
 could take every book with it. Authors, meanwhile, already think in chapters.
 
 ## Decision

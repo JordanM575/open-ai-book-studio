@@ -1,11 +1,11 @@
 # 001 — Foundation: library, file format, editor
 
-**Status:** Implemented · **Date:** 2026-10-24 · **Supersedes:** the earlier prototype's specs 001–012
+**Status:** Implemented · **Supersedes:** the earlier prototype's specs 001–012
 (as a whole approach, not individually)
 
 ## Why
 
-The previous app kept an entire library in one `localStorage` value, written whole on every save, and
+An earlier studio kept an entire library in one `localStorage` value, written whole on every save, and
 needed a server to talk to a model. That design lost work, could not sync, and could not become a
 product. This spec establishes the smallest thing that is genuinely better: a folder of plain files,
 owned by the author, edited by a quiet desktop app that never overwrites another writer.
@@ -86,6 +86,6 @@ outlive any app. They are not expected to know what a schema is.
 - Library-wide search, conversations, usage history (spec 004).
 - Export to DOCX/PDF/EPUB and print layout (spec 005).
 - Real-time collaboration, hosted sync, mobile apps.
-- Importing the previous app's `localStorage` export (deliberately deferred; the old repository keeps
+- Importing the earlier studio's `localStorage` export (deliberately deferred; spec 003ry keeps
   the importer).
 - Code signing, notarisation, auto-update (spec 007).

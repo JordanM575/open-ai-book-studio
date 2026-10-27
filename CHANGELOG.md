@@ -593,7 +593,7 @@ Update the `Unreleased` section before every commit.
   web-enablement phase gated on spec 010. Forty-two tasks across nine phases.
 - ADR 0007 picks the Vercel AI SDK 7 `ToolLoopAgent` with the OpenRouter provider as the agent runtime
   (rejecting the OpenRouter Agent SDK, OpenAI Agents SDK and Claude Agent SDK); ADR 0008 makes the
-  legacy port one-way through the export file.
+  one-way import through the export file.
 - Spec Kit initialised for OpenCode with the `git`, `agent-context`, `bug` and `assess` extensions;
   `/speckit-*` commands are available in `.opencode/commands/`.
 

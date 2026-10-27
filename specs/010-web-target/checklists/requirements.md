@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Browser target
 
 **Purpose**: Review requirements completeness before planning and implementation.
-**Created**: 2026-10-24
+
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality

@@ -1,6 +1,5 @@
 # 0014 Tool approvals for destructive actions
 
-**Date:** 2026-10-25
 **Status:** Accepted
 **Related:** [0007](0007-agent-runtime.md), [0013](0013-agent-message-format.md), spec 002 FR-024
 

@@ -1,6 +1,6 @@
 # 0004 — The design kit is vendored and compiled, not copied by hand
 
-- **Status:** Accepted (2026-10-24)
+- **Status:** Accepted
 
 ## Context
 

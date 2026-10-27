@@ -1,7 +1,6 @@
 # ADR 0009: One core, three storage adapters, browser as a second target
 
 - **Status**: Accepted
-- **Date**: 2026-10-24
 - **Related**: spec 002 FR-071…FR-076, SC-015, SC-016; ADR 0001 (local-first Electron), ADR 0003
   (user-chosen sync folder), ADR 0007 (agent runtime)
 
@@ -56,7 +55,7 @@ Split the product into **one shared core** and **storage adapters**.
   conflict rules, not to the same durability guarantees. Its weaker guarantees are stated in the
   interface, not only in documentation.
 
-## Implementation status (2026-10-25)
+## Implementation status
 
 The desktop half of this architecture has landed. `packages/core/src/library/` now owns the library
 rules (`LibraryService`), the validated library-relative path type, the `LibraryPort` contract and

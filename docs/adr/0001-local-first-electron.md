@@ -1,11 +1,11 @@
 # 0001 — Local-first Electron application, no server
 
-- **Status:** Accepted (2026-10-24)
+- **Status:** Accepted
 - **Supersedes:** the Next.js server architecture of the earlier prototype
 
 ## Context
 
-The previous application was a Next.js app that stored the entire library as one JSON blob in
+An earlier browser-based studio stored the entire library as one JSON blob in
 `localStorage` and proxied AI requests through its own server route. That produced three recurring
 problems: the blob had to be written whole on every save, a crash or quota failure could lose the
 whole library, and the app could not run without a browser tab and a server process. Authors also

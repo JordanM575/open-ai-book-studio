@@ -1,7 +1,6 @@
 # ADR 0008: Import an earlier studio's export, one way
 
 - **Status**: Accepted
-- **Date**: 2026-10-24
 - **Related**: spec 003, docs/FORMAT.md
 
 ## Context
@@ -18,7 +17,7 @@ The options were:
 
 1. **Read the old export and write the new format** (chosen).
 2. Teach the new app to read the old format in place, indefinitely.
-3. Ship a converter that runs inside the old app, producing new-format files from the browser.
+3. Ship a converter that runs inside the earlier studio, producing new-format files from the browser.
 4. Build a two-way sync bridge between the two formats.
 
 ## Decision
@@ -42,7 +41,7 @@ Rejected alternatives:
 - **Read the old format forever** — a second schema to maintain, and a permanent excuse to keep
   browser-storage assumptions in a file-based product. It also makes every future change consider two
   shapes of the same entity.
-- **Converter inside the old app** — the old app is being retired; shipping new code into it to move
+- **Converter inside the earlier studio** — it is being retired; shipping new code into it to move
   data out is work on the wrong side, and browsers cannot write folders reliably at this size.
 - **Two-way bridge** — a sync engine between a localStorage blob and a folder tree would reintroduce
   exactly the whole-library writes, version ambiguity and silent overwrites the new format exists to

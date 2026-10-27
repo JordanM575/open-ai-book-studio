@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Model access and accounts
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-10-24
+
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -34,6 +34,6 @@
 - Provider names and OAuth are named because they are the user-visible product surface, not an
   implementation choice. Protocol details live in the Assumptions and in ADR 0011.
 - The web/desktop capability split is a product requirement (FR-052…FR-056), not a deployment note.
-- Validation on 2026-10-24: all items pass. The open risk is external — OpenAI's approval rules for
+- Validation : all items pass. The open risk is external — OpenAI's approval rules for
   ChatGPT plan usage on hosted builds, and unverified browser access for Gemini and Meta. Both are
   stated as assumptions with a disable path.

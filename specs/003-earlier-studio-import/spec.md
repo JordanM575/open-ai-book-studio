@@ -2,8 +2,6 @@
 
 **Feature Branch**: `003-earlier-studio-import`
 
-**Created**: 2026-10-24
-
 **Status**: Draft
 
 **Input**: User description: "think how we can also have a port from old version to new version" — carry the earlier app's library into AI Book Studio without losing manuscript text, planning data or images.

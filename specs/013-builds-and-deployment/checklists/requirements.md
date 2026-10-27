@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Builds and deployment
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-10-24
+
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -34,5 +34,5 @@
 - The package names in FR-001…FR-007 are the user-approved repository shape and therefore part of the
   requirement, not an implementation leak.
 - macOS-only release blocking is a deliberate hackathon scope decision, recorded in Assumptions.
-- Validation on 2026-10-24: all items pass. Chosen staging host and signing identity remain open
+- Validation : all items pass. Chosen staging host and signing identity remain open
   operational inputs, not specification gaps.

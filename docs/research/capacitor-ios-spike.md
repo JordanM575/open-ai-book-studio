@@ -1,6 +1,5 @@
 # Capacitor iOS spike
 
-**Date:** 2026-10-24  
 **Status:** passed, throwaway project outside the repository
 
 ## Question

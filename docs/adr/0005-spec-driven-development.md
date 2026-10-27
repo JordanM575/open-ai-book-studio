@@ -1,6 +1,6 @@
 # 0005 — Spec-driven development
 
-- **Status:** Accepted (2026-10-24)
+- **Status:** Accepted
 
 ## Context
 

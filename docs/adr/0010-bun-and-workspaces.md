@@ -1,7 +1,6 @@
 # ADR 0010: Bun for tooling, Electron for the desktop runtime, workspaces for the split
 
 - **Status**: Accepted
-- **Date**: 2026-10-24
 - **Related**: ADR 0001 (Electron), ADR 0009 (multi-target storage), spec 011 (model access),
   spec 012 (automated verification), spec 013 (builds and deployment)
 

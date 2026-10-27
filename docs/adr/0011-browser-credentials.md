@@ -1,7 +1,6 @@
 # ADR 0011: Browser credentials and OAuth callback
 
 - **Status**: Accepted
-- **Date**: 2026-10-24
 - **Related**: D-101, D-104, D-105; specs 010 and 011; constitution §3; ADR 0009
 
 ## Context

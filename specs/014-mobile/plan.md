@@ -1,6 +1,6 @@
 # Implementation Plan: Mobile targets
 
-**Branch**: `014-mobile` · **Date**: 2026-10-24 · **Spec**: [spec.md](spec.md)
+**Branch**: `014-mobile` · **Spec**: [spec.md](spec.md)
 
 ## Summary
 

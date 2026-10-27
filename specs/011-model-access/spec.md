@@ -1,7 +1,6 @@
 # Feature Specification: Model access and accounts
 
 **Feature Branch**: `011-model-access`
-**Created**: 2026-10-24
 **Status**: Draft
 **Input**: User description: "support ChatGPT agents SSO, use an agent with a ChatGPT subscription, OpenRouter model provider, OpenAI, Anthropic, Gemini, or Meta API key. OpenRouter will have a SSO that is easy, and same with ChatGPT, we will improve security where possible."
 
@@ -26,7 +25,7 @@ Everything else is an API key the author pastes once, validates, and can remove.
 
 ## Clarifications
 
-### Session 2026-10-24
+### Session
 
 - Q: Which access method is the default? → A: OpenRouter. It is the only method that works in every
   build, supports the widest model catalogue with one connection, and reports usage and cost directly.

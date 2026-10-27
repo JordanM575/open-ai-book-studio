@@ -1,7 +1,6 @@
 # Research: browser target
 
 **Spec**: [spec.md](spec.md)
-**Date**: 2026-10-24
 
 ## Decisions and findings
 

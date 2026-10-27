@@ -2,8 +2,6 @@
 
 **Feature Branch**: `015-web-target` (reserved roadmap slot: 010)
 
-**Created**: 2026-10-24
-
 **Status**: In progress
 
 **Input**: Continue the iPhone/iPad-first roadmap by implementing the browser target that the real renderer and Capacitor shell depend on. Preserve the local-first file format, checked saves, conflict copies, privacy and existing mobile layouts.

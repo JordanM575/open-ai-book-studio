@@ -1,7 +1,6 @@
 # Feature Specification: Automated verification
 
 **Feature Branch**: `012-automated-verification`
-**Created**: 2026-10-24
 **Status**: In progress
 **Input**: User description: "we will want full automated testing suite, setup the keys we need" and "I want deep specs written iterated over and improved and we will stage."
 
@@ -20,7 +19,7 @@ release.
 
 ## Clarifications
 
-### Session 2026-10-24
+### Session
 
 - Q: Which runner? → A: Bun's test runner for core, adapters and interface components; Playwright on Node
   for browser and Electron end-to-end runs. Playwright's runner and Electron's packaging are not
@@ -359,7 +358,7 @@ simulate a release with a failing gate and confirm packaging stops.
   a few cents.
 - **Design**: visual baselines are captured after the design kit panels for connections, models and usage
   are implemented, not against the current placeholder screens.
-- **Known issue (2026-10-25)**: in the current Electron 45 build on macOS, the hidden smoke app prints its
+- **Known issue **: in the current Electron 45 build on macOS, the hidden smoke app prints its
   result and closes its window, but the main process does not terminate. `scripts/smoke.mjs` therefore
   treats a reported `ok: true` result as success and stops the process after a short grace period. The
   shutdown path still needs investigation, and this fallback must never turn a failed check into a pass.

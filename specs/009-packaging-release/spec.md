@@ -1,7 +1,6 @@
 # Feature Specification: Packaging and release integrity
 
 **Feature Branch**: `009-packaging-release`
-**Created**: 2026-10-26
 **Status**: Draft, gated by D-115
 **Input**: Complete the desktop distribution path after spec 013 builds an artifact: a signed and
 notarised macOS application, a verifiable release record, and an update path that cannot damage the

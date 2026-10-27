@@ -2,8 +2,6 @@
 
 **Feature Branch**: `014-mobile`
 
-**Created**: 2026-10-24
-
 **Status**: In progress
 
 **Input**: "I want to target ipad mini and iphone."

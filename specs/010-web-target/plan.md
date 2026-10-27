@@ -1,12 +1,12 @@
 # Implementation Plan: Browser storage and portability
 
-**Branch**: `015-web-target` · **Date**: 2026-10-24 · **Spec**: [spec.md](spec.md)
+**Branch**: `015-web-target` · **Spec**: [spec.md](spec.md)
 
 ## Summary
 
 Implement the shared checked library logic and storage-port boundary promised by ADR 0009; keep Electron's main-process filesystem adapter as the reference; add browser adapters for user-selected folders and origin-private storage; and add a validated, streaming portable-library archive. Browser credentials and OAuth are constrained by ADR 0011 and integrated by spec 011. The `apps/web` UI shell, shared UI extraction, static build and deployment remain in spec 013; this plan provides the storage, archive, capability and runtime contracts that shell consumes. Capacitor safe areas and native iOS behavior remain in spec 014.
 
-## Status (2026-10-25)
+## Status
 
 The storage half is implemented. `packages/core` now owns the checked library service, validated
 library-relative paths, the storage port, the portable archive and the storage summary. Electron's

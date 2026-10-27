@@ -1,7 +1,6 @@
 # Feature Specification: Builds and deployment
 
 **Feature Branch**: `013-builds-and-deployment`
-**Created**: 2026-10-24
 **Status**: Draft
 **Input**: User description: "I want multi deployment, so builds an electron app, then builds the web app. So we might have a few different components and folders would need to separate where they share same core the web app expects to look and reuse UI, but then electron gets wrapped."
 
@@ -17,7 +16,7 @@ capability rules, and the staging path for the hackathon.
 
 ## Clarifications
 
-### Session 2026-10-24
+### Session
 
 - Q: What is shared? → A: `packages/core` (schema, format, library logic, agent tools) and `packages/ui`
   (components, screens, tokens). Applications contain only entry points, platform adapters and

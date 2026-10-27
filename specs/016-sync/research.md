@@ -1,6 +1,5 @@
 # Research: sync providers and device lock
 
-**Date:** 2026-10-25
 **Status:** Open; no provider probe has been run yet. This file records what must be verified before
 spec 016 tasks can claim support.
 

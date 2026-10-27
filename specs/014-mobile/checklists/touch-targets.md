@@ -1,7 +1,7 @@
 # Touch-target audit
 
 **Purpose**: record the coarse-pointer measurements required by spec 014 FR-011…FR-014.
-**Date**: 2026-10-25
+
 **Method**: `bun scripts/capture.mjs <size> <out> "<clicks>" --coarse`. The flag emulates
 `(pointer: coarse)` and touch, then the app asserts that every visible interactive control is at least
 44 × 44 CSS pixels and that `document.scrollWidth` does not exceed the viewport. A failure prints the

@@ -1,7 +1,6 @@
 # ADR 0007: Use the Vercel AI SDK as the agent runtime
 
 - **Status**: Accepted
-- **Date**: 2026-10-24
 - **Supersedes**: the earlier draft direction to adopt `@openrouter/agent`
 - **Related**: spec 002 FR-021…FR-034, constitution principle "one checked writer"
 
@@ -18,7 +17,7 @@ Constraints:
 - The loop must be observable: per-step usage, cost, finish reason, tool calls, and a way to stop.
 - Tool arguments must be validated before they touch the manuscript.
 - The API must be stable enough to ship, and replaceable without rewriting the tools.
-- We already know this stack: the previous application ran Vercel AI SDK 7 in production, and its
+- We already know this stack: an earlier studio ran Vercel AI SDK 7 in production, and its
   failure log (F-030, F-032, F-034, F-035) documents exactly where the integration is fragile.
 
 ## Decision
@@ -48,7 +47,7 @@ Rejected alternatives:
   no-telemetry, bring-your-own-key stance.
 - **Claude Agent SDK** — couples the product to Anthropic models and, in practice, to the Claude Code
   harness; authors could not choose their own model.
-- **A hand-rolled loop** — the previous application's own harness is the source of most of its agent
+- **A hand-rolled loop** — an earlier studio's own harness is the source of most of its agent
   defects (replayed tool results, stale book state, opaque usage). Owning the loop is not a feature.
 
 ## Consequences
@@ -65,14 +64,14 @@ Rejected alternatives:
 - The prompt budget, snapshot and consistency tests treat the assembled request as data, independent
   of which runtime sends it.
 
-## Testing seam (2026-10-25)
+## Testing seam
 
 `AgentRuntime` accepts an optional model factory, defaulting to `modelFor`. Contract tests inject AI
 SDK `MockLanguageModelV4` and `simulateReadableStream`, so a full turn — thread write, usage, events
 and a tool loop — runs without a provider key or network. The Meta adapter will use the same seam, and
 the tests will keep provider behavior behind the adapter.
 
-## Harness update (2026-10-24)
+## Harness update
 
 Vercel published `@ai-sdk/harness` (1.0.x, explicitly experimental) with adapters for Claude Code,
 Codex, OpenCode, Cursor, Copilot, Pi, Cline and others. A harness is a complete agent runtime that owns

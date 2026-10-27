@@ -1,7 +1,6 @@
 # ADR 0012: Portable library archives preserve source files
 
 - **Status**: Accepted
-- **Date**: 2026-10-24
 - **Related**: D-112; spec 002 FR-056/FR-076; spec 010; ADR 0002, 0009
 
 ## Context

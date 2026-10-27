@@ -1,6 +1,6 @@
 # 0003 — Sync through a folder the author already owns
 
-- **Status:** Accepted (2026-10-24)
+- **Status:** Accepted
 
 ## Context
 

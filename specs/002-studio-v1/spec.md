@@ -2,8 +2,6 @@
 
 **Feature Branch**: `002-studio-v1`
 
-**Created**: 2026-10-24
-
 **Status**: Draft
 
 **Input**: User description: "White-room spec the whole thing… adopt a well-known SDK harness instead of our own agent harness… port from old version to new version… introduce all the feedback items CLAUDE had collected related to voice, images etc."

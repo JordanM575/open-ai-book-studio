@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Legacy Port
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-10-24
+
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality

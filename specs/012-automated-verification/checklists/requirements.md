@@ -1,7 +1,7 @@
 # Specification Quality Checklist: Automated verification
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-10-24
+
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -35,5 +35,5 @@
   appears here only as an assumption, because it constrains the time budgets.
 - Coverage thresholds are deliberately asymmetric: the data path carries the risk, the interface does
   not need 90%.
-- Validation on 2026-10-24: all items pass. The known external dependency is a Gitea Actions runner; the
+- Validation : all items pass. The known external dependency is a Gitea Actions runner; the
   plan must keep local commands authoritative until one is registered.

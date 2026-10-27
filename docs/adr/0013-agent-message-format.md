@@ -1,6 +1,5 @@
 # 0013 Agent message and thread format
 
-**Date:** 2026-10-25
 **Status:** Accepted
 **Supersedes:** none
 **Related:** [0007](0007-agent-runtime.md), [0009](0009-multi-target-storage.md), [0010](0010-bun-and-workspaces.md)

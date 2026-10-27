@@ -1,10 +1,10 @@
 # 0006 — AI calls and secrets belong to the main process
 
-- **Status:** Accepted (2026-10-24), implementation in spec 003
+- **Status:** Accepted, implementation in spec 003
 
 ## Context
 
-The previous app asked for an OpenRouter key and kept it in `localStorage`, then sent it from the
+An earlier studio asked for an OpenRouter key and kept it in `localStorage`, then sent it from the
 browser to its own server route so the server could forward it. Two problems: any script on the page
 could read the key, and the product needed a server to exist. In an Electron app, a renderer that can
 call an API directly is also a renderer that can be talked into exfiltrating a key by a compromised
