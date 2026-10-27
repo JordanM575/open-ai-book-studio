@@ -120,7 +120,13 @@ async function main(): Promise<void> {
   const root = resolve(process.argv[2] ?? process.cwd());
   const problems: string[] = [];
   const branch = git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (branch !== "meta-hackathon") problems.push(`branch is ${branch}; expected meta-hackathon`);
+  /*
+   * Either branch is a submission branch: `meta-hackathon` in the working repository, `main` in the
+   * published one. What matters is that the tree is the submitted state, not the branch's name.
+   */
+  if (branch !== "meta-hackathon" && branch !== "main") {
+    problems.push(`branch is ${branch}; expected meta-hackathon or main`);
+  }
   const dirty = git(root, ["status", "--porcelain"]);
   if (dirty) problems.push(`working tree is not clean:\n${dirty}`);
 
