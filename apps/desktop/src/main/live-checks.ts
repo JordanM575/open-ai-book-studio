@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
+import { MUSE_SPARK_CONTRIBUTOR } from "@ai-book-studio/core/providers/compatibility";
 import { ProviderError } from "@ai-book-studio/core/providers/types";
 import { AgentRuntime } from "./agent/runtime";
 import { ImageService } from "./images";
@@ -60,10 +61,7 @@ export async function runLiveChecks(
       if (ids.length === 0) {
         record("the model catalogue", "failed", "Meta answered, but with no models in it.");
       } else {
-        contributorModelId =
-          ids.find((id: string) => id.includes("contributor")) ??
-          ids.find((id: string) => /muse|spark/i.test(id)) ??
-          ids[0]!;
+        contributorModelId = contributorFrom(ids);
         record(
           "the model catalogue",
           "ok",
@@ -295,4 +293,24 @@ function message(error: unknown): string {
   }
   if (error instanceof Error) return `[${error.name}] ${error.message}`;
   return String(error);
+}
+
+/**
+ * The Contributor model the check should use.
+ *
+ * The catalogue lists more than one — `muse-spark-1.2-contributor` and `muse-spark-1.3-contributor`
+ * on the key this was written against — and taking the first one silently ran the check on 1.2
+ * while spec 022 described 1.3. The check therefore prefers the model the spec names, then the
+ * highest version the key offers, and records which one it used so the evidence can say.
+ */
+export function contributorFrom(ids: string[]): string {
+  const exact = ids.find((id) => id === MUSE_SPARK_CONTRIBUTOR);
+  if (exact) return exact;
+  const rated = ids
+    .map((id) => ({ id, version: /muse-spark-(\d+)\.(\d+)-contributor/.exec(id) }))
+    .filter((entry) => entry.version !== null)
+    .sort((a, b) => Number(b.version![1]) - Number(a.version![1]) || Number(b.version![2]) - Number(a.version![2]));
+  const best = rated[0]?.id;
+  if (best) return best;
+  return ids.find((id) => id.includes("contributor")) ?? ids.find((id) => /muse|spark/i.test(id)) ?? ids[0] ?? "";
 }

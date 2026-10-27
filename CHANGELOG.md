@@ -10,6 +10,28 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The live check now runs the Contributor model the spec names. It used to take the first id in the
+  catalogue containing "contributor", which was `muse-spark-1.2-contributor` while spec 022 and the
+  submission described 1.3 — a check that measures a different model than the document names reads as
+  proof of something it never tested. It prefers the preset, then the newest version the key offers,
+  and the run records which one it used (`apps/desktop/tests/live-model-choice.test.ts`).
+- The glasses decision is **D-160**, not D-158. Spec 026 had reused the number that
+  `docs/DECISIONS.md` gives to the SAM retirement, so the same id named two unrelated decisions.
+  `docs/DECISIONS.md` now carries both rows.
+- Spec 012's ledger is brought up to date with evidence: the coverage ratchet (T003) and the
+  failed-write test (T009) are done; T002's lint and T008's damaged-file test are recorded as partly
+  done rather than left ambiguous, and the stale test counts are replaced by a pointer to
+  `docs/TESTING.md`.
+- `specs/README.md` gains a "Beyond the event" table for the four capabilities that are deliberately
+  out of hackathon scope — import wizard, review engine, formatting and KDP export, task-aware model
+  routing — and says plainly that spec 007's EPUB and print PDF were folded into 002 as intent and
+  never built.
+
+### Added
+
+- Spec 028, integration health: one derived state per location and per provider, and one warning
+  component with a severity and a safe action. Planned, indexed, not built.
+
 - The desktop component tests render in a DOM that `apps/desktop/tests/support/dom.ts` registers for
   one file and restores after it, so later files see Node's globals again. React loads only once that
   DOM exists, and its scheduling uses Node's timers, which is what lets the next file render.

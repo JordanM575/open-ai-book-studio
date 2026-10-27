@@ -90,6 +90,18 @@ with `{ ...process.env }`, so the app inherits it, and every provider request co
 `NODE_OPTIONS` and the `HEADROOM_*` variables first. A check must measure the product, not the
 agent's proxy.
 
+## Where it is still thin
+
+The floor is a ratchet, not a ceiling. At the time of writing these are the modules below 70% of
+lines, and they are the honest answer to "what is not covered":
+
+- `packages/app/src/components/ManuscriptEditor.tsx` — the editor's formatting and paste paths.
+  History, debounce and save are covered; the rest needs a real contenteditable.
+- `packages/app/src/components/VoiceButton.tsx` and `packages/app/src/lib/cutout.ts` — both draw on a
+  canvas or an audio element that the test DOM does not provide.
+
+Everything else in the product is above 80% of lines, and the workspace as a whole is at 93.0%.
+
 ## What is not covered
 
 - **The film.** Capturing it is a person at a screen, and no test makes that true.

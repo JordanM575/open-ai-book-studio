@@ -3,8 +3,9 @@
 **Plan**: [plan.md](plan.md) · **Spec**: [spec.md](spec.md)
 
 Tasks are ordered. `[x]` means the behavior exists and has been exercised; it does not mean every
-future test case in that row is complete. The current counts are the 2026-10-26 baseline: 308 Bun
-tests, 16/16 desktop smoke, 11/11 web smoke and Chromium 16/16 browser matrix.
+future test case in that row is complete. Counts move, so they live in one place: `docs/TESTING.md`.
+At this writing the suite is 835 Bun tests, `bun run e2e` is 8/8, the desktop smoke is 18/18, the web
+smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
 
 ## Phase 1 — Inventory and fast truth
 
@@ -13,10 +14,19 @@ tests, 16/16 desktop smoke, 11/11 web smoke and Chromium 16/16 browser matrix.
       check or an explicit open gap. Start with the current 308 tests and the smoke/matrix runs.
 - [ ] T002 Make one fast command the local source of truth: build-info, lint, typecheck, Bun tests,
       desktop bundle and web bundle. Add the chosen linter and fail on lint errors without autofixing
-      in CI. Keep Playwright, packaging and provider calls out of the fast path.
-- [ ] T003 Add a coverage report and thresholds: 90% lines/branches for core, library, archive, sync
+      in CI. Keep Playwright, packaging and provider calls out of the fast path. **Partly done:**
+      `bun run verify` is that command minus lint, and the typecheck now runs every strict flag the
+      compiler has (`exactOptionalPropertyTypes`, `noImplicitReturns`, `noFallthroughCasesInSwitch`,
+      `noUnusedLocals`, `noUnusedParameters`). There is still no linter; the rules a linter would add
+      — no `any`, no floating promise, no unused binding — are currently enforced by the compiler and
+      by review, not by a gate.
+- [x] T003 Add a coverage report and thresholds: 90% lines/branches for core, library, archive, sync
       and browser storage; 70% lines for the interface. Publish the actual numbers; do not invent a
-      passing baseline.
+      passing baseline. **Evidence:** `bun run coverage` measures the whole suite and fails below a
+      floor that only moves up — 85% of functions and 92% of lines at the time of writing, against a
+      measured 86.0 and 93.0. The per-area 90% target is met for library, archive, sync and browser
+      storage; a few interface modules (the editor, the voice button) are still below 70% lines and
+      are listed in `docs/TESTING.md` rather than rounded up.
 - [ ] T004 Add the fast result summary (passed/failed/skipped/quarantined) and a non-zero exit on any
       failed gate. Keep output redacted for credentials and manuscript text.
 
@@ -31,9 +41,16 @@ tests, 16/16 desktop smoke, 11/11 web smoke and Chromium 16/16 browser matrix.
 - [ ] T007 Add property-based tests for Markdown/front-matter round-trips, slug generation, version
       increments and conflict decisions. Keep generated inputs synthetic and deterministic.
 - [ ] T008 Add a damaged-file isolation test: a truncated/malformed chapter fails alone, the rest of
-      the book remains readable, and the app explains the affected file.
-- [ ] T009 Add a failed-write/rename/disk-full test at the desktop adapter boundary with a real
+      the book remains readable, and the app explains the affected file. **Partially done:** the
+      sync drift detector and the browser folder port both report an unreadable file per file rather
+      than failing the scan, and `apps/web/tests/storage/directory-port-contract.test.ts` covers a
+      damaged identity file being replaced. The library-open path does not yet have the test.
+- [x] T009 Add a failed-write/rename/disk-full test at the desktop adapter boundary with a real
       temporary library, proving the previous complete file remains and temp files are removed.
+      **Evidence:** `apps/desktop/tests/atomic-write.test.ts` — a target that cannot be replaced, a
+      folder that disappears, a read-only folder and two writers racing. The rename-retry path and
+      the best-effort directory fsync are the two lines still uncovered, because they only happen on
+      a platform failure that a test cannot provoke portably.
 
 ## Phase 3 — Contracts and interfaces
 

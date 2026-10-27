@@ -164,7 +164,7 @@ eight-day event.
   Accepted: the alternative is a hosted copy, which the product's promise forbids.
 - **D-157** No public instance of the studio is published. The author chose a local-network
   instance on their own machine. The consequence is stated plainly below.
-- **D-158** The phone is the server and the glasses the client, through the Device Access
+- **D-160** The phone is the server and the glasses the client, through the Device Access
   Toolkit. Accepted: the toolkit sends UI content to the glasses over Bluetooth and routes the
   interactions back, and it is the only route that keeps the author's own book private.
 

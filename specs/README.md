@@ -31,6 +31,7 @@ every spec must satisfy.
 | [024](024-agent-tool-parity/spec.md) | Tool parity: the studio's own writing tools over the loopback backend and the MCP server, plus a UI audit ([plan](024-agent-tool-parity/plan.md), [tasks](024-agent-tool-parity/tasks.md)) | In progress — the catalog, the bridge, the backend routes, the MCP mirror, the CLI commands and the end-to-end test are done; two interface dead ends are fixed |
 | [025](025-agent-capabilities/spec.md) | Agent capabilities: cacheable prompt prefix and hit rate, per-tool metrics, per-book tool control, `SKILLS.md` and a plugin folder of TypeScript tools ([plan](025-agent-capabilities/plan.md), [tasks](025-agent-capabilities/tasks.md)) | Implemented — the cache prefix, the metrics log, the withdrawn-tool filter across the model, the backend and MCP, the skills file, the plugin loader and the agent panel are done; a live cache hit rate needs a provider that reports one |
 | [026](026-glasses/spec.md) | The glasses: the same backbone, a second surface — WebMCP and the Meta AI connector shapes for the studio's tool catalog ([plan](026-glasses/plan.md), [tasks](026-glasses/tasks.md)) | In progress — the WebMCP and connector renderings and the toolkit's `--format` flags are done; the web app, the origin allowance and the real-glasses run remain |
+| [028](028-integration-health/spec.md) | Integration health: one derived state per location and per provider, and a single warning component with a severity and a safe action ([plan](028-integration-health/plan.md), [tasks](028-integration-health/tasks.md)) | Planned — the pure derivations, the notice component and the placeholder-save block are specified; nothing is built yet |
 
 Spec numbers 004–008 were reserved in the foundation roadmap and are now requirements inside
 [002](002-studio-v1/spec.md) rather than separate specs, because the white-room specification covers
@@ -59,3 +60,21 @@ the specified-but-missing ones and the behaviour no spec has decided.
 `001-foundation` was written after the code, to give the repository a complete record from its first
 commit. It is held to the same standard as any other spec: requirements, acceptance criteria,
 non-goals, and tasks that actually correspond to the code.
+
+## Beyond the event
+
+The Meta hackathon has a fixed scope, and four capabilities with real demand are deliberately
+outside it. They are listed here so the gap is recorded rather than discovered: the design work
+is not part of this repository yet.
+
+| Capability | Why it is not here | What exists today |
+| --- | --- | --- |
+| **Import wizard** — DOCX, DOC, TXT, RTF, ODT with a detected-chapter preview, a cancellable job and Story Bible enrichment | The event demo starts from a book that is already in the library | The legacy importer (003) and a DOCX export |
+| **Review engine** — deterministic prose metrics plus opt-in model critique, reader personas, series analysis | A report surface is a product of its own, and a half-built one would be worse than none | Word counts, the agent's chat answers, and the checkpoints that make a critique reversible |
+| **Formatting and KDP export** — trim sizes, templates, front and back matter, EPUB and print PDF, device previews | Spec 007 folded this into 002 before the event; only the Word export was built | `002` for the manuscript path, `019` for illustrations in the Word file |
+| **Task-aware model routing** — choose a model per task from cost, context and capability, with a recorded decision | The event needs one honest, overrideable book default (D-116 remains open) | The provider registry, the per-turn override and the usage record |
+
+Spec 007's row above still says it was folded into 002. That is true of the *intent* and not of the
+*implementation*: the manuscript export is DOCX only. Anyone reading the index should treat EPUB and
+print PDF as unbuilt rather than as a regression.
+
