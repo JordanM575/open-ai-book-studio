@@ -4,6 +4,9 @@ A quiet, local-first writing studio for long-form fiction. Your manuscript is a 
 files on your own disk — in iCloud Drive, Google Drive, Dropbox, or anywhere else you like. There is
 no account, no server, and no database that can quietly disagree with your prose.
 
+AI Book Studio began on 2026-10-24, two days before the Meta Global AI Developer Hackathon opened.
+This repository is the event edition: the studio as it stood at submission.
+
 Status: v0.1.0 development. The library, manuscript editor, autosave, conflict handling, Story Bible,
 provider connections, writing agent, Word export, legacy import, browser storage, read-only sync
 drift detection, Muse Voice Transcribe dictation, background agent turns and the standalone CLI/MCP

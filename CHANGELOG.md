@@ -33,6 +33,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- One line in the README that places the studio in time: it began two days before the event and this
+  repository is the edition submitted. It is a fact a reader would otherwise have to infer from the
+  first commit's size.
+
 - Spec 028, integration health: one derived state per location and per provider, and one warning
   component with a severity and a safe action. Planned, indexed, not built.
 
