@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { VoiceSpeakers } from "@ai-book-studio/core/ipc";
+import { toSpeechText } from "@ai-book-studio/core/speech-text";
 
 /**
  * Speaking.
@@ -90,7 +91,8 @@ export function useSpeech(): Speech {
 
   const speak = useCallback(
     async (text: string, options: { voice?: string } = {}): Promise<boolean> => {
-      const trimmed = text.trim();
+      // Speech reads every symbol it is given, so the markup goes first and the words are what is spoken.
+      const trimmed = toSpeechText(text);
       if (!trimmed) return false;
       cancel();
       const mine = token.current;

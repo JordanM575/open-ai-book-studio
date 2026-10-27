@@ -385,6 +385,9 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Speech says the words, not the Markdown. Emphasis, links, images, headings, lists, tables, rules and
+  code fences are converted before anything is spoken, by the spoken answer, read-aloud and the device
+  voice alike (`packages/core/src/speech-text.ts`). The stored text is never changed.
 - Provider names and connection ids now share Zod schemas between the core contract and the IPC
   boundary; malformed connection ids and unknown providers are rejected in tests.
 - The credential vault repairs a world-readable file to owner-only permissions at startup and reports

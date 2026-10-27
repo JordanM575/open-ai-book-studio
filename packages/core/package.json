@@ -22,6 +22,10 @@
       "types": "./src/markdown.ts",
       "default": "./src/markdown.ts"
     },
+    "./speech-text": {
+      "types": "./src/speech-text.ts",
+      "default": "./src/speech-text.ts"
+    },
     "./agent": {
       "types": "./src/agent.ts",
       "default": "./src/agent.ts"

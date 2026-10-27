@@ -288,6 +288,30 @@ describe("the hands-free loop", () => {
     await testing.waitFor(() => expect(spoken).toEqual(["The storm is quieter now."]));
   });
 
+  test("the answer is spoken as words, without its markup", async () => {
+    const { view } = render();
+    await testing.waitFor(() =>
+      expect(view.getByTestId("ambient-line").textContent).toContain("Chapter One")
+    );
+    await testing.fireEvent.click(view.getByTestId("ambient-toggle"));
+
+    await testing.act(async () => {
+      await testing.fireEvent.click(view.getByTestId("ambient-mic"));
+    });
+    await testing.act(async () => {
+      FakeRecorder.instances.at(-1)?.stop();
+    });
+    await testing.waitFor(() => expect(started).toHaveLength(1));
+
+    await testing.act(async () => {
+      for (const listener of listeners) {
+        listener({ turnId, type: "text", delta: "## Reply\n\n**The storm** is quieter, see [the chapter](x)." });
+      }
+      for (const listener of listeners) listener({ turnId, type: "done" });
+    });
+    await testing.waitFor(() => expect(spoken).toEqual(["Reply.\n\nThe storm is quieter, see the chapter."]));
+  });
+
   test("the answer goes to the voice service once one is connected", async () => {
     // The status and the voice service both arrive after the first render. A handler that kept the
     // first render's voice would speak through the device although the service is there now.
