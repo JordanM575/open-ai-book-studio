@@ -17,7 +17,7 @@ account, a server, or custody of the author's work.
 
 This specification replaces the earlier prototype's product definition. It is the
 white-room statement of what version 1 must do, written from the author's side of the screen. The
-old application's defect log (F-001…F-050) is treated as evidence about what authors need; every
+earlier studio's defect log (F-001…F-050) is treated as evidence about what authors need; every
 item is dispositioned in `docs/FEEDBACK-DISPOSITION.md`, and the requirements below already assume
 those lessons.
 
@@ -123,20 +123,20 @@ chapter to its previous state after a reload.
 
 The author has a finished or half-finished book in Word, in another app, or in the earlier app's
 export. They import it, see a preview of how chapters will split, confirm, and get a book whose
-chapter files match the new format. The old export's cast, memories, cover, images and settings come
+chapter files match the new format. The earlier export's cast, memories, cover, images and settings come
 across where they can, and a report says what did not.
 
 **Why this priority**: Existing authors are the first audience; a studio that cannot accept their work
 is a demo. It is P2 because the writing loop must exist first.
 
-**Independent Test**: Import a Word manuscript with headings and a legacy JSON export; both produce
+**Independent Test**: Import a Word manuscript with headings and an earlier JSON export; both produce
 books that open, save and export, and the migration report lists every mapped and skipped item.
 
 **Acceptance Scenarios**:
 
 1. **Given** a .docx with heading-based chapters, **When** the author imports it, **Then** they see the
    proposed splits, can merge or split further, and confirm before anything is written.
-2. **Given** a legacy export, **When** the author migrates it, **Then** every book becomes a folder,
+2. **Given** a legacy export, **When** the author imports it, **Then** every book becomes a folder,
    every chapter becomes a Markdown file, and cast, memories, settings and images are carried across.
 3. **Given** a migration is run twice on the same export, **When** it finishes, **Then** the second run
    changes nothing and reports the books it recognised.

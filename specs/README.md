@@ -8,7 +8,7 @@ every spec must satisfy.
 | --- | --- | --- |
 | [001](001-foundation/spec.md) | Foundation: library, format, editor | Implemented (retroactive) |
 | [002](002-studio-v1/spec.md) | AI Book Studio v1: the whole product, white-room | In progress (current) — library, editor, Story Bible, provider connections, a first agent loop, Word export, legacy import and book search |
-| [003](003-legacy-port/spec.md) | Legacy port: previous app's export to the new library | In progress — backup parser, importer, library import button and tests |
+| [003](003-earlier-studio-import/spec.md) | Earlier studio import: an export into the new library | In progress — backup parser, importer, library import button and tests |
 | 004 | Story Bible: returnable planning, cast, outline, memories | Folded into 002 |
 | 005 | Writing agent: runtime, keychain, tool edits, checkpoints | Folded into 002 |
 | 006 | Index: SQLite cache for search, conversations and usage | Folded into 002 |
@@ -46,7 +46,7 @@ local sandbox and a stable API exist.
 
 Agent coverage is audited in [`docs/AGENTIC-COVERAGE.md`](../docs/AGENTIC-COVERAGE.md): 002 and 011
 cover a v1 writing assistant, not the full agentic suite. The audit lists the implemented requirements,
-the specified-but-missing ones and the behaviour no spec has decided.
+the specified-but-missing ones and the behaviour no spec has decided. The harness and interface phases are in the specification set.
 
 ## Status vocabulary
 

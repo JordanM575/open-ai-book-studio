@@ -4,8 +4,7 @@
 
 ## Context
 
-The old app stored `SceneIdea.draftContent` inside a single JSON document. Any schema change meant a
-migration of the whole library; any write rewrote everything; diffs were unusable; a corrupt byte
+The old app stored `SceneIdea.draftContent` inside a single JSON document. Any schema change meant rewriting the whole library; any write rewrote everything; diffs were unusable; a corrupt byte
 could take every book with it. Authors, meanwhile, already think in chapters.
 
 ## Decision

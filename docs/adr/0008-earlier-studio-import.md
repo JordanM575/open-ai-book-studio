@@ -1,4 +1,4 @@
-# ADR 0008: Migrate from the previous app one way, through its export
+# ADR 0008: Import an earlier studio's export, one way
 
 - **Status**: Accepted
 - **Date**: 2026-10-24
@@ -6,14 +6,13 @@
 
 ## Context
 
-The previous application keeps a whole library in one browser storage value and offers a JSON export:
+An earlier studio keeps a whole library in one browser storage value and offers a JSON export:
 `{ app: "moms-ai-book-studio", version: 1, kind: "library" | "book", exportedAt, books, libraryMeta,
 chatState, images }`, where each book embeds its chapters as `scenes[].draftContent`, its planning data,
 image pages, and where `images` maps version ids to `{ mimeType, base64 }`.
 
-The new studio stores one folder per book, one Markdown file per chapter, planning data in
-`book.json`, and images as files. There is no database to import into and no server to run a migration
-job.
+This studio stores one folder per book, one Markdown file per chapter, planning data in
+`book.json`, and images as files. There is no database to import into and no server involved.
 
 The options were:
 
@@ -24,7 +23,7 @@ The options were:
 
 ## Decision
 
-Migrate **one way**, from the old export file, in the new app's main process, writing only the new
+Import **one way**, from the old export file, in the new app's main process, writing only the new
 format.
 
 - The importer accepts the wrapped library export, a single-book export, a bare library state, and a
@@ -36,7 +35,7 @@ format.
 - Unsupported data — checkpoints, undo records, tour state, keys, live conversations, the old model id
   — is named in a report. Conversations are archived inside the book folder, never replayed.
 - The export file is opened read-only and is never moved, modified or deleted.
-- A completed migration can be undone by moving exactly the books it created to the library trash.
+- A completed import can be undone by moving exactly the books it created to the library trash.
 
 Rejected alternatives:
 

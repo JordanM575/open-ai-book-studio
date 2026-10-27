@@ -29,7 +29,7 @@ spec's Assumptions section. An `Open` decision blocks the task that needs it, no
 | D-005 | Spec before code; ADRs for hard-to-reverse choices | ADR 0005 |
 | D-006 | AI calls and secrets live in the main process | ADR 0006 |
 | D-007 | Agent runtime is Vercel AI SDK 7 `ToolLoopAgent`; harness runtimes deferred | ADR 0007 |
-| D-008 | Legacy migration is one-way, file-based, through the export | ADR 0008 |
+| D-008 | Importing an earlier studio's export is one-way and file-based | ADR 0008 |
 | D-009 | One core over a storage port; Electron, Chromium folders and browser storage are adapters | ADR 0009 |
 | D-010 | Bun is package manager, task runner and test runner; Electron keeps Node | ADR 0010 |
 | D-011 | Paragraphs are lines; no 66-character virtual wrap | spec 002 Assumptions |

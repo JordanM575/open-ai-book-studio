@@ -172,7 +172,7 @@ See [docs/FORMAT.md](docs/FORMAT.md) for the exact schema and the conflict proto
 - [hackathon/](hackathon/) — Meta Global AI Developer Hackathon brief and 10-day plan
 - [docs/adr/](docs/adr/) — decisions and the alternatives rejected
 - [specs/002-studio-v1/spec.md](specs/002-studio-v1/spec.md) — what version 1 is, in full
-- [specs/003-legacy-port/spec.md](specs/003-legacy-port/spec.md) — moving books from the previous app
+- [specs/003-earlier-studio-import/spec.md](specs/003-earlier-studio-import/spec.md) — importing an earlier studio's export
 - [specs/](specs/README.md) — the index, and the foundation's record
 - [.specify/memory/constitution.md](.specify/memory/constitution.md) — the seven principles
 

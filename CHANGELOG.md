@@ -566,7 +566,7 @@ Update the `Unreleased` section before every commit.
 - White-room product specification `specs/002-studio-v1/` covering writing, the Story Bible, the agent,
   import and migration, voice, illustrations, export, sync and trust (76 requirements, 16 measurable
   outcomes), with its quality checklist.
-- Migration specification `specs/003-legacy-port/` for the previous application's JSON export, mapped
+- Import specification `specs/003-earlier-studio-import/` for an earlier studio's JSON export, mapped
   book by book, with idempotency, atomic publication, a migration report and rollback.
 - `docs/FEEDBACK-DISPOSITION.md`: all fifty inherited defects (F-001…F-050), nineteen follow-up themes
   and fifteen unresolved design decisions given a disposition and a target requirement.

@@ -11,7 +11,7 @@ problems: the blob had to be written whole on every save, a crash or quota failu
 whole library, and the app could not run without a browser tab and a server process. Authors also
 asked, repeatedly, how their work would reach a second machine.
 
-We are starting a new repository rather than migrating the old one's history.
+We are starting a new repository rather than carrying the earlier storage model forward.
 
 ## Decision
 

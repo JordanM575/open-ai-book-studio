@@ -119,7 +119,7 @@ The writing agent runs in the main process. The boundary is:
 
 - Provider calls happen in the main process (no CORS, no exposed key, streamed to the renderer over
   IPC events). The renderer never sees the key, only connection summaries.
-- The key lives in the OS keychain via `safeStorage`, not in `localStorage` (the old app's mistake).
+- The key lives in the OS keychain via `safeStorage`, not in `localStorage` (the earlier studio's mistake).
   On macOS the ciphertext is `<userData>/credentials.json` (`0600`) and the master key is the
   `<app name> Safe Storage` login-keychain item. Settings shows a non-secret status and a **Check
   keychain** probe. The unlock and test runbook is [`KEYCHAIN.md`](KEYCHAIN.md); it is the legacy
