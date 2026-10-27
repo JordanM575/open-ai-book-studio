@@ -10,6 +10,10 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- Removed the competitor branding research and its references from the event branch, and stopped
+  tracking Spec Kit's machine-local extension cache. A public repository should not carry another
+  product's name or 240 KB of someone's tool state.
+
 - The live check now runs the Contributor model the spec names. It used to take the first id in the
   catalogue containing "contributor", which was `muse-spark-1.2-contributor` while spec 022 and the
   submission described 1.3 — a check that measures a different model than the document names reads as
