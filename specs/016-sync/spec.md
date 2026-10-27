@@ -1,6 +1,6 @@
 # Sync and device trust
 
-**Status:** Planned (requirements captured 2026-10-25)
+**Status:** Planned
 **Number:** 016. 015 is left for the web-target branch if it becomes a spec.
 **Depends on:** [010](../010-web-target/spec.md) storage ports, [014](../014-mobile/spec.md) Capacitor shell,
 [002](../002-studio-v1/spec.md) library format and conflicts.
