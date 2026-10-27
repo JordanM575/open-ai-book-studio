@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Mic, Volume2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Mic, MicOff, Volume2 } from "lucide-react";
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
 import { Button } from "@ai-book-studio/ui/button";
 import { must } from "../lib/utils";
 import { useSpeech } from "../hooks/use-speech";
+import { useDictation } from "../hooks/use-dictation";
 
 interface Props {
   bookId: string;
@@ -27,6 +28,10 @@ interface Props {
  *
  * It is deliberately small. The status is one line, the actions are the studio's own verbs, and
  * everything it says is also on the screen.
+ *
+ * The microphone is the hands-free path: press it, speak, and the sentence goes to the agent
+ * without a keyboard. What was heard is shown before it is sent, so a misheard word is something
+ * the author can see rather than something that quietly changed their book.
  */
 export function AmbientPanel({
   bookId,
@@ -43,7 +48,38 @@ export function AmbientPanel({
   const [running, setRunning] = useState(false);
   const [voice, setVoice] = useState<string>("");
   const turnRef = useRef<string | null>(null);
+  /** Whether the turn that just finished was spoken to, so its answer is spoken back. */
+  const spokenRef = useRef(false);
+  /** The answer so far. It is in state for the screen, and here for the handler that speaks it. */
+  const replyRef = useRef("");
+  /*
+   * The chosen voice, for the event handler.
+   *
+   * The handler is reinstalled when the speaking function or the refresh changes, not on every voice
+   * change, so a ref is how it reads the voice the author picks later.
+   */
+  const voiceRef = useRef("");
+  voiceRef.current = voice;
   const speech = useSpeech();
+  const [heard, setHeard] = useState<string | null>(null);
+
+  /*
+   * The microphone.
+   *
+   * A transcript is put on screen and sent in the same breath, because the point of holding a
+   * button and speaking is not to then press another one. It is shown first, and the reply is
+   * spoken back, so the loop closes: speak, hear what was heard, hear the answer.
+   */
+  const dictation = useDictation({
+    onText: (text) => {
+      setHeard(text);
+      setInput("");
+      void ask(text, { spoken: true });
+    },
+    onError: (error) => {
+      setNote(error.message);
+    }
+  });
 
   const refresh = useCallback(async () => {
     try {
@@ -57,28 +93,41 @@ export function AmbientPanel({
     void refresh();
   }, [refresh]);
 
-  // The agent's own voice, heard as it happens.
+  // The agent's own voice, heard as it happens. It is reinstalled when the speaking function changes,
+  // so the answer is spoken through the voice service once that has loaded.
   useEffect(() => {
     const unsubscribe = window.studio.agent.onEvent((event: AgentEvent) => {
       if (event.turnId !== turnRef.current) return;
       if (event.type === "text") {
-        setReply((current) => (current ?? "") + event.delta);
+        replyRef.current += event.delta;
+        setReply(replyRef.current);
       } else if (event.type === "done") {
         setRunning(false);
         setStatus((current) => (current ? { ...current, working: false } : current));
         void refresh();
+        /*
+         * In the hands-free loop the answer is spoken as well as shown, because the author is not
+         * looking at the screen — that is what makes it hands-free. The text stays on screen for
+         * anyone who cannot hear it, which is why this is additive rather than a replacement.
+         */
+        if (spokenRef.current) {
+          spokenRef.current = false;
+          const chosen = voiceRef.current;
+          void speech.speak(replyRef.current.trim() || "Done.", chosen ? { voice: chosen } : {});
+        }
       } else if (event.type === "error") {
         setRunning(false);
         setNote(event.message);
       }
     });
     return unsubscribe;
-  }, [refresh]);
+  }, [refresh, speech.speak]);
 
   const ask = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, options: { spoken?: boolean } = {}) => {
       if (running) return;
       setRunning(true);
+      replyRef.current = "";
       setReply("");
       setNote("");
       try {
@@ -87,6 +136,8 @@ export function AmbientPanel({
           throw Object.assign(new Error(started.error.message), { code: started.error.code });
         }
         turnRef.current = started.data.turnId;
+        // Only a turn that actually started can be spoken back, so the flag is set once it has.
+        spokenRef.current = options.spoken === true;
         setStatus((current) => (current ? { ...current, working: true } : current));
       } catch (error) {
         setRunning(false);
@@ -147,6 +198,7 @@ export function AmbientPanel({
   }, [ask, input]);
 
   const actions = status?.actions ?? [];
+  const dictating = dictation.state === "recording";
 
   return (
     <section
@@ -168,6 +220,14 @@ export function AmbientPanel({
               data-testid="ambient-reply"
             >
               {reply}
+            </p>
+          ) : null}
+          {heard ? (
+            <p
+              className="mt-1 text-[var(--text-caption-size)] text-muted-foreground"
+              data-testid="ambient-heard"
+            >
+              Heard: “{heard}”
             </p>
           ) : null}
           {note ? (
@@ -228,6 +288,35 @@ export function AmbientPanel({
           </div>
 
           <div className="mt-3 flex items-center gap-2">
+            <Button
+              variant={dictating ? "primary" : "secondary"}
+              size="icon"
+              onClick={() => {
+                if (dictating) {
+                  dictation.stop();
+                } else {
+                  setHeard(null);
+                  void dictation.start();
+                }
+              }}
+              // Disabled mid-transcription so a second press cannot start a second recording, and
+              // never while the agent is writing, because the answer would arrive mid-sentence.
+              disabled={dictation.state === "transcribing" || dictation.state === "requesting" || running}
+              aria-label={dictating ? "Stop and send what you said" : "Speak to the agent"}
+              aria-pressed={dictating}
+              title={
+                dictation.state === "requesting"
+                  ? "Waiting for the microphone…"
+                  : dictation.state === "transcribing"
+                    ? "Turning what you said into text…"
+                    : dictating
+                      ? "Stop and send"
+                      : "Speak to the agent"
+              }
+              data-testid="ambient-mic"
+            >
+              {dictating ? <MicOff size={14} /> : <Mic size={14} />}
+            </Button>
             <input
               className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-border bg-[var(--secondary)] px-3 py-2 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
               placeholder={speech.supported ? "Say what you want, or type it" : "Type what you want"}
@@ -253,6 +342,15 @@ export function AmbientPanel({
               Tell it
             </Button>
           </div>
+          {dictation.state !== "idle" ? (
+            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="ambient-dictation">
+              {dictation.state === "requesting"
+                ? "Waiting for the microphone…"
+                : dictation.state === "transcribing"
+                  ? "Turning what you said into text…"
+                  : `Listening… ${(dictation.elapsedMs / 1000).toFixed(1)}s`}
+            </p>
+          ) : null}
           {speech.using === "tts" && speech.voices.length > 0 ? (
             <label className="mt-3 flex items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
               <span>Voice</span>

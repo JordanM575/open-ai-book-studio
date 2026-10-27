@@ -36,6 +36,8 @@
   ],
   "exclude": [
     "tests/manuscript-editor.test.ts",
-    "tests/dictation-hook.test.ts"
+    "tests/dictation-hook.test.ts",
+    "tests/ambient-panel.test.ts",
+    "tests/support/dom.ts"
   ]
 }

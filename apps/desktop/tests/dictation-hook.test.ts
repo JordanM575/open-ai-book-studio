@@ -1,7 +1,7 @@
 /// <reference types="bun" />
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import React from "react";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { mountDom, unmountDom } from "./support/dom";
 
 /**
  * The microphone, through the hook the buttons and the hands-free mode both use.
@@ -13,13 +13,18 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
  * inserted twice.
  */
 
-GlobalRegistrator.register({ url: "http://localhost" });
-const testing = await import("@testing-library/react");
-const { useDictation } = await import("@ai-book-studio/app/hooks/use-dictation");
+let testing!: typeof import("@testing-library/react/pure");
+let useDictation!: typeof import("@ai-book-studio/app/hooks/use-dictation").useDictation;
 
-afterAll(() => {
-  GlobalRegistrator.unregister();
+beforeAll(async () => {
+  testing = await mountDom();
+  ({ useDictation } = await import("@ai-book-studio/app/hooks/use-dictation"));
 });
+afterAll(async () => {
+  await unmountDom();
+});
+
+
 
 type Handler = (event: { data: Blob }) => void;
 

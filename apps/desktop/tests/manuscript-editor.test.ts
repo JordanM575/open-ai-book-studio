@@ -1,12 +1,26 @@
 /// <reference types="bun" />
-import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, afterEach, describe, expect, mock, test } from "bun:test";
 import React from "react";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { mountDom, unmountDom } from "./support/dom";
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 
-GlobalRegistrator.register({ url: "http://localhost" });
-const testing = await import("@testing-library/react");
-const { ManuscriptEditor } = await import("@ai-book-studio/app/components/ManuscriptEditor");
+let testing!: typeof import("@testing-library/react/pure");
+// Loaded in beforeAll, once the DOM exists.
+let ManuscriptEditor!: typeof import("@ai-book-studio/app/components/ManuscriptEditor").ManuscriptEditor;
+let IllustrationDialog!: typeof import("@ai-book-studio/app/components/IllustrationDialog").IllustrationDialog;
+let ModelPickerDialog!: typeof import("@ai-book-studio/app/components/ModelPickerDialog").ModelPickerDialog;
+
+beforeAll(async () => {
+  testing = await mountDom();
+  // The dialogs reach react-dom through Radix, and react-dom checks for a DOM the first time it loads.
+  // So the components load here, after the DOM exists, and not at module scope.
+  ({ ManuscriptEditor } = await import("@ai-book-studio/app/components/ManuscriptEditor"));
+  ({ IllustrationDialog } = await import("@ai-book-studio/app/components/IllustrationDialog"));
+  ({ ModelPickerDialog } = await import("@ai-book-studio/app/components/ModelPickerDialog"));
+});
+afterAll(async () => {
+  await unmountDom();
+});
 
 const BOOK = "book_ui000001";
 const CHARACTER = {
@@ -49,7 +63,6 @@ function mockStudio(result: unknown) {
 }
 
 afterEach(() => testing.cleanup());
-afterAll(() => GlobalRegistrator.unregister());
 
 describe("ManuscriptEditor", () => {
   test("waits for the debounce before saving typed text", async () => {
@@ -67,7 +80,7 @@ describe("ManuscriptEditor", () => {
     testing.render(
       React.createElement(ManuscriptEditor, { bookId: BOOK, chapter: CHAPTER, ordinal: 1, onSaved, onStatus })
     );
-    const textarea = testing.screen.getByTestId("manuscript-text") as HTMLTextAreaElement;
+    const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
     testing.fireEvent.change(textarea, { target: { value: "New text.\n" } });
 
     expect(save).not.toHaveBeenCalled();
@@ -98,7 +111,7 @@ describe("ManuscriptEditor", () => {
     testing.render(
       React.createElement(ManuscriptEditor, { bookId: BOOK, chapter: CHAPTER, ordinal: 1, onSaved, onStatus })
     );
-    const textarea = testing.screen.getByTestId("manuscript-text") as HTMLTextAreaElement;
+    const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
     testing.fireEvent.change(textarea, { target: { value: "New text.\n" } });
 
     await testing.waitFor(() => expect(onStatus).toHaveBeenCalledWith({ kind: "conflict", conflict }), { timeout: 2500 });
@@ -141,12 +154,11 @@ describe("ManuscriptEditor", () => {
         illustrationData: "data:image/png;base64,iVBORw0KGgo="
       })
     );
-    expect(testing.screen.getByTestId("chapter-illustration")).toBeTruthy();
+    expect(testing.within(document.body).getByTestId("chapter-illustration")).toBeTruthy();
     expect(save).not.toHaveBeenCalled();
   });
 });
 
-const { IllustrationDialog } = await import("@ai-book-studio/app/components/IllustrationDialog");
 type IllustrationRecord = import("@ai-book-studio/core/images/schema").ImageRecord;
 
 function illustrationImage(overrides: Partial<IllustrationRecord> = {}): IllustrationRecord {
@@ -278,24 +290,24 @@ describe("IllustrationDialog", () => {
   test("explains the missing Meta connection and disables generation", async () => {
     mockIllustrationStudio({ connections: [] });
     renderIllustration();
-    await testing.waitFor(() => testing.screen.getByText("Connect Meta to generate images"));
-    expect((testing.screen.getByTestId("generate-illustration") as HTMLButtonElement).disabled).toBe(true);
+    await testing.waitFor(() => testing.within(document.body).getByText("Connect Meta to generate images"));
+    expect((testing.within(document.body).getByTestId("generate-illustration") as HTMLButtonElement).disabled).toBe(true);
   });
 
   test("shows the attached chapter image", async () => {
     mockIllustrationStudio({ initial: [illustrationImage({ chapterId: CHAPTER.id })] });
     renderIllustration();
-    await testing.waitFor(() => testing.screen.getByAltText("Illustration: A lighthouse in a storm"));
-    expect((testing.screen.getByTestId("attach-illustration") as HTMLButtonElement).disabled).toBe(true);
-    expect(testing.screen.getByTestId("attach-illustration").textContent).toBe("Attached");
+    await testing.waitFor(() => testing.within(document.body).getByAltText("Illustration: A lighthouse in a storm"));
+    expect((testing.within(document.body).getByTestId("attach-illustration") as HTMLButtonElement).disabled).toBe(true);
+    expect(testing.within(document.body).getByTestId("attach-illustration").textContent).toBe("Attached");
   });
 
   test("generates with the chapter id and reports the save", async () => {
     const studio = mockIllustrationStudio();
     renderIllustration();
-    const prompt = (await testing.screen.findByTestId("illustration-prompt")) as HTMLTextAreaElement;
+    const prompt = (await testing.within(document.body).findByTestId("illustration-prompt")) as HTMLTextAreaElement;
     testing.fireEvent.change(prompt, { target: { value: "A storm over the harbor" } });
-    testing.fireEvent.click(testing.screen.getByTestId("generate-illustration"));
+    testing.fireEvent.click(testing.within(document.body).getByTestId("generate-illustration"));
     await testing.waitFor(() => expect(studio.generate).toHaveBeenCalledTimes(1));
     expect(studio.generate).toHaveBeenCalledWith({
       bookId: BOOK,
@@ -303,24 +315,24 @@ describe("IllustrationDialog", () => {
       prompt: "A storm over the harbor",
       size: "1024x1024"
     });
-    await testing.waitFor(() => testing.screen.getByText("Illustration saved to this book."));
+    await testing.waitFor(() => testing.within(document.body).getByText("Illustration saved to this book."));
   });
 
   test("attaches an existing image to the chapter", async () => {
     const studio = mockIllustrationStudio({ initial: [illustrationImage()] });
     renderIllustration();
-    await testing.waitFor(() => testing.screen.getByAltText("Illustration: A lighthouse in a storm"));
-    testing.fireEvent.click(testing.screen.getByTestId("attach-illustration"));
+    await testing.waitFor(() => testing.within(document.body).getByAltText("Illustration: A lighthouse in a storm"));
+    testing.fireEvent.click(testing.within(document.body).getByTestId("attach-illustration"));
     await testing.waitFor(() => expect(studio.attach).toHaveBeenCalledWith(BOOK, "img_ui000001", CHAPTER.id));
-    await testing.waitFor(() => testing.screen.getByText("This image is now the chapter illustration."));
+    await testing.waitFor(() => testing.within(document.body).getByText("This image is now the chapter illustration."));
   });
 
   test("shows SAM matches for the selected image", async () => {
     const studio = mockIllustrationStudio({ initial: [illustrationImage({ chapterId: CHAPTER.id })] });
     renderIllustration();
-    const prompt = (await testing.screen.findByTestId("cutout-prompt")) as HTMLInputElement;
+    const prompt = (await testing.within(document.body).findByTestId("cutout-prompt")) as HTMLInputElement;
     testing.fireEvent.change(prompt, { target: { value: "the keeper" } });
-    testing.fireEvent.click(testing.screen.getByTestId("find-cutouts"));
+    testing.fireEvent.click(testing.within(document.body).getByTestId("find-cutouts"));
     await testing.waitFor(() =>
       expect(studio.segment).toHaveBeenCalledWith({
         bookId: BOOK,
@@ -328,8 +340,8 @@ describe("IllustrationDialog", () => {
         prompt: "the keeper"
       })
     );
-    await testing.waitFor(() => testing.screen.getByText("Object 1 · 90%"));
-    expect(testing.screen.getByTestId("save-cutout-1")).toBeTruthy();
+    await testing.waitFor(() => testing.within(document.body).getByText("Object 1 · 90%"));
+    expect(testing.within(document.body).getByTestId("save-cutout-1")).toBeTruthy();
   });
 });
 
@@ -347,20 +359,19 @@ describe("IllustrationDialog character attachment", () => {
       ]
     });
     renderIllustration();
-    await testing.waitFor(() => testing.screen.getByText("No illustration for this chapter yet."));
-    testing.fireEvent.click(testing.screen.getByTitle("the keeper"));
-    await testing.waitFor(() => testing.screen.getByAltText("Illustration: the keeper"));
+    await testing.waitFor(() => testing.within(document.body).getByText("No illustration for this chapter yet."));
+    testing.fireEvent.click(testing.within(document.body).getByTitle("the keeper"));
+    await testing.waitFor(() => testing.within(document.body).getByAltText("Illustration: the keeper"));
     const select = document.getElementById("cutout-character") as HTMLSelectElement;
     testing.fireEvent.change(select, { target: { value: CHARACTER.id } });
-    testing.fireEvent.click(testing.screen.getByTestId("attach-cutout-character"));
+    testing.fireEvent.click(testing.within(document.body).getByTestId("attach-cutout-character"));
     await testing.waitFor(() =>
       expect(studio.attachCharacter).toHaveBeenCalledWith(BOOK, "img_ui000003", CHARACTER.id)
     );
-    await testing.waitFor(() => testing.screen.getByText("Character image attached to the cast member."));
+    await testing.waitFor(() => testing.within(document.body).getByText("Character image attached to the cast member."));
   });
 });
 
-const { ModelPickerDialog } = await import("@ai-book-studio/app/components/ModelPickerDialog");
 const { bookSchema } = await import("@ai-book-studio/core/schema");
 
 describe("ModelPickerDialog contributor consent", () => {
@@ -426,12 +437,12 @@ describe("ModelPickerDialog contributor consent", () => {
       })
     );
 
-    await testing.waitFor(() => testing.screen.getByText("Muse Spark 1.3 Contributor"));
-    testing.fireEvent.click(testing.screen.getByText("Muse Spark 1.3 Contributor"));
-    await testing.waitFor(() => testing.screen.getByText("Contributor mode"));
-    const use = testing.screen.getByText("Use this model").closest("button") as HTMLButtonElement;
+    await testing.waitFor(() => testing.within(document.body).getByText("Muse Spark 1.3 Contributor"));
+    testing.fireEvent.click(testing.within(document.body).getByText("Muse Spark 1.3 Contributor"));
+    await testing.waitFor(() => testing.within(document.body).getByText("Contributor mode"));
+    const use = testing.within(document.body).getByText("Use this model").closest("button") as HTMLButtonElement;
     expect(use.disabled).toBe(true);
-    testing.fireEvent.click(testing.screen.getByTestId("allow-contributor"));
+    testing.fireEvent.click(testing.within(document.body).getByTestId("allow-contributor"));
     await testing.waitFor(() => expect(use.disabled).toBe(false));
     testing.fireEvent.click(use);
     await testing.waitFor(() =>

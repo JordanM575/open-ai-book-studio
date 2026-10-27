@@ -160,8 +160,16 @@ Derived from the design kit's README; follow it rather than inventing new patter
   the `desktop-park` skill, then drive the simulator through `device-control` (agent-device) and
   measure pages with `visual-check`. Never click the Simulator window or switch Spaces to reach it.
 
-`apps/desktop/tests/` mirrors `src/main/library`; there is no DOM test setup yet. If a component needs
-one, introduce Testing Library deliberately rather than testing implementation details.
+`apps/desktop/tests/` mirrors `src/main/library`. Component tests render in happy-dom through
+`tests/support/dom.ts`. Every file shares one bun process, so these rules keep them from breaking each other:
+
+- Call `mountDom()` in `beforeAll` and `unmountDom()` in `afterAll`. Load `@testing-library/react` only
+  through `mountDom()`, which returns the `/pure` entry.
+- Import components and hooks only inside `beforeAll`, after `mountDom()`, never at module scope.
+- Query through the render result or `within(document.body)`, never the cached `screen`.
+- List a new DOM file in `tsconfig.web.json` `include` and in `tsconfig.node.json` `exclude`.
+
+Test what the author sees rather than implementation details.
 
 ## Git and GitHub
 
@@ -284,8 +292,8 @@ need a new filesystem primitive, add it to the port instead of calling `fs` from
 - The agent writes each turn to `books/<bookId>/threads/` and the chat reloads the latest conversation.
   `compactHistory` summarizes old turns; stored tool parts are still not replayed to the model.
 - No PDF/EPUB export, voice or illustrations yet. DOCX export, book search and the Story Bible are in.
-- Renderer component tests cover the editor history and debounce paths; the smoke run remains the
-  integration net.
+- Renderer component tests cover the editor history and debounce paths, the manuscript dialogs, the
+  dictation hook and the ambient panel's microphone; the smoke run remains the integration net.
 - The design kit was the source of the tokens, but only the foundation screens have been drawn; the
   rest of the surfaces in spec 002 still need design work before they are built.
 - Spec 009 (packaging and release) is planned but unwritten; 012 (automated verification) is a draft

@@ -10,6 +10,9 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The desktop component tests render in a DOM that `apps/desktop/tests/support/dom.ts` registers for
+  one file and restores after it, so later files see Node's globals again. React loads only once that
+  DOM exists, and its scheduling uses Node's timers, which is what lets the next file render.
 - Archived the inherited repository (private, read-only) instead of forking its history. This repository
   starts from a clean initial commit and contains none of its fixtures, exports or branding.
 - Moved to Bun workspaces: `apps/desktop` holds the Electron app and `packages/core` holds the schemas,
@@ -39,8 +42,10 @@ Update the `Unreleased` section before every commit.
   is a renaming rather than a translation.
 - Added a minimal mode to the workspace: a strip that knows where you are in the book, says it
   out loud when you ask, offers to read the prose, and takes a sentence when you have something to
-  say. The speech is the browser's own, through the system voices, so it needs no voice service,
-  and every word it says is also on the screen.
+  say. It has a microphone for the hands-free loop: press it, say a sentence, and it is shown as
+  heard and sent to the agent, and the answer is read back. Speech goes through a connected voice
+  service when there is one and through the system voices when there is not, and every word it says
+  is also on the screen.
 - Added the agent's own capabilities (spec 025): a cacheable prompt prefix where the provider
   supports one, with the hit rate, the cached and fresh token counts and the turns that hit it
   shown per book, and a switch to turn the prefix off; per-tool call, success and failure counts; a
