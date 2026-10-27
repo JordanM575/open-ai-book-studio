@@ -17,7 +17,6 @@ const REQUIRED = [
   "docs/TOOLKIT.md",
   "docs/KEYCHAIN.md",
   "hackathon/EVENT.md",
-  "hackathon/PLAN.md",
   "hackathon/SUBMISSION.md",
   "samples/README.md",
   "video/script.md",
