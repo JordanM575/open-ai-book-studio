@@ -150,15 +150,28 @@ export class DirectoryHandleLibraryPort implements LibraryPort {
       name: this.options.deviceName ?? "This browser",
       createdAt: new Date().toISOString()
     };
-    const result = await this.commitFile(devicePath(), textEncoder.encode(`${JSON.stringify(device, null, 2)}\n`), {
-      kind: "absent"
-    });
+    /*
+     * A file that is there but cannot be read is replaced, and one that is not there at all is
+     * written only if nobody else got there first. Using `absent` for both meant a single damaged
+     * `.studio/device.json` made the whole library unopenable: the write was refused because
+     * *something* was present, and the read-back then parsed the damaged bytes and threw.
+     */
+    const result = await this.commitFile(
+      devicePath(),
+      textEncoder.encode(`${JSON.stringify(device, null, 2)}\n`),
+      existing ? { kind: "any" } : { kind: "absent" }
+    );
     if (result.status === "written") return device;
 
     const winner = await this.readFile(devicePath());
     if (!winner) throw new LibraryPortError("io", "The library identity could not be created.");
-    const parsed = JSON.parse(textDecoder.decode(winner.bytes)) as LibraryDeviceInfo;
-    return parsed;
+    try {
+      return JSON.parse(textDecoder.decode(winner.bytes)) as LibraryDeviceInfo;
+    } catch {
+      // Two tabs both saw a damaged file and both tried to replace it. Whoever lost this race
+      // reads back something unparseable; the next call will see a good file and return it.
+      throw new LibraryPortError("io", "The library identity could not be written. Reload the page.", true);
+    }
   }
 
   private async commitUnlocked(

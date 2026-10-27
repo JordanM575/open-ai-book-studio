@@ -100,7 +100,7 @@ turn until the book opts in; the sample and film fixture are the only intended C
 | Smoke | `bun run smoke` | **18/18** |
 | End to end | `bun run e2e` | **8/8** — app, web, audit, phone width, glasses, ambient, plugins, bridge |
 | UI audit | `bun run ui:audit` | **no dead ends**; every control named, every image with an `alt`, one `h1`, keyboard focus visible |
-| Coverage | `bun run coverage` | **81.4% functions, 88.3% lines**, floor 80/87 |
+| Coverage | `bun run coverage` | **86.0% functions, 93.0% lines**, floor 85/92 |
 | Plugin probe | `bun run plugin:probe` | **ok** — the plugin's tool listed, run, and a broken plugin left the others working |
 | Submission check | `bun run submission:check` | **ready** · 162 commits · 549 tracked files |
 | Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | **Pass** · 487 packages · verify 568 tests · e2e 8/8 · coverage above the floor |

@@ -3,9 +3,14 @@
  * Patterns are deliberately broad: a false positive in a log is cheap, a leaked key is not.
  */
 const PATTERNS: Array<{ name: string; pattern: RegExp; replacement: string }> = [
+  /*
+   * The order matters. Every provider with an `sk-` prefix is a shape of the same prefix, so the
+   * specific ones have to run before the generic one or an `sk-ant-…` key is reported as an OpenAI
+   * key — redacted either way, but labelled as the wrong provider in the log.
+   */
   { name: "openrouter", pattern: /\bsk-or-[A-Za-z0-9_-]{8,}\b/g, replacement: "sk-or-[redacted]" },
-  { name: "openai", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g, replacement: "sk-[redacted]" },
   { name: "anthropic", pattern: /\bsk-ant-[A-Za-z0-9_-]{8,}\b/g, replacement: "sk-ant-[redacted]" },
+  { name: "openai", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g, replacement: "sk-[redacted]" },
   { name: "google", pattern: /\bAIza[0-9A-Za-z_-]{20,}\b/g, replacement: "AIza[redacted]" },
   { name: "bearer", pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, replacement: "Bearer [redacted]" },
   { name: "basic", pattern: /\bBasic\s+[A-Za-z0-9+/=]{8,}/gi, replacement: "Basic [redacted]" },

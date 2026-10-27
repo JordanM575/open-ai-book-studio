@@ -298,8 +298,14 @@ export async function runCli(
 function parse(argv: string[]): Parsed {
   const flags = new Map<string, string | true>();
   const positionals: string[] = [];
+  /*
+   * Flags that take no value. `--allow-destructive` was missing from this list, so the parser
+   * asked it for a value and the command failed before it ever ran — the one flag an author needs
+   * to approve a destructive tool was unusable.
+   */
   const boolean = new Set([
     "allow-writes",
+    "allow-destructive",
     "json",
     "stdin",
     "help",

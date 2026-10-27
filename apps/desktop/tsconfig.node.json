@@ -35,6 +35,7 @@
     "tests/**/*.ts"
   ],
   "exclude": [
-    "tests/manuscript-editor.test.ts"
+    "tests/manuscript-editor.test.ts",
+    "tests/dictation-hook.test.ts"
   ]
 }

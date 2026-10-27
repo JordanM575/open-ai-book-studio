@@ -27,8 +27,8 @@ Two of them are worth knowing about because they guard decisions rather than fun
 
 ## The coverage ratchet
 
-`bun run coverage` measures the unit layer and fails below a floor: **80% of functions, 87% of
-lines** at the time of writing, against a measured 81.5 and 88.3. The floor only moves up — a
+`bun run coverage` measures the unit layer and fails below a floor: **85% of functions, 92% of
+lines** at the time of writing, against a measured 86.0 and 93.0. The floor only moves up — a
 change that raises coverage is expected to raise the floor in the same commit — and a change that
 drops it below the floor has to say why.
 

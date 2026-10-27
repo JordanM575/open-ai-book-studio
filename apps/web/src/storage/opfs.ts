@@ -50,8 +50,14 @@ export async function openBrowserLibrary(
   }
   const timeout = options.timeoutMs ?? OPEN_TIMEOUT_MS;
   const failed = new LibraryPortError("unsupported", OPEN_FAILED, true);
-  const libraries = await within(root.getDirectoryHandle(LIBRARIES, { create: true }), timeout, failed);
-  const handle = await within(libraries.getDirectoryHandle(libraryId, { create: true }), timeout, failed);
+  /*
+   * Creating the folders fails in ways the author can act on — a full disk, a revoked permission —
+   * and none of them is a DOM error name worth showing. The recovery sentence is the same one a
+   * hanging browser gets, because from here the situations are the same: the library could not be
+   * opened, and there is an archive.
+   */
+  const libraries = await recover(root.getDirectoryHandle(LIBRARIES, { create: true }), timeout, failed);
+  const handle = await recover(libraries.getDirectoryHandle(libraryId, { create: true }), timeout, failed);
   const persistence = await requestPersistence();
   const port = new DirectoryHandleLibraryPort(handle, { lock: webLock, deviceName: "This browser" });
   return {
@@ -92,6 +98,15 @@ export async function storageEstimate(): Promise<{ usage: number; quota: number 
   if (!navigator.storage?.estimate) return null;
   const estimate = await navigator.storage.estimate();
   return { usage: estimate.usage ?? 0, quota: estimate.quota ?? 0 };
+}
+
+/** A step that either finishes, or fails with the sentence the author can act on. */
+async function recover<T>(promise: Promise<T>, ms: number, error: LibraryPortError): Promise<T> {
+  try {
+    return await within(promise, ms, error);
+  } catch (failure) {
+    throw failure instanceof LibraryPortError ? failure : error;
+  }
 }
 
 function within<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {

@@ -14,8 +14,13 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-/** The floor, kept a little under the current numbers so a refactor does not fail for noise. */
-const FLOOR = { functions: 80, lines: 87 };
+/**
+ * The floor, kept a little under the current numbers so a refactor does not fail for noise.
+ *
+ * 2026-10-26: raised from 80/87 to 85/92 after a pass that took the measured numbers from 81.4/88.3
+ * to 86.0/93.0. The floor moves up with the numbers, which is the whole point of having one.
+ */
+const FLOOR = { functions: 85, lines: 92 };
 
 const raise = process.argv.includes("--raise");
 
