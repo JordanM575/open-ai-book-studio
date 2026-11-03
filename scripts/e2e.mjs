@@ -15,6 +15,7 @@
  *   toolkit     the bookwriter CLI and MCP server against the running app, checked on disk
  *   plugins     a folder of TypeScript tools, loaded by the built app
  *   bridge      the phone's half: a separate process speaking to the app over the LAN
+ *   offline     writing through export with every outbound connection denied (macOS only)
  *
  *   bun run e2e            build, then run everything
  *   bun run e2e --no-build trust the current build
@@ -43,7 +44,14 @@ const CHECKS = [
   { id: "ambient", script: "scripts/ambient-check.mjs", what: "the ambient agent and the toolkit" },
   { id: "toolkit", script: "scripts/toolkit-e2e.mjs", what: "the CLI and MCP server, checked on disk" },
   { id: "plugins", script: "scripts/plugin-probe.mjs", what: "a plugin folder in the built app" },
-  { id: "bridge", script: "scripts/bridge-probe.mjs", what: "the phone's half, from another process" }
+  { id: "bridge", script: "scripts/bridge-probe.mjs", what: "the phone's half, from another process" },
+  {
+    id: "offline",
+    script: "scripts/offline-check.mjs",
+    what: "writing through export with the network denied",
+    // The denial is a macOS Seatbelt profile; elsewhere the check proves nothing, so it says so.
+    platforms: ["darwin"]
+  }
 ];
 
 const argv = process.argv.slice(2);
@@ -86,6 +94,10 @@ if (build) {
 
 const results = [];
 for (const check of selection) {
+  if (check.platforms && !check.platforms.includes(process.platform)) {
+    results.push({ ...check, ok: true, skipped: true, detail: `skipped: needs ${check.platforms.join(" or ")}` });
+    continue;
+  }
   const script = join(root, check.script);
   if (!existsSync(script)) {
     results.push({ ...check, ok: false, detail: "the script is missing" });
@@ -103,12 +115,16 @@ for (const check of selection) {
 
 console.log("\n[e2e] ── summary");
 for (const result of results) {
-  console.log(`[e2e] ${result.ok ? "ok   " : "FAIL "} ${result.id.padEnd(8)} ${result.what} — ${result.detail}`);
+  const status = result.skipped ? "skip " : result.ok ? "ok   " : "FAIL ";
+  console.log(`[e2e] ${status} ${result.id.padEnd(8)} ${result.what} — ${result.detail}`);
 }
 const failed = results.filter((result) => !result.ok);
+const skipped = results.filter((result) => result.skipped).length;
+const ran = results.length - skipped;
+const skippedNote = skipped > 0 ? `, ${skipped} skipped` : "";
 console.log(
   failed.length === 0
-    ? `[e2e] ${results.length}/${results.length} passed`
-    : `[e2e] ${results.length - failed.length}/${results.length} passed, ${failed.length} failed`
+    ? `[e2e] ${ran}/${ran} passed${skippedNote}`
+    : `[e2e] ${ran - failed.length}/${ran} passed, ${failed.length} failed${skippedNote}`
 );
 process.exit(failed.length === 0 ? 0 : 1);

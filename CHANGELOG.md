@@ -18,6 +18,14 @@ Update the `Unreleased` section before every commit.
   untouched; nothing writes without `--allow-writes`, and a read-only MCP server lists no write tool.
   It also reports, without failing, that MCP `tools/list` and `bookwriter tools` still list a
   withdrawn tool, because neither names a book.
+- `bun run e2e offline` (`scripts/offline-check.mjs`) proves 002 FR-060 on macOS: the built app runs
+  hidden inside a `sandbox-exec` profile that denies every outbound connection, loopback included,
+  and still creates a book and a chapter, autosaves typing, saves a Story Bible edit, imports a TXT
+  manuscript and exports Word, Markdown and a library archive, each read back from disk. The check
+  fails unless the app's own processes are refused when they try to connect out, before and after
+  the journey. `e2e` now reports a platform-bound check as skipped instead of passed. 002 FR-069
+  stays a gap: hidden runs never claim the single-instance lock, and a second launch shows no
+  warning; the requirement map records the evidence.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

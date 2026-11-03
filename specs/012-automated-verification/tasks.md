@@ -289,6 +289,24 @@ smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
       orchestrated run (verify, release) ends with the unified one. The ledger now maps 012
       FR-038 as covered.
 
+## Phase 8 — Launch requirements from 002
+
+- [x] T031 Prove 002 FR-060 (no account, server or network for writing, planning, import or export)
+      against the built app. Current evidence: `scripts/offline-check.mjs`, registered as `bun run e2e
+      offline` (macOS only; `e2e` reports it skipped elsewhere), runs the hidden app inside a
+      `sandbox-exec` profile that denies every outbound connection, loopback included. It creates a
+      book and a chapter, autosaves typing, saves a Story Bible edit, imports a TXT manuscript and
+      exports Word, Markdown and a library archive, reading each result back from disk. The denial is
+      proved from the app's own processes before and after the journey (Node sockets get EPERM,
+      `net.fetch` gets ERR_ACCESS_DENIED), and a weaker profile that allows loopback makes the check
+      fail. Chromium's own sandbox cannot start inside the outer profile, so the run passes
+      `--no-sandbox`. Verified on macOS: `node scripts/offline-check.mjs` 9/9; `bun run e2e` 9/9 with
+      every entry (smoke 30/30, web 18/18, offline 9/9); `bun run verify` PASS, 1,387 tests passing.
+- [ ] T032 Prove 002 FR-069 (a second copy on the same profile is refused, with a warning). Blocked on a
+      product change: hidden runs skip the single-instance lock in `apps/desktop/src/main/index.ts`, so
+      a check needs a test-mode path that claims the lock on the throwaway `STUDIO_USER_DATA` profile,
+      and the warning itself does not exist yet. `tests/requirement-map.md` records the evidence.
+
 ## Completion condition
 
 The spec is complete when the fast command is green without network or keys, every required gate is

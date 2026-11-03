@@ -49,7 +49,7 @@ is not a goal in itself; it is a way of noticing that a change removed more test
 
 ## The end-to-end layer
 
-`bun run e2e` builds the desktop app, the web build and the toolkit, then runs nine checks in
+`bun run e2e` builds the desktop app, the web build and the toolkit, then runs ten checks in
 order:
 
 | Check | What it drives |
@@ -63,6 +63,7 @@ order:
 | `toolkit` | The compiled `bookwriter` CLI and `bookwriter mcp` over stdio against the hidden app, checked on disk: a tool switched off in the Agent dialog is refused by `bookwriter call` and by MCP `tools/call`; a checked save changes the bytes, a stale one leaves a conflict copy and the newer text untouched; nothing writes without `--allow-writes`. It reports, without failing, that MCP `tools/list` and `bookwriter tools` still list a withdrawn tool, because neither names a book. |
 | `plugins` | A folder of TypeScript tools, loaded by the built app, called, and a broken plugin that must not take the others with it. |
 | `bridge` | The phone's half: a **separate process** speaking to the running app over the local network with the per-run token. |
+| `offline` | The built app inside a macOS `sandbox-exec` profile that **denies every outbound connection, loopback included**: a new book and chapter, autosaved typing, a Story Bible edit, a TXT import, and Word, Markdown and archive exports, each read back from disk. The app's own processes must get a permission error when they try to connect out, before and after the journey, or the check fails. macOS only; elsewhere `e2e` reports it skipped. |
 
 Run one, or a few:
 
@@ -127,6 +128,9 @@ Everything else in the product is above 80% of lines, and the workspace as a who
   pretending otherwise.
 - **Audio output through a speaker.** The pipeline is proven to produce real audio; whether a
   speaker plays it is not something a check can hear.
+- **A second copy of the studio on the same profile (002 FR-069).** Hidden runs never claim the
+  single-instance lock, so no hidden check can start a second copy against it, and a visible run
+  would take over the screen. `tests/requirement-map.md` records what a proof would need.
 - **Linux.** Every end-to-end check has been run on macOS. `.github/workflows/verify.yml` has a job
   for them on Linux, and it is allowed to fail until somebody has watched it pass and said so. The
   typecheck, tests, builds and the coverage floor run everywhere.
