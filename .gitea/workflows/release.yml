@@ -1,0 +1,24 @@
+# Release gates are declared, not enforced: no Gitea runner is registered yet. Local
+# `bun run release` is the source of truth. Signing, notarisation and auto-update stay out
+# entirely (D-115, deferred); the release record labels every build unsigned.
+name: release
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bunx playwright install chromium
+      - name: Release gates, packaged E2E, artifacts and record
+        run: xvfb-run -a bun run release

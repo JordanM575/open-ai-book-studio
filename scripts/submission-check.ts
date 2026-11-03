@@ -104,8 +104,209 @@ export function secretProblems(file: string, text: string): string[] {
     const global = new RegExp(pattern.source, `${pattern.flags}g`);
     for (const match of text.matchAll(global)) {
       if (DUMMY.test(match[0])) continue;
+      // The finding names the file and the pattern only; the matched value is never printed.
       problems.push(`${file}: possible ${name}`);
       break;
+    }
+  }
+  return problems;
+}
+
+/** Tracked library-data paths that must never be committed. */
+export function forbiddenTrackedPath(path: string): boolean {
+  return (
+    /(^|\/)\.env(?:\.(?:local|production|development|test))?$/.test(path) ||
+    /(^|\/)credentials\.json$/.test(path) ||
+    /(^|\/)userData\//.test(path) ||
+    /(^|\/)release\//.test(path) ||
+    /(^|\/)\.studio\//.test(path) ||
+    /(^|\/)books\//.test(path) ||
+    /(^|\/)library\.json$/.test(path)
+  );
+}
+
+const TRACKED_TEXT = /\.(?:md|txt|json|ts|tsx|mjs|js|yml|yaml|toml|css|html)$/i;
+
+export function trackedFiles(root: string): string[] {
+  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+}
+
+/** Secret-shaped strings in tracked text files. Never includes a matched value. */
+export async function scanTrackedSecrets(root: string, tracked: string[]): Promise<string[]> {
+  const problems: string[] = [];
+  for (const path of tracked) {
+    // The sample corpus is curated and validated by inspectSample; only its text is scanned here.
+    if (!path.startsWith("samples/") && forbiddenTrackedPath(path)) {
+      problems.push(`forbidden tracked path: ${path}`);
+      continue;
+    }
+    if (!TRACKED_TEXT.test(path)) continue;
+    let text: string;
+    try {
+      text = await readFile(join(root, path), "utf8");
+    } catch {
+      continue;
+    }
+    if (text.length > 2_000_000) continue;
+    problems.push(...secretProblems(path, text));
+  }
+  return problems;
+}
+
+const ARTIFACT_DIRS = ["release", "apps/desktop/out", "apps/web/dist", "coverage"];
+const ARTIFACT_TEXT = /\.(?:js|cjs|mjs|html|json|css|txt|map|yml|yaml)$/i;
+
+async function walkFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walkFiles(path)));
+    else if (entry.isFile()) out.push(path);
+  }
+  return out;
+}
+
+export interface ArtifactScan {
+  scanned: number;
+  problems: string[];
+}
+
+/**
+ * Secrets and source maps in present build/test artifacts (release/, out/, dist/, coverage/).
+ * Missing directories are skipped, never failures: a clean checkout has no artifacts yet.
+ */
+/** One artifact directory: secrets in bundle text, and any emitted source map. */
+export async function scanArtifactDir(dir: string, prefix: string): Promise<ArtifactScan> {
+  const problems: string[] = [];
+  let scanned = 0;
+  for (const path of await walkFiles(dir)) {
+    const display = prefix ? `${prefix}/${relative(dir, path)}` : relative(dir, path);
+    if (path.endsWith(".map")) {
+      problems.push(`${display}: build emitted a source map`);
+      continue;
+    }
+    if (!ARTIFACT_TEXT.test(path)) continue;
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch {
+      continue;
+    }
+    if (text.length > 5_000_000) continue;
+    scanned += 1;
+    problems.push(...secretProblems(display, text));
+  }
+  return { scanned, problems };
+}
+
+export async function scanArtifacts(root: string): Promise<ArtifactScan> {
+  const problems: string[] = [];
+  let scanned = 0;
+  for (const dir of ARTIFACT_DIRS) {
+    const result = await scanArtifactDir(join(root, dir), dir);
+    scanned += result.scanned;
+    problems.push(...result.problems);
+  }
+  return { scanned, problems };
+}
+
+const BUILD_CONFIGS = [
+  "apps/desktop/electron.vite.config.ts",
+  "apps/web/vite.config.ts",
+  "apps/web/vite.gallery.config.ts"
+];
+
+/** A bundler config enables source-map output. */
+export function enablesSourceMaps(configText: string): boolean {
+  return /sourcemap\s*:\s*(true|["'](?:inline|hidden)["'])/.test(configText);
+}
+
+/** Production builds must not enable source maps in the bundler configs. */
+export async function sourceMapConfigProblems(root: string): Promise<string[]> {
+  const problems: string[] = [];
+  for (const config of BUILD_CONFIGS) {
+    let text: string;
+    try {
+      text = await readFile(join(root, config), "utf8");
+    } catch {
+      continue;
+    }
+    if (enablesSourceMaps(text)) {
+      problems.push(`${config}: enables bundler source maps`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * A line reads like pasted story prose: long, sentences and dialogue, none of the
+ * brackets, operators or leading keywords code is made of. Quoted fragments and trailing
+ * commas are skipped so string-literal test fixtures do not count.
+ */
+export function isProseLine(line: string): boolean {
+  const text = line.replace(/^[ \t]+/, "");
+  if (text.length < 60) return false;
+  if (/[{}\];=()<>\[\]|]/.test(text)) return false;
+  if (/^[`'"]/.test(text)) return false;
+  if (/,$/.test(text)) return false;
+  if (/^(\/\/|\*|#|<!--|import |export |const |let |var |function |return |if[ (]|for[ (]|while[ (]|class |type |interface |<[A-Za-z]|[-*] |\d+[.)] )/.test(text)) {
+    return false;
+  }
+  return text.includes(" ");
+}
+
+/** Consecutive prose-like lines that mark pasted manuscript text rather than a comment. */
+export const PROSE_RUN = 12;
+
+/** Format documentation may show a chapter block; nowhere else may carry one. */
+const CHAPTER_EXAMPLE = "docs/FORMAT.md";
+
+function leadingFrontMatter(text: string): string | null {
+  const lines = text.split("\n");
+  if (lines[0] !== "---") return null;
+  const end = lines.indexOf("---", 1);
+  if (end < 0) return null;
+  return lines.slice(1, end).join("\n");
+}
+
+/**
+ * Manuscript-like text where it must not be: chapter-format files outside the sample
+ * corpus, and runs of story prose pasted into code. Findings name the file and the
+ * reason only, never the text.
+ */
+export async function proseProblems(root: string, tracked: string[]): Promise<string[]> {
+  const problems: string[] = [];
+  for (const path of tracked) {
+    if (path.startsWith("samples/") || path === CHAPTER_EXAMPLE) continue;
+    let text: string;
+    const code = /\.(?:ts|tsx|mjs|js)$/.test(path);
+    if (!code && !/\.md$/.test(path)) continue;
+    try {
+      text = await readFile(join(root, path), "utf8");
+    } catch {
+      continue;
+    }
+    if (text.length > 2_000_000) continue;
+    if (!code) {
+      const front = leadingFrontMatter(text);
+      if (front !== null && /^isPrologue:/m.test(front)) {
+        problems.push(`${path}: chapter-format file outside the sample corpus`);
+      }
+      continue;
+    }
+    let run = 0;
+    for (const line of text.split("\n")) {
+      run = isProseLine(line) ? run + 1 : 0;
+      if (run >= PROSE_RUN) {
+        problems.push(`${path}: pasted prose block in a code file`);
+        break;
+      }
     }
   }
   return problems;
@@ -133,31 +334,12 @@ async function main(): Promise<void> {
     if (!existsSync(join(root, path))) problems.push(`missing ${path}`);
   }
 
-  const tracked = git(root, ["ls-files", "-z"]).split("\0").filter(Boolean);
-  for (const path of tracked) {
-    if (
-      /(^|\/)\.env(?:\.(?:local|production|development|test))?$/.test(path) ||
-      /(^|\/)credentials\.json$/.test(path) ||
-      /(^|\/)userData\//.test(path) ||
-      /(^|\/)release\//.test(path) ||
-      /(^|\/)\.studio\//.test(path) ||
-      /(^|\/)library\.json$/.test(path)
-    ) {
-      problems.push(`forbidden tracked path: ${path}`);
-    }
-  }
-
-  for (const path of tracked) {
-    if (!/\.(?:md|txt|json|ts|tsx|mjs|js|yml|yaml|toml|css|html)$/i.test(path)) continue;
-    let text: string;
-    try {
-      text = await readFile(join(root, path), "utf8");
-    } catch {
-      continue;
-    }
-    if (text.length > 2_000_000) continue;
-    problems.push(...secretProblems(path, text));
-  }
+  const tracked = trackedFiles(root);
+  problems.push(...(await scanTrackedSecrets(root, tracked)));
+  problems.push(...(await proseProblems(root, tracked)));
+  problems.push(...(await sourceMapConfigProblems(root)));
+  const artifacts = await scanArtifacts(root);
+  problems.push(...artifacts.problems);
 
   for (const issue of await inspectSample(root)) {
     problems.push(`${issue.book}: ${issue.problem}`);
@@ -175,6 +357,7 @@ async function main(): Promise<void> {
   console.log(`  branch      ${branch}`);
   console.log(`  commit      ${git(root, ["rev-parse", "--short", "HEAD"])} (${count} commits)`);
   console.log(`  tracked     ${tracked.length} files`);
+  console.log(`  artifacts   ${artifacts.scanned} files scanned, no secrets or source maps`);
   console.log("  sample      samples/the-salt-road valid");
   console.log("  next        clean clone: bun install && bun run verify && bun run smoke");
   console.log("  next        check repository and video links in a private window");

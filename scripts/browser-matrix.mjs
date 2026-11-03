@@ -14,6 +14,7 @@ import { createServer } from "node:http";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, firefox, webkit } from "playwright";
+import { capturePage, createRunDir } from "./failure-artifacts.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checkDir = join(root, "apps", "web", "check");
@@ -57,11 +58,9 @@ for (const [name, engine] of engines) {
   const browser = await engine.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
-  const errors = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
+  const capture = await capturePage(page);
+  const errors = capture.errors;
+  const runDir = await createRunDir("matrix");
 
   try {
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "load" });
@@ -88,10 +87,7 @@ for (const [name, engine] of engines) {
       };
     } else {
       const restartPage = await context.newPage();
-      restartPage.on("console", (message) => {
-        if (message.type() === "error") errors.push(message.text());
-      });
-      restartPage.on("pageerror", (error) => errors.push(error.message));
+      const restartCapture = await capturePage(restartPage);
       try {
         await restartPage.goto(`http://127.0.0.1:${port}/restart.html`, { waitUntil: "domcontentloaded" });
         try {
@@ -120,6 +116,8 @@ for (const [name, engine] of engines) {
           ok: false
         };
       } finally {
+        for (const error of restartCapture.errors) errors.push(error);
+        await restartCapture.discard();
         await restartPage.close();
       }
     }
@@ -136,10 +134,20 @@ for (const [name, engine] of engines) {
     const ok = result === "pass" && errors.length === 0 && restartCheck.ok;
     console.log(`[matrix] ${name} ${passed}/${checks.length} checks passed${ok ? "" : " (finding)"}`);
     if (!ok) {
+      const artifacts = await capture.save(runDir, `matrix-${name.toLowerCase()}`);
+      console.error(
+        `[matrix] artifacts: ${artifacts.screenshot}${artifacts.trace ? ` ${artifacts.trace}` : ""} ${artifacts.consoleLog}`
+      );
       allPassed = false;
       if (name === "Chromium") chromiumPassed = false;
+    } else {
+      await capture.discard();
     }
   } catch (error) {
+    const artifacts = await capture.save(runDir, `matrix-${name.toLowerCase()}`);
+    console.error(
+      `[matrix] artifacts: ${artifacts.screenshot}${artifacts.trace ? ` ${artifacts.trace}` : ""} ${artifacts.consoleLog}`
+    );
     console.error(`[matrix] ${name} failed: ${error instanceof Error ? error.message : String(error)}`);
     allPassed = false;
     if (name === "Chromium") chromiumPassed = false;

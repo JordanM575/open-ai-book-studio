@@ -20,11 +20,54 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Version agreement and build info
         run: bun run build:info
+      - name: Lint
+        run: bun run lint
       - name: Typecheck
         run: bun run typecheck
       - name: Tests
         run: bun test
+      - name: Quarantine ledger
+        run: bun run quarantine:check
+      - name: Waiver ledger
+        run: bun run waiver:check
+      - name: Coverage floor
+        run: bun run coverage
+      - name: Security scan
+        run: bun run submission:check
       - name: Desktop bundle
         run: bun run build
       - name: Web bundle
         run: bun run build:web
+  browser:
+    # The web journey, accessibility and visual gates in headless Chromium (spec 012 T022).
+    # Visual baselines are machine-rendered: a new runner accepts its first green run with
+    # --update-baseline, and that acceptance shows in the diff like any other change.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bunx playwright install chromium
+      - name: Web journey
+        run: bun run smoke:web
+      - name: Accessibility
+        run: bun run a11y
+      - name: Visual
+        run: bun run visual
+  smoke:
+    # The hidden desktop smoke through the real renderer (spec 012 T022). Electron needs a
+    # display even hidden, plus its Linux system libraries on the runner.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Desktop smoke under a virtual display
+        run: xvfb-run -a bun run smoke

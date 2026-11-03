@@ -71,10 +71,11 @@ let buffer = "";
 let reported = null;
 child.stdout.on("data", (chunk) => {
   buffer += chunk.toString("utf8");
-  let newline;
-  while ((newline = buffer.indexOf("\n")) !== -1) {
+  let newline = buffer.indexOf("\n");
+  while (newline !== -1) {
     const line = buffer.slice(0, newline);
     buffer = buffer.slice(newline + 1);
+    newline = buffer.indexOf("\n");
     if (line.startsWith("[live] result ")) {
       try {
         reported = JSON.parse(line.slice("[live] result ".length));

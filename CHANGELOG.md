@@ -15,8 +15,16 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The accessibility and visual gates run to the end again. After their conflict step, opening
+  the library now shows the drift report (016 acceptance scenario 2), and both scripts close it
+  before opening the book. Before recapturing 76 of the 112 visual baselines, each diff was
+  located: the library's location line moves the grid, and the workspace header gains the
+  Format book and Export Markdown buttons. Nothing else differs.
 - Corrected the 010 roadmap row: shared UI extraction landed in 013 (`packages/ui`,
   `packages/app`); only the native folder-picker matrix remains there.
+- Hardened the web smoke UI typing journey: it now proves the keystrokes landed in the
+  editor and the save committed a newer chapter version, instead of trusting a bare
+  "Saved" status that also shows when nothing changed. No product code changed.
 - Corrected the 018 roadmap row: the manual desktop/MCP pass (T011) ran against a
   real backend and MCP client with reads verified on disk; it is not pending.
 
@@ -62,6 +70,21 @@ Update the `Unreleased` section before every commit.
   install/compatible upgrade under override disclosure, unsigned labeling, same-schema-only
   and no feed/automation conditions. Nothing installs; dependent work remains blocked. No
   behavior changes except a pure settings-path helper with identical behavior.
+- Spec 009 T004: release checklist. `scripts/release/check.mjs` re-hashes the served
+  artifact and compares hash, bytes, version, commit and signing status against the record
+  and the About values, naming only the mismatched field. Covered by checklist tests with
+  tamper, drift and secret non-disclosure.
+- Spec 009 T003: release-artifact scan. `scripts/artifact-scan.ts` refuses credentials,
+  environment files, source maps and manuscript-like content in served artifacts, naming file
+  and class only; tarballs are extracted and scanned, opaque containers name-checked. Wired as
+  the `release-artifact-scan` gate that blocks publication. Covered by new scan tests including
+  secret non-disclosure.
+- Spec 009 T001: machine-readable release record. `scripts/release/record.mjs` hashes exactly
+  the served files in a flat artifact directory (streaming SHA-256; names, sizes and hashes
+  only, never contents) and writes the plan's JSON shape with version, commit, library schema,
+  platform, architecture, gates and signing status; it refuses empty, missing or nested
+  directories, `--expect` file-set mismatches and bare `signed` claims without an identity.
+  Covered by `apps/desktop/tests/release-record.test.ts`, including secret non-disclosure.
 - Spec 034 T003 (research only): report save, export, retention and deletion compared with
   synthetic evidence. `research/report-retention.md` pins the report shape (source references and
   excerpts, never bodies; unbounded excerpts; computed freshness) against the volatile baseline;
@@ -104,6 +127,70 @@ Update the `Unreleased` section before every commit.
   evidence. `research/storage-alternatives.md` and premise tests propose a separate versioned
   `planning.json` (D-163, awaiting author acceptance); D-164/D-165 stay Open and T002–T008 remain
   blocked. No behavior changes.
+- Spec 012 T030: unified summary. The single pass/fail/skip/quarantined summary format now
+  carries a tag, and `bun run release` prints the `[release]` summary — per-stage results,
+  test counts, quarantined count, verdict — as the last line on both the go and blocked
+  paths. Ad-hoc `bun test` keeps its native output.
+- Spec 012 T029: fast-command budgets. `bun run verify` prints a budget line every run and
+  fails when the whole command exceeds 5 minutes or the suite gate exceeds 20 minutes on the
+  reference machine; `docs/TESTING.md` names the budgets and marks the slow checks that stay
+  out of the fast command.
+- Spec 012 T023: release job. `.gitea/workflows/release.yml` and `bun run release` run the
+  full suite, desktop/web/packaged smoke, artifact checksums and a waiver-aware verdict, then
+  write a `releases/` record with gates, waivers, checksums and capability differences.
+  Signing stays out per D-115; the manual checklist stays T025.
+- Spec 012 T022: required gates and waivers. The Gitea workflow now gates on lint,
+  quarantine, waiver, coverage and security plus both bundles, with browser (web journey,
+  accessibility, visual) and desktop-smoke jobs. `docs/WAIVERS.md` is the waiver ledger and
+  `bun run waiver:check` fails on expired or malformed rows; it runs inside `bun run verify`.
+- Spec 012 T004: fast result summary. `bun run verify` is now `node scripts/verify.mjs`,
+  which runs every fast gate fail-fast with output streamed, then prints one summary (per-gate
+  results with durations, test pass/fail/skip, quarantined count, overall verdict) and exits
+  with the failed gate's code. The summary carries counts only, never captured output.
+- Spec 012 T002: lint gate. Biome is the configured linter (D-162); `bun run lint` fails on
+  errors and runs first in `bun run verify` and in the Gitea workflow. Landing it fixed 40
+  errors across the app, tests and scripts, including a hook-after-early-return, a
+  hook-misnamed plain method, intentional trigger deps documented in place, and explicit guards
+  replacing non-null assertions; the remaining warnings stay visible advisory debt.
+- Spec 012 T001: requirement map. `tests/requirement-map.md` records the layer inventory
+  (owners, commands) and maps all 272 functional requirements in specs 002, 010–014 and 016 to
+  covering tests, manual checks or explicit gaps (148 covered, 14 manual, 110 gaps, with the gaps
+  clustering on the unbuilt plan flow, device lock, CI registration, lint and timing budgets).
+- Spec 012 T027: failure artifacts. `scripts/failure-artifacts.mjs` starts the Playwright trace
+  when the page is created, collects redacted console/page errors, and saves a screenshot, a
+  redacted console log and the trace only when a run fails; green runs discard everything. Wired
+  into the a11y, visual, browser-matrix and perf checks, the web smoke and the desktop smoke
+  (screenshot plus redacted renderer log on failure). A real-browser negative control confirmed
+  all three artifacts save with secrets redacted.
+- Spec 012 T028: quarantine ledger. `docs/QUARANTINE.md` records quarantined tests with owner,
+  reason and removal date (empty today); `bun run quarantine:check` fails on expired or malformed
+  rows and runs inside `bun run verify`. Skips reference the ledger ID; no test is fixed with a retry.
+- Spec 012 T017: visual baselines. `bun run visual` captures the seven product views at four
+  widths in light, dark, reduced-motion and reduced-transparency variants (112 committed PNGs),
+  failing past a hair of pixels with no retries; volatile timestamps and the random library
+  identity are masked. Re-accept with the explicit `--update-baseline`.
+- Spec 012 T016: accessibility gate. `bun run a11y` scans welcome, library, workspace, chat,
+  settings, Story Bible and conflict views at four widths in headless Chromium, failing on
+  critical/serious axe findings and asserting editor/composer tab order with no trap. Fixed en
+  route: unnamed icon-only New book button at phone width, mismatched archive button labels, and
+  the welcome landmark.
+- Spec 012 T018: performance gate. `bun run perf` times cold open, chapter reads and saves
+  on a synthetic 120-chapter / 250,000-word library, measures the web bundle and welcome render,
+  and fails only the SC-009 regressions (book open doubles, bundle grows past 20%) against the
+  committed baseline, rewritten only by `--update-baseline`.
+- Spec 012 T013: browser end-to-end interface journey. The web smoke now opens the book
+  through the library card, types with real keystrokes to a Saved status, proves a page reload
+  keeps the prose, forces a two-writer conflict through the UI save path with the copy named on
+  reopen, and exports through the UI button (18/18). Denied/cancelled folder handling stays
+  covered by the storage harness and permission unit tests; native picker clicks stay manual.
+- Spec 012 T019: maintained repository/artifact secret scan, source-map check and
+  manuscript-like text scan. `scripts/submission-check.ts` now exports `scanTrackedSecrets`,
+  `scanArtifactDir`/`scanArtifacts`, `enablesSourceMaps`/`sourceMapConfigProblems` and
+  `proseProblems`; every finding names the file and reason, never the matched value, and the
+  `submission:check` summary reports the artifact count. Covered by
+  `apps/desktop/tests/secret-scan.test.ts` with runtime-built fixtures plus clean-tree
+  assertions (full suite 1010 pass, typecheck clean).
+
 - Spec 029 T001–T003, T005: manuscript import decisions recorded with the author (whole-file
   default with line-boundary splits, Markdown literal, filename-derived editable title; 5 MiB
   strict-UTF-8 source with one BOM strip, NUL/control rejection, empty refusal). New pure parser

@@ -1,5 +1,7 @@
 const { app, BrowserWindow } = require("electron");
-const { writeFileSync } = require("node:fs");
+const { mkdirSync, writeFileSync } = require("node:fs");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { version } = require("../../package.json");
 
 const url = process.env.WEB_SMOKE_URL;
@@ -7,13 +9,15 @@ const resultPath = process.env.WEB_SMOKE_RESULT;
 const profile = process.env.WEB_SMOKE_PROFILE;
 const checks = [];
 const consoleErrors = [];
+let saveArtifacts = async () => {};
 
 function record(name, ok, detail) {
   checks.push({ name, ok, detail });
 }
 
-function finish() {
+async function finish() {
   const ok = checks.length > 0 && checks.every((check) => check.ok) && consoleErrors.length === 0;
+  if (!ok) await saveArtifacts();
   writeFileSync(
     resultPath,
     JSON.stringify({ ok, checks, consoleErrors }, null, 2)
@@ -31,9 +35,25 @@ app.whenReady().then(async () => {
   });
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const { createRunDir, redactLine } = await import(
+    pathToFileURL(path.join(__dirname, "..", "failure-artifacts.mjs")).href
+  );
+  const runDir = await createRunDir("web-smoke");
+  saveArtifacts = async () => {
+    try {
+      const png = path.join(runDir, "web-smoke-failure.png");
+      writeFileSync(png, (await window.webContents.capturePage()).toPNG());
+      const log = path.join(runDir, "web-smoke-console.log");
+      writeFileSync(log, `${consoleErrors.join("\n")}\n`);
+      console.error(`[web-smoke] artifacts: ${png} ${log}`);
+    } catch (error) {
+      console.error(`[web-smoke] artifact capture failed: ${error.message}`);
+    }
+  };
+
   window.webContents.on("console-message", (event) => {
     const level = event?.level ?? "info";
-    if (level === "error") consoleErrors.push(event.message ?? "unknown page error");
+    if (level === "error") consoleErrors.push(redactLine(event.message ?? "unknown page error"));
   });
 
   try {
@@ -201,6 +221,220 @@ app.whenReady().then(async () => {
       `${result.archiveEntries ?? "no"} entries · ${result.archiveName ?? "no file"}`
     );
 
+    /*
+     * The interface journey, through the real controls: open the created book, write with
+     * keystrokes in the manuscript editor, reload the page and prove the prose survived, then
+     * force a two-writer conflict through the UI save path and export through the UI button.
+     */
+    const ui = {
+      opened: false,
+      typed: false,
+      saved: false,
+      reloaded: false,
+      kept: false,
+      conflict: false,
+      conflictListed: false,
+      exported: false,
+      error: null
+    };
+    const inPage = (script) =>
+      window.webContents.executeJavaScript(`(() => { try { return Boolean(${script}); } catch { return false; } })()`);
+    const waitPage = async (script, what) => {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if (await inPage(script)) return true;
+        await sleep(250);
+      }
+      throw new Error(`the ${what} never appeared`);
+    };
+    try {
+      // The books above were created through the bridge, bypassing the page's list state.
+      // Reload so the library view fetches the committed books like a returning author would.
+      await window.loadURL(url);
+      await sleep(1200);
+      if (await inPage(`document.querySelector('[data-testid="web-welcome"]')`)) {
+        await window.webContents.executeJavaScript(
+          `document.querySelector('[data-testid="use-browser-storage"]')?.click()`
+        );
+      }
+      await waitPage(`document.querySelector('[data-testid="library-view"]')`, "library for the interface journey");
+      const openBook = await window.webContents.executeJavaScript(`(() => {
+        const cards = [...document.querySelectorAll('[data-testid="book-card"]')];
+        const card = cards.find((entry) => (entry.textContent ?? "").includes("Web Smoke Book"));
+        if (!card) return false;
+        card.click();
+        return true;
+      })()`);
+      if (!openBook) throw new Error("the created book has no card");
+      await waitPage(
+        `document.querySelector('[data-testid="workspace-view"]') && document.querySelector('[data-testid="chapter-item"]')`,
+        "workspace with its chapter"
+      );
+      ui.opened = true;
+
+      const openChapter = await window.webContents.executeJavaScript(`(() => {
+        const item = document.querySelector('[data-testid="chapter-item"]');
+        if (!item) return false;
+        item.click();
+        return true;
+      })()`);
+      if (!openChapter) throw new Error("the chapter has no row");
+      await waitPage(`document.querySelector('[data-testid="manuscript-text"]')`, "manuscript editor");
+      const readVersion = await window.webContents.executeJavaScript(`(async () => {
+        const opened = await window.studio.books.open(${JSON.stringify(result.book)});
+        const chapter = opened.ok ? opened.data.chapters.find((entry) => entry.id === ${JSON.stringify(result.chapter)}) : null;
+        return chapter ? chapter.version : null;
+      })()`);
+      if (readVersion === null) throw new Error("the chapter is unreadable before typing");
+      await window.webContents.executeJavaScript(
+        `document.querySelector('[data-testid="manuscript-text"]').focus()`
+      );
+      const sentence = "the keeper lit the lamp and the stairs went quiet.";
+      for (const char of sentence) window.webContents.sendInputEvent({ type: "char", keyCode: char });
+      ui.typed = true;
+      // The save status can already read Saved when nothing changed, so a bare wait for it
+      // proves nothing. Prove the keystrokes landed in the editor first.
+      await waitPage(
+        `document.querySelector('[data-testid="manuscript-text"]').value.includes("the keeper lit the lamp")`,
+        "typed prose in the editor"
+      );
+      await waitPage(
+        `(document.querySelector('[data-testid="save-status"]')?.textContent ?? "").startsWith("Saved")`,
+        "saved status after typing"
+      );
+      const written = await window.webContents.executeJavaScript(`(async () => {
+        const opened = await window.studio.books.open(${JSON.stringify(result.book)});
+        const chapter = opened.ok ? opened.data.chapters.find((entry) => entry.id === ${JSON.stringify(result.chapter)}) : null;
+        return chapter ? chapter.version : null;
+      })()`);
+      if (written === null || written <= readVersion) {
+        throw new Error(`the UI save did not commit a new version (was ${readVersion}, now ${written})`);
+      }
+      ui.saved = true;
+
+      await window.loadURL(url);
+      await sleep(1200);
+      const rewarm = await inPage(`document.querySelector('[data-testid="web-welcome"]')`);
+      if (rewarm) {
+        await window.webContents.executeJavaScript(
+          `document.querySelector('[data-testid="use-browser-storage"]')?.click()`
+        );
+      }
+      await waitPage(`document.querySelector('[data-testid="library-view"]')`, "library after reload");
+      const reopenBook = await window.webContents.executeJavaScript(`(() => {
+        const cards = [...document.querySelectorAll('[data-testid="book-card"]')];
+        const card = cards.find((entry) => (entry.textContent ?? "").includes("Web Smoke Book"));
+        if (!card) return false;
+        card.click();
+        return true;
+      })()`);
+      if (!reopenBook) throw new Error("the book is gone after reload");
+      await waitPage(`document.querySelector('[data-testid="manuscript-text"]')`, "manuscript editor after reload");
+      const kept = await window.webContents.executeJavaScript(
+        `document.querySelector('[data-testid="manuscript-text"]').value.includes(${JSON.stringify(sentence)})`
+      );
+      if (!kept) throw new Error("the typed prose did not survive the reload");
+      ui.reloaded = true;
+      ui.kept = true;
+
+      const before = await window.webContents.executeJavaScript(`(async () => {
+        const opened = await window.studio.books.open(${JSON.stringify(result.book)});
+        const chapter = opened.ok ? opened.data.chapters.find((entry) => entry.id === ${JSON.stringify(result.chapter)}) : null;
+        return chapter ? { version: chapter.version, hash: chapter.hash } : null;
+      })()`);
+      if (!before) throw new Error("the chapter is unreadable before the conflict");
+      const other = await window.webContents.executeJavaScript(`(async () => {
+        const saved = await window.studio.chapters.save({
+          bookId: ${JSON.stringify(result.book)},
+          chapterId: ${JSON.stringify(result.chapter)},
+          content: "Browser smoke prose.\\nOther writer line.\\n",
+          baseVersion: ${JSON.stringify(before.version)},
+          baseHash: ${JSON.stringify(before.hash)}
+        });
+        return saved.ok ? saved.data.status : null;
+      })()`);
+      if (other !== "saved") throw new Error("the other writer could not save");
+      await window.webContents.executeJavaScript(
+        `document.querySelector('[data-testid="manuscript-text"]').focus()`
+      );
+      const second = "the gulls went quiet too.";
+      for (const char of second) window.webContents.sendInputEvent({ type: "char", keyCode: char });
+      await window.webContents.executeJavaScript(
+        `document.querySelector('[data-testid="manuscript-text"]').blur()`
+      );
+      await waitPage(
+        `(document.querySelector('[data-testid="save-status"]')?.textContent ?? "") === "Not saved"`,
+        "conflict status after the stale save"
+      );
+      ui.conflict = true;
+      await window.loadURL(url);
+      await sleep(1200);
+      if (await inPage(`document.querySelector('[data-testid="web-welcome"]')`)) {
+        await window.webContents.executeJavaScript(
+          `document.querySelector('[data-testid="use-browser-storage"]')?.click()`
+        );
+      }
+      await waitPage(`document.querySelector('[data-testid="library-view"]')`, "library after the conflict");
+      const reopenConflicted = await window.webContents.executeJavaScript(`(() => {
+        const cards = [...document.querySelectorAll('[data-testid="book-card"]')];
+        const card = cards.find((entry) => (entry.textContent ?? "").includes("Web Smoke Book"));
+        if (!card) return false;
+        card.click();
+        return true;
+      })()`);
+      if (!reopenConflicted) throw new Error("the book is gone after the conflict");
+      const listed = await waitPage(
+        `/saved cop(y|ies) from earlier sync conflicts/.test(document.body.innerText ?? "")`,
+        "named conflict copy"
+      );
+      if (!listed) throw new Error("the conflict copy is not named in the workspace");
+      ui.conflictListed = true;
+
+      await window.loadURL(url);
+      await sleep(1200);
+      if (await inPage(`document.querySelector('[data-testid="web-welcome"]')`)) {
+        await window.webContents.executeJavaScript(
+          `document.querySelector('[data-testid="use-browser-storage"]')?.click()`
+        );
+      }
+      await waitPage(`document.querySelector('[data-testid="library-view"]')`, "library before export");
+      await window.webContents.executeJavaScript(`(() => {
+        window.__smokeChunks = [];
+        Object.defineProperty(window, "showSaveFilePicker", {
+          configurable: true,
+          value: async () => ({
+            name: "smoke-ui-archive.zip",
+            async createWritable() {
+              return {
+                async write(chunk) {
+                  window.__smokeChunks.push(chunk);
+                },
+                async close() {},
+                async abort() {}
+              };
+            }
+          })
+        });
+        document.querySelector('[data-testid="export-archive"]')?.click();
+      })()`);
+      await waitPage(`(window.__smokeChunks ?? []).length > 0`, "archive bytes from the export button");
+      ui.exported = true;
+    } catch (error) {
+      ui.error = error.message;
+    }
+    record("the book opens through the library card", ui.opened, ui.error ?? "workspace and chapter rendered");
+    record("keystrokes in the editor save through the UI", ui.saved, ui.error ?? "save status reads Saved");
+    record("a reload keeps the typed prose", ui.kept, ui.error ?? "prose present after reload");
+    record(
+      "a stale UI save surfaces the conflict instead of overwriting",
+      ui.conflict && ui.conflictListed,
+      ui.error ?? "Not saved, and the copy is named"
+    );
+    record(
+      "the export button produces a portable archive",
+      ui.exported,
+      ui.error ?? "archive bytes flowed from the button"
+    );
+
     try {
       const debug = window.webContents.debugger;
       debug.attach("1.3");
@@ -234,6 +468,6 @@ app.whenReady().then(async () => {
   } catch (error) {
     record("the web shell loaded", false, error.message);
   } finally {
-    finish();
+    await finish();
   }
 });

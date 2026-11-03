@@ -28,6 +28,8 @@ const appRequire = createRequire(join(appDir, "package.json"));
 const electronPath = appRequire("electron");
 
 function packagedBinary() {
+  // T014: point the packaged run at any build (a wrapper script may pass its own app path).
+  if (process.env.SMOKE_APP && existsSync(process.env.SMOKE_APP)) return process.env.SMOKE_APP;
   const release = join(root, "release");
   if (!existsSync(release)) return null;
   for (const entry of readdirSync(release)) {
@@ -200,6 +202,21 @@ env.STUDIO_SMOKE = "1";
 env.STUDIO_USER_DATA = profile;
 env.STUDIO_EXPORT_PATH = join(temp, "exports");
 
+/*
+ * A synthetic manuscript for the import journey. The hidden run answers the native
+ * picker with this file through STUDIO_IMPORT_PATH, then drives the real preview,
+ * split, confirm and result UI. Nothing here resembles an author's manuscript.
+ */
+const manuscript = `The lighthouse keeper counted the gulls.
+
+By evening the count was wrong again.
+
+The light was the only thing that still agreed with him.
+Dawn came grey and gull-less.
+`;
+await writeFile(join(temp, "manuscript.txt"), manuscript);
+env.STUDIO_IMPORT_PATH = join(temp, "manuscript.txt");
+
 console.log(`[smoke] ${packaged ? "packaged" : "hidden"} run · profile ${profile}`);
 // stdout is piped so the runner can see the machine-readable result even when Electron's
 // shutdown path stalls; every line is still echoed unchanged.
@@ -214,30 +231,34 @@ let buffered = "";
 child.stdout.on("data", (chunk) => {
   process.stdout.write(chunk);
   buffered += chunk.toString("utf8");
-  let newline;
-  while ((newline = buffered.indexOf("\n")) !== -1) {
+  let newline = buffered.indexOf("\n");
+  while (newline !== -1) {
     const line = buffered.slice(0, newline);
     buffered = buffered.slice(newline + 1);
-    if (!line.startsWith("[smoke] result ")) continue;
-    try {
-      reported = JSON.parse(line.slice("[smoke] result ".length));
-    } catch {
-      reported = null;
-    }
-    if (reported && !grace) {
-      grace = setTimeout(() => {
-        console.error("[smoke] The app reported a result but did not exit; stopping it.");
-        child.kill("SIGKILL");
-      }, 3_000);
+    newline = buffered.indexOf("\n");
+    if (line.startsWith("[smoke] result ")) {
+      try {
+        reported = JSON.parse(line.slice("[smoke] result ".length));
+      } catch {
+        reported = null;
+      }
+      if (reported && !grace) {
+        grace = setTimeout(() => {
+          console.error("[smoke] The app reported a result but did not exit; stopping it.");
+          child.kill("SIGKILL");
+        }, 3_000);
+      }
     }
   }
 });
 
+// The stress checks (a 3M-word chapter) can need past a minute on a slow machine,
+// so the hang guard budgets three. It still kills a genuinely wedged run.
 const timer = setTimeout(() => {
   if (reported) console.error("[smoke] The app reported a result but did not exit; stopping it.");
-  else console.error("[smoke] Timed out after 60s; stopping the run.");
+  else console.error("[smoke] Timed out after 180s; stopping the run.");
   child.kill("SIGKILL");
-}, 60_000);
+}, 180_000);
 
 child.on("exit", async (code, signal) => {
   clearTimeout(timer);

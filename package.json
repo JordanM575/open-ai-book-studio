@@ -20,6 +20,7 @@
     "dev": "bun --filter @ai-book-studio/desktop dev",
     "build": "bun --filter @ai-book-studio/desktop build",
     "build:info": "node scripts/build-info.mjs",
+    "lint": "biome lint .",
     "typecheck": "bun --filter @ai-book-studio/desktop typecheck && bun --filter @ai-book-studio/web typecheck && bun --filter @ai-book-studio/toolkit typecheck",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -33,7 +34,7 @@
     "dist": "bun --filter @ai-book-studio/desktop dist",
     "keys:check": "bun scripts/check-keys.mjs",
     "tokens": "bun scripts/build-tokens.mjs",
-    "verify": "bun run build:info && bun run typecheck && bun test && bun run build && bun run build:web",
+    "verify": "node scripts/verify.mjs",
     "postinstall": "node scripts/check-electron.mjs",
     "dev:web": "bun --filter @ai-book-studio/web dev",
     "toolkit": "bun --filter @ai-book-studio/toolkit start",
@@ -49,6 +50,12 @@
     "video:motion": "node video/motion/render.mjs",
     "video:motion:preview": "node video/motion/render.mjs --preview --ambient",
     "submission:check": "bun scripts/submission-check.ts",
+    "quarantine:check": "bun scripts/quarantine-check.ts",
+    "waiver:check": "bun scripts/waiver-check.ts",
+    "release": "bun scripts/release.ts",
+    "perf": "bun scripts/perf-check.ts",
+    "a11y": "node scripts/accessibility-check.mjs",
+    "visual": "node scripts/visual-check.mjs",
     "build:web": "bun --filter @ai-book-studio/web build",
     "smoke:web": "bun run build:web && node scripts/web-smoke.mjs",
     "gallery:build": "bun --filter @ai-book-studio/web build:gallery",
@@ -58,8 +65,14 @@
     "ios:iphone": "apps/mobile/scripts/run-sim.sh iphone"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@biomejs/biome": "^2.6.4",
     "@types/node": "^26.6.5",
+    "@types/pngjs": "^6.0.5",
+    "axe-core": "^4.14.0",
+    "pixelmatch": "^8.0.0",
     "playwright": "^1.64.1",
+    "pngjs": "^7.0.0",
     "typescript": "^7.0.2"
   }
 }

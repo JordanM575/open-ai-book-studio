@@ -90,10 +90,11 @@ let bridgeUrl = null;
 let buffered = "";
 child.stdout.on("data", (chunk) => {
   buffered += chunk.toString("utf8");
-  let newline;
-  while ((newline = buffered.indexOf("\n")) !== -1) {
+  let newline = buffered.indexOf("\n");
+  while (newline !== -1) {
     const line = buffered.slice(0, newline);
     buffered = buffered.slice(newline + 1);
+    newline = buffered.indexOf("\n");
     if (line.startsWith("[bridge] result ")) {
       try {
         bridgeUrl = JSON.parse(line.slice("[bridge] result ".length)).url;

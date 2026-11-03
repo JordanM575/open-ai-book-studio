@@ -1,0 +1,350 @@
+# Requirement map
+
+As of 2026-11-03 the suite is 1,042 Bun tests across 118 files, plus the Playwright,
+packaging and gate runners below. This ledger maps every functional requirement in
+specs 002, 010–014 and 016 to the test, runner, committed document or manual check
+that covers it, or to an explicit gap. Counts move; the method and the gaps stand.
+
+How to read a row: **COVER** names committed paths, relative to the repo root, that
+exercise the requirement (tests, executable checks, or the document that *is* the
+deliverable for a documentation requirement). **MANUAL** names a check only a person
+can perform and why. **GAP** names what covers nothing yet and why.
+
+## Inventory
+
+| Layer | Owner | Command | What it holds |
+| --- | --- | --- | --- |
+| Core unit | `packages/core` | `bun test` (root) | Schema, format, line model, counters, conflict policy, providers, tools, sync, archive |
+| Desktop unit | `apps/desktop/tests` | `bun test` (root) | Library adapters, vault, agent runtime, component tests in happy-dom |
+| Web unit | `apps/web/tests` | `bun test` (root) | Browser storage ports, credentials, CSP, folder recovery |
+| Shared UI | `packages/app/tests`, `packages/ui` | `bun test` (root) | Chat view, manuscript dialogs, voice text |
+| Toolkit | `apps/toolkit/tests` | `bun test` (root) | CLI and MCP surface over the backend |
+| Coverage ratchet | `scripts/coverage-check.mjs` | `bun run coverage` | Fails below 85% functions / 92% lines |
+| Browser E2E | `scripts/web-smoke/main.cjs`, `scripts/e2e.mjs` | `bun run smoke:web`, `bun run e2e` | Real Chromium journey: create, write, reload, conflict, archive |
+| Browser matrix | `apps/web/check/main.ts` | `node scripts/browser-matrix.mjs` | Chromium gate; Firefox/WebKit findings |
+| Desktop smoke | `apps/desktop/src/main/smoke.ts` | `bun run smoke` | 30 hidden checks through the real renderer |
+| Accessibility | `scripts/accessibility-check.mjs` | `bun run a11y` | 28 axe scans plus focus order |
+| Visual | `scripts/visual-check.mjs` | `bun run visual` | 112 baselines; explicit `--update-baseline` |
+| Performance | `scripts/perf-check.ts` | `bun run perf` | SC-009 regression thresholds only |
+| Security | `scripts/submission-check.ts` | `bun run submission:check` | Secrets, source maps, CSP, fuses, prose |
+| Failure artifacts | `scripts/failure-artifacts.mjs` | wired into every runner | Trace, screenshot, redacted log on failure |
+| Quarantine | `docs/QUARANTINE.md` | `bun run quarantine:check` | Ledger empty; expiry fails the run |
+| CI | `.gitea/workflows/verify.yml` | unregistered runner | Committed but unenforced; local `verify` is truth |
+| Live providers | `scripts/check-keys.mjs`, `bun scripts/live-check.mjs` | `bun run keys:check` | Status without secrets; opt-in live calls |
+
+## 002 — Studio v1 (78 requirements: 45 covered, 33 gaps)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | Books are folders of readable files, no database | COVER: `packages/core/tests/library-service.test.ts`, `packages/core/tests/markdown-properties.test.ts`, `apps/desktop/tests/film-fixture.test.ts` |
+| FR-002 | Choose, remember and change library folder safely | COVER: `apps/web/tests/storage/browser-libraries.test.ts`, `apps/web/tests/storage/opfs-open.test.ts`, `apps/web/tests/storage/fsa.test.ts` |
+| FR-003 | Book list shows stats; opens without loading all | PARTIAL: summary wordCount/stage/description/chapterCount plus catalog consistency proven in `packages/core/tests/library-service.test.ts`; the grid still reads all chapter files per the documented catalog-never-truth design — lazy open stays open (D-182) |
+| FR-004 | Atomic writes; interrupted write never truncates | COVER: `apps/desktop/tests/atomic-write.test.ts`, `apps/web/tests/storage/save-failures.test.ts`, `packages/core/tests/library-port.test.ts` |
+| FR-005 | Never overwrite; keep conflict copy, disk intact | COVER: `packages/core/tests/library-service.test.ts`, `packages/core/tests/save-decision-properties.test.ts`, `apps/desktop/src/main/smoke.ts` |
+| FR-006 | Deleted chapters and books go to trash; ask first | COVER: `packages/core/tests/library-service.test.ts`, `apps/desktop/tests/chapter-rail.test.tsx`, `apps/desktop/src/main/smoke.ts` |
+| FR-007 | Tolerate bad files; rest of book opens | COVER: `packages/core/tests/damaged-file-isolation.test.ts`, `apps/desktop/tests/chapter-read-issues.test.tsx`, `packages/core/tests/sync-scan.test.ts` |
+| FR-008 | Reject newer-schema books with explanation | COVER: `packages/core/tests/library-service.test.ts`, `apps/desktop/tests/film-fixture.test.ts`, `packages/core/tests/sync.test.ts` |
+| FR-009 | Rebuildable index regenerable from files | COVER: `packages/core/tests/library-service.test.ts`, `apps/desktop/tests/search.test.ts`, `apps/desktop/tests/usage.test.ts` |
+| FR-010 | Create, rename, reorder, split, merge, delete, mark chapters | COVER: `apps/desktop/tests/chapter-rail.test.tsx`, `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/src/main/smoke.ts` |
+| FR-011 | Paragraphs are lines; real line numbers; no 66-wrap | GAP: agent line numbers tested but editor shows no line numbers and no-wrap is unasserted |
+| FR-012 | Save state always visible | COVER: `apps/desktop/tests/manuscript-editor.test.ts`, `scripts/web-smoke/main.cjs`, `packages/app/tests/small-pieces.test.ts` |
+| FR-013 | Typing survives crash and quit via draft buffer | COVER: `apps/web/tests/storage/drafts.test.ts`, `apps/desktop/tests/manuscript-editor.test.ts`, `apps/desktop/src/main/smoke.ts` |
+| FR-014 | Undo and redo typing; undo agent turn singly | COVER: `apps/desktop/tests/editor-history.test.ts`, `apps/desktop/tests/checkpoints.test.ts`, `apps/desktop/src/main/smoke.ts` |
+| FR-015 | Verse and deliberate line breaks preserved exactly | COVER: `packages/core/tests/library-service.test.ts` round-trips verse (line breaks, stanza gap, hard break) byte-identical through save/read; `packages/core/tests/words.test.ts` counts across the breaks; `apps/desktop/tests/export.test.ts` asserts the exported stanza lines stay in order |
+| FR-016 | One shared word, character and paragraph counter | COVER: one `countWords` in `packages/core/src/words.ts` (dependency-free), re-exported by `packages/core/src/markdown.ts` and `packages/app/src/lib/utils.ts`; `packages/core/tests/words.test.ts` pins the single implementation plus behavior cases, and `apps/desktop/tests/manuscript-editor.test.ts` asserts the live header count equals the core count on `one — two ...` |
+| FR-017 | Story Bible in one place, reachable anytime | COVER: `apps/desktop/src/main/smoke.ts`, `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/library.test.ts` |
+| FR-018 | Bible fields editable while drafting, same guarantees | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/library.test.ts`, `apps/desktop/tests/atomic-write.test.ts` |
+| FR-019 | Add, edit, remove characters and memories with confirmation | COVER: `apps/desktop/tests/story-bible-dialog.test.tsx` drives the real dialog — staged character/memory edits save together, Cancel discards a staged removal without writing, blank title disables save, failed save keeps the dialog open and reports |
+| FR-020 | Agent reads same bible; instructions snapshot-checked | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/__snapshots__/agent-tools.test.ts.snap` |
+| FR-021 | Agent edits only through registered tools | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/tool-set.test.ts`, `apps/desktop/tests/backend-integration.test.ts` |
+| FR-022 | Tools enforce stated limits; prompt states exactly those | COVER: `apps/desktop/tests/agent-limits-contract.test.ts` asserts every stated limit phrase resolves to an enforced input maximum or a proven execute cap, proves the two 200-match result caps truncate behaviorally with counts intact, and asserts the system prompt policy sections state no numeric limits |
+| FR-023 | Full chapter and bible read and write repertoire | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/tool-set.test.ts`, `apps/desktop/tests/tool-bridge.test.ts` |
+| FR-023a | Prose treated as data; prompt delimiters enforced | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/__snapshots__/agent-tools.test.ts.snap` |
+| FR-024 | Destructive actions need in-turn approval | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/agent-threads.test.ts`, `packages/app/tests/chat-view.test.ts` |
+| FR-024a | Approval stored, reopened, expired on stop and stale run | COVER: `apps/desktop/tests/agent-runtime.test.ts` (previous run never resumes: stale approve throws no-longer-waiting, zombie persisted expired with resolvedAt, new turn runs fresh; live-turn guard in `expireStaleApprovals`) |
+| FR-025 | Stop a turn; partial work coherent and undoable | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/chat-composer.test.tsx`, `packages/app/tests/chat-view.test.ts` |
+| FR-026 | Author edits preserved during agent turns | COVER: `apps/desktop/tests/agent-runtime.test.ts` (typing saved against a live pending turn, approved overwrite applied, one undo restores the typed text) |
+| FR-027 | Every turn checkpointed, restorable after reload | COVER: `apps/desktop/tests/checkpoints.test.ts`, `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/agent-threads.test.ts` |
+| FR-028 | Friendly tool summaries; raw detail behind disclosure | COVER: `packages/app/tests/chat-view.test.ts`, `apps/desktop/src/main/smoke.ts` |
+| FR-029 | Report actual usage and cost; unknown shown unknown | COVER: `packages/core/tests/usage.test.ts`, `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/context.test.ts` |
+| FR-030 | Shorten history for model, keep stored text | COVER: `apps/desktop/tests/agent-history.test.ts` |
+| FR-031 | Refuse models without tool support, name working ones | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/selection.test.ts` |
+| FR-032 | Base prompt under 4,000 tokens, budget-tested | COVER: `apps/desktop/tests/agent-tools.test.ts` |
+| FR-033 | Agent answers in author terms, briefly | COVER: `apps/desktop/tests/agent-tools.test.ts` pins the shipped reply contract (two-or-three sentences, no tool names/ids/JSON/process, chapters by number and title); model wording itself is untestable with a mock, and no runtime truncation exists by design |
+| FR-034 | Rewrite constraints checked; saved count reported | COVER: `apps/desktop/tests/agent-tools.test.ts` (replace/overwrite accept optional maxWords, checked after save with the saved count; a miss is reported, never reverted; unchecked message unchanged; new bound satisfies `agent-limits-contract.test.ts`) |
+| FR-035 | Import Word docs with split preview and confirm | GAP: importer refuses docx by design; only txt and markdown import tested |
+| FR-036 | Paste normalizes whitespace and quotes, spares verse | COVER: `normalizePasteText` (`packages/core/src/paste.ts`, `./paste` export) unifies endings/nbsp/curly quotes and caps blank lines while verse, hard breaks, tabs and dashes pass through (`packages/core/tests/paste.test.ts`); the manuscript editor pastes through it at the caret (`apps/desktop/tests/manuscript-editor.test.ts`); import line-endings covered by `manuscript-import.test.ts` |
+| FR-037 | Migrate legacy export one-way with mapped and skipped report | COVER: `apps/desktop/tests/legacy-import.test.ts` |
+| FR-038 | Migration idempotent; second run changes nothing | COVER: product now matches by content fingerprint (D-180): `apps/desktop/tests/legacy-import.test.ts` proves a double-run creates zero books/chapters and names the recognised book, an added-book run imports only the new one, and a corrupt record warns and re-imports |
+| FR-039 | Migration carries fields, settings, images, matter | PARTIAL: outline/storyArc/frontMatter/scene notes asserted; picture versions import byte-identical via `ImageStore` (source imported, prompt/model/cost, cover kind) with per-book counts, and missing/unreadable/mismatch warn (`apps/desktop/tests/legacy-import.test.ts`). Open: version-current marking, anchor rebinding, cover include-in-export, kept pageless state, image style (D-181); `idea` still dropped |
+| FR-040 | Read aloud with follow, controls, offline system voices | PARTIAL: pause/resume held in `useSpeech` for the device voice and the service reply alike, with a Pause/Resume reading button while anything is said (`packages/app/src/hooks/use-speech.ts`, `packages/app/src/components/AmbientPanel.tsx`; `apps/desktop/tests/ambient-panel.test.ts` holds, goes on, restarts unpaused and ends each path). Open: follow-highlight, speed control, a choice of system voices |
+| FR-041 | Premium voice key protected; prose-sent stated | COVER: `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/voice-service.test.ts`, `apps/desktop/tests/settings-status.test.tsx` |
+| FR-042 | Dictate at cursor, keep selection, on-device default | COVER: `apps/desktop/tests/dictation-hook.test.ts`, `packages/app/tests/voice-text.test.ts`, `apps/desktop/tests/voice-service.test.ts` |
+| FR-043 | Voice failure keeps place, explains, offers fallback | COVER: `useSpeech` falls back to the device voice on service refusal, throw, playback error and play rejection, records `fellBack`, and the panel explains with a fallback note (`apps/desktop/tests/ambient-panel.test.ts`: refused service still reads the chapter aloud on the device and shows the note) |
+| FR-044 | One style per book; cover, frontispiece, chapter art | GAP: style sentence and frontispiece unimplemented; only per-chapter attach tested |
+| FR-045 | Batch shows count, model, cost; cancellable | GAP: no batch estimate or cancel; only flat per-image cost recorded |
+| FR-046 | Preview, regenerate, replace, remove images; safe remove | COVER: `apps/desktop/tests/manuscript-editor.test.ts`, `packages/core/tests/images.test.ts`, `apps/desktop/tests/image-service.test.ts` |
+| FR-047 | Images as files with chapter and purpose names, no base64 | GAP: file placement tested but names are opaque img_<id>.<ext>, not chapter/purpose names |
+| FR-048 | Policy refusal plain; chapter kept; model or rewrite offered | GAP: refusal normalization tested but no another-model or rewritten-prompt offer |
+| FR-049 | Per-book image budget; never lose paid image | GAP: no image budget or paid-image protection in src or tests |
+| FR-050 | Export all images as JPEGs in one action | GAP: no export-images action in src or tests |
+| FR-051 | Export DOCX, PDF, EPUB, Markdown with destination | GAP: DOCX and Markdown built and tested (`apps/desktop/tests/export.test.ts` reading order and publication boundary; smoke exports both and names the saved file); PDF/EPUB absent from src |
+| FR-052 | Export honors manuscript settings; files unchanged | COVER: `apps/desktop/tests/export.test.ts` builds the same chapters under default and custom manuscript settings and asserts each document carries only its own font, body size, line spacing and first-line indent runs with identical prose |
+| FR-053 | Front and back matter editable, ordered, exported, templated | GAP: frontMatter unused in export/UI and no disclaimer templates exist |
+| FR-054 | Image pages ordered, own page; separate folder | GAP: image embedded but own-page placement and separate folder unasserted |
+| FR-055 | Failed export keeps previous, cleans partial output | COVER: `apps/desktop/tests/export.test.ts` — injected write failure keeps the prior file; real-writer failures into an unwritable folder throw with no partial or staging droppings, and a prior export stays byte-identical |
+| FR-056 | Whole-library archive export and import for backup | COVER: `packages/core/tests/archive.test.ts`, `apps/desktop/tests/archive-io.test.ts`, `scripts/web-smoke/main.cjs` |
+| FR-057 | Device identity recorded with each version | COVER: `packages/core/tests/sync.test.ts`, `packages/core/tests/library-port.test.ts`, `apps/desktop/tests/library.test.ts` |
+| FR-058 | Provider conflicts presented with both texts | COVER: `packages/core/tests/sync-scan.test.ts`, `apps/desktop/tests/sync/two-system.test.ts`, `apps/desktop/tests/chapter-reorder-conflict.test.tsx` |
+| FR-059 | Conflict resolution explicit; loser retained | COVER: `apps/desktop/tests/chapter-reorder-conflict.test.tsx`, `packages/core/tests/library-service.test.ts` |
+| FR-060 | Writing, planning, import, export work offline, no account | GAP: no test runs the studio offline or asserts zero-account flows |
+| FR-061 | No telemetry; prose leaves only on explicit action | COVER: `apps/desktop/tests/csp.test.ts`, `apps/web/tests/csp.test.ts`, `apps/desktop/tests/secret-scan.test.ts` |
+| FR-062 | Keys in protected storage, never in library or logs | COVER: `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/secret-scan.test.ts`, `packages/core/tests/archive.test.ts` |
+| FR-063 | Privacy claims covered by behavior-change tests | COVER: `packages/core/tests/storage.test.ts`, `apps/web/tests/storage/credentials.test.ts`, `apps/web/tests/csp.test.ts` |
+| FR-064 | Settings covers all areas; every item works | GAP: only connection and voice status lines tested, not every item |
+| FR-065 | Reveal any book folder in file manager | COVER: `apps/desktop/tests/ipc-reveal.test.ts` drives the real `library:reveal` and `conflicts:reveal` handlers against a real library with a recorded shell (right folder opened; `../` escape refused without touching the shell) |
+| FR-066 | Crash recovery on launch with report | GAP: no crash-relaunch recovery test exists |
+| FR-067 | Errors leave UI usable; no permanent busy | COVER: `apps/desktop/tests/manuscript-editor.test.ts`, `apps/desktop/src/main/smoke.ts`, `packages/app/tests/chat-view.test.ts` |
+| FR-068 | Recoverable error screen with reload | COVER: `ErrorBoundary` wraps the shared `App` (desktop and web), so a throwing view becomes a plain screen with Reload studio (`packages/app/src/components/ErrorBoundary.tsx`, `apps/desktop/tests/error-boundary.test.tsx`); errors in handlers still report through inline notes |
+| FR-069 | Refuse second writer on same library | GAP: single-instance lock untested; locks.test.ts covers web tabs only |
+| FR-070 | Keyboard usable, visible focus, OS preferences honored | COVER: `scripts/accessibility-check.mjs`, `scripts/visual-check.mjs`, `scripts/ui-audit.mjs` |
+| FR-071 | Format, save, conflicts shared across builds | COVER: `packages/core/tests/library-port.test.ts`, `apps/web/tests/storage/directory-port-contract.test.ts`, `apps/web/tests/storage/browser-libraries.test.ts` |
+| FR-072 | Browser folder access, atomic, remembered | COVER: `apps/web/tests/storage/directory-port-contract.test.ts`, `apps/web/tests/storage/folder-mode.test.ts`, `apps/web/tests/storage/permission-recovery.test.ts` |
+| FR-073 | Origin storage with layout, warning, archive offer | COVER: `apps/web/tests/storage/browser-libraries.test.ts`, `apps/web/tests/storage/opfs-open.test.ts`, `apps/web/tests/storage/archive-export.test.ts` |
+| FR-074 | Web discloses weaker guarantees in UI | COVER: `packages/core/tests/storage.test.ts`, `apps/web/tests/storage/credentials.test.ts`, `apps/web/tests/storage/opfs-open.test.ts` |
+| FR-075 | Web calls provider directly; no proxy sees key or prose | COVER: `apps/web/tests/storage/openrouter.test.ts`, `apps/web/tests/csp.test.ts`, `packages/core/tests/providers-contract.test.ts` |
+| FR-076 | Portable archive moves libraries across builds intact | COVER: `packages/core/tests/archive.test.ts`, `apps/desktop/tests/archive-io.test.ts`, `apps/web/tests/storage/browser-libraries.test.ts` |
+
+## 010 — Web target (19 requirements: 18 covered, 1 gap)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | Same format, save protocol, conflicts, trash as desktop | COVER: `packages/core/tests/library-service.test.ts`, `packages/core/tests/save-decision-properties.test.ts`, `apps/web/tests/storage/directory-port-contract.test.ts` |
+| FR-002 | Choose and reopen folder via feature detection | COVER: `apps/web/tests/storage/fsa.test.ts`, `apps/web/tests/storage/folder-mode.test.ts`, `apps/web/tests/storage/capabilities.test.ts` |
+| FR-003 | Site storage library labeled as browser-bound | COVER: `apps/web/tests/storage/opfs-open.test.ts`, `apps/web/tests/storage/browser-libraries.test.ts`, `apps/web/tests/storage/opfs.test.ts` |
+| FR-004 | No silent switches between storage tiers | COVER: `apps/web/tests/storage/permission-recovery.test.ts`, `apps/web/tests/storage/fsa.test.ts`, `apps/web/check/main.ts` |
+| FR-005 | Browser layout mirrors desktop; catalog derived, disposable | COVER: `packages/core/tests/library-service.test.ts`, `apps/web/tests/storage/opfs-open.test.ts`, `apps/web/tests/storage/browser-libraries.test.ts` |
+| FR-006 | Request persistence, report grant honestly | COVER: `apps/web/tests/storage/opfs-open.test.ts`, `apps/web/tests/storage/capabilities.test.ts` |
+| FR-007 | Save status pending/saved/conflict/failure; failures preserve file | COVER: `apps/web/tests/storage/save-failures.test.ts`, `apps/web/tests/storage/drafts.test.ts`, `scripts/web-smoke/main.cjs` |
+| FR-008 | Version/hash check; conflicts preserved, never overwritten | COVER: `apps/web/tests/storage/save-failures.test.ts`, `apps/web/tests/storage/directory-port-contract.test.ts`, `scripts/web-smoke/main.cjs` |
+| FR-009 | Best-effort page-hide flush, honest unconfirmed state | COVER: `apps/web/tests/storage/drafts.test.ts` |
+| FR-010 | Cross-tab lock or warning; checks still mandatory | COVER: `apps/web/tests/storage/locks.test.ts`, `apps/web/check/main.ts`, `apps/web/tests/storage/directory-port-contract.test.ts` |
+| FR-011 | Export/import archive preserves identities, separate destination | COVER: `packages/core/tests/archive.test.ts`, `apps/web/tests/storage/archive-io.test.ts`, `apps/desktop/tests/archive-io.test.ts` |
+| FR-012 | Import validates manifest, paths, versions, limits, hashes | COVER: `packages/core/tests/archive.test.ts`, `apps/web/tests/storage/archive-io.test.ts`, `apps/web/tests/storage/browser-libraries.test.ts` |
+| FR-013 | Credentials in origin storage, disclosed, forgettable, never exported | COVER: `apps/web/tests/storage/credentials.test.ts`, `packages/core/tests/archive.test.ts`, `packages/core/tests/providers.test.ts` |
+| FR-014 | Direct provider calls only when registry allows; no proxy | COVER: `apps/web/tests/csp.test.ts`, `packages/core/tests/providers.test.ts`, `apps/web/tests/storage/openrouter.test.ts` |
+| FR-015 | Shared registry gates models; desktop-only stated unavailable | COVER: `packages/core/tests/providers.test.ts`, `apps/web/tests/csp.test.ts` |
+| FR-016 | Disclose no keychain, eviction risk, no forced-kill guarantee | COVER: `apps/web/tests/storage/credentials.test.ts`, `apps/web/tests/storage/opfs-open.test.ts`, `apps/web/tests/storage/drafts.test.ts` |
+| FR-017 | Usable responsive layout, no horizontal overflow | COVER: `scripts/ui-audit.mjs`, `scripts/e2e.mjs` |
+| FR-018 | Static assets only; no account, telemetry, background upload | GAP: no test tracks outbound requests or asserts static-only/no-telemetry; nearest is `apps/web/tests/csp.test.ts` connect-src allowlist (policy, not behavior) |
+| FR-019 | Failures stay usable with specific recovery actions | COVER: `apps/web/tests/storage/opfs.test.ts`, `apps/web/tests/storage/permission-recovery.test.ts`, `apps/web/tests/storage/fsa.test.ts` |
+
+## 011 — Model access (58 requirements: 29 covered, 29 gaps)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | One registry: methods, catalogue source, build support | COVER: `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/providers.test.ts` |
+| FR-002 | Per-model id, context, tools, images, streaming, sources | GAP: ModelInfo has no streaming field or per-fact source; only context/tools/images/price tested |
+| FR-003 | Never guess unknowns; treat conservatively | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/selection.test.ts` |
+| FR-004 | Disable impossible actions with one-sentence reason | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/providers-contract.test.ts`, `apps/desktop/tests/manuscript-editor.test.ts` |
+| FR-005 | Agent requires tool support, explains when lacking | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/selection.test.ts` |
+| FR-006 | Cached timestamped catalogue, on-demand refresh, offline use | COVER: `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/providers.test.ts`, `apps/desktop/tests/providers-service.test.ts` |
+| FR-007 | Manual model id with minimal-request validation | GAP: no manual-id code path or test found anywhere |
+| FR-008 | OpenRouter one-click OAuth PKCE S256, state, no secret | COVER: `packages/core/tests/providers.test.ts`, `apps/desktop/tests/providers-service.test.ts`, `apps/desktop/tests/oauth-signin.test.ts` |
+| FR-009 | Desktop loopback 127.0.0.1 free port, closes after | COVER: `apps/desktop/tests/oauth-signin.test.ts`, `apps/desktop/tests/providers-service.test.ts` |
+| FR-010 | Web callback to own origin, short-lived verifier | COVER: `apps/web/tests/storage/openrouter.test.ts` |
+| FR-011 | Reject bad state, exchange once, explain expiry | COVER: `packages/core/tests/openrouter-callback.test.ts`, `apps/desktop/tests/oauth-signin.test.ts`, `packages/core/tests/providers.test.ts` |
+| FR-012 | Issued key labelled, protected, never displayed | COVER: `apps/desktop/tests/providers-service.test.ts`, `apps/desktop/tests/credentials.test.ts` |
+| FR-013 | Removal deletes key, links OpenRouter revocation | GAP: deletion tested; revocation-link copy in SettingsDialog untested |
+| FR-014 | ChatGPT sign-in desktop-only, absent in web | GAP: no flow implemented; registry holds only a note |
+| FR-015 | Install host id, PKCE, nonce, verified identity | GAP: no ChatGPT implementation or test exists |
+| FR-016 | Identity/offline/plan scopes only, no conversations | GAP: no scope model or request implemented |
+| FR-017 | Distinguish connected from plan-usable | GAP: planUsable is an untested optional type field |
+| FR-018 | Main-process protected storage, pre-expiry refresh | GAP: no ChatGPT credential storage or refresh code |
+| FR-019 | Plan-use indicator plus Manage usage action | GAP: no Manage usage string anywhere in the repo |
+| FR-020 | Hosted builds disable plan use by configuration | GAP: no distribution gate or config flag exists |
+| FR-021 | API keys for four providers, one pattern | COVER: `apps/desktop/tests/providers-service.test.ts`, `packages/core/tests/providers-contract.test.ts` |
+| FR-022 | Least-cost read-only validation, short visible wait | COVER: `apps/desktop/tests/providers-service.test.ts`, `scripts/check-keys.mjs` |
+| FR-023 | Never save failures; classify four failure kinds | COVER: `permission` code for 403/permission-signal failures with a `needs-permission` status, message and action (`packages/core/tests/providers.test.ts`, `provider-status.test.ts`, `health-copy.test.ts`); refusal still wins, 401 stays auth, settings narrows the new code |
+| FR-024 | Desktop keychain; web origin storage plus disclosure | GAP: storage split and disclosure tested; web refusal of other providers untested |
+| FR-025 | Refuse cleartext storage, explain when unavailable | COVER: `apps/desktop/tests/credentials.test.ts` |
+| FR-026 | Several labelled accounts per provider, active shown | COVER: the model picker lists every account by label and marks the book's connection `Book default`, naming a one-off turn override `This turn` when it differs (`packages/app/src/components/ModelPickerDialog.tsx`; `apps/desktop/tests/manuscript-editor.test.ts` proves the mark with two same-provider accounts, that browsing leaves it on the default, and that the override is named apart) |
+| FR-027 | Removal clears secrets/cache, keeps manuscript/history | COVER: `apps/desktop/tests/credentials.test.ts` proves a second catalogue read is cached, a re-added account fetches again (the removed cache is not reused), and removing a connection leaves the chapter, its conversation and every library file byte-identical |
+| FR-028 | Each book has changeable default connection/model | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/selection.test.ts`, `apps/desktop/tests/agent-runtime.test.ts` |
+| FR-029 | Per-turn model override keeps book default | COVER: `packages/core/tests/selection.test.ts`, `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/chat-composer.test.tsx` |
+| FR-030 | Record provider, model, label every turn | COVER: `apps/desktop/tests/agent-runtime.test.ts` |
+| FR-031 | Mid-conversation model change visible in plain words | COVER: the runtime records the catalogue's display name on the turn message and done event (`AgentModel.name`, `AgentTurnModel.name`), and the divider reads `Now answering with {label} · {name}`, falling back to the id for older turns (`apps/desktop/src/main/agent/runtime.ts`, `packages/app/src/components/ChatPanel.tsx`, `packages/app/src/lib/chat-view.ts`). Proven by `apps/desktop/tests/agent-runtime.test.ts` (name on event and stored message), `apps/desktop/tests/chat-composer.test.ts` (a seeded two-model thread renders both dividers in plain words) and `packages/app/tests/chat-view.test.ts` (name preferred, id fallback) |
+| FR-032 | Retired model marks unavailable, asks replacement | GAP: runtime refusal tested; picker marker and replacement prompt untested |
+| FR-033 | Picker shows price, context, capabilities, unknown | COVER: each model card names context size or `Context not reported`, price or `Price not reported`, and a capability line (`Uses tools`/`No tools`/`Tools not reported` · `Reads pictures`/`No pictures`/`Pictures not reported`) (`packages/app/src/components/ModelPickerDialog.tsx`; `apps/desktop/tests/manuscript-editor.test.ts` proves both the full and the all-unknown cards) |
+| FR-034 | Usage totals whole turn, not last step | COVER: the runtime sums every step's reported price (not the last step's) and records cumulative tokens (`apps/desktop/src/main/agent/runtime.ts`); `apps/desktop/tests/agent-runtime.test.ts` drives a two-step read-then-reply turn and proves the done event and the stored message carry the summed cost and the whole-turn tokens |
+| FR-035 | Reported cost or tokens with estimate/unknown marks | COVER: bases persisted and tested, `usageNote` unit-tested (`packages/app/tests/chat-view.test.ts`), and the live done-event path proven in the panel: a finished turn renders its usage line, the plain-words model divider and the context disclosure (`apps/desktop/tests/chat-composer.test.ts` fires `done` and asserts all three) |
+| FR-036 | Plan turns show plan use, never dollars | GAP: no ChatGPT implementation or test exists |
+| FR-037 | Local per-book per-provider usage record, never uploaded | COVER: `apps/desktop/tests/usage.test.ts` |
+| FR-038 | Rate limits in plain words, never retry loops | COVER: transport failures arrive as API errors, so the runtime reads status/body/`Retry-After` off them (`maxRetries: 0` — the SDK must not hide a limit behind its own backoff; one provider request per attempt) and the failure, its event and its stored message all carry `retryAfterSeconds` (`apps/desktop/src/main/agent/runtime.ts`, `packages/core/src/agent.ts`, `packages/core/src/agent/messages.ts`). The chat names the wait (`agent-rate-note`, `packages/app/src/lib/chat-view.ts`). Proven by `apps/desktop/tests/agent-runtime.test.ts` (one request, then the approved resume's one request; 90/120 s on event and stored part), `apps/desktop/tests/chat-composer.test.ts` (wait line + retry offer) and `packages/app/tests/chat-view.test.ts` (reload keeps the wait, `waitWords`) |
+| FR-039 | Failures keep draft, checkpoint-first retry discipline | COVER: a chapter-changing turn that fails saves its checkpoint before the error event, which carries `changed`/`undoAvailable`, and one undo restores the chapter (`apps/desktop/tests/agent-runtime.test.ts`). The chat withholds Retry while chapters are changed, returns it with a `Restored N chapters.` note after undo, and offers neither retry nor undo when no checkpoint could be saved (`packages/app/src/components/ChatPanel.tsx`, `apps/desktop/tests/chat-composer.test.ts`). Fixed en route: undo patched by stale turn scope and never rendered; it now patches by message id |
+| FR-040 | Background token refresh, quiet needs-attention mark | GAP: no refresh implementation exists |
+| FR-041 | Policy refusal named with try-another-model hint | COVER: failed refusal turns keep the provider's message and offer Try another model, which opens the model picker (`apps/desktop/tests/chat-composer.test.tsx`); image-generation refusals stay open under 002 FR-048, which has no refusal path to hint from |
+| FR-042 | Context overflow cites limit and remedies | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `packages/core/tests/small-pieces.test.ts` |
+| FR-043 | Offline message, studio stays fully usable | COVER: a turn refused with `offline` keeps the provider message, adds a `You are offline…` note naming writing, planning and exporting as still working, and keeps Retry request (`packages/app/src/components/ChatPanel.tsx`; `apps/desktop/tests/chat-composer.test.ts` proves the note, the retry offer and that the next prompt sends as a new turn) |
+| FR-044 | Secrets never in library, logs, URLs, bundles | COVER: `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/secret-scan.test.ts`, `packages/core/tests/providers-contract.test.ts` |
+| FR-045 | Interface receives summaries, never secrets | COVER: `apps/desktop/tests/providers-service.test.ts`, `packages/core/tests/providers.test.ts`, `apps/web/tests/storage/credentials.test.ts` |
+| FR-046 | Redaction everywhere with regression tests | COVER: `packages/core/tests/small-pieces.test.ts`, `packages/core/tests/providers.test.ts`, `packages/core/tests/provider-status.test.ts` |
+| FR-047 | PKCE/state/nonce, 127.0.0.1 loopback with timeout | COVER: `packages/core/tests/openrouter-callback.test.ts`, `apps/desktop/tests/oauth-signin.test.ts`, `apps/desktop/tests/providers-service.test.ts` |
+| FR-048 | Minimum scopes shown before browser opens | GAP: no scope model or pre-browser disclosure exists |
+| FR-049 | CSP allows only registered hosts, own origin | COVER: `apps/web/tests/csp.test.ts`, `apps/desktop/tests/csp.test.ts`, `packages/core/tests/providers-contract.test.ts` |
+| FR-050 | Removal confirmed once, no later requests verified | COVER: `apps/desktop/tests/credentials.test.ts` (a removed connection's later `models()` call throws before any fetch; fetch count unchanged) |
+| FR-051 | Prose only to chosen provider, no v1 proxy | GAP: no destination-assertion or proxy-absence test |
+| FR-052 | Desktop supports every connection method | GAP: ChatGPT absent; no build-matrix test |
+| FR-053 | Web enables providers only after access test | GAP: no automated browser-access probe; static registry values only |
+| FR-054 | Web discloses origin-storage credential limits | COVER: `apps/web/tests/storage/credentials.test.ts` |
+| FR-055 | Web never requests browser-blocked providers | COVER: `apps/web/tests/csp.test.ts` |
+| FR-056 | One capability table drives both builds | COVER: `packages/core/tests/providers-contract.test.ts`, `apps/web/tests/csp.test.ts`, `apps/desktop/tests/csp.test.ts` |
+| FR-057 | Non-secret vault status with round-trip probe | COVER: `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/providers-service.test.ts`, `apps/desktop/tests/settings-status.test.tsx` |
+| FR-058 | KEYCHAIN.md runbook; copy points to status | COVER: `docs/KEYCHAIN.md` (the document is the deliverable) |
+
+## 012 — Automated verification (42 requirements: 25 covered, 17 gaps)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | Core unit tests without filesystem or browser | COVER: `packages/core/tests/save-decision-properties.test.ts`, `packages/core/tests/markdown-properties.test.ts`, `packages/core/tests/small-pieces.test.ts` |
+| FR-002 | Storage adapters share one contract suite | COVER: `packages/core/tests/library-port.test.ts`, `packages/core/tests/storage.test.ts`, `apps/web/tests/storage/directory-port-contract.test.ts` |
+| FR-003 | Fault injection for interrupted failed writes | COVER: `apps/web/tests/storage/save-failures.test.ts`, `apps/desktop/tests/atomic-write.test.ts`, `packages/core/tests/archive.test.ts` |
+| FR-004 | Property tests for format and decisions | COVER: `packages/core/tests/markdown-properties.test.ts`, `packages/core/tests/save-decision-properties.test.ts` |
+| FR-005 | Component tests with keyboard focus behavior | COVER: `apps/desktop/tests/chat-composer.test.tsx`, `apps/desktop/tests/chapter-rail.test.tsx`, `apps/desktop/tests/connection-cards.test.tsx` |
+| FR-006 | Provider and sign-in contract tests offline | COVER: `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/openrouter-callback.test.ts`, `apps/desktop/tests/oauth-signin.test.ts` |
+| FR-007 | Browser E2E journeys and storage tiers | COVER: `scripts/web-smoke/main.cjs`, `scripts/browser-matrix.mjs`, `scripts/e2e.mjs` |
+| FR-008 | Packaged desktop smoke on isolated profile | COVER: `scripts/smoke.mjs`, `apps/desktop/src/main/smoke.ts` |
+| FR-009 | Accessibility scans plus focus order asserts | COVER: `scripts/accessibility-check.mjs`, `apps/desktop/tests/accessibility-gate.test.ts` |
+| FR-010 | Visual baselines across widths and modes | COVER: `scripts/visual-check.mjs`, `apps/desktop/tests/visual-gate.test.ts` |
+| FR-011 | Perf checks for big book and bundle | COVER: `scripts/perf-check.ts`, `apps/desktop/tests/perf-gate.test.ts` |
+| FR-012 | Secret scan, CSP, Electron fuse checks | COVER: `scripts/submission-check.ts`, `apps/web/tests/csp.test.ts`, `apps/desktop/tests/fuses.test.ts` |
+| FR-013 | No time, timezone, locale, random dependence | GAP: tests call real new Date(); only fixed seeds and date literals, no suite-wide freeze |
+| FR-014 | Per-test temp libraries cleaned up always | COVER: `apps/desktop/tests/legacy-import.test.ts`, `apps/desktop/tests/atomic-write.test.ts` |
+| FR-015 | All fixtures synthetic, no real prose | COVER: `scripts/submission-check.ts`, `apps/desktop/tests/secret-scan.test.ts` |
+| FR-016 | Network off by default in fast tests | GAP: no default-off guard or preload; only per-test injected fetch mocks |
+| FR-017 | Recorded fixtures with date and version | GAP: provider fixtures are synthetic inline constants with no recorded-exchange provenance |
+| FR-018 | Legacy suite generates its own exports | COVER: `apps/desktop/tests/legacy-import.test.ts`, `packages/core/tests/manuscript-import.test.ts` |
+| FR-019 | Live checks opt-in, skip, never leak | COVER: `scripts/check-keys.mjs` |
+| FR-020 | Live checks use cheapest call, spend cap | GAP: LIVE_SPEND_CAP_CENTS declared in .env.example but never read; no cap enforcement |
+| FR-021 | Distinct auth, quota, network, provider errors | GAP: T024 open; check-keys prints raw HTTP status and timeout labels only |
+| FR-022 | 90% core, 70% interface coverage gates | GAP: only a global 85/92 functions/lines ratchet in `scripts/coverage-check.mjs`, no per-area or branch gate |
+| FR-023 | Every FR mapped to test or manual | COVER: this ledger (`tests/requirement-map.md`) |
+| FR-024 | Fast suite under 5 min, default command | GAP: T029 open; `bun run verify` exists but no time budget is enforced |
+| FR-025 | Full suite under 20 min on CI | GAP: T029 open; no full-suite timing gate exists |
+| FR-026 | Quarantine with owner, reason, removal date | COVER: `docs/QUARANTINE.md`, `scripts/quarantine-check.ts`, `apps/desktop/tests/quarantine.test.ts` |
+| FR-027 | Baselines update only via explicit command | COVER: `scripts/visual-check.mjs`, `scripts/perf-check.ts` |
+| FR-028 | CI runs on Gitea every push and MR | GAP: workflow committed but no runner registered, so nothing runs |
+| FR-029 | Fast suite Linux plus macOS, smoke macOS | GAP: `.gitea/workflows/verify.yml` has one ubuntu-only job, no macOS or smoke job |
+| FR-030 | CI caches deps and browser binaries | GAP: no cache steps in `.gitea/workflows/verify.yml` |
+| FR-031 | CI uploads redacted failure artifacts | GAP: T021 open; no upload steps in `.gitea/workflows/verify.yml` |
+| FR-032 | Identical named gates for merge and release | GAP: T022 open; verify.yml covers only build-info, typecheck, tests, bundles |
+| FR-033 | Release blocked by failing gate or waiver | COVER: `.gitea/workflows/release.yml`, `scripts/release.ts`, `scripts/release-enforce.ts`, `apps/desktop/tests/release-enforce.test.ts` |
+| FR-034 | Release fails when expected key missing | GAP: no release job expects keys; ordinary runs skip unconfigured providers by design |
+| FR-035 | Failures name test and redact secrets | COVER: `scripts/failure-artifacts.mjs`, `apps/desktop/tests/failure-artifacts.test.ts`, `packages/core/src/providers/redact.ts` |
+| FR-036 | Browser failures yield trace, screenshot, log | COVER: `scripts/failure-artifacts.mjs` |
+| FR-037 | Desktop failures yield main and renderer logs | COVER: `apps/desktop/src/main/smoke.ts` |
+| FR-038 | Single passed failed skipped quarantined summary | COVER: `scripts/verify-summary.mjs` (one format, `[verify]` and `[release]` tags), `scripts/verify.mjs`, `scripts/release.ts`, `apps/desktop/tests/verify-summary.test.ts` |
+| FR-039 | Document every key, source, unlocked tests | GAP: only `.env.example` names variables; no doc on where to obtain each or what each unlocks |
+| FR-040 | Env template with names, ignore real file | COVER: `.env.example`, `.gitignore` |
+| FR-041 | Key-check reports status without printing key | COVER: `scripts/check-keys.mjs` |
+| FR-042 | CI secrets scoped; forks get none | GAP: no secrets or scoping configured in CI; no release job (T023 open) |
+
+## 013 — Builds and deployment (35 requirements: 10 covered, 9 manual, 16 gaps)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | Bun workspace with five named packages | GAP: no test asserts workspace members |
+| FR-002 | Core holds format logic, imports no platform APIs | GAP: no import-restriction test or linter gate over `packages/core` |
+| FR-003 | UI holds components, imports no Node or fs | GAP: no import-restriction test or linter gate over `packages/ui` |
+| FR-004 | Desktop app holds only entry and adapters | GAP: no test constrains what lives in `apps/desktop` |
+| FR-005 | Web app holds only entry, router, adapters | GAP: no test constrains what lives in `apps/web` |
+| FR-006 | Apps consume packages by package name | GAP: no test forbids reaching into another package source tree |
+| FR-007 | One shared capability description, no scattered checks | COVER: `packages/core/tests/build.test.ts` |
+| FR-008 | One command builds both apps clean | COVER: `package.json`, `.gitea/workflows/verify.yml`, `scripts/e2e.mjs` |
+| FR-009 | Builds embed version, commit, schema in About | COVER: `scripts/build-vars.mjs`, `scripts/build-info.mjs`, `scripts/web-smoke/main.cjs` |
+| FR-010 | Web ships static assets, fallback, strict CSP | GAP: CSP is tested but relative URLs and SPA fallback have no test |
+| FR-011 | Web works when served from subpath | GAP: no base-path config and no subpath serving test |
+| FR-012 | Desktop sandboxes renderer behind preload bridge | COVER: `apps/desktop/tests/fuses.test.ts`, `scripts/flip-fuses.mjs` |
+| FR-013 | Desktop targets mac, Windows, Linux; mac blocks | GAP: targets only configured in electron-builder.yml, no test asserts packaging config |
+| FR-014 | No credentials, env files, source maps in assets | COVER: `apps/desktop/tests/secret-scan.test.ts`, `scripts/submission-check.ts` |
+| FR-015 | Unsigned builds label themselves unsigned | GAP: no unsigned label in code or test; only runbook prose in `docs/DEPLOYMENT.md` |
+| FR-016 | Build fails on missing asset or preload | GAP: no test provokes a missing required asset |
+| FR-017 | Desktop smoke mode and web test entry | GAP: desktop smoke exists (`scripts/smoke.mjs`) but no web test-mode entry found |
+| FR-018 | Staging and prod are promoted immutable artifacts | MANUAL: promotion runbook in `docs/DEPLOYMENT.md`; no deployment automation or test |
+| FR-019 | Web deploy serves the exact gated artifact | MANUAL: runbook archive-and-promote steps only; no deploy automation exists |
+| FR-020 | Rollback to previous artifact under five minutes | MANUAL: rollback runbook in `docs/DEPLOYMENT.md`, never timed by a test |
+| FR-021 | Env values injected, documented, secret-free on web | MANUAL: documented in `docs/DEPLOYMENT.md`; no automated env-injection gate |
+| FR-022 | Web needs no backend, account, or proxy | COVER: `scripts/web-smoke/main.cjs`, `apps/web/tests/storage/browser-libraries.test.ts` |
+| FR-023 | Desktop release ships artifact, checksums, notes | MANUAL: runbook steps 7 and 9; release job T023 still open |
+| FR-024 | Auto-update configured but disabled for hackathon | GAP: no autoUpdater code, config, or test anywhere in tree |
+| FR-025 | Logs and notes hold no secrets or prose | COVER: `apps/desktop/tests/failure-artifacts.test.ts`, `apps/desktop/tests/secret-scan.test.ts` |
+| FR-026 | Web enables only verified browser capabilities | COVER: `packages/core/tests/providers.test.ts`, `apps/web/tests/csp.test.ts`, `apps/web/tests/storage/capabilities.test.ts` |
+| FR-027 | Desktop enables every specified capability | COVER: `packages/core/tests/build.test.ts` |
+| FR-028 | Checklist carries capability matrix, live checks | MANUAL: `docs/DEPLOYMENT.md` checklist; per-connection live pass T025 still open |
+| FR-029 | About states build, platform, storage, capabilities | GAP: About panel exists but no test asserts its rows; visual baselines only screenshot settings |
+| FR-030 | Books and archives move between builds unchanged | COVER: `packages/core/tests/archive.test.ts`, `apps/desktop/tests/archive-io.test.ts`, `apps/web/tests/storage/archive-export.test.ts` |
+| FR-031 | Three stages: local, staging, public demo | MANUAL: environments table in `docs/DEPLOYMENT.md`; no test |
+| FR-032 | Promotion requires gates plus manual checklist | MANUAL: gates documented but no runner registered (T021 open); checklist is manual |
+| FR-033 | Public demo holds synthetic content only | MANUAL: policy in `docs/DEPLOYMENT.md`; smoke fixture synthetic by construction only |
+| FR-034 | Demo library resets in one action | GAP: no reset or erase-library control or test found |
+| FR-035 | Web demo discloses browser storage may clear | GAP: no may-be-cleared disclosure copy in web UI; only credential disclosure exists |
+
+## 014 — Mobile (18 requirements: 11 covered, 5 manual, 2 gaps)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | No horizontal scroll at 393, 744, 1440 | COVER: `scripts/capture.mjs`, `apps/desktop/src/main/index.ts` (`STUDIO_COARSE_POINTER` audit), `scripts/ui-audit.mjs` |
+| FR-002 | One column plus bottom bar below 700px | COVER: `scripts/visual-check.mjs`, `scripts/accessibility-check.mjs` |
+| FR-003 | Chapter rail visible between 700 and 999px | COVER: `scripts/visual-check.mjs`, `scripts/accessibility-check.mjs` |
+| FR-004 | Three-pane desktop layout at or above 1000px | COVER: `scripts/visual-check.mjs` |
+| FR-005 | Agent full-screen sheet below 1000px, 400px panel above | COVER: `scripts/visual-check.mjs`, `scripts/accessibility-check.mjs` |
+| FR-006 | Chapter drawer below 700px, rail above it | COVER: `scripts/visual-check.mjs`, `scripts/accessibility-check.mjs` |
+| FR-007 | Dialogs capped at viewport minus 48px, scrollable | COVER: `scripts/capture.mjs`, `scripts/visual-check.mjs`, `scripts/ui-audit.mjs` |
+| FR-008 | Manuscript 16/26 type with 20px padding below 700px | MANUAL: reference captures inspected per `docs/research/mobile-layouts.md`, no metric assertion |
+| FR-009 | Manuscript keeps reading font, only solid surface | MANUAL: reference captures inspected per `docs/research/mobile-layouts.md`, no automated assertion |
+| FR-010 | All controls at least 44x44 points | COVER: `scripts/capture.mjs`, `apps/desktop/src/main/index.ts` (`STUDIO_COARSE_POINTER` audit) |
+| FR-011 | Icon-only controls named with visible focus ring | COVER: `scripts/accessibility-check.mjs`, `scripts/ui-audit.mjs` |
+| FR-012 | Bottom bar labels icons, marks active agent | MANUAL: labels verified in inspected captures; active agent state has no recorded assertion |
+| FR-013 | Reduced transparency and motion respected | COVER: `scripts/web-smoke/main.cjs`, `scripts/visual-check.mjs` |
+| FR-014 | Safe-area insets applied in Capacitor shell | GAP: implemented in base.css but no test or recorded inset verification exists |
+| FR-015 | Orientation keeps chapter and unsaved text | MANUAL: simulator rotation pass in `docs/research/mobile-layouts.md`; `apps/mobile/tests/` does not exist |
+| FR-016 | Save protocol, conflicts, format unchanged | COVER: `apps/desktop/tests/library.test.ts`, `packages/core/tests/library-service.test.ts`, `scripts/web-smoke/main.cjs` |
+| FR-017 | Missing native capability explained, never blank | MANUAL: T013 shell launch verified hidden-or-explained actions; unit tests cover detection only |
+| FR-018 | No Expo or React Native in stack | GAP: no test asserts dependency absence; only `apps/mobile/package.json` inspection |
+
+## 016 — Sync (22 requirements: 12 covered, 10 gaps)
+
+| FR | Requirement | Coverage |
+| --- | --- | --- |
+| FR-001 | No studio account, server, proxy, or telemetry | GAP: no test asserts zero studio-owned traffic; acceptance scenario 7 is a manual network-monitor pass |
+| FR-002 | v1 locations: local, iCloud, mounted Google Drive folder | GAP: provider pass T012 blocked on D-122; only `specs/016-sync/research.md` notes, no mounted-folder tests |
+| FR-003 | Per-device journal of hashes, versions, generation, no secrets | COVER: `packages/core/tests/sync.test.ts` |
+| FR-004 | Scan on open and refocus, read-only, all drift categories | COVER: `packages/core/tests/sync.test.ts`, `packages/core/tests/sync-scan.test.ts`, `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-005 | Hash differing from journal is remote change, conflicts preserved | COVER: `packages/core/tests/sync.test.ts`, `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-006 | Placeholders materialized or reported, never read as empty | COVER: `packages/core/tests/sync-scan.test.ts`, `apps/desktop/tests/sync/two-system.test.ts`, `packages/core/tests/sync-health.test.ts` |
+| FR-007 | Scan read-only and idempotent, no duplicate conflict copies | COVER: `packages/core/tests/sync.test.ts`, `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-008 | Deletions recorded as tombstones, stale copies reported | COVER: `packages/core/tests/sync.test.ts`, `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-009 | Only existing write primitives, no second save path | COVER: `apps/desktop/tests/atomic-write.test.ts`, `apps/desktop/tests/library.test.ts`, `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-010 | Author-readable drift report with device, actions | GAP: drift dialog T006 unbuilt; DriftEntry has message text but no device attribution or actions |
+| FR-011 | Corrupt journal degrades to warned full comparison | COVER: `packages/core/tests/sync.test.ts`, `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-012 | Hashes and versions decide conflicts, never clock skew | COVER: `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-013 | Optional biometric or passcode gate at launch and resume | GAP: T008/T009 pending on open D-121; no LocalAuthentication code exists anywhere |
+| FR-014 | Optional PIN with keychain verifier, KDF, attempt limit | GAP: T010 pending on D-121; existing credential tests cover provider keys only |
+| FR-015 | Lock is UI gate, files stay plain readable Markdown | GAP: no lock UI or settings copy exists; T008 unbuilt |
+| FR-016 | Lock never blocks agent, CLI, or background sync | GAP: no lock implementation exists to test against (T008–T011 pending) |
+| FR-017 | No recovery; lost credentials leave library unaffected | GAP: PIN and lock unbuilt, so nothing to lose or re-enable |
+| FR-018 | No lock claims for browser libraries, origin-scoped credentials | GAP: no lock UI exists; web credential tests do not cover the no-claim rule |
+| FR-019 | Offline two-system harness with hostile transport | COVER: `apps/desktop/tests/sync/two-system.test.ts`, `apps/desktop/tests/sync/transport.ts` |
+| FR-020 | Harness covers all nine drift scenarios | COVER: `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-021 | Every scenario keeps bytes, second scan adds nothing | COVER: `apps/desktop/tests/sync/two-system.test.ts` |
+| FR-022 | Manual two-device pass recorded under docs/research | GAP: no sync-provider-results.md exists; T012 blocked on D-122 |
+
+## Totals
+
+272 requirements: 150 covered, 14 manual, 108 gaps. The gaps cluster: the
+unbuilt ChatGPT plan flow (011 FR-014–FR-020 and dependents), unbuilt device lock
+(016 FR-013–FR-018), unregistered CI (012 FR-028–FR-034), unenforced workspace
+hygiene (013 FR-001–FR-006; T002 lint would cover these), export-format scope
+(002 FR-051 image/PDF/EPUB), and timing budgets (012 FR-024/FR-025;
+T029). The next mapping pass should re-check every GAP row against the tree,
+because a gap closes the moment its test lands.

@@ -12,6 +12,18 @@ Three layers, and each one catches what the others cannot.
 A change is not done because the tests pass. It is done when `bun run verify` and `bun run e2e`
 both pass, and — if it touches a provider — `bun run live:check` still does.
 
+`bun run verify` is the fast command and it has teeth: the whole command must finish within
+5 minutes and the suite gate within 20 minutes on the reference machine (spec 012 T029,
+FR-024/FR-025), or the run fails even when every gate passed. The summary prints the budget
+line every run, so a slowing suite shows up before it breaches.
+
+The slow checks stay out of the fast command on purpose. Each is marked here with the
+command that runs it: `bun run smoke` (hidden desktop smoke), `bun run smoke:web` (web
+journey), `node scripts/browser-matrix.mjs` (multi-engine findings), `bun run a11y`
+(accessibility scans), `bun run visual` (visual baselines), `node scripts/e2e.mjs` (the
+all-up run), `bun run smoke:packaged` (packaged app), and `bun run release` (the release
+gate). `bun run live:check` is further out still: opt-in, cheapest call, real cost.
+
 ## The unit layer
 
 `bun test` runs 560-odd tests across the workspaces. They are fast and they cover the things that
@@ -42,7 +54,7 @@ order:
 
 | Check | What it drives |
 | --- | --- |
-| `smoke` | The built app through its own renderer: the preload bridge, the library, editing, autosave, undo, chapter moves, **a Word export with its illustration**, a rename and a delete. |
+| `smoke` | The built app through its own renderer: the preload bridge, the library, editing, autosave, undo, chapter moves, **a Word export with its illustration**, a Markdown export, a rename and a delete. |
 | `web` | The browser build over its own storage: create, save, reopen, conflict copies, a portable archive, reduced motion. |
 | `audit` | The real window at 1440×900 for dead ends, missing controls, console errors, and the accessibility basics: every control named, big enough to hit, every image with an `alt`, one `h1`, and a keyboard that reaches something with a visible focus ring. |
 | `phone` | The same walk at 390×844, because the phone layout is a surface people use and it has its own ways to strand someone. |
