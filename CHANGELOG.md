@@ -160,6 +160,8 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The submission packet's list of event work now includes Word import, the generated open-source
+  licenses, and the end-to-end checks of the toolkit and offline writing.
 - Decisions accepted on the author's delegation (2026-11-03). D-108 chooses the export renderers: PDF
   through Electron's print-to-PDF and EPUB assembled with `fflate`, with no publisher-acceptance
   claim. D-175 and D-176 accept chapter history, to be built after the submission. D-177 to D-179

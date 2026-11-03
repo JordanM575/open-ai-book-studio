@@ -74,8 +74,9 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   Settings section (spec 016, in progress).
 - Integration health: one derived state for each library location and each provider, with
   plain-language warnings and safe actions (spec 028, in progress).
-- Manuscript import: plain text and Markdown into a new book through a preview and a staged atomic
-  publication (spec 029, desktop).
+- Manuscript import: plain text, Markdown and Word documents into a new book, through a preview and
+  a staged atomic publication. Word documents get heading chapters and a report of what could not
+  come across (spec 029, D-183; Word on macOS).
 - Manuscript review: an evidence-linked report on saved text (spec 034, desktop, in progress).
 - Book formatting: a target selector, typography settings, an approximate preview, and a Markdown
   export beside the Word export (spec 035 and 002 FR-051; PDF and EPUB are not built).
@@ -91,7 +92,12 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
     builds;
   - component tests;
   - the coverage ratchet;
-  - the accessibility and visual gates.
+  - the accessibility and visual gates;
+  - end-to-end checks of the `bookwriter` CLI and MCP server against the running app, and of
+    writing, importing and exporting with every outbound connection denied by the operating system.
+- Open-source licenses generated from the build: Settings → About lists every package each build
+  ships with its license text, `THIRD_PARTY_NOTICES.md` is generated from the same data, and the
+  readiness check fails on a package with no license or an unknown one (D-186).
 
 The commit history after the cut tag is the complete record of event work.
 
