@@ -110,12 +110,14 @@ await page.waitForTimeout(700);
 
 check("the page loads", (await page.title()) === "AI Book Studio");
 check("the book is on the display", (await page.textContent("#book"))?.includes("The Salt Road") === true);
+// The page opens where the status line says the author is. With no chapter open on the desktop,
+// that is the last chapter, which is how far through the book the writing has got.
 check(
   "the current chapter is on the display",
-  /the light/i.test((await page.textContent("#chapter")) ?? "")
+  /the door/i.test((await page.textContent("#chapter")) ?? "")
 );
 const passage = (await page.textContent("#passage")) ?? "";
-check("the passage is on the display", passage.includes("The storm came in low"));
+check("the passage is on the display", passage.includes("The door under the stairs"));
 check(
   "the passage fits the display without scrolling",
   await page.evaluate(() => {
@@ -140,6 +142,12 @@ check(
   statusLine.includes("The Salt Road") && /chapter/i.test(statusLine),
   statusLine.slice(0, 84)
 );
+const shownChapter = ((await page.textContent("#chapter")) ?? "").replace(/^\d+\.\s*/, "").split(" · ")[0];
+check(
+  "the passage on display is the chapter the status line names",
+  shownChapter.length > 0 && statusLine.toLowerCase().includes(shownChapter.toLowerCase()),
+  `${shownChapter} / ${statusLine.slice(0, 60)}`
+);
 
 // The D-pad is the pointer, so the arrow keys must move the focus.
 await page.keyboard.press("ArrowDown");
@@ -151,7 +159,7 @@ await page.click("#next-chapter");
 await page.waitForTimeout(400);
 check(
   "the next chapter is reachable by hand",
-  /the door/i.test((await page.textContent("#chapter")) ?? "")
+  /the light/i.test((await page.textContent("#chapter")) ?? "")
 );
 
 await page.click("#story-bible");

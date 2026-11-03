@@ -359,7 +359,7 @@
           return;
         }
         state.chapterIndex = index;
-        el.chapter.textContent = `${chapter.order}. ${chapter.title} · ${chapter.wordCount} words`;
+        el.chapter.textContent = `${chapter.order}. ${chapter.title} · ${chapter.wordCount} ${chapter.wordCount === 1 ? "word" : "words"}`;
         const payload = await call(
           `/v1/books/${encodeURIComponent(state.book.id)}/chapters/${encodeURIComponent(chapter.id)}`
         );
@@ -643,7 +643,11 @@
             state.ambient = null;
           }
 
-          await openChapter(0);
+          // Open the chapter the status line names, so the passage and the sentence under it never
+          // disagree about where the author is. Without a status, start at the beginning.
+          const named = state.ambient?.chapter?.id;
+          const index = named ? state.chapters.findIndex((chapter) => chapter.id === named) : -1;
+          await openChapter(index >= 0 ? index : 0);
           await registerTools();
         } catch (error) {
           el.status.textContent = "not reachable";

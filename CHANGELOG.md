@@ -157,6 +157,11 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The glasses page now opens the chapter its status line names. Before, it always opened the first
+  chapter while the agent's sentence below said "You're in Chapter Two", so the display and the
+  sentence disagreed about where the author was. Its chapter heading also reads "1 word" for a
+  one-word chapter. The glasses check now asserts that the passage on the display is the chapter the
+  status line names.
 - The film script's 0:43 line now says a switched-off tool is refused everywhere, rather than that it
   disappears everywhere. The new toolkit end-to-end check shows the CLI and MCP refuse the tool, but
   `bookwriter tools` and MCP `tools/list` still list it, because neither lists tools for one book.
