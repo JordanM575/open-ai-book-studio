@@ -15,14 +15,19 @@ import { FakeDirectory } from "./support/fake-directory";
  * archive that is imported into a destination before it is trusted.
  */
 
-type Global = { navigator?: unknown; isSecureContext?: boolean };
+type Global = { navigator?: unknown; isSecureContext?: boolean; window?: unknown };
 const globals = globalThis as Global;
 const originalNavigator = globals.navigator;
+const originalWindow = globals.window;
 const originalSecure = Object.getOwnPropertyDescriptor(globalThis, "isSecureContext");
 
 afterEach(() => {
   if (originalNavigator === undefined) delete globals.navigator;
   else globals.navigator = originalNavigator;
+  // The folder-picker tests below stub `window`; a stub left behind breaks every later file
+  // that treats `window` as a real page.
+  if (originalWindow === undefined) delete globals.window;
+  else globals.window = originalWindow;
   if (originalSecure) Object.defineProperty(globalThis, "isSecureContext", originalSecure);
 });
 

@@ -170,6 +170,18 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The browser build's `window.studio` is now tested end to end over site storage
+  (`apps/web/tests/storage/browser-api.test.ts`). The test covers:
+  - creating, renaming, searching and reopening a book;
+  - checked saves, with a stale save kept as a conflict;
+  - chapter rename, reorder, move and delete;
+  - held drafts and drift checks;
+  - the minimal mode's status;
+  - that every desktop-only surface refuses in plain words.
+
+  Coverage of that file rose from 5% to 96% of functions. Writing it exposed a leak between test
+  files: `browser-libraries.test.ts` stubbed `window` with only a folder picker and never removed it,
+  so later files saw a fake page. It now restores `window` after each test.
 - The glasses page now opens the chapter its status line names. Before, it always opened the first
   chapter while the agent's sentence below said "You're in Chapter Two", so the display and the
   sentence disagreed about where the author was. Its chapter heading also reads "1 word" for a
