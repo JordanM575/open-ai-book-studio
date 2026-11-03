@@ -119,6 +119,14 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- Decisions accepted on the author's delegation (2026-11-03). D-108 chooses the export renderers: PDF
+  through Electron's print-to-PDF and EPUB assembled with `fflate`, with no publisher-acceptance
+  claim. D-175 and D-176 accept chapter history, to be built after the submission. D-177 to D-179
+  accept the agent-interaction rules, to be built with a re-shoot. New decisions:
+  - D-183 enables Word import through `mammoth`;
+  - D-184 allows an in-memory credential vault for end-to-end tests only, never in packaged builds;
+  - D-185 adopts shadcn/ui and AI Elements components;
+  - D-186 generates open-source attribution from the build.
 - Film script draft 2 and a truth pass on the submission packet, which follow the event's
   demo-scope rule. All pre-event context is in one opening segment labelled "Built before the
   event". Every later shot names only event work and marks whether it needs a live Meta call. A

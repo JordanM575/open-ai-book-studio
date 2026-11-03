@@ -108,7 +108,8 @@ needed and the spec or task it blocks.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Decision** | DOCX stays on `docx` 9.x. PDF renders the manuscript's own HTML through Electron's built-in Chromium print-to-PDF (`webContents.printToPDF`) in a hidden window, so the desktop needs no external binary. EPUB 3 is assembled with the `fflate` dependency the studio already uses: an OPF manifest, one XHTML file per chapter, a navigation document, `images/` sidecars and no remote resources, with fixed zip entry dates. The packaging follows the recommendation below. Determinism is content determinism. PDF container bytes vary with Chromium's creation date, and the studio does not claim byte-identical PDFs. No KDP or other publisher acceptance, EPUBCheck validity, PDF/UA or exact pagination is claimed. |
 | **Question** | Which DOCX, PDF and EPUB implementations produce KDP-acceptable output and deterministic files? |
 | **Recommendation** | Select no renderer yet. Keep `docx` 9.x for DOCX (verified: deterministic content parts, fixed zip entry dates; only `docProps/core.xml` wall-clock timestamps vary), LibreOffice headless, `pdf-lib` (assembly only, needs a layout pass), Typst and an EPUB container assembler in play — none of the latter were evaluated locally (no binaries present, none installed) and no publisher upload is verifiable locally. Proposed acceptance: same book bytes in, byte-identical container out (normalized container metadata, fixed entry dates, unmodified image bytes), enforced by a two-build premise test; shelled-out renderers pin their binary version in the export. Proposed packaging: DOCX keeps inline `word/media` after the body with captions and alt text; PDF is single-file with embedded images in DOCX order; EPUB is OPF manifest + one XHTML per chapter with `images/` sidecars and no remote resources. Rationale: content determinism is already proven for the current pipeline, so the decision can demand container determinism without new infrastructure; KDP acceptance, exact pagination/trim (needs T008), font embedding, PDF/UA and EPUBCheck remain explicitly unresolved with no conformance claim allowed. |
 | **Evidence** | `specs/035-book-formatting/research/export-renderers.md`; `apps/desktop/tests/export-renderers-premises.test.ts` (content determinism, fixed entry dates, core-timestamp shape). |
@@ -422,7 +423,8 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Decision** | As recommended. Building it is deferred until after the hackathon submission: it adds `books/<bookId>/history/` to the format and touches the only writer, archive and trash, so it lands with its own release and the manuscript-safety suite, not in the last day's merge queue. |
 | **Question** | What author-owned file layout and schema store chapter-history snapshot bodies, provenance, safety copies, and restore-undo records, and how do they travel through archive import/export and chapter trash/restore? |
 | **Recommendation** | Book-scoped `books/<bookId>/history/<chapterId>/<timestamp>-<label-slug>[-n].md`, one file per record, YAML front matter plus canonical body — the chapter-file shape. Front matter carries `schemaVersion: 1`, `kind` (`snapshot`, `safety`, `intent`), identity, `sourceVersion`/`sourceHash`/`bodyHash`/`capturedAt`, and intent state; intents carry no body. Loose schemas with spread round-trips, newer-schema refusal, never reset-to-empty. Archive and whole-book trash carry history by construction; chapter trash leaves it keyed by stable id; author deletion moves the record to chapter trash. Rejected: `.studio/history/` (archive-excluded device scope), reusing `checkpoints/` (D-113 owns it), one `history.json` per book (single-point failure), JSON-plus-body pairs (orphan risk), history inside chapter files (rewrites saved bytes). |
 | **Evidence** | `specs/032-chapter-history/research/storage-layouts.md`; `packages/core/tests/chapter-history-storage-premises.test.ts` (trash/restore travel, archive manifest ride, chapter-trash separation, stable identity across rename/reorder, atomic hash-guarded record writes); FORMAT archive/trash rules; D-112 (accepted archive); D-163/D-166 loose-schema and sidecar precedents. |
@@ -434,7 +436,8 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Decision** | As recommended. Building it is deferred until after the hackathon submission: it adds `books/<bookId>/history/` to the format and touches the only writer, archive and trash, so it lands with its own release and the manuscript-safety suite, not in the last day's merge queue. |
 | **Question** | What retention, size-limit, and cleanup policy applies to named and safety snapshots, given that no period or quota may be chosen by assumption? |
 | **Recommendation** | No automatic pruning, quota, expiry, or compaction for snapshots, safety copies, or intents — including unapplied intents, which are recovery material. Explicit author deletion moves the record to chapter trash; storage/write failures report without deleting. Size visibility comes from storage stats at list time, not a new format field. Numeric caps only later, with measured evidence and acceptance. Rejected: count/age/quota auto-rules (assumed numbers that pick the author's loss), delete-means-unlink (violates the no-permanent-delete rule). D-171's 20-cap stays scoped to review reports. |
 | **Evidence** | `specs/032-chapter-history/research/retention.md`; `packages/core/tests/chapter-history-retention-premises.test.ts` (unbounded conflicts and trash, failed writes preserve bytes); 034 T013 volatility precedent; FORMAT transport-only caps. |
@@ -446,7 +449,8 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Decision** | As recommended. The implementation (spec 031 T006–T008) is held out of the hackathon build: making Discuss the new-turn default changes how every turn in the recorded demo behaves, so it merges only with a re-shoot and a matching script and runbook update. |
 | **Question** | In Discuss mode, are positively read-only built-in tools available or does the model receive no tools — and what is the initial composer mode? |
 | **Recommendation** | Read-only built-ins only, Discuss as the new-turn default. A Discuss turn is offered exactly the six read-tier tools (`table_of_contents`, `read_story_bible`, `read_chapter`, `chapter_stats`, `find_in_chapter`, `find_in_chapters`) and no plugin tools; write, destructive, unclassified, and future tools are unoffered and bridge-denied if invoked. Enforcement is the existing three layers: the read-only subset via the `disabledTools` seam, bridge denial of unknown/withheld names, and the checked writer below. A Discuss turn that needs a write explains the Edit-mode next step; nothing is queued or written. The submitted mode is fixed for the turn. Rejected: no tools in Discuss (forces read-only questions into Edit), write tools on a promise (not a boundary), plugins on self-declaration (no declaration field; handlers receive writers — needs 025 first), Edit as default (unsafe default). |
 | **Evidence** | `specs/031-agent-interaction/research/discuss-read-policy.md`; `apps/desktop/tests/discuss-read-policy-premises.test.ts` (exact read-tier six, subset seam, plugin write default); `tool-bridge.test.ts` (unknown/destructive refusal); `tool-set.test.ts` (withdrawal, no-shadow, plugin writers); `agent-runtime.test.ts` (approval flow). |
@@ -458,7 +462,8 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Decision** | As recommended. The implementation (spec 031 T006–T008) is held out of the hackathon build: making Discuss the new-turn default changes how every turn in the recorded demo behaves, so it merges only with a re-shoot and a matching script and runbook update. |
 | **Question** | What counts as a completed pause, does Start/Resume continue the live turn or start a new turn, and what happens on non-background window close? |
 | **Recommendation** | Pause completes on the terminal `stopped` event, not the stop call's return: by then no tool can start and the in-flight tool has its definitive outcome recorded. The composer shows "Stopping…" until the event, then "Paused" with the change count and undo availability. Continuation is always a new explicit turn from the stored plan (no live-turn continuation exists to resurrect); approvals stay strictly per turn and are re-raised, never inherited. Non-background window close stops the turn like an author stop; restart expires unfinished plans visibly, never resumable; a plan never grants background. Rejected: pause-on-return (races the settling tail), same-turn resume (no machinery; re-enters unknown tool state), approval inheritance (breaks the per-turn gate), close-as-park (frozen close/quit behavior plus a second lifecycle). |
 | **Evidence** | `specs/031-agent-interaction/research/pause-continuation.md`; `apps/desktop/tests/pause-boundary-premises.test.ts` (per-turn approval death, mid-write atomic stop with reported outcome, new-turn continuation); `agent-runtime.test.ts` (approval waits, stop expiry); `AgentTurnInput.background` and 017 FR-012/FR-015/FR-017 (explicit per-turn background). |
@@ -470,7 +475,8 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Decision** | As recommended. The implementation (spec 031 T006–T008) is held out of the hackathon build: making Discuss the new-turn default changes how every turn in the recorded demo behaves, so it merges only with a re-shoot and a matching script and runbook update. |
 | **Question** | Can new guidance be added to a running or paused plan, and does that revise the same plan or require a new turn? |
 | **Recommendation** | No live steering: a running or paused plan cannot receive new guidance. The submitted prompt is fixed in the thread for the life of the turn; revised guidance travels by stopping and starting a new turn in the same conversation, which revalidates everything it touches. Guidance editing stays in the pre-send composer, proposed-plan review, `SKILLS.md` between turns, and each new turn's prompt. Rejected: same-plan mid-run revision (no live object to revise; races dispatch), a standing guidance queue (alternative A with extra state and staleness questions), live loop steering (no channel; breaks the D-178 event boundary and approval isolation), guidance-as-approval-answers (corrupts the audit trail). |
 | **Evidence** | `specs/031-agent-interaction/research/inflight-guidance.md`; `apps/desktop/tests/inflight-guidance-premises.test.ts` (prompt fixity in-thread, stop-plus-new-turn guidance journey); `agent-threads.test.ts` (retry reuse); D-178 (event boundary, new-turn continuation). |
@@ -513,6 +519,48 @@ enforcement, and the D-124 device-identity question stands.
 | **Needed** | Author acceptance of re-reading until measured slowness, or a named staleness story for catalog trust. |
 | **Blocks** | Only the "opens without loading all" clause of 002 FR-003; the grid stats themselves are proven above. |
 | **Owner** | spec 002 |
+
+### D-183 · Word (DOCX) manuscript import
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Question** | Should the manuscript importer accept Word documents, and through which parser? |
+| **Decision** | Yes, on the macOS desktop reference target first, which is 029's platform matrix. The importer sniffs the zip container, then uses `mammoth`, which is already a dependency, as the T014 research recommends. Mammoth's HTML becomes canonical chapter bodies under `docs/FORMAT.md`'s rules. The import goes through the existing preview and the same staged atomic publication as TXT and Markdown, and headings are proposed as chapter boundaries for the author to confirm. Nothing is dropped silently: tables, images, comments and tracked changes the body cannot carry are listed in the import report. Images are never stored as base64. ODT, DOC and RTF stay refused. |
+| **Evidence** | `specs/029-manuscript-import/research/docx-intake.md`; `apps/desktop/tests/docx-intake-validation.test.ts`. |
+| **Blocks** | 002 FR-035 and the DOCX row of spec 029's format matrix. |
+| **Owner** | spec 029 |
+
+### D-184 · An in-memory credential vault for end-to-end tests
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-03, on the author's delegation) |
+| **Question** | How can an end-to-end test run a real agent turn through the built app without reading or writing the author's keychain? |
+| **Decision** | The vault may hold credentials in memory only, under two conditions: the process is started with an explicit test flag, and the app is not packaged. It never writes a secret to disk. It is never a fallback when protected storage is unavailable; that case still refuses to save and explains why. Packaged builds and unflagged runs refuse it, and a test proves that. An end-to-end run points a connection's base URL at a fake OpenAI-compatible server on loopback, so no provider, key or network is involved. |
+| **Evidence** | `apps/desktop/src/main/credentials.ts` (safeStorage vault); AGENTS.md "Credentials" (no plaintext fallback). |
+| **Blocks** | End-to-end proof of the agent loop (002 agent requirements, 011 FR-051's positive case). |
+| **Owner** | spec 012 |
+
+### D-185 · Interface components from shadcn/ui and AI Elements
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-03, on the author's direction) |
+| **Question** | Should the studio keep hand-rolled interface components, or adopt shadcn/ui components and the AI Elements patterns for the agent interface? |
+| **Decision** | Adopt them. shadcn/ui components and the AI Elements patterns (Message, Tool, Confirmation, Context, Checkpoint, Prompt Input, Suggestion, Model Selector and the rest the studio needs) are copied into the repository, which is how shadcn/ui is meant to be used. Choose the Radix flavour where one exists, to match the `@radix-ui` primitives already in use. They are themed with the vendored Liquid Glass tokens and follow AGENTS.md's interface rules: tokens only, no raw colours, no invented shadows, no gradients except `.window-wash`. The renderer adapts the studio's own message parts to the components' props and never adopts AI SDK `UIMessage` (ADR 0013). Hand-rolled components remain only where no shadcn/ui component fits. |
+| **Evidence** | <https://ui.shadcn.com/docs/ai-elements>; `packages/ui` (current Radix and class-variance-authority primitives). |
+| **Owner** | spec 013 (`packages/ui`) |
+
+### D-186 · Open-source attribution generated from the build
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-03, on the author's direction) |
+| **Question** | Where does the list of third-party licenses come from, and where does the author see it? |
+| **Decision** | The build generates it. It collects every package in the renderer and web bundle graphs, plus the main-process dependencies that electron-vite leaves external and the packaged app ships, with each package's name, version, license and license text. Electron's Chromium credits are included. The same data regenerates `THIRD_PARTY_NOTICES.md` and appears in Settings → About → Open-source licenses on desktop and web. A gate fails when a bundled package has no license or an unknown one. A hand-maintained list is no longer the source of truth. |
+| **Evidence** | `THIRD_PARTY_NOTICES.md` (hand-maintained until this lands); D-137. |
+| **Owner** | spec 009 / 013 |
 
 ## Resolved browser decisions
 
