@@ -39,6 +39,18 @@ Update the `Unreleased` section before every commit.
   never stored, as base64 or otherwise. Publishing uses the same staged atomic write as text
   imports. The browser and mobile builds still refuse, now naming Word documents among the
   desktop-only formats.
+- Settings → About → Show open-source licenses lists what the build ships: the studio's own
+  Apache-2.0 license and notice first, then every package with its version and license, searchable,
+  with each package's full license text (D-186). The build generates the list: a Vite plugin
+  collects every package in the renderer, main, preload and web bundles; the desktop adds the
+  production dependencies electron-vite leaves external, and Electron with a pointer to its Chromium
+  credits. Each build writes `licenses.json` (the desktop serves it read-only over `app:licenses`,
+  the browser fetches it from its own origin) and regenerates its own section of
+  `THIRD_PARTY_NOTICES.md`, which is no longer kept by hand. `bun run submission:check` now fails
+  when a shipped package has no license, an unknown license, `UNLICENSED` or a copyleft license that
+  `scripts/license-allow.json` does not allow with a reason; its one exception is the desktop SAM
+  parser under D-137. The Gitea security scan now runs after the bundles, so the gate reads them,
+  and the accessibility gate scans the licenses view at all four widths.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

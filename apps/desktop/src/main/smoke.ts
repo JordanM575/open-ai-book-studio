@@ -606,6 +606,92 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "appearance, providers, library and build information in one place";
     });
 
+    await check("Settings → About lists the open-source licenses this build ships", async () => {
+      const opened = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="open-settings"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!opened) throw new Error("the Settings button was not found in the workspace header");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="show-licenses"]')`)),
+        "the licenses button in About"
+      );
+      await evaluate<boolean>(win, inPage(`(document.querySelector('[data-testid="show-licenses"]').click(), true)`));
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelectorAll('[data-testid="licenses-option"]').length > 50`)),
+        "more than 50 packages in the licenses view",
+        15_000
+      );
+      const listed = await evaluate<{ names: string[]; first: string; studio: boolean }>(
+        win,
+        `(() => {
+          const options = [...document.querySelectorAll('[data-testid="licenses-option"]')];
+          return {
+            names: options.map((option) => option.getAttribute("data-package")).filter(Boolean),
+            first: options[0]?.textContent ?? "",
+            studio: (document.querySelector('[data-testid="licenses-text"]')?.textContent ?? "").includes("Apache License")
+          };
+        })()`
+      );
+      if (listed.names.length <= 50) throw new Error(`the view listed ${listed.names.length} packages`);
+      const absent = ["react", "docx", "electron"].filter((name) => !listed.names.includes(name));
+      if (absent.length) throw new Error(`the view does not list ${absent.join(", ")}`);
+      if (!listed.first.includes("AI Book Studio") || !listed.studio) {
+        throw new Error("the studio's own license did not come first");
+      }
+      // docx ships as a dependency the main process loads, outside the renderer bundle.
+      await evaluate<boolean>(
+        win,
+        inPage(`(document.querySelector('[data-testid="licenses-option"][data-package="docx"]').click(), true)`)
+      );
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`(document.querySelector('[data-testid="licenses-text"]')?.textContent ?? "").includes("Permission is hereby granted")`)
+          ),
+        "the docx license text"
+      );
+      const closedView = await evaluate<boolean>(
+        win,
+        `(() => {
+          const dialog = document.querySelector('[data-testid="licenses-dialog"]');
+          const done = dialog && [...dialog.querySelectorAll("button")].find((item) => item.textContent?.trim() === "Done");
+          if (!done) return false;
+          done.click();
+          return true;
+        })()`
+      );
+      if (!closedView) throw new Error("the licenses view had no Done button");
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `!document.querySelector('[data-testid="licenses-dialog"]') && document.activeElement?.getAttribute("data-testid") === "show-licenses"`
+            )
+          ),
+        "the licenses view to close and return focus to its button"
+      );
+      const closedSettings = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[role="dialog"] button')].find((item) => item.textContent?.trim() === "Done");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!closedSettings) throw new Error("the Settings dialog had no Done button");
+      await waitUntil(() => evaluate<boolean>(win, inPage(`!document.querySelector('[role="dialog"]')`)), "Settings to close");
+      return `${listed.names.length} packages with react, docx and electron; docx shows its MIT text; focus returned to the button`;
+    });
+
     await check("a failed turn keeps its request for retry", async () => {
       const opened = await evaluate<boolean>(
         win,

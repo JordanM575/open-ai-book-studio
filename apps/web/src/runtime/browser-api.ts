@@ -10,6 +10,7 @@ import { BrowserCredentialVault } from "../storage/credentials";
 import { BrowserDraftBuffer, flushDraftsOnHide } from "../storage/drafts";
 import { BrowserLibraries, browserRuntime } from "./browser-libraries";
 import { cancelOpenRouterFlow, startOpenRouterFlow } from "./openrouter";
+import { fetchLicenses } from "./licenses";
 import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
 
 /**
@@ -61,7 +62,8 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
     app: {
       // The browser reports its own platform channel as "web"; CPU architecture is
       // not reliably detectable there, so it stays honestly unknown.
-      info: () => safe(async () => buildMetadata("web", { platform: "web", arch: "unknown" }))
+      info: () => safe(async () => buildMetadata("web", { platform: "web", arch: "unknown" })),
+      licenses: () => safe(() => fetchLicenses())
     },
     library: {
       choose: () => safe(() => libraries.chooseFolder()),

@@ -10,6 +10,7 @@ import { browserAvailabilityCopy } from "@ai-book-studio/core/providers/registry
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { SyncSection } from "./SyncSection";
+import { OpenSourceLicenses } from "./LicensesDialog";
 import { must } from "../lib/utils";
 import type { ThemeChoice } from "../hooks/use-theme";
 
@@ -828,6 +829,9 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               Build information is not available.
             </p>
           )}
+          <div className="mt-3">
+            <OpenSourceLicenses />
+          </div>
         </section>
 
       </DialogContent>

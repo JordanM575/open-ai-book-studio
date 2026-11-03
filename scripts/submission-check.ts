@@ -8,6 +8,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { ALLOW_FILE, licenseProblems } from "./license-gate.mjs";
+import { NOTICES_FILE, REPORT_FILES, noticesTable, readAllowList, renderNotices } from "./licenses.mjs";
+import type { LicenseAllowList } from "./license-gate.mjs";
+import type { LicenseReport } from "./licenses.mjs";
 
 const REQUIRED = [
   "LICENSE",
@@ -312,6 +316,58 @@ export async function proseProblems(root: string, tracked: string[]): Promise<st
   return problems;
 }
 
+export interface LicenseGate {
+  problems: string[];
+  /** What was checked, for the ready summary: package counts per build and allowed exceptions. */
+  summary: string;
+}
+
+/**
+ * The license gate over the real builds (D-186). Each build's `licenses.json` must exist, every
+ * package in it must pass the policy in `scripts/license-gate.mjs`, and THIRD_PARTY_NOTICES.md must
+ * say what the builds wrote. A missing build is a problem, never a pass: the shipped packages are
+ * only known once the bundles exist.
+ */
+export async function licenseGate(root: string): Promise<LicenseGate> {
+  const problems: string[] = [];
+  const reports: LicenseReport[] = [];
+  for (const [target, path] of Object.entries(REPORT_FILES)) {
+    const build = target === "desktop" ? "build" : "build:web";
+    let report: LicenseReport | null = null;
+    try {
+      report = JSON.parse(await readFile(join(root, path), "utf8")) as LicenseReport;
+    } catch {
+      problems.push(`licenses: ${path} is missing; run \`bun run ${build}\` first`);
+      continue;
+    }
+    if (report?.target !== target || !Array.isArray(report.packages)) {
+      problems.push(`licenses: ${path} is not a ${target} license report; run \`bun run ${build}\` again`);
+      continue;
+    }
+    reports.push(report);
+  }
+  let allow: LicenseAllowList = { exceptions: [] };
+  try {
+    allow = readAllowList(root);
+  } catch {
+    problems.push(`licenses: ${ALLOW_FILE} is not valid JSON`);
+  }
+  problems.push(...licenseProblems(reports, allow).map((problem) => `licenses: ${problem}`));
+  if (reports.length === Object.keys(REPORT_FILES).length) {
+    const expected = renderNotices(Object.fromEntries(reports.map((report) => [report.target, noticesTable(report)])));
+    const actual = await readFile(join(root, NOTICES_FILE), "utf8").catch(() => "");
+    if (actual !== expected) {
+      problems.push(`licenses: ${NOTICES_FILE} does not match the builds; rebuild and commit the regenerated file`);
+    }
+  }
+  const counts = reports.map((report) => `${report.target} ${report.packages.length}`).join(", ");
+  const exceptions = Array.isArray(allow.exceptions) ? allow.exceptions.length : 0;
+  return {
+    problems,
+    summary: `${counts || "no"} packages; ${exceptions} allowed ${exceptions === 1 ? "exception" : "exceptions"}`
+  };
+}
+
 function git(root: string, args: string[]): string {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
@@ -341,6 +397,9 @@ async function main(): Promise<void> {
   const artifacts = await scanArtifacts(root);
   problems.push(...artifacts.problems);
 
+  const licenses = await licenseGate(root);
+  problems.push(...licenses.problems);
+
   for (const issue of await inspectSample(root)) {
     problems.push(`${issue.book}: ${issue.problem}`);
   }
@@ -359,6 +418,7 @@ async function main(): Promise<void> {
   console.log(`  tracked     ${tracked.length} files`);
   console.log(`  artifacts   ${artifacts.scanned} files scanned, no secrets or source maps`);
   console.log("  sample      samples/the-salt-road valid");
+  console.log(`  licenses    ${licenses.summary}`);
   console.log("  next        clean clone: bun install && bun run verify && bun run smoke");
   console.log("  next        check repository and video links in a private window");
   console.log(`  root        ${relative(process.cwd(), root) || "."}`);

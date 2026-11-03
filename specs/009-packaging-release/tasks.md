@@ -172,6 +172,21 @@ profile test.
       Use synthetic isolated profiles/libraries; report unsupported or unverified targets as such and
       do not infer their result from another platform.
 
+## Phase 7 — Open-source attribution
+
+- [x] T032 Generate the open-source attribution from the build (D-186). `scripts/licenses.mjs`
+      collects every package in the renderer, main, preload and web bundle graphs, the production
+      dependencies electron-vite leaves external, and Electron with a pointer to its Chromium
+      credits. Each build writes one `licenses.json` and its own section of `THIRD_PARTY_NOTICES.md`.
+      Settings → About → Open-source licenses shows the list on desktop (`app:licenses`, read-only)
+      and web (a same-origin fetch). `bun run submission:check` fails on no license, an unknown
+      license, `UNLICENSED` or copyleft unless `scripts/license-allow.json` allows it with a reason;
+      the one exception is `@meta-sam/parser` on desktop (D-137). Tested against a synthetic
+      Bun-layout install in `licenses.test.ts`, the policy in `license-gate.test.ts`, the view in
+      `licenses-dialog.test.tsx`, the web fetch in `apps/web/tests/licenses.test.ts`, the smoke run
+      and four axe scans of the view in `bun run a11y`. Not yet proven: that the packaged archive
+      ships exactly the listed packages.
+
 ## Completion condition
 
 The spec is complete when phases 1 and 5 pass without certificates, and phases 2–4 pass with a staging

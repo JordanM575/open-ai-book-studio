@@ -58,6 +58,7 @@
     "tests/chapter-reorder-conflict.test.tsx",
     "tests/chat-composer.test.tsx",
     "tests/connection-cards.test.tsx",
+    "tests/licenses-dialog.test.tsx",
     "tests/support/dom.ts"
   ]
 }

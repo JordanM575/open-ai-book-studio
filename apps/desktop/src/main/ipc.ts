@@ -25,6 +25,7 @@ import {
 } from "@ai-book-studio/core/manuscript-import";
 import { pickImportSource, readImportSource, type ImportFilePicker } from "./import";
 import { buildMetadata } from "@ai-book-studio/core/build";
+import { createLicenseReader } from "./licenses";
 import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
 import { collectDocxImages, exportManuscriptDocx, exportManuscriptMarkdown } from "./export";
@@ -171,6 +172,10 @@ export function registerIpc(
   /* ---------------------------------------------------------------------- app */
 
   handle(IPC.app.info, () => buildMetadata("desktop", { platform: process.platform, arch: process.arch }));
+
+  /** Read-only: the list the build wrote beside the main bundle. It takes no input. */
+  const readLicenses = createLicenseReader();
+  handle(IPC.app.licenses, () => readLicenses());
 
   /* ------------------------------------------------------------------ library */
 

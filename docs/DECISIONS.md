@@ -559,7 +559,7 @@ enforcement, and the D-124 device-identity question stands.
 | **Status** | Accepted (2026-11-03, on the author's direction) |
 | **Question** | Where does the list of third-party licenses come from, and where does the author see it? |
 | **Decision** | The build generates it. It collects every package in the renderer and web bundle graphs, plus the main-process dependencies that electron-vite leaves external and the packaged app ships, with each package's name, version, license and license text. Electron's Chromium credits are included. The same data regenerates `THIRD_PARTY_NOTICES.md` and appears in Settings → About → Open-source licenses on desktop and web. A gate fails when a bundled package has no license or an unknown one. A hand-maintained list is no longer the source of truth. |
-| **Evidence** | `THIRD_PARTY_NOTICES.md` (hand-maintained until this lands); D-137. |
+| **Evidence** | `scripts/licenses.mjs` (collector and plugin), `scripts/license-gate.mjs` and `scripts/license-allow.json` (the gate in `bun run submission:check`), the generated `THIRD_PARTY_NOTICES.md`; `apps/desktop/tests/licenses.test.ts`, `license-gate.test.ts`, `licenses-dialog.test.tsx`; D-137. |
 | **Owner** | spec 009 / 013 |
 
 ## Resolved browser decisions

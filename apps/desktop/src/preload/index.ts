@@ -23,7 +23,8 @@ function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 
 const api: StudioApi = {
   app: {
-    info: () => invoke(IPC.app.info)
+    info: () => invoke(IPC.app.info),
+    licenses: () => invoke(IPC.app.licenses)
   },
   library: {
     choose: () => invoke(IPC.library.choose),

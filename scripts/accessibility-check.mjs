@@ -2,7 +2,7 @@
 /**
  * Spec 012 T016 accessibility gate. Synthetic, isolated and credentials-free: it serves the
  * built web app over loopback, walks the welcome, library, workspace, chat, settings,
- * Story Bible and conflict views at four widths in headless Chromium, and fails on any
+ * open-source licenses, Story Bible and conflict views at four widths in headless Chromium, and fails on any
  * critical or serious axe finding. Lesser findings are reported, never gated. Focus order
  * for the editor and the chat composer is asserted through real Tab presses.
  *
@@ -153,6 +153,20 @@ async function openSettings(page) {
   await page.waitForSelector('[data-testid="theme-dark"]');
 }
 
+/** Settings → About → Open-source licenses (D-186), once the build's list has loaded. */
+async function openLicenses(page) {
+  await page.click('[data-testid="show-licenses"]');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="licenses-option"]').length > 1, null, {
+    timeout: 10_000
+  });
+}
+
+/** Close the licenses view with Done, back to Settings. */
+async function closeLicenses(page) {
+  await page.locator('[data-testid="licenses-dialog"]').getByRole("button", { name: "Done" }).click();
+  await page.waitForSelector('[data-testid="licenses-dialog"]', { state: "detached", timeout: 10_000 });
+}
+
 async function openStoryBible(page) {
   if (!(await clickFirstVisible(page, ["open-story-bible"]))) {
     await page.click('[data-testid="mobile-more"]');
@@ -239,6 +253,9 @@ async function walkSize(browser, port, size, runDir) {
 
     await openSettings(page);
     findings.push(await scan(page, "settings", size.width));
+    await openLicenses(page);
+    findings.push(await scan(page, "licenses", size.width));
+    await closeLicenses(page);
     await closeDialog(page);
 
     await openStoryBible(page);

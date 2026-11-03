@@ -32,12 +32,13 @@ jobs:
         run: bun run waiver:check
       - name: Coverage floor
         run: bun run coverage
-      - name: Security scan
-        run: bun run submission:check
       - name: Desktop bundle
         run: bun run build
       - name: Web bundle
         run: bun run build:web
+      # After the bundles: the license gate reads the lists each build writes (D-186).
+      - name: Security scan
+        run: bun run submission:check
   browser:
     # The web journey, accessibility and visual gates in headless Chromium (spec 012 T022).
     # Visual baselines are machine-rendered: a new runner accepts its first green run with

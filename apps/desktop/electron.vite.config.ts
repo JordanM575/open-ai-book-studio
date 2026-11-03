@@ -3,6 +3,7 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { buildVars } from "../../scripts/build-vars.mjs";
+import { licenseCollector } from "../../scripts/licenses.mjs";
 
 // The shared package ships TypeScript source, so it must be bundled rather than externalised.
 // Externalising it would make Electron `require` a `.ts` file at runtime.
@@ -10,6 +11,9 @@ const externalize = externalizeDepsPlugin({
   exclude: ["@ai-book-studio/core", "@ai-book-studio/ui", "@ai-book-studio/app"]
 });
 const { version, commit } = buildVars();
+// The packaged app ships all three bundles plus the dependencies left external, so one license
+// report covers them (D-186). It is written once all three builds have written their bundles.
+const licenses = licenseCollector({ target: "desktop", builds: ["main", "preload", "renderer"] });
 const buildDefine = {
   __BUILD_VERSION__: JSON.stringify(version),
   __BUILD_COMMIT__: JSON.stringify(commit)
@@ -18,7 +22,7 @@ const buildDefine = {
 export default defineConfig({
   main: {
     define: buildDefine,
-    plugins: [externalize],
+    plugins: [externalize, licenses.plugin("main")],
     resolve: {
       alias: {
         "@main": resolve("src/main")
@@ -37,7 +41,7 @@ export default defineConfig({
   },
   preload: {
     define: buildDefine,
-    plugins: [externalize],
+    plugins: [externalize, licenses.plugin("preload")],
     // Sandboxed preload scripts are loaded as CommonJS, so do not emit an ESM `.mjs` file even
     // though the package itself is `"type": "module"`.
     build: {
@@ -51,6 +55,6 @@ export default defineConfig({
   },
   renderer: {
     define: buildDefine,
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss(), licenses.plugin("renderer")]
   }
 });

@@ -23,11 +23,11 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | Coverage ratchet | `scripts/coverage-check.mjs` | `bun run coverage` | Fails below 85% functions / 92% lines |
 | Browser E2E | `scripts/web-smoke/main.cjs`, `scripts/e2e.mjs` | `bun run smoke:web`, `bun run e2e` | Real Chromium journey: create, write, reload, conflict, archive |
 | Browser matrix | `apps/web/check/main.ts` | `node scripts/browser-matrix.mjs` | Chromium gate; Firefox/WebKit findings |
-| Desktop smoke | `apps/desktop/src/main/smoke.ts` | `bun run smoke` | 33 hidden checks through the real renderer |
-| Accessibility | `scripts/accessibility-check.mjs` | `bun run a11y` | 28 axe scans plus focus order |
+| Desktop smoke | `apps/desktop/src/main/smoke.ts` | `bun run smoke` | 34 hidden checks through the real renderer |
+| Accessibility | `scripts/accessibility-check.mjs` | `bun run a11y` | 32 axe scans plus focus order |
 | Visual | `scripts/visual-check.mjs` | `bun run visual` | 112 baselines; explicit `--update-baseline` |
 | Performance | `scripts/perf-check.ts` | `bun run perf` | SC-009 regression thresholds only |
-| Security | `scripts/submission-check.ts` | `bun run submission:check` | Secrets, source maps, CSP, fuses, prose |
+| Security | `scripts/submission-check.ts` | `bun run submission:check` | Secrets, source maps, CSP, fuses, prose, shipped licenses (D-186) |
 | Failure artifacts | `scripts/failure-artifacts.mjs` | wired into every runner | Trace, screenshot, redacted log on failure |
 | Quarantine | `docs/QUARANTINE.md` | `bun run quarantine:check` | Ledger empty; expiry fails the run |
 | CI | `.gitea/workflows/verify.yml` | unregistered runner | Committed but unenforced; local `verify` is truth |
@@ -102,7 +102,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-061 | No telemetry; prose leaves only on explicit action | COVER: `apps/desktop/tests/csp.test.ts`, `apps/web/tests/csp.test.ts`, `apps/desktop/tests/secret-scan.test.ts` |
 | FR-062 | Keys in protected storage, never in library or logs | COVER: `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/secret-scan.test.ts`, `packages/core/tests/archive.test.ts` |
 | FR-063 | Privacy claims covered by behavior-change tests | COVER: `packages/core/tests/storage.test.ts`, `apps/web/tests/storage/credentials.test.ts`, `apps/web/tests/csp.test.ts` |
-| FR-064 | Settings covers all areas; every item works | GAP: only connection and voice status lines tested, not every item |
+| FR-064 | Settings covers all areas; every item works | GAP: only connection and voice status lines tested, not every item; About → Open-source licenses is covered by `apps/desktop/tests/licenses-dialog.test.tsx` and the smoke run (D-186) |
 | FR-065 | Reveal any book folder in file manager | COVER: `apps/desktop/tests/ipc-reveal.test.ts` drives the real `library:reveal` and `conflicts:reveal` handlers against a real library with a recorded shell (right folder opened; `../` escape refused without touching the shell) |
 | FR-066 | Crash recovery on launch with report | GAP: no crash-relaunch recovery test exists |
 | FR-067 | Errors leave UI usable; no permanent busy | COVER: `apps/desktop/tests/manuscript-editor.test.ts`, `apps/desktop/src/main/smoke.ts`, `packages/app/tests/chat-view.test.ts` |

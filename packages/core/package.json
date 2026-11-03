@@ -14,6 +14,10 @@
       "types": "./src/build.ts",
       "default": "./src/build.ts"
     },
+    "./licenses": {
+      "types": "./src/licenses.ts",
+      "default": "./src/licenses.ts"
+    },
     "./ipc": {
       "types": "./src/ipc.ts",
       "default": "./src/ipc.ts"
