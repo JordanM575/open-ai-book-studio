@@ -220,7 +220,7 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
         title="Illustration"
         description={
           chapter
-            ? `A saved image for “${chapter.title}”. Generation uses Muse Image and costs about $0.01.`
+            ? `Make or choose an image for “${chapter.title}”. Generating uses Muse Image and costs about $0.01.`
             : "Select a chapter before generating an illustration."
         }
         className="w-[calc(100vw-48px)] max-w-[720px]"
@@ -253,8 +253,8 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
           <div className="rounded-[var(--corner-lg)] border border-border p-4">
             <p className="text-[var(--text-subheadline-size)] font-medium">Connect Meta to generate images</p>
             <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
-              Muse Image uses the Meta connection you already added. The image and prompt stay in this
-              book folder.
+              Muse Image uses the same Meta connection as the writing agent. Add one in Settings. The
+              image and prompt stay in this book folder.
             </p>
             <Button
               variant="secondary"

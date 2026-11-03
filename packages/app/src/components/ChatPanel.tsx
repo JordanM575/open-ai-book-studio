@@ -783,9 +783,6 @@ export function ChatPanel({
               />
               <span className="hidden min-[520px]:inline">Background</span>
             </label>
-            <p className="hidden min-w-0 text-[var(--text-caption-size)] text-muted-foreground min-[520px]:block">
-              Enter sends · Shift Enter adds a line
-            </p>
           </div>
           {running ? (
             <Button
@@ -806,6 +803,10 @@ export function ChatPanel({
             </Button>
           )}
         </div>
+        {/* Its own line: in the narrow chat panel it would squeeze the model and Background controls. */}
+        <p className="mt-1.5 hidden text-[var(--text-caption-size)] text-muted-foreground min-[520px]:block">
+          Enter sends · Shift Enter adds a line
+        </p>
       </form>
 
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>

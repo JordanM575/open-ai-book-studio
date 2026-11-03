@@ -133,6 +133,17 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The manuscript status line now uses singular counts: a one-line chapter reads "1 line", and a
+  one-word chapter reads "1 word". The illustration dialog's description now reads "Make or choose an
+  image" instead of describing a saved image that may not exist yet. Its no-connection notice no
+  longer says you already added a Meta connection; it says Muse Image uses the writing agent's Meta
+  connection and to add one in Settings.
+- The chat composer no longer squeezes its controls in the desktop chat panel. The send hint now has
+  its own line, so "Model: book default" and "Background" read in full. Before, the model read
+  "Mod…" and the hint wrapped onto three lines. The manuscript status line now keeps each item whole
+  and wraps whole items when the sheet is narrow. Before, the items broke inside, for example
+  "Chapter / 1". The twelve chat baselines were updated after locating each diff in the composer and
+  the status line.
 - The full test run is green again (four failures and two errors, each file passing alone).
   Three leaks between files caused them: the agent runtime tests left five-second deadlines
   running after each test, the workspace's "Saved" note timer fired after the workspace

@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import { pushHistory, redoHistory, undoHistory } from "../lib/editor-history";
-import { countWords, formatCount, savedTime } from "../lib/utils";
+import { countWords, formatCount, formatWords, pluralize, savedTime } from "../lib/utils";
 import { insertTranscript as insertAtSelection } from "../lib/voice-text";
 import { normalizePasteText } from "@ai-book-studio/core/paste";
 import { VoiceButton } from "./VoiceButton";
@@ -252,12 +252,14 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   return (
     <div className="mx-auto w-full max-w-[760px]" data-testid="manuscript-editor">
       <div className="rounded-[var(--corner-xl)] bg-[var(--manuscript-bg)] px-5 pt-8 pb-16 shadow-[var(--elevation-2)] min-[700px]:px-10 min-[700px]:pt-12 min-[700px]:pb-24 lg:px-14">
-        <div className="tabular mb-4 flex items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+        <div className="tabular mb-4 flex flex-wrap items-center gap-2 whitespace-nowrap text-[var(--text-caption-size)] text-muted-foreground">
           <span>{chapter.isPrologue ? "Prologue" : `Chapter ${ordinal}`}</span>
           <span className="opacity-50">·</span>
-          <span>{formatCount(words)} words</span>
+          <span>{formatWords(words)}</span>
           <span className="opacity-50">·</span>
-          <span>{formatCount(lines)} lines</span>
+          <span>
+            {formatCount(lines)} {pluralize(lines, "line")}
+          </span>
           <span className="ml-auto">
             <VoiceButton
               onText={insertTranscript}
