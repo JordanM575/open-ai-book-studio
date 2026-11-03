@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bu
 import React from "react";
 import { mountDom, unmountDom } from "./support/dom";
 import { validateSource, type ValidatedSource } from "@ai-book-studio/core/manuscript-import";
+import { convertDocxHtml } from "@ai-book-studio/core/manuscript-import/docx";
 import type { ConfirmedImportMapping } from "@ai-book-studio/app/components/ImportPreviewDialog";
 
 let testing!: typeof import("@testing-library/react/pure");
@@ -107,6 +108,19 @@ async function openPreview(view: ReturnType<typeof testing.within>, mocks: Journ
   });
 }
 
+function docxSource(): ValidatedSource {
+  const result = convertDocxHtml({
+    fileName: "Voyage.docx",
+    html:
+      '<h1>Chapter One</h1><p>First<sup><a href="#footnote-1" id="footnote-ref-1">[1]</a></sup>.</p>' +
+      '<h1>Chapter Two</h1><p>Second.</p><ol><li id="footnote-1"><p>A note. <a href="#footnote-ref-1">↑</a></p></li></ol>',
+    messages: [],
+    scanned: []
+  });
+  if (result.status !== "validated") throw new Error("Synthetic document must convert.");
+  return result;
+}
+
 describe("manuscript import journey", () => {
   test("confirming publishes the confirmed mapping and refreshes the library", async () => {
     const mocks = mockStudio("darwin");
@@ -158,6 +172,41 @@ describe("manuscript import journey", () => {
     expect(view.getByTestId("import-result-not-imported").textContent ?? "").toContain("were not imported");
     testing.fireEvent.click(view.getByTestId("import-result-close"));
     expect(view.queryByTestId("import-result-dialog")).toBeNull();
+  });
+
+  test("a Word import carries its loss report from the preview into the result", async () => {
+    const mocks = mockStudio("darwin");
+    const view = renderLibrary(mocks);
+    testing.fireEvent.click(view.getByTestId("import-manuscript"));
+    mocks.pick.resolve({ ok: true, data: { status: "ready", source: docxSource() } });
+    await testing.waitFor(() => {
+      expect(view.getByTestId("import-loss-footnote")).toBeTruthy();
+    });
+    testing.fireEvent.click(view.getByTestId("import-confirm"));
+    expect(mocks.importManuscript.mock.calls[0]?.[0]).toEqual({
+      bookTitle: "Voyage",
+      chapters: [
+        { title: "Chapter One", content: "First.\n" },
+        { title: "Chapter Two", content: "Second.\n" }
+      ]
+    });
+    mocks.publish.resolve({
+      ok: true,
+      data: {
+        book: { id: "book_00000002", title: "Voyage" },
+        chapters: [
+          { title: "Chapter One", content: "First.\n" },
+          { title: "Chapter Two", content: "Second.\n" }
+        ]
+      }
+    });
+    await testing.waitFor(() => {
+      expect(view.getByTestId("import-result-dialog")).toBeTruthy();
+    });
+    expect(view.getByTestId("import-result-loss-footnote").textContent ?? "").toBe(
+      "1 footnote · Not imported; the reference mark was removed. · Line 3: “A note.”"
+    );
+    expect(view.getByTestId("import-result-not-imported").textContent ?? "").toContain("were not imported");
   });
 
   test("the report counts the committed book, not the preview", async () => {

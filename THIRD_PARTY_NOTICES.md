@@ -7,6 +7,7 @@ licences. Keep this list current before publishing a release or a hackathon subm
 | --- | --- | --- | --- |
 | `@meta-sam/parser` | desktop SAM 3.1 cutouts | Meta SAM License (see the package `LICENSE`) | Not Apache-2.0. Include the licence text in the distribution and review compatibility before publishing. The SAM feature is desktop-only and optional. |
 | `docx` | desktop Word export | MIT | |
+| `mammoth` and its dependencies (`jszip`, `@xmldom/xmldom`, `lop`, `underscore`, `pako` and others) | desktop Word import | BSD-2-Clause (`mammoth`, `lop`); MIT (`@xmldom/xmldom`, `underscore`, `xmlbuilder`); `jszip` is MIT OR GPL-3.0-or-later and used under MIT; `pako` MIT AND Zlib | Bundled into the desktop main process rather than externalised, so the packaged app ships this code. |
 | `ai`, `@ai-sdk/*`, `@openrouter/ai-sdk-provider` | desktop agent and providers | Apache-2.0 / MIT as declared by each package | |
 | `@radix-ui/*`, `lucide-react`, `react`, `react-dom` | interface | MIT / ISC / MIT | |
 | `fflate` | archives | MIT | |

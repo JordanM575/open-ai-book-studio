@@ -1550,6 +1550,136 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return `one new book directory, fixture identical, ${changed.length} derived file(s) refreshed`;
     });
 
+    // D-183: the same journey for a synthetic Word document. The picker is answered with
+    // the DOCX fixture; the checks take their own baselines, read the heading chapters and
+    // the loss report, and compare the published bodies with the preview exactly.
+    const docxPath = process.env.STUDIO_IMPORT_DOCX_PATH ?? "";
+    const wordChapters = [
+      ["The Harbour", "The keeper **counted** the boats.\n\n- Rope\n- Lamp oil\n"],
+      ["The Storm", "Rain came *sideways*.\n\nnorth\nsouth\n\nA picture follows.\n"]
+    ];
+    const fileHash = async (path: string): Promise<string> =>
+      createHash("sha256").update(await readFile(path)).digest("hex");
+    let wordLibraryBefore: Map<string, string> | null = null;
+    let wordFixtureBefore = "";
+    let wordCardsBefore = 0;
+
+    await check("a Word manuscript previews heading chapters and its losses without publishing", async () => {
+      if (!docxPath) throw new Error("STUDIO_IMPORT_DOCX_PATH is not set for the hidden run");
+      const library = studio.library;
+      if (!library) throw new Error("no library is open for the Word import journey");
+      process.env.STUDIO_IMPORT_PATH = docxPath;
+      wordFixtureBefore = await fileHash(docxPath);
+      wordLibraryBefore = await snapshotTree(library.root);
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`document.querySelector('[data-testid="import-manuscript"]') && !document.querySelector('[data-testid="import-manuscript"]').disabled`)
+          ),
+        "the manuscript import action"
+      );
+      wordCardsBefore = await evaluate<number>(win, `document.querySelectorAll('[data-testid="book-card"]').length`);
+      await evaluate(win, `document.querySelector('[data-testid="import-manuscript"]').click()`);
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="import-loss"]')`)),
+        "the Word import preview"
+      );
+      const seen = await evaluate<{ book: string; chapters: string[][]; loss: string[] }>(
+        win,
+        `(() => {
+          const value = (id) => document.querySelector('[data-testid="' + id + '"]');
+          const chapters = [];
+          for (let order = 1; value('import-chapter-title-' + order); order += 1) {
+            chapters.push([value('import-chapter-title-' + order).value, value('import-chapter-body-' + order).textContent]);
+          }
+          return {
+            book: value('import-book-title')?.value ?? "",
+            chapters,
+            loss: [...document.querySelectorAll('[data-testid^="import-loss-"]')].map((item) => item.getAttribute('data-testid'))
+          };
+        })()`
+      );
+      if (seen.book !== "Smoke Voyage") throw new Error(`the book title read ${JSON.stringify(seen.book)}`);
+      if (JSON.stringify(seen.chapters) !== JSON.stringify(wordChapters)) {
+        throw new Error(`the preview read ${JSON.stringify(seen.chapters)}`);
+      }
+      for (const kind of ["table", "image", "footnote"]) {
+        if (!seen.loss.includes(`import-loss-${kind}`)) throw new Error(`the loss report lacks ${kind}: ${seen.loss.join(", ")}`);
+      }
+      const cards = await evaluate<number>(win, `document.querySelectorAll('[data-testid="book-card"]').length`);
+      if (cards !== wordCardsBefore) throw new Error(`a book appeared before confirmation (${wordCardsBefore} → ${cards})`);
+      const tree = await snapshotTree(library.root);
+      if (tree.size !== wordLibraryBefore.size) throw new Error("choosing and previewing a Word document wrote to the library");
+      return "two heading chapters with exact bodies; table, image and footnote listed; no writes";
+    });
+
+    await check("confirming the Word preview publishes exactly those chapters", async () => {
+      await evaluate(win, `document.querySelector('[data-testid="import-confirm"]').click()`);
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="import-result-dialog"]')`)),
+        "the Word import result"
+      );
+      const result = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="import-result-dialog"]')?.innerText ?? ""`
+      );
+      for (const expected of ["manuscript.docx", "Smoke Voyage", "The Harbour", "The Storm", "1 table", "1 image", "1 footnote"]) {
+        if (!result.includes(expected)) throw new Error(`result read: ${JSON.stringify(result.slice(0, 300))}`);
+      }
+      await evaluate(win, `document.querySelector('[data-testid="import-result-close"]').click()`);
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`[...document.querySelectorAll('[data-testid="book-card"]')].some((card) => (card.textContent ?? "").includes("Smoke Voyage"))`)
+          ),
+        "the imported Word book card"
+      );
+      const cards = await evaluate<number>(win, `document.querySelectorAll('[data-testid="book-card"]').length`);
+      if (cards !== wordCardsBefore + 1) throw new Error(`expected one new book card, saw ${wordCardsBefore} → ${cards}`);
+      const published = await evaluate<{ ok: boolean; error?: string; chapters?: string[][] } | null>(
+        win,
+        `(async () => {
+          const books = await window.studio.books.list();
+          if (!books.ok) return null;
+          const match = books.data.find((book) => book.title === "Smoke Voyage");
+          if (!match) return { ok: false, error: "the imported Word book is not listed" };
+          const opened = await window.studio.books.open(match.id);
+          if (!opened.ok) return { ok: false, error: opened.error.message };
+          return { ok: true, chapters: opened.data.chapters.map((chapter) => [chapter.title, chapter.content]) };
+        })()`
+      );
+      if (!published) throw new Error("the book list could not be read");
+      if (!published.ok) throw new Error(published.error ?? "the published Word book is wrong");
+      if (JSON.stringify(published.chapters) !== JSON.stringify(wordChapters)) {
+        throw new Error(`published ${JSON.stringify(published.chapters)}`);
+      }
+      return "result report with the loss list, one new card, the previewed bodies on disk";
+    });
+
+    await check("the Word fixture and the rest of the library are unchanged", async () => {
+      const library = studio.library;
+      const before = wordLibraryBefore;
+      if (!library || !before) throw new Error("no library snapshot to compare against");
+      if ((await fileHash(docxPath)) !== wordFixtureBefore) throw new Error("the Word fixture changed");
+      const after = await snapshotTree(library.root);
+      const added = [...after.keys()].filter((path) => !before.has(path));
+      const removed = [...before.keys()].filter((path) => !after.has(path));
+      const freshRoots = new Set(added.filter((path) => path.startsWith("books/")).map((path) => path.split("/").slice(0, 2).join("/")));
+      if (freshRoots.size !== 1) throw new Error(`expected one new book directory, saw ${freshRoots.size}`);
+      const [freshRoot] = [...freshRoots];
+      const outside = (path: string): boolean =>
+        !path.startsWith(`${freshRoot}/`) && path !== "library.json" && !path.startsWith(".studio/");
+      const stray = added.filter(outside);
+      if (stray.length > 0) throw new Error(`unexpected new files: ${stray.slice(0, 3).join(", ")}`);
+      if (removed.length > 0) throw new Error(`files disappeared: ${removed.slice(0, 3).join(", ")}`);
+      const touched = [...after.keys()].filter((path) => before.has(path) && before.get(path) !== after.get(path) && outside(path));
+      if (touched.length > 0) throw new Error(`existing files changed: ${touched.slice(0, 3).join(", ")}`);
+      process.env.STUDIO_IMPORT_PATH = fixturePath;
+      return "one new book directory, Word fixture identical by hash";
+    });
+
   } finally {
     await finish(win, checks, rendererErrors);
   }

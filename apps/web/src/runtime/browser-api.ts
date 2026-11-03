@@ -12,6 +12,13 @@ import { BrowserLibraries, browserRuntime } from "./browser-libraries";
 import { cancelOpenRouterFlow, startOpenRouterFlow } from "./openrouter";
 import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
 
+/**
+ * Staged publication needs the desktop atomic rename, and only the desktop app converts Word
+ * documents, so the browser and mobile builds refuse both import channels (spec 029 T016).
+ */
+export const MANUSCRIPT_IMPORT_DESKTOP_ONLY =
+  "Importing a manuscript (Word .docx, text or Markdown) is available in the desktop app.";
+
 const EMPTY_USAGE: UsageSummary = {
   turns: 0,
   inputTokens: 0,
@@ -124,10 +131,8 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
           failure("invalid", "Markdown export is available in the desktop app. Export the library archive instead.")
         ),
       // Staged publication needs the desktop atomic rename; the browser profile stays read-only for imports (T016).
-      importManuscript: () =>
-        Promise.resolve(failure("invalid", "Manuscript import is available in the desktop app.")),
-      pickImportSource: () =>
-        Promise.resolve(failure("invalid", "Manuscript import is available in the desktop app.")),
+      importManuscript: () => Promise.resolve(failure("invalid", MANUSCRIPT_IMPORT_DESKTOP_ONLY)),
+      pickImportSource: () => Promise.resolve(failure("invalid", MANUSCRIPT_IMPORT_DESKTOP_ONLY)),
       search: (bookId, query) => safe(() => libraries.require().search(bookId, query))
     },
 

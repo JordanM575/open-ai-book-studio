@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ImportManuscriptInput } from "@ai-book-studio/core/manuscript-import";
-import { createBrowserStudioApi } from "../../src/runtime/browser-api";
+import { MANUSCRIPT_IMPORT_DESKTOP_ONLY, createBrowserStudioApi } from "../../src/runtime/browser-api";
 import { BrowserLibraries } from "../../src/runtime/browser-libraries";
 
 // Spec 029 T016: the browser and mobile targets cannot meet the manuscript
@@ -11,7 +11,7 @@ import { BrowserLibraries } from "../../src/runtime/browser-libraries";
 // throw, and no library state touched. See
 // specs/029-manuscript-import/research/browser-mobile-import.md.
 
-const DESKTOP_COPY = "Manuscript import is available in the desktop app.";
+const DESKTOP_COPY = "Importing a manuscript (Word .docx, text or Markdown) is available in the desktop app.";
 
 function api() {
   const libraries = new BrowserLibraries();
@@ -42,6 +42,11 @@ describe("browser manuscript import stays unavailable", () => {
     });
     expect(libraries.service).toBeNull();
     expect(libraries.port).toBeNull();
+  });
+
+  test("the refusal names Word documents among the desktop-only formats", () => {
+    expect(MANUSCRIPT_IMPORT_DESKTOP_ONLY).toBe(DESKTOP_COPY);
+    expect(DESKTOP_COPY).toContain("Word .docx");
   });
 
   test("the refusal names the desktop app so the author knows where to go", async () => {

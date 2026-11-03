@@ -29,12 +29,21 @@ describe("manuscript source validation", () => {
   });
 
   test("refuses unsupported extensions before reading any further", () => {
-    for (const fileName of ["book.docx", "book.pdf", "book", "book.txt.bak"]) {
+    for (const fileName of ["book.pdf", "book", "book.txt.bak", "book.doc"]) {
       const result = validateSource({ fileName, bytes: encoder.encode("First.\n") });
       expect(result).toMatchObject({ status: "refused", reason: "unsupported-extension" });
       if (result.status !== "refused") continue;
-      expect(result.message).toContain(".txt, .md or .markdown");
+      expect(result.message).toContain("Choose a Word document (.docx) or a .txt, .md or .markdown file.");
     }
+  });
+
+  test("never decodes a Word document as text; the desktop app converts it", () => {
+    const result = validateSource({ fileName: "book.docx", bytes: encoder.encode("First.\n") });
+    expect(result).toEqual({
+      status: "refused",
+      reason: "unsupported-extension",
+      message: "“book.docx” is a Word document. Import it from the desktop app, which converts Word documents."
+    });
   });
 
   test("refuses oversized input without truncating", () => {

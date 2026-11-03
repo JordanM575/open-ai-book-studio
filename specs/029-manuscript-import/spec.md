@@ -1,7 +1,7 @@
 # Feature Specification: Import a manuscript file
 
 **Feature Branch**: `029-manuscript-import`  
-**Status**: Draft / Planned — not implemented  
+**Status**: Draft — desktop TXT/Markdown and Word (DOCX) import implemented on the macOS reference target; other formats and targets refused (see the format matrix)  
 **Input**: Public product request for general manuscript-file intake, separate from migrating an earlier studio export.
 
 ## Current public behavior and proposed behavior
@@ -10,7 +10,22 @@
 
 **Proposed behavior:** Add a separate, local-only intake journey that turns one supported manuscript file into one new book. The first bounded profile proposed here is desktop UTF-8 TXT/Markdown, with an exact preview of chapter content and boundaries, explicit book/chapter mapping and confirmation, a complete staged book published as one unit, a result report, and safe cancel/failure behavior. This profile is a proposal, not an accepted format, size or platform decision. The public long-term intent remains DOCX, DOC, TXT, RTF and ODT; the formats and targets outside the first profile are explicitly deferred below.
 
+**Word documents (D-183, 2026-11-03):** the macOS desktop app also accepts `.docx`. A Word document goes through its own intake (FR-026–FR-030): the container is checked, the text is converted to canonical Markdown, the document's top-level headings are proposed as chapter boundaries, and everything the bodies cannot carry is listed. It then uses the same preview, confirmation and staged publication as text files.
+
 This spec expands 002 FR-035. It does not change the earlier-app migration in 003, the portable archive in 010, or the book format in `docs/FORMAT.md`.
+
+## Format matrix
+
+| Format | macOS desktop | Windows / Linux desktop | Web, iOS, Android | Evidence |
+| --- | --- | --- | --- | --- |
+| Text and Markdown (`.txt`, `.md`, `.markdown`) | Enabled | Disabled until verified (decision 4) | Refused with desktop-only copy | T005–T013; `packages/core/tests/manuscript-import.test.ts`; hidden smoke |
+| Word (`.docx`) | Enabled (D-183) | Disabled until verified (decision 4) | Refused with desktop-only copy that names Word | T018; `apps/desktop/tests/docx-import.test.ts`, `packages/core/tests/manuscript-import-docx.test.ts`, the preview and journey component tests, and the hidden smoke Word journey |
+| OpenDocument (`.odt`) | Refused | Refused | Refused | T015: validated, not enabled |
+| Older Word (`.doc`) | Refused | Refused | Refused | T015: no validated reader |
+| Rich text (`.rtf`) | Refused | Refused | Refused | T015: parsers rejected |
+| PDF, EPUB, JSON and anything else | Refused | Refused | Refused | FR-005 |
+
+A `.docx` that is really an encrypted, older-Word, macro-enabled, OpenDocument or damaged file is refused by the Word intake's container check, whatever its extension says.
 
 ## Overview
 
@@ -94,8 +109,8 @@ The author can stop before publication. If reading, staging, validation or writi
 
 ### Proposed first-profile input
 
-- **FR-004**: The proposed first profile MUST be limited to desktop UTF-8 plain text and Markdown files (`.txt`, `.md`, `.markdown`). The supported desktop operating-system matrix remains open; macOS is the public reference target in spec 013, not proof that this importer is available on every platform.
-- **FR-005**: The proposed first profile MUST reject DOCX, DOC, RTF and ODT, as well as PDF, EPUB, JSON and other unsupported inputs, with an actionable message. Support for DOCX, DOC, TXT, RTF and ODT remains the long-term public intent; only TXT/Markdown is proposed for the bounded first profile.
+- **FR-004**: The proposed first profile MUST be limited to desktop UTF-8 plain text and Markdown files (`.txt`, `.md`, `.markdown`). The supported desktop operating-system matrix remains open; macOS is the public reference target in spec 013, not proof that this importer is available on every platform. *Amended by D-183:* Word documents (`.docx`) are accepted on the same targets through the Word intake in FR-026–FR-030.
+- **FR-005**: The proposed first profile MUST reject DOC, RTF and ODT, as well as PDF, EPUB, JSON and other unsupported inputs, with an actionable message that names the accepted formats. Support for DOC, RTF and ODT remains the long-term public intent. *Amended by D-183:* DOCX is no longer rejected; it is read only by the Word intake, never decoded as text.
 - **FR-006**: The proposed first profile MUST decode UTF-8 strictly, with any BOM, invalid-byte, control-character, empty-input and size-limit behavior stated before implementation. It MUST reject unsupported input rather than silently guessing an encoding, dropping data or truncating text.
 - **FR-007**: The desktop main process MUST obtain the source through a user-initiated file picker and read it locally. The renderer MUST NOT supply a trusted host path or access the filesystem directly.
 - **FR-008**: Import MUST work without a network connection. It MUST NOT call an enrichment service, model provider, or other external service, and MUST NOT create Story Bible content, images, model state or credentials.
@@ -103,10 +118,10 @@ The author can stop before publication. If reading, staging, validation or writi
 ### Proposed preview and mapping
 
 - **FR-009**: Before any library write, the studio MUST show an exact preview of the complete normalized chapter bodies, their order and boundaries, plus the proposed book and chapter titles.
-- **FR-010**: The proposed default MUST be one chapter containing the whole file. The author MUST be able to add or remove split points only between source lines and edit every resulting chapter title. The preview MUST show which lines belong to each chapter; every nonblank source line MUST appear exactly once, and any blank lines removed by canonical body rules MUST be identified rather than silently omitted.
+- **FR-010**: The proposed default MUST be one chapter containing the whole file. The author MUST be able to add or remove split points only between source lines and edit every resulting chapter title. The preview MUST show which lines belong to each chapter; every nonblank source line MUST appear exactly once, and any blank lines removed by canonical body rules MUST be identified rather than silently omitted. *D-183:* a Word document's preview opens split at its top-level headings (FR-028); with no headings, or once the author removes those splits, the whole-file default applies, and a heading that titles a chapter counts as that chapter's line.
 - **FR-011**: The author MUST explicitly confirm the mapping from the one source file to one new book and its ordered chapters. Dismissing the preview or choosing cancel MUST leave the library unchanged.
 - **FR-012**: For Markdown, the proposed first profile MUST treat headings, YAML-looking front matter and all other Markdown syntax as literal manuscript text. It MUST NOT infer Story Bible fields or silently strip heading lines to use as chapter titles.
-- **FR-013**: Imported chapter bodies MUST use the canonical body rules in `docs/FORMAT.md`: CRLF and CR become LF; leading and trailing blank lines are removed per chapter; no other whitespace, punctuation or Markdown rewriting is performed; the saved file ends with the format's single final newline. The exact result MUST be visible before confirmation.
+- **FR-013**: Imported chapter bodies MUST use the canonical body rules in `docs/FORMAT.md`: CRLF and CR become LF; leading and trailing blank lines are removed per chapter; no other whitespace, punctuation or Markdown rewriting is performed; the saved file ends with the format's single final newline. The exact result MUST be visible before confirmation. *D-183:* for a Word document, these rules apply to the Markdown that FR-027 converts from it; the conversion itself is the only other change.
 - **FR-014**: Book and chapter titles MUST be editable before confirmation. The book title MAY default from the source basename, but file metadata MUST NOT be treated as confirmed author intent.
 
 ### Staging, publication and recovery
@@ -126,20 +141,29 @@ The author can stop before publication. If reading, staging, validation or writi
 - **FR-024**: The first profile MUST be exposed only on desktop targets whose picker, file-read, path-safety and atomic-publication behavior has passed its conformance checks. Web, iOS and Android availability MUST NOT be implied. Windows and Linux availability remains undecided until the platform decision and checks are complete.
 - **FR-025**: The library's derived catalog MAY refresh after publication. A catalog refresh failure MUST NOT undo or misreport a complete book publication; reopening the library MUST be able to rediscover the book from its ordinary files.
 
+### Word documents (D-183)
+
+- **FR-026**: The desktop main process MUST check a `.docx` before converting it: the zip signature, a `[Content_Types].xml` that declares the WordprocessingML main part, and `word/document.xml`. It MUST refuse, naming the file and a next step, an encrypted document, an older Word (`.doc`) file, a macro-enabled document, an OpenDocument or other zip, and a damaged zip. Limits: the file is at most 5 MiB (decision 2); its XML parts may expand to at most 50 MiB, and only XML parts are ever decompressed; the converted text is at most 5 MiB; and one import creates at most 200 chapters. Each limit is refused before any preview, never truncated.
+- **FR-027**: Conversion MUST produce canonical chapter bodies under `docs/FORMAT.md`. Each Word paragraph is one block, and blocks are separated by one blank line. An empty paragraph adds one blank line. Line breaks are kept. Bold and italic become `**` and `*`, list items become `- ` or numbered lines indented by level, quote paragraphs become `> ` lines, and table cells become plain lines in document order. A heading that does not title a chapter stays as a `#` line. The text of every block is kept verbatim: no paragraph inference, quote straightening or other clean-up. A style map embedded in the document MUST be ignored.
+- **FR-028**: The preview MUST propose a chapter boundary at each top-level heading, which is the shallowest heading level present, and MUST use the heading's text as the chapter title. A Title paragraph at the very start becomes the proposed book title. Text before the first heading stays an opening chapter. A document with no headings is one chapter, which is the whole-file default. The author MUST be able to keep, move, add or remove splits as in FR-010; removing a split returns that heading to the body as a `#` line, so no text is lost.
+- **FR-029**: Nothing MUST be dropped silently. The preview and the result report MUST list, with a count and a place (a converted line, or the heading the item falls under), every table, image, footnote, endnote, comment, tracked insertion and deletion, text box, field, chart or diagram, equation, page header and footer, link, underline, strikethrough, checkbox, unsupported symbol, and any other content the converter cannot read. They MUST also state that fonts, sizes, spacing, alignment and page layout are not imported. Tracked changes are imported as if accepted. Images MUST NOT be stored, as base64 or otherwise.
+- **FR-030**: A Word import MUST publish through the same staged atomic book write as text (FR-015–FR-021) and MUST be offered only on the macOS desktop target (decision 4). The browser and mobile builds MUST keep refusing both import channels, with copy that names Word documents among the desktop-only formats.
+
 ## Non-Goals
 
 - Migrating an earlier AI Book Studio export, selecting multiple books, preserving legacy state, or undoing a batch migration; spec 003 owns that journey.
 - Importing a portable library archive; spec 010 owns that transfer.
-- DOCX, DOC, RTF or ODT parsing in the first profile, including any claim that Word export supports Word import.
+- DOC, RTF or ODT parsing, and any claim that Word export supports Word import. DOCX is read only by the separate Word intake (FR-026–FR-030), never by the text profile.
 - Browser, iOS or Android file selection and publication in the first profile.
-- Automatic chapter detection, semantic restructuring, title inference beyond an editable filename-based default, or automatic Markdown metadata parsing in the first profile.
+- Automatic chapter detection, semantic restructuring, title inference beyond an editable filename-based default, or automatic Markdown metadata parsing in the text profile. The Word intake proposes boundaries and titles only from the document's own headings (FR-028), for the author to confirm.
 - Creating, enriching or summarizing a Story Bible, images, settings, outline, cast, memories, or agent context.
 - Any provider, AI, account, server, telemetry or network use.
 - Changing the library format, canonical Markdown rules, sync policy, or general portable archive semantics.
 
 ## Key Entities
 
-- **Source file**: one author-selected local TXT or Markdown file, read without mutation.
+- **Source file**: one author-selected local TXT or Markdown file, or a Word document (`.docx`), read without mutation.
+- **Loss report**: for a Word document, each kind of content the chapter bodies cannot carry, with its count and places, shown in the preview and the result.
 - **Import preview**: the exact proposed book title, ordered chapter titles, split boundaries, normalized chapter text and summary shown before confirmation.
 - **Staged book**: a complete unpublished set of ordinary book files in library-owned temporary storage.
 - **Published import**: one complete new book moved into the library's `books/` tree as a single commit.
@@ -174,5 +198,6 @@ The author can stop before publication. If reading, staging, validation or writi
 2. **Input safety limits — decided 2026-11-03 with the author**: 5 MiB maximum source (conservative against proven 15 MiB IPC round-trips), strict UTF-8, strip exactly one leading BOM, reject NUL/control characters except tab/LF/CR, refuse empty input. Implemented in T005 (`MAX_SOURCE_BYTES`).
 3. **Atomic publication contract — verified 2026-11-03**: the desktop adapter publishes a complete staged directory with one same-filesystem rename (atomic on the macOS reference target); cross-device moves are refused with `unsupported` instead of copying; `removeDirectory` was added to the port for unpublished staging cleanup. Web copy+delete does not qualify, so the first profile's publisher stays desktop-gated per FR-024. Conformance covered by `packages/core/tests/library-port.test.ts` and `apps/desktop/tests/library-publish.test.ts`.
 4. **Desktop platform matrix — decided 2026-11-03**: macOS-only initial. Only the macOS reference target has verified native behavior (atomic same-filesystem rename per T003, native open dialog and staging per T008 tests); Windows and Linux stay disabled until their rename, dialog and staging behavior is verified the same way. This blocks enabling the capability on an unverified platform, not pure parser work.
+5. **Word (DOCX) intake — accepted 2026-11-03 (D-183)**: mammoth after a container check, with the limits in FR-026; the conversion, boundary and loss rules in FR-027–FR-029; macOS only, like every other format, under decision 4. Implemented in T018.
 
 Each decision remains open until recorded in the public decision process. The proposed first-profile bounds in this draft must not be represented as accepted public decisions before that happens.

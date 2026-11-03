@@ -23,7 +23,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | Coverage ratchet | `scripts/coverage-check.mjs` | `bun run coverage` | Fails below 85% functions / 92% lines |
 | Browser E2E | `scripts/web-smoke/main.cjs`, `scripts/e2e.mjs` | `bun run smoke:web`, `bun run e2e` | Real Chromium journey: create, write, reload, conflict, archive |
 | Browser matrix | `apps/web/check/main.ts` | `node scripts/browser-matrix.mjs` | Chromium gate; Firefox/WebKit findings |
-| Desktop smoke | `apps/desktop/src/main/smoke.ts` | `bun run smoke` | 30 hidden checks through the real renderer |
+| Desktop smoke | `apps/desktop/src/main/smoke.ts` | `bun run smoke` | 33 hidden checks through the real renderer |
 | Accessibility | `scripts/accessibility-check.mjs` | `bun run a11y` | 28 axe scans plus focus order |
 | Visual | `scripts/visual-check.mjs` | `bun run visual` | 112 baselines; explicit `--update-baseline` |
 | Performance | `scripts/perf-check.ts` | `bun run perf` | SC-009 regression thresholds only |
@@ -33,7 +33,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | CI | `.gitea/workflows/verify.yml` | unregistered runner | Committed but unenforced; local `verify` is truth |
 | Live providers | `scripts/check-keys.mjs`, `bun scripts/live-check.mjs` | `bun run keys:check` | Status without secrets; opt-in live calls |
 
-## 002 — Studio v1 (78 requirements: 61 covered, 3 partial, 14 gaps)
+## 002 — Studio v1 (78 requirements: 62 covered, 3 partial, 13 gaps)
 
 | FR | Requirement | Coverage |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-032 | Base prompt under 4,000 tokens, budget-tested | COVER: `apps/desktop/tests/agent-tools.test.ts` |
 | FR-033 | Agent answers in author terms, briefly | COVER: `apps/desktop/tests/agent-tools.test.ts` pins the shipped reply contract (two-or-three sentences, no tool names/ids/JSON/process, chapters by number and title); model wording itself is untestable with a mock, and no runtime truncation exists by design |
 | FR-034 | Rewrite constraints checked; saved count reported | COVER: `apps/desktop/tests/agent-tools.test.ts` (replace/overwrite accept optional maxWords, checked after save with the saved count; a miss is reported, never reverted; unchecked message unchanged; new bound satisfies `agent-limits-contract.test.ts`) |
-| FR-035 | Import Word docs with split preview and confirm | GAP: importer refuses docx by design; only txt and markdown import tested |
+| FR-035 | Import Word docs with split preview and confirm | COVER (macOS desktop only, per 029's platform matrix; D-183): `apps/desktop/tests/docx-import.test.ts` runs real mammoth on synthetic `docx` documents (top-level headings become chapters with their titles, emphasis/lists/quotes/scene breaks become Markdown, removing a split returns the heading to the body, every nonblank line is kept, a table, an image, a footnote and ten more kinds are in the loss report with places, corrupt/non-Word/oversized/encrypted/older-Word/macro/empty files are refused in plain words, the previewed bodies are published exactly, a failed publish leaves no book); `packages/core/tests/manuscript-import-docx.test.ts` (container caps, transform edge cases); `apps/desktop/tests/manuscript-import-preview.test.tsx` and `manuscript-import-journey.test.tsx` (splits seeded at headings, merge by removing a split, loss list in the preview and the result); hidden smoke Word journey in `apps/desktop/src/main/smoke.ts`. Open: Windows/Linux not verified, web and mobile refuse |
 | FR-036 | Paste normalizes whitespace and quotes, spares verse | COVER: `normalizePasteText` (`packages/core/src/paste.ts`, `./paste` export) unifies endings/nbsp/curly quotes and caps blank lines while verse, hard breaks, tabs and dashes pass through (`packages/core/tests/paste.test.ts`); the manuscript editor pastes through it at the caret (`apps/desktop/tests/manuscript-editor.test.ts`); import line-endings covered by `manuscript-import.test.ts` |
 | FR-037 | Migrate legacy export one-way with mapped and skipped report | COVER: `apps/desktop/tests/legacy-import.test.ts` |
 | FR-038 | Migration idempotent; second run changes nothing | COVER: product now matches by content fingerprint (D-180): `apps/desktop/tests/legacy-import.test.ts` proves a double-run creates zero books/chapters and names the recognised book, an added-book run imports only the new one, and a corrupt record warns and re-imports |

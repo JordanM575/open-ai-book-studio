@@ -26,6 +26,19 @@ Update the `Unreleased` section before every commit.
   the journey. `e2e` now reports a platform-bound check as skipped instead of passed. 002 FR-069
   stays a gap: hidden runs never claim the single-instance lock, and a second launch shows no
   warning; the requirement map records the evidence.
+- Word documents (.docx) now import on the macOS desktop app (D-183, spec 029). The importer
+  first checks that the file really is a Word document and refuses, in plain words, a
+  password-protected, macro-enabled, older .doc, OpenDocument or damaged file; it reads at most
+  5 MiB of file, 50 MiB of document XML and 5 MiB of resulting text. Paragraphs, bold and italic,
+  line breaks, lists, quotes and scene breaks become canonical Markdown, and empty paragraphs stay
+  as blank lines. The document's top-level headings are proposed as chapters titled by their text,
+  a Title paragraph names the book, and the existing preview lets the author keep, move or remove
+  each split before anything is written. Tables, images, footnotes, endnotes, comments, tracked
+  changes, text boxes, fields, page headers and footers, links, underline and strikethrough are
+  listed with a count and where they were, in the preview and in the result report. Images are
+  never stored, as base64 or otherwise. Publishing uses the same staged atomic write as text
+  imports. The browser and mobile builds still refuse, now naming Word documents among the
+  desktop-only formats.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

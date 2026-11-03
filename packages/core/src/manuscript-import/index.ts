@@ -13,8 +13,18 @@ import { countWords } from "../markdown";
 /** Maximum accepted source size: 5 MiB, conservative against proven IPC round-trips. */
 export const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 
-export const ACCEPTED_EXTENSIONS = [".txt", ".md", ".markdown"] as const;
+/** Formats read as UTF-8 text by `validateSource`. */
+export const TEXT_EXTENSIONS = [".txt", ".md", ".markdown"] as const;
+/** Word documents, converted in the desktop main process (D-183). */
+export const DOCX_EXTENSION = ".docx";
+export const ACCEPTED_EXTENSIONS = [...TEXT_EXTENSIONS, DOCX_EXTENSION] as const;
 export type AcceptedExtension = (typeof ACCEPTED_EXTENSIONS)[number];
+
+/** Lower-cased extension with its dot, or "" when the name has none. */
+export function extensionOf(fileName: string): string {
+  const dot = fileName.lastIndexOf(".");
+  return dot === -1 ? "" : fileName.slice(dot).toLowerCase();
+}
 
 /** Whitespace-only lines count as blank under the canonical body rules. */
 const BLANK_LINE = /^\s*$/u;
@@ -42,20 +52,78 @@ export function refuseUnsupportedExtension(fileName: string): SourceRefusal {
   return {
     status: "refused",
     reason: "unsupported-extension",
-    message: `“${fileName}” is not a supported manuscript file. Choose a .txt, .md or .markdown file.`
+    message: `“${fileName}” is not a supported manuscript file. Choose a Word document (.docx) or a .txt, .md or .markdown file.`
   };
+}
+
+/** What a Word document cannot carry into a chapter body (D-183). */
+export type ImportLossKind =
+  | "table"
+  | "image"
+  | "footnote"
+  | "endnote"
+  | "comment"
+  | "tracked-insertion"
+  | "tracked-deletion"
+  | "text-box"
+  | "field"
+  | "chart"
+  | "equation"
+  | "header"
+  | "footer"
+  | "link"
+  | "underline"
+  | "strikethrough"
+  | "checkbox"
+  | "symbol"
+  | "other";
+
+export interface ImportLossPlace {
+  /** 1-based line of the converted text, when the item sits in the body flow. */
+  line?: number;
+  /** The Word heading the item falls under when only its section is known; null before the first heading. */
+  heading?: string | null;
+  /** A short excerpt or detail: note text, deleted words, a field code. */
+  detail?: string;
+}
+
+export interface ImportLossItem {
+  kind: ImportLossKind;
+  /** Exact number found. */
+  count: number;
+  /** The first places found, at most `MAX_LOSS_PLACES`; `count` stays exact when there are more. */
+  places: ImportLossPlace[];
+}
+
+export const MAX_LOSS_PLACES = 20;
+
+/** What the Word conversion found beyond the text itself. */
+export interface DocxSourceDetail {
+  /** Lines of `text` that hold a Word heading, in document order. */
+  headings: Array<{ line: number; level: number; text: string }>;
+  /** Proposed chapter starts: the top-level heading lines. The author confirms or changes them. */
+  proposedSplits: number[];
+  /**
+   * Blank lines the document itself holds: empty paragraphs and empty lines inside one.
+   * The blank lines the conversion writes between blocks are separators and are not listed.
+   */
+  blankLines: number[];
+  /** Everything the chapter bodies cannot carry, by kind, in a stable order. */
+  loss: ImportLossItem[];
 }
 
 export interface ValidatedSource {
   status: "validated";
   /** File name as chosen, without any host directory. */
   fileName: string;
-  /** Proposed book title: the basename without extension, still editable by the author. */
+  /** Proposed book title: the basename without extension (or a Word Title paragraph), still editable by the author. */
   proposedTitle: string;
-  /** Decoded text with one leading BOM stripped; newlines not yet normalized. */
+  /** Decoded text with one leading BOM stripped; newlines not yet normalized. For Word, the converted Markdown. */
   text: string;
   /** True when exactly one leading byte-order mark was stripped. */
   strippedBom: boolean;
+  /** Present only for a converted Word document. */
+  docx?: DocxSourceDetail;
 }
 
 export interface ImportChapterDraft {
@@ -84,17 +152,29 @@ export interface ImportPreview {
   chapters: ImportChapterDraft[];
   wordCount: number;
   normalization: ImportNormalization;
+  /** "docx" when the source was a converted Word document. */
+  format: "text" | "docx";
+  /** What the chapter bodies cannot carry; empty for text sources. */
+  loss: ImportLossItem[];
 }
 
 /**
- * Validate one selected source file. Refusals name the reason and the accepted
- * input; nothing is guessed, truncated or decoded loosely.
+ * Validate one selected text source file. Refusals name the reason and the
+ * accepted input; nothing is guessed, truncated or decoded loosely. Word
+ * documents are converted by the desktop app, never decoded here as text.
  */
 export function validateSource(input: { fileName: string; bytes: Uint8Array }): ValidatedSource | SourceRefusal {
   const fileName = input.fileName.split("/").pop() ?? input.fileName;
   const dot = fileName.lastIndexOf(".");
-  const extension = dot === -1 ? "" : fileName.slice(dot).toLowerCase();
-  if (!(ACCEPTED_EXTENSIONS as readonly string[]).includes(extension)) {
+  const extension = extensionOf(fileName);
+  if (extension === DOCX_EXTENSION) {
+    return {
+      status: "refused",
+      reason: "unsupported-extension",
+      message: `“${fileName}” is a Word document. Import it from the desktop app, which converts Word documents.`
+    };
+  }
+  if (!(TEXT_EXTENSIONS as readonly string[]).includes(extension)) {
     return refuseUnsupportedExtension(fileName);
   }
   if (input.bytes.byteLength > MAX_SOURCE_BYTES) {
@@ -160,6 +240,11 @@ function normalizeNewlines(text: string): { normalized: string; newlineStyle: Im
  * `splits` holds 1-based line numbers where a new chapter starts, applied in order.
  * Every nonblank source line lands in exactly one chapter; edge blank lines removed
  * by the canonical rules are reported per chapter rather than silently dropped.
+ *
+ * For a converted Word document, a chapter whose first nonblank line is a Word
+ * heading takes that heading as its title instead of carrying it in the body, and
+ * only blank lines the document itself holds count as removed: the blank lines
+ * between converted blocks are separators the conversion wrote.
  */
 export function previewImport(validated: ValidatedSource, splits: readonly number[] = []): ImportPreview {
   const { normalized, newlineStyle } = normalizeNewlines(validated.text);
@@ -171,25 +256,43 @@ export function previewImport(validated: ValidatedSource, splits: readonly numbe
     (a, b) => a - b
   );
   const starts = [1, ...boundaries];
+  const docx = validated.docx;
+  const headings = new Map((docx?.headings ?? []).map((heading) => [heading.line, heading]));
+  const documentBlanks = new Set(docx?.blankLines ?? []);
+  const isBlank = (line: string): boolean => BLANK_LINE.test(line);
 
   const chapters: ImportChapterDraft[] = [];
   const edgeBlankLines: ImportNormalization["edgeBlankLines"] = [];
   starts.forEach((startLine, index) => {
     const endLine = index + 1 < starts.length ? starts[index + 1]! - 1 : lines.length;
     const span = lines.slice(startLine - 1, endLine);
-    let leadingRemoved = 0;
-    while (leadingRemoved < span.length && BLANK_LINE.test(span[leadingRemoved]!)) leadingRemoved += 1;
-    let trailingRemoved = 0;
-    while (trailingRemoved < span.length - leadingRemoved && BLANK_LINE.test(span[span.length - 1 - trailingRemoved]!)) {
-      trailingRemoved += 1;
+    let first = 0;
+    while (first < span.length && isBlank(span[first] ?? "")) first += 1;
+    const heading = first < span.length ? headings.get(startLine + first) : undefined;
+    let bodyStart = first;
+    if (heading) {
+      bodyStart = first + 1;
+      while (bodyStart < span.length && isBlank(span[bodyStart] ?? "")) bodyStart += 1;
     }
-    const kept = span.slice(leadingRemoved, span.length - trailingRemoved);
+    let bodyEnd = span.length;
+    while (bodyEnd > bodyStart && isBlank(span[bodyEnd - 1] ?? "")) bodyEnd -= 1;
+    // Text sources report every removed edge line; Word sources only the blank lines the document holds.
+    const counted = (from: number, to: number): number => {
+      let total = 0;
+      for (let offset = from; offset < to; offset += 1) {
+        if (!docx || documentBlanks.has(startLine + offset)) total += 1;
+      }
+      return total;
+    };
+    const leadingRemoved = counted(0, first) + (heading ? counted(first + 1, bodyStart) : 0);
+    const trailingRemoved = counted(bodyEnd, span.length);
+    const kept = span.slice(bodyStart, bodyEnd);
     const body = kept.length === 0 ? "" : `${kept.join("\n")}\n`;
     const order = index + 1;
     edgeBlankLines.push({ order, leadingRemoved, trailingRemoved });
     chapters.push({
       order,
-      title: `Chapter ${order}`,
+      title: heading ? heading.text : `Chapter ${order}`,
       body,
       startLine,
       endLine,
@@ -202,7 +305,9 @@ export function previewImport(validated: ValidatedSource, splits: readonly numbe
     bookTitle: validated.proposedTitle,
     chapters,
     wordCount: chapters.reduce((total, chapter) => total + chapter.wordCount, 0),
-    normalization: { strippedBom: validated.strippedBom, newlineStyle, edgeBlankLines }
+    normalization: { strippedBom: validated.strippedBom, newlineStyle, edgeBlankLines },
+    format: docx ? "docx" : "text",
+    loss: docx?.loss ?? []
   };
 }
 
@@ -227,8 +332,18 @@ export const importManuscriptInputSchema = z.strictObject({
 
 export type ImportManuscriptInput = z.infer<typeof importManuscriptInputSchema>;
 
+/** Why a Word document is refused before any preview (D-183). */
+export type DocxRefusalReason =
+  | "not-docx"
+  | "encrypted"
+  | "macro-enabled"
+  | "corrupt"
+  | "too-large"
+  | "empty"
+  | "too-many-chapters";
+
 /** Reasons a picked source never becomes a preview: the core refusals plus main-process read failures. */
-export type ImportSourceReadIssue = SourceRefusalReason | "not-found" | "unreadable";
+export type ImportSourceReadIssue = SourceRefusalReason | DocxRefusalReason | "not-found" | "unreadable";
 
 /**
  * What choosing a file yields (spec 029 T011). A cancellation is silent; a
@@ -242,6 +357,73 @@ export type ImportSourcePick =
 /** The studio imports chapter text and titles only. This note says so, verbatim, in every result report. */
 export const IMPORT_NOT_IMPORTED_NOTE =
   "Planning data, images and other metadata were not imported. Only chapter text and titles were.";
+
+/** Shown with every Word preview and report: styling is never part of a chapter body. */
+export const DOCX_FORMATTING_NOTE =
+  "Fonts, sizes, spacing, alignment and page layout are not imported. Emphasis, lists and quotes are.";
+
+const LOSS_WORDS: Record<ImportLossKind, { one: string; many: string; outcome: string }> = {
+  table: { one: "table", many: "tables", outcome: "Cell text kept as plain lines; the table layout was not." },
+  image: { one: "image", many: "images", outcome: "Not imported." },
+  footnote: { one: "footnote", many: "footnotes", outcome: "Not imported; the reference mark was removed." },
+  endnote: { one: "endnote", many: "endnotes", outcome: "Not imported; the reference mark was removed." },
+  comment: { one: "comment", many: "comments", outcome: "Not imported." },
+  "tracked-insertion": { one: "tracked insertion", many: "tracked insertions", outcome: "Kept as ordinary text." },
+  "tracked-deletion": { one: "tracked deletion", many: "tracked deletions", outcome: "Left out, as if accepted." },
+  "text-box": { one: "text box", many: "text boxes", outcome: "Text kept as ordinary paragraphs." },
+  field: { one: "field", many: "fields", outcome: "Shown text kept; it will not update." },
+  chart: { one: "chart or diagram", many: "charts and diagrams", outcome: "Not imported." },
+  equation: { one: "equation", many: "equations", outcome: "Not imported." },
+  header: { one: "page header", many: "page headers", outcome: "Not imported." },
+  footer: { one: "page footer", many: "page footers", outcome: "Not imported." },
+  link: { one: "link", many: "links", outcome: "Text kept; the link address was not." },
+  underline: { one: "underlined passage", many: "underlined passages", outcome: "Text kept without the underline." },
+  strikethrough: {
+    one: "struck-through passage",
+    many: "struck-through passages",
+    outcome: "Text kept without the strike."
+  },
+  checkbox: { one: "checkbox", many: "checkboxes", outcome: "Not imported." },
+  symbol: { one: "symbol", many: "symbols", outcome: "Not imported." },
+  other: { one: "other item", many: "other items", outcome: "Not imported; the importer cannot read it." }
+};
+
+/** "2 tables" and what happened to them, in the author's words. */
+export function describeLoss(item: ImportLossItem): { label: string; outcome: string } {
+  const words = LOSS_WORDS[item.kind];
+  return {
+    label: `${item.count.toLocaleString("en-US")} ${item.count === 1 ? words.one : words.many}`,
+    outcome: words.outcome
+  };
+}
+
+function lossPlaceText(place: ImportLossPlace): string {
+  const where =
+    place.line !== undefined
+      ? `line ${place.line}`
+      : place.heading === undefined
+        ? null
+        : place.heading === null
+          ? "before the first heading"
+          : `under “${place.heading}”`;
+  const detail = place.detail ? `“${place.detail}”` : null;
+  if (where && detail) return `${where}: ${detail}`;
+  return where ?? detail ?? "";
+}
+
+/** Where the first few items are, such as "Line 12, line 40 and 3 more"; null when no place is known. */
+export function describeLossPlaces(item: ImportLossItem, limit = 5): string | null {
+  const shown = item.places
+    .slice(0, limit)
+    .map(lossPlaceText)
+    .filter((text) => text !== "");
+  if (shown.length === 0) return null;
+  const more = item.count - shown.length;
+  const parts = more > 0 ? [...shown, `${more.toLocaleString("en-US")} more`] : shown;
+  const last = parts[parts.length - 1] ?? "";
+  const listed = parts.length === 1 ? last : `${parts.slice(0, -1).join(", ")} and ${last}`;
+  return `${listed.charAt(0).toUpperCase()}${listed.slice(1)}`;
+}
 
 export interface ImportReportChapter {
   order: number;
@@ -262,6 +444,10 @@ export interface ImportResultReport {
   totalWords: number;
   normalization: ImportNormalization;
   notImportedNote: string;
+  /** "docx" when the source was a converted Word document. */
+  format: "text" | "docx";
+  /** What the chapter bodies could not carry, exactly as the preview listed it. */
+  loss: ImportLossItem[];
 }
 
 /**
@@ -275,6 +461,8 @@ export function buildImportReport(input: {
   normalization: ImportNormalization;
   splits: Array<{ order: number; startLine: number; endLine: number }>;
   published: { bookId: string; bookTitle: string; chapters: Array<{ title: string; body: string }> };
+  format?: "text" | "docx";
+  loss?: ImportLossItem[];
 }): ImportResultReport {
   const chapters = input.published.chapters.map((chapter, index) => {
     const split = input.splits[index];
@@ -293,6 +481,8 @@ export function buildImportReport(input: {
     chapters,
     totalWords: chapters.reduce((total, chapter) => total + chapter.wordCount, 0),
     normalization: input.normalization,
-    notImportedNote: IMPORT_NOT_IMPORTED_NOTE
+    notImportedNote: IMPORT_NOT_IMPORTED_NOTE,
+    format: input.format ?? "text",
+    loss: input.loss ?? []
   };
 }

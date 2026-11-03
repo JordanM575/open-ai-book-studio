@@ -3,6 +3,7 @@ import type { ImportResultReport } from "@ai-book-studio/core/manuscript-import"
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { formatCount, formatWords, pluralize } from "../lib/utils";
+import { ImportLossList } from "./ImportLossList";
 
 interface Props {
   open: boolean;
@@ -73,6 +74,11 @@ export function ImportResultDialog({ open, report, onClose, onOpenChange }: Prop
           <p data-testid="import-result-normalization" role="note" className="mt-3 text-[var(--text-caption-size)] text-muted-foreground">
             {note}
           </p>
+        ) : null}
+        {report.format === "docx" ? (
+          <div className="mt-3">
+            <ImportLossList loss={report.loss} testId="import-result-loss" />
+          </div>
         ) : null}
         <p data-testid="import-result-not-imported" role="note" className="mt-3 text-[var(--text-caption-size)] text-muted-foreground">
           {report.notImportedNote}

@@ -8,6 +8,7 @@ import {
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { formatCount, formatWords, pluralize } from "../lib/utils";
+import { ImportLossList } from "./ImportLossList";
 
 export type ImportPreviewInput =
   | { kind: "source"; source: ValidatedSource }
@@ -65,7 +66,10 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
   const [bookTitle, setBookTitle] = useState(() =>
     input.kind === "source" ? input.source.proposedTitle : ""
   );
-  const [splits, setSplits] = useState<number[]>([]);
+  // A Word document starts split at its top-level headings; the author confirms or changes them.
+  const [splits, setSplits] = useState<number[]>(() =>
+    input.kind === "source" ? [...(input.source.docx?.proposedSplits ?? [])] : []
+  );
   const [titles, setTitles] = useState<string[]>([]);
   const [newSplitLine, setNewSplitLine] = useState("2");
 
@@ -120,7 +124,8 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
     setSplits(splits.filter((line) => line !== startLine));
   };
 
-  const chapterTitle = (order: number): string => titles[order - 1] ?? defaultChapterTitle(order);
+  const chapterTitle = (order: number): string =>
+    titles[order - 1] ?? preview.chapters[order - 1]?.title ?? defaultChapterTitle(order);
 
   const handleConfirm = (): void => {
     onConfirm(
@@ -173,6 +178,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
             {note}
           </p>
         ) : null}
+        {preview.format === "docx" ? <ImportLossList loss={preview.loss} testId="import-loss" /> : null}
         <div className="flex flex-wrap items-center gap-2">
           <label
             className="text-[var(--text-subheadline-size)] font-medium"

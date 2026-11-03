@@ -113,6 +113,20 @@ Saving normalises the body so a re-save is a no-op:
   (an empty chapter stays empty).
 - Nothing else is touched: no wrapping, no trailing-space stripping, no Markdown rewriting.
 
+### Imported Word documents
+
+A Word document imported by the desktop app becomes ordinary chapter files; the format does not
+change. Each body is canonical Markdown made from the document. Each Word paragraph becomes one
+block, blocks are separated by one blank line, and each empty paragraph adds one more. Line breaks
+are kept. Bold and italic become `**` and `*`, list items become `- ` or `1. ` lines, and quote
+paragraphs become `> ` lines. Table cells become plain lines, and a heading that does not title a
+chapter stays a `#` line. Text is otherwise kept as written. A chapter's title comes from the heading
+that starts it.
+
+Images, footnotes, endnotes, comments, page headers and footers, and the tracking of changes are
+not stored in the library. Tracked changes are imported as if accepted. The import report lists
+everything left out instead.
+
 ## Conversation files
 
 `threads/<threadId>.json` stores one agent conversation. It is written through the same atomic commit

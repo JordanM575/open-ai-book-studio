@@ -217,6 +217,66 @@ Dawn came grey and gull-less.
 await writeFile(join(temp, "manuscript.txt"), manuscript);
 env.STUDIO_IMPORT_PATH = join(temp, "manuscript.txt");
 
+/*
+ * A synthetic Word document for the DOCX journey (D-183), built with the desktop's own
+ * `docx` dependency: a Title, two Heading 1 chapters, emphasis, a list, a table, a picture
+ * and a footnote, so the hidden run sees heading chapters and a loss report.
+ */
+const docx = appRequire("docx");
+const smokePicture = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64"
+);
+const wordDocument = new docx.Document({
+  footnotes: { 1: { children: [new docx.Paragraph("A synthetic note.")] } },
+  sections: [
+    {
+      children: [
+        new docx.Paragraph({ text: "Smoke Voyage", heading: docx.HeadingLevel.TITLE }),
+        new docx.Paragraph({ text: "The Harbour", heading: docx.HeadingLevel.HEADING_1 }),
+        new docx.Paragraph({
+          children: [
+            new docx.TextRun("The keeper "),
+            new docx.TextRun({ text: "counted", bold: true }),
+            new docx.TextRun(" the boats."),
+            new docx.FootnoteReferenceRun(1)
+          ]
+        }),
+        new docx.Paragraph({ text: "Rope", bullet: { level: 0 } }),
+        new docx.Paragraph({ text: "Lamp oil", bullet: { level: 0 } }),
+        new docx.Paragraph({ text: "The Storm", heading: docx.HeadingLevel.HEADING_1 }),
+        new docx.Paragraph({
+          children: [new docx.TextRun("Rain came "), new docx.TextRun({ text: "sideways", italics: true }), new docx.TextRun(".")]
+        }),
+        new docx.Table({
+          width: { size: 100, type: docx.WidthType.PERCENTAGE },
+          rows: [
+            new docx.TableRow({
+              children: [
+                new docx.TableCell({ children: [new docx.Paragraph("north")] }),
+                new docx.TableCell({ children: [new docx.Paragraph("south")] })
+              ]
+            })
+          ]
+        }),
+        new docx.Paragraph({
+          children: [
+            new docx.TextRun("A picture follows."),
+            new docx.ImageRun({
+              type: "png",
+              data: smokePicture,
+              transformation: { width: 10, height: 10 },
+              altText: { name: "dot", description: "A smoke dot", title: "dot" }
+            })
+          ]
+        })
+      ]
+    }
+  ]
+});
+await writeFile(join(temp, "manuscript.docx"), await docx.Packer.toBuffer(wordDocument));
+env.STUDIO_IMPORT_DOCX_PATH = join(temp, "manuscript.docx");
+
 console.log(`[smoke] ${packaged ? "packaged" : "hidden"} run · profile ${profile}`);
 // stdout is piped so the runner can see the machine-readable result even when Electron's
 // shutdown path stalls; every line is still echoed unchanged.

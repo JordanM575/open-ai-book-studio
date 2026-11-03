@@ -527,7 +527,7 @@ enforcement, and the D-124 device-identity question stands.
 | **Status** | Accepted (2026-11-03, on the author's delegation) |
 | **Question** | Should the manuscript importer accept Word documents, and through which parser? |
 | **Decision** | Yes, on the macOS desktop reference target first, which is 029's platform matrix. The importer sniffs the zip container, then uses `mammoth`, which is already a dependency, as the T014 research recommends. Mammoth's HTML becomes canonical chapter bodies under `docs/FORMAT.md`'s rules. The import goes through the existing preview and the same staged atomic publication as TXT and Markdown, and headings are proposed as chapter boundaries for the author to confirm. Nothing is dropped silently: tables, images, comments and tracked changes the body cannot carry are listed in the import report. Images are never stored as base64. ODT, DOC and RTF stay refused. |
-| **Evidence** | `specs/029-manuscript-import/research/docx-intake.md`; `apps/desktop/tests/docx-intake-validation.test.ts`. |
+| **Evidence** | `specs/029-manuscript-import/research/docx-intake.md`; `apps/desktop/tests/docx-intake-validation.test.ts`; implemented in spec 029 T018: `apps/desktop/tests/docx-import.test.ts`, `packages/core/tests/manuscript-import-docx.test.ts` and the hidden smoke Word journey. |
 | **Blocks** | 002 FR-035 and the DOCX row of spec 029's format matrix. |
 | **Owner** | spec 029 |
 

@@ -26,6 +26,10 @@
       "types": "./src/manuscript-import/index.ts",
       "default": "./src/manuscript-import/index.ts"
     },
+    "./manuscript-import/docx": {
+      "types": "./src/manuscript-import/docx.ts",
+      "default": "./src/manuscript-import/docx.ts"
+    },
     "./speech-text": {
       "types": "./src/speech-text.ts",
       "default": "./src/speech-text.ts"

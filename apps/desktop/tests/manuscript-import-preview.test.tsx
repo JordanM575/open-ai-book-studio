@@ -8,6 +8,7 @@ import {
   type SourceRefusal,
   type ValidatedSource
 } from "@ai-book-studio/core/manuscript-import";
+import { convertDocxHtml } from "@ai-book-studio/core/manuscript-import/docx";
 import type {
   ConfirmedImportMapping,
   ImportPreviewInput
@@ -37,6 +38,20 @@ const TEXT = "One.\nTwo.\n\nThree.\nFour.\n\nFive.\nSix.\n";
 function validatedSource(): ValidatedSource {
   const result = validateSource({ fileName: "Road.txt", bytes: new TextEncoder().encode(TEXT) });
   if (result.status !== "validated") throw new Error("Synthetic fixture must validate.");
+  return result;
+}
+
+/** A converted Word document, as the desktop main process hands it over (D-183). */
+function docxSource(): ValidatedSource {
+  const result = convertDocxHtml({
+    fileName: "Voyage.docx",
+    html:
+      '<h1 class="title">A Voyage</h1><h1>Chapter One</h1><p>First.</p>' +
+      "<table><tr><td><p>north</p></td></tr></table><h1>Chapter Two</h1><p>Second.</p>",
+    messages: [],
+    scanned: [{ kind: "tracked-deletion", place: { heading: "Chapter Two", detail: "gone" } }]
+  });
+  if (result.status !== "validated") throw new Error("Synthetic document must convert.");
   return result;
 }
 
@@ -169,6 +184,45 @@ describe("ImportPreviewDialog", () => {
     expect(Object.keys(mapping).sort()).toEqual(["bookTitle", "chapters"]);
     const parsed = importManuscriptInputSchema.safeParse(mapping);
     expect(parsed.success).toBe(true);
+  });
+
+  test("a Word document opens split at its headings, titled by them, with its losses listed", () => {
+    const { onConfirm } = renderPreview({ kind: "source", source: docxSource() });
+    const view = testing.within(document.body);
+    expect((view.getByTestId("import-book-title") as HTMLInputElement).value).toBe("A Voyage");
+    expect((view.getByTestId("import-chapter-title-1") as HTMLInputElement).value).toBe("Chapter One");
+    expect((view.getByTestId("import-chapter-title-2") as HTMLInputElement).value).toBe("Chapter Two");
+    expect(bodyText(1)).toBe("First.\n\nnorth\n");
+    expect(bodyText(2)).toBe("Second.\n");
+    expect(view.getByTestId("import-loss-table").textContent ?? "").toBe(
+      "1 table · Cell text kept as plain lines; the table layout was not. · Line 5"
+    );
+    expect(view.getByTestId("import-loss-tracked-deletion").textContent ?? "").toBe(
+      "1 tracked deletion · Left out, as if accepted. · Under “Chapter Two”: “gone”"
+    );
+    expect(view.getByTestId("import-loss").textContent ?? "").toContain("page layout are not imported");
+
+    testing.fireEvent.click(view.getByTestId("import-confirm"));
+    expect(onConfirm.mock.calls[0]?.[0]).toEqual({
+      bookTitle: "A Voyage",
+      chapters: [
+        { title: "Chapter One", content: "First.\n\nnorth\n" },
+        { title: "Chapter Two", content: "Second.\n" }
+      ]
+    });
+  });
+
+  test("removing a heading split puts that heading back into the body", () => {
+    renderPreview({ kind: "source", source: docxSource() });
+    const view = testing.within(document.body);
+    testing.fireEvent.click(view.getByTestId("import-remove-split-2"));
+    expect(view.queryByTestId("import-chapter-body-2")).toBeNull();
+    expect(bodyText(1)).toBe("First.\n\nnorth\n\n# Chapter Two\n\nSecond.\n");
+  });
+
+  test("a text source shows no Word loss list", () => {
+    renderPreview({ kind: "source", source: validatedSource() });
+    expect(testing.within(document.body).queryByTestId("import-loss")).toBeNull();
   });
 
   test("the preview component never touches the library", async () => {

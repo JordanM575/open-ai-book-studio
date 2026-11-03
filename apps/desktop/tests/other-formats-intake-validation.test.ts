@@ -148,7 +148,7 @@ describe("other manuscript formats stay refused until their own checks pass", ()
       status: "refused",
       reason: "unsupported-extension",
       message:
-        "\u201cmemoir.doc\u201d is not a supported manuscript file. Choose a .txt, .md or .markdown file."
+        "\u201cmemoir.doc\u201d is not a supported manuscript file. Choose a Word document (.docx) or a .txt, .md or .markdown file."
     });
     expect(validateSource({ fileName: "memoir.doc", bytes: new Uint8Array([208, 207]) })).toEqual(
       refuseUnsupportedExtension("memoir.doc")

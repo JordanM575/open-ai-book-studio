@@ -5,18 +5,22 @@
  * an injected dependency (so unit tests never touch Electron), and reading goes
  * through the filesystem with typed refusals for cancel, missing, oversized,
  * unsupported and unreadable selections. Encoding and content rules stay in
- * shared core (`validateSource`); this module only guards the boundary.
+ * shared core (`validateSource`); Word documents are converted here (D-183) and
+ * reach the renderer as the same validated text, never as bytes or a path.
  */
 import { basename } from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import {
   ACCEPTED_EXTENSIONS,
+  DOCX_EXTENSION,
   MAX_SOURCE_BYTES,
+  extensionOf,
   refuseUnsupportedExtension,
   validateSource,
-  type SourceRefusalReason,
+  type ImportSourceReadIssue,
   type ValidatedSource
 } from "@ai-book-studio/core/manuscript-import";
+import { readDocxSource } from "./docx-import";
 
 export const IMPORT_DIALOG_EXTENSIONS = [...ACCEPTED_EXTENSIONS].map((extension) => extension.slice(1));
 
@@ -49,7 +53,7 @@ export async function pickImportSource(
   }
   const result = await picker.showOpenDialog({
     properties: ["openFile"],
-    filters: [{ name: "Manuscript", extensions: IMPORT_DIALOG_EXTENSIONS }]
+    filters: [{ name: "Word document, text or Markdown", extensions: IMPORT_DIALOG_EXTENSIONS }]
   });
   if (result.canceled || result.filePaths.length === 0) return { status: "cancelled" };
   const absolutePath = result.filePaths[0] as string;
@@ -60,7 +64,7 @@ export type ImportRead =
   | { status: "ready"; absolutePath: string; fileName: string; bytes: Uint8Array; validation: ValidatedSource }
   | {
       status: "refused";
-      reason: SourceRefusalReason | "not-found" | "unreadable";
+      reason: ImportSourceReadIssue;
       message: string;
     };
 
@@ -100,8 +104,7 @@ export async function readImportSource(
       message: `“${fileName}” is larger than the 5 MiB import limit. Choose a smaller file.`
     };
   }
-  const dot = fileName.lastIndexOf(".");
-  const extension = dot === -1 ? "" : fileName.slice(dot).toLowerCase();
+  const extension = extensionOf(fileName);
   if (!(ACCEPTED_EXTENSIONS as readonly string[]).includes(extension)) {
     const refusal = refuseUnsupportedExtension(fileName);
     return { status: "refused", reason: refusal.reason, message: refusal.message };
@@ -116,7 +119,8 @@ export async function readImportSource(
       message: `“${fileName}” could not be read. Check the file and try again.`
     };
   }
-  const validation = validateSource({ fileName, bytes });
+  const validation =
+    extension === DOCX_EXTENSION ? await readDocxSource(fileName, bytes) : validateSource({ fileName, bytes });
   if (validation.status === "refused") {
     return { status: "refused", reason: validation.reason, message: validation.message };
   }

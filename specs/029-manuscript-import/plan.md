@@ -1,7 +1,7 @@
 # Plan: manuscript-file import
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)  
-**Status:** Draft / Planned — no implementation has started
+**Status:** Draft — text/Markdown and Word (DOCX) intake implemented on the macOS reference target; see [tasks.md](tasks.md)
 
 ## Shape
 
@@ -25,6 +25,15 @@ This does not extend `importLegacyBackup`, the JSON migration in spec 003, or th
 4. **Stage and publish (library core):** Add a dedicated import operation rather than composing public `createBook`/`createChapter` calls. It creates a unique staging directory in the selected library, writes `book.json` and all chapter files through `LibraryPort`, reads them back and validates them, then publishes the directory with one atomic move into `books/<bookId>`. Before publication, failures and cancellation clean only this operation's staging content. A failed cleanup is kept unpublished and surfaced to the author. The operation must refuse to publish if the active adapter cannot meet the atomic move contract.
 5. **Report and refresh:** Compute the report from the validated staged or published files and show the actual outcome, counts, mapping and normalization in the result view. After successful directory publication, refresh the derived catalog. If catalog refresh fails, the book remains a successful import because the ordinary files are authoritative.
 6. **Capability honesty:** Keep the import action unavailable on web and mobile for the first profile. Enable it only for desktop targets whose native picker, safe read, path validation and atomic publication checks pass. Do not imply Windows/Linux support before the platform matrix is accepted and verified.
+
+## Word intake (D-183)
+
+A `.docx` takes the same journey with one extra step in the main process. Nothing new crosses the bridge: the picker channel returns the same validated source (converted text plus a `docx` detail with headings, proposed splits and the loss report), and confirming sends the same titles-and-bodies mapping through `books:importManuscript`.
+
+1. **Container check (shared core, `manuscript-import/docx.ts`).** `openDocxPackage` checks the zip signature, the main part's content type in `[Content_Types].xml` and `word/document.xml`, and refuses encrypted and older Word files (OLE containers), macro-enabled documents, OpenDocument and other zips, and damaged zips. With fflate it decompresses only XML and relationship parts, capped at 50 MiB in total, and never decompresses images or other binaries. `mammothInput` re-packs those parts as a stored zip, so mammoth inflates nothing the check has not bounded. The wrappers mammoth would drop with their text (`w:fldSimple`, `w:dir`, `w:bdo`) are unwrapped in that copy only.
+2. **Conversion (main, `apps/desktop/src/main/docx-import.ts`).** Mammoth runs with a fixed style map (Title, Quote, comment references, underline), its embedded style map turned off and an image hook that records each picture without reading it, so no base64 is produced.
+3. **Transform and loss report (shared core).** `convertDocxHtml` turns mammoth's HTML into canonical Markdown (FR-027). It proposes splits at the shallowest heading level (FR-028), caps the text at 5 MiB and the chapters at 200, and lists each lost item with a count and a line. `scanDocxPackage` adds what mammoth drops without a message: tracked changes, text boxes, fields, charts, equations, headers and footers, each placed under its nearest heading.
+4. **Preview, report and publication (unchanged paths).** `previewImport` takes a chapter's leading heading as its title, so removing a split returns the heading to the body. It counts only the document's own blank lines as edge blank lines. `ImportPreviewDialog` seeds the proposed splits and shows the shared `ImportLossList`, and `ImportResultDialog` repeats it. `LibraryService.importManuscript` publishes with the same staged atomic move, unchanged.
 
 ## Safety and cancellation model
 
@@ -67,7 +76,7 @@ Implementation files are candidates only; no code is changed by this spec-author
 
 ## Deferred scope
 
-- DOCX import remains public long-term intent from spec 002 and the roadmap, but it is not covered by the TXT/Markdown parser or by DOCX export. It needs a parser/formatting decision, synthetic fixtures and its own acceptance pass before being enabled.
+- DOCX import is enabled on the macOS reference target by D-183 (see "Word intake" above). Windows, Linux, web and mobile stay disabled, as for every other format.
 - DOC, RTF and ODT are also deferred, each pending format-specific parser support and synthetic fixtures. A generic extension filter is not evidence that a format is supported.
 - Web folder access, browser origin storage, iOS and Android are deferred until those hosts can provide a user-visible source picker, safe source reads and the same complete-publication guarantee. Their availability must be capability-gated, not inferred from desktop behavior.
-- Automatic heading detection, preservation/mapping of rich document structures, embedded images and Story Bible enrichment are separate future scope. No provider or enrichment work is part of this feature.
+- Heading detection exists only for Word documents, from their own heading styles. Preserving rich document structures such as tables, notes, comments and tracked changes, importing embedded images, and Story Bible enrichment are separate future scope; the Word intake reports them instead. No provider or enrichment work is part of this feature.

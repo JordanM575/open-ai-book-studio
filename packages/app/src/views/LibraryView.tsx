@@ -149,7 +149,9 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
           bookId: detail.book.id,
           bookTitle: detail.book.title,
           chapters: detail.chapters.map((chapter) => ({ title: chapter.title, body: chapter.content }))
-        }
+        },
+        format: preview.format,
+        loss: preview.loss
       });
       setManuscript({ stage: "result", report });
       const chapters = report.chapters.length;
@@ -226,7 +228,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
               disabled={manuscriptBusy}
               data-testid="import-manuscript"
               aria-label="Import manuscript"
-              title="Import manuscript"
+              title="Import a Word document, text or Markdown file as a new book"
             >
               <FileUp size={15} />
               <span className="hidden min-[520px]:inline">

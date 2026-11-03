@@ -1,9 +1,8 @@
 # DOCX intake validation (spec 029 T014)
 
-Status: validated 2026-11-04. The intake feature itself is NOT enabled: the product path
-still refuses `.docx` (pinned by `docx-intake-validation.test.ts`), and no IPC, UI or
-format change ships with this note. What follows is the evaluated contract a future
-intake implementation must meet, proven against synthetic documents only.
+Status: validated, then enabled by D-183 on 2026-11-03 for the macOS desktop target. The
+sections below record the evaluated contract; "Enabled" at the end records how the intake
+meets it and what implementing it corrected. Every proof uses synthetic documents only.
 
 ## Parser verdict: mammoth plus zip sniffing
 
@@ -17,7 +16,10 @@ intake implementation must meet, proven against synthetic documents only.
   paragraphs, headers/footers/footnotes vanish, all with no message. Loss reporting therefore
   cannot rely on messages; it sniffs the package with `fflate` (already a dev dependency):
   `word/header*.xml`, `word/footer*.xml`, `word/footnotes.xml`, `word/endnotes.xml` and
-  `word/media/*` presence plus counts.
+  `word/media/*` presence plus counts. *Corrected while enabling:* mammoth does convert
+  footnotes and endnotes, as `[n]` reference marks plus a list appended after the body. Only
+  headers and footers vanish. It also drops tracked deletions, simple fields (`w:fldSimple`,
+  shown text included), charts and SmartArt without a message.
 
 ## Chapter boundaries
 
@@ -53,7 +55,55 @@ structure with its count. A document with none of these reports no loss section.
 
 ## What enabling still requires
 
-A format decision (this note proposes mammoth + sniffing but does not accept it), the
-plain-text transform from mammoth HTML to canonical chapter bodies, the IPC/storage/UI
-wiring through the existing staged-publication path, and the per-target conformance
-checks of spec 029 T013. None of that is claimed here.
+Each item below is now done, and the evidence is listed with it.
+
+- **Format decision.** Accepted as D-183.
+- **Transform from mammoth HTML to canonical chapter bodies.** `convertDocxHtml` in
+  `packages/core/src/manuscript-import/docx.ts`; rules below.
+- **Wiring through the existing staged-publication path.** `readImportSource` sends `.docx`
+  to `readDocxSource` (`apps/desktop/src/main/docx-import.ts`). The picker channel returns the
+  same validated source, and confirming publishes through the unchanged
+  `LibraryService.importManuscript`. No new channel was added.
+- **Per-target conformance (T013).** The hidden smoke run drives a synthetic Word document
+  through the real preview, confirm and result on the macOS reference target. Windows, Linux,
+  web and mobile stay refused.
+
+## Enabled: mapping, limits and the loss report
+
+- **Container.** The intake checks the zip signature, then that `[Content_Types].xml`
+  declares the WordprocessingML main part, then `word/document.xml`. An OLE container is
+  refused as password-protected (when it has an `EncryptedPackage` stream) or as an older
+  `.doc`. A macro-enabled main part or `word/vbaProject.bin` is refused. An OpenDocument
+  `mimetype`, any other zip and a damaged zip are refused too.
+- **Limits.** The file may be at most 5 MiB, which is 029 decision 2. XML parts may expand to
+  at most 50 MiB in total, judged by their declared sizes before any inflation. Images and
+  other binaries are never decompressed. Mammoth reads a stored re-pack of the bounded parts
+  only. The converted text may be at most 5 MiB, the same ceiling as a text file, because that
+  text is what crosses the bridge. One import creates at most 200 chapters, the limit in the IPC
+  contract. A document past any limit is refused before the preview. For scale, a synthetic 153,000-word, 30-chapter document converted in 62–110 ms under Bun. Its text was repetitive, so it compressed far better than a real manuscript would.
+- **Mapping.** Mammoth runs with its embedded style map off. Each paragraph becomes one block,
+  and blocks are separated by one blank line. Each empty paragraph adds one blank line, so a
+  blank-line scene break survives, and a typed scene break such as `* * *` stays its own
+  block. Line breaks stay line breaks. `<strong>` and `<em>` become `**` and `*`, with edge
+  spaces kept outside the markers. List items become `- ` or `1. ` lines, nested by
+  indentation. Quote and Intense Quote paragraphs become `> ` lines. Table cells become plain
+  lines in document order. Headings become `#` lines. Text is otherwise kept verbatim.
+- **Chapters.** Proposed boundaries are the headings at the shallowest level present; Title
+  paragraphs are never boundaries. A chapter whose first line is a heading takes that heading
+  as its title, and removing the split puts the heading back in the body. A Title paragraph at
+  the very start becomes the proposed book title. Text before the first heading stays an
+  opening chapter, not dropped as the validation above suggested, so no words are lost; the
+  author can merge it by removing the split. With no headings, the whole document is one
+  chapter.
+- **Loss report.** Items in the converted flow carry their line: tables, images (with alt
+  text), footnotes, endnotes and comments (with their text), links (with the address),
+  underline, strikethrough and checkboxes. Items found by scanning the package carry the
+  heading they fall under: tracked insertions (kept, as if accepted), tracked deletions (left
+  out), text boxes (text kept), fields (shown text kept), charts and diagrams, and equations.
+  Headers and footers carry their text. Mammoth's unsupported-symbol and ignored-element
+  warnings become "symbol" and "other" items. Content inside `mc:Choice` is skipped, because
+  mammoth reads only the fallback. Images are never stored.
+
+Evidence: `apps/desktop/tests/docx-import.test.ts` (real mammoth on synthetic `docx` documents),
+`packages/core/tests/manuscript-import-docx.test.ts` (container and transform edge cases), the
+preview and journey component tests, and the hidden smoke Word journey.

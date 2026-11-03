@@ -1,10 +1,11 @@
 /**
  * Spec 029 T014 DOCX intake validation.
  *
- * This file validates the parser approach for a FUTURE intake extension; it does not
- * enable DOCX import. The product path still refuses `.docx` (asserted below), and no IPC,
- * UI or format change ships here. Every document is synthesized in-test with the repo's own
- * `docx` dependency — no binaries, no real manuscripts, no network.
+ * This file validated the parser approach before D-183 enabled DOCX import, and it stays as
+ * the evidence for mammoth's raw behavior that the intake builds on. The enabled intake itself
+ * (container sniff, transform, loss report, staged publication) is proven in
+ * `docx-import.test.ts`. Every document is synthesized in-test with the repo's own `docx`
+ * dependency — no binaries, no real manuscripts, no network.
  *
  * Validated contract: mammoth converts the body (Title/H1 style map, inline marks, lists);
  * chapter boundaries are the non-title top-level headings; images never embed as base64
@@ -17,7 +18,8 @@ import { Document, Footer, Header, HeadingLevel, ImageRun, Packer, Paragraph, Ta
 import type { Paragraph as DocxParagraph, Table as DocxTable } from "docx";
 import { unzipSync } from "fflate";
 import mammoth from "mammoth";
-import { refuseUnsupportedExtension, validateSource } from "@ai-book-studio/core/manuscript-import";
+import { ACCEPTED_EXTENSIONS, validateSource } from "@ai-book-studio/core/manuscript-import";
+import { IMPORT_DIALOG_EXTENSIONS } from "../src/main/import";
 
 const INTAKE_STYLE_MAP = ["p[style-name='Title'] => h1.title"];
 
@@ -134,15 +136,13 @@ describe("docx intake validation", () => {
     expect(south).toBeGreaterThan(north);
   });
 
-  test("the product path still refuses docx until the extension ships", () => {
-    expect(refuseUnsupportedExtension("book.docx")).toEqual({
-      status: "refused",
-      reason: "unsupported-extension",
-      message: "\u201cbook.docx\u201d is not a supported manuscript file. Choose a .txt, .md or .markdown file."
-    });
+  test("the product path now accepts docx and never decodes it as text (D-183)", () => {
+    expect(ACCEPTED_EXTENSIONS).toContain(".docx");
+    expect(IMPORT_DIALOG_EXTENSIONS).toContain("docx");
     const probe = new Uint8Array([80, 75, 3, 4]);
-    expect(validateSource({ fileName: "book.docx", bytes: probe })).toEqual(
-      refuseUnsupportedExtension("book.docx")
-    );
+    expect(validateSource({ fileName: "book.docx", bytes: probe })).toMatchObject({
+      status: "refused",
+      reason: "unsupported-extension"
+    });
   });
 });
