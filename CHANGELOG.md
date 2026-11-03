@@ -141,6 +141,11 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- A fresh clone builds again. The `release/` ignore rule also matched `scripts/release/`, so the
+  release record and checklist scripts were never committed while the tests that import them were,
+  and a clean clone failed typecheck. Now the ignore rule and `submission:check`'s forbidden-path
+  rule match only the root `release/` folder the packager writes. The scripts are committed, and a
+  test pins both rules.
 - The manuscript status line now uses singular counts: a one-line chapter reads "1 line", and a
   one-word chapter reads "1 word". The illustration dialog's description now reads "Make or choose an
   image" instead of describing a saved image that may not exist yet. Its no-connection notice no

@@ -118,7 +118,7 @@ export function forbiddenTrackedPath(path: string): boolean {
     /(^|\/)\.env(?:\.(?:local|production|development|test))?$/.test(path) ||
     /(^|\/)credentials\.json$/.test(path) ||
     /(^|\/)userData\//.test(path) ||
-    /(^|\/)release\//.test(path) ||
+    /^release\//.test(path) ||
     /(^|\/)\.studio\//.test(path) ||
     /(^|\/)books\//.test(path) ||
     /(^|\/)library\.json$/.test(path)

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   enablesSourceMaps,
+  forbiddenTrackedPath,
   proseProblems,
   scanArtifactDir,
   scanArtifacts,
@@ -117,6 +118,21 @@ describe("secret and manuscript scan", () => {
 
   test("bundler configs stay source-map free", async () => {
     expect(await sourceMapConfigProblems(root)).toEqual([]);
+  });
+
+  test("only the root release folder is a forbidden build output", () => {
+    // The release scripts live in scripts/release/ and must be committed; a nested name is not
+    // the packager's output folder.
+    expect(forbiddenTrackedPath("release/AI Book Studio.dmg")).toBe(true);
+    expect(forbiddenTrackedPath("scripts/release/check.mjs")).toBe(false);
+    expect(forbiddenTrackedPath("scripts/release/record.mjs")).toBe(false);
+  });
+
+  test("every module the tracked tests import from scripts/ is tracked", () => {
+    const tracked = new Set(trackedFiles(root));
+    for (const script of ["scripts/release/check.mjs", "scripts/release/record.mjs"]) {
+      expect(tracked.has(script)).toBe(true);
+    }
   });
 
   test("present build artifacts hold no secrets or source maps", async () => {
