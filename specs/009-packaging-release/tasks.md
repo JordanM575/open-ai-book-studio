@@ -6,15 +6,49 @@ intended order; they are not approval to sign, notarise or enable updates.
 
 ## Phase 1 — Release record and unsigned mode
 
-- [ ] T001 Add a release-record schema and `scripts/release/record.mjs` that hashes the artifacts that
+- [x] T001 Add a release-record schema and `scripts/release/record.mjs` that hashes the artifacts that
       are actually served, writes version/commit/schema/platform/architecture/gates/signing status, and
       refuses a record whose file set does not match the artifact directory. No credentials.
-- [ ] T002 Audit the existing unsigned path against spec 013: About, download page and release notes
+      Implemented: `scripts/release/record.mjs` (importable `RECORD_JSON_SCHEMA`,
+      `validateRecord`, `hashArtifacts`, `checkFileSet`, `buildRecordObject`; CLI with
+      `--dir/--out/--version/--commit/--schema/--gates/--expect/--signing-status`) writes the
+      plan's JSON shape, hashing every regular file in a flat artifact directory with streaming
+      SHA-256 (names, sizes and hashes only — never contents), refusing empty/missing/nested
+      directories, `--expect` mismatches and bare `signed` claims without an identity.
+      `apps/desktop/tests/release-record.test.ts` (7 pass) covers the valid record, refusals,
+      schema validation, secret non-disclosure and hash ordering.
+- [x] T002 Audit the existing unsigned path against spec 013: About, download page and release notes
       must all say unsigned before an informed tester opens the build. Record the exact surfaces.
-- [ ] T003 Add a release-artifact scan for credentials, `.env` files, source maps and manuscript-like
+      Audited 2026-11-03. Surfaces: (1) About — Settings `data-testid="about"` now carries a
+      Signing row from `BuildMetadata.signing` (`packages/core/src/build.ts`, unsigned on every
+      target until D-115), rendered by `SettingsDialog`; (2) release notes — the `bun run release`
+      record (`releases/<version>-<commit>.md`) already states "Signed: no — unsigned build,
+      shared only with informed testers (D-115 deferred)"; (3) download page — does not exist
+      (no public download page; informed testers receive the artifact plus the record directly,
+      per the D-115 trigger). The audit found About missing the row and added it with metadata
+      and dialog tests (`settings-about.test.tsx`, `build.test.ts`); no other surface needed a
+      change.
+- [x] T003 Add a release-artifact scan for credentials, `.env` files, source maps and manuscript-like
       content; fail publication without printing the matching value.
-- [ ] T004 Add a release checklist that compares the record's SHA-256, version and commit with the
+      Implemented: `scripts/artifact-scan.ts` (`scanPaths`, `nameFinding`) walks artifact
+      directories, extracts `.tar.gz` archives to scratch and scans the trees, and name-checks
+      opaque containers (dmg/zip/executables). Name rules refuse `.env*`, `*.map`, credential
+      files, library files (`book.json`, `library.json`, `images.json`), chapter files and
+      `.studio`/`chapters`/`conflicts`/`threads`/`drafts` paths; content rules reuse the core
+      redaction shapes (new `secretShapes()` export, derived so the lists cannot drift) plus
+      `sourceMappingURL` references. Findings name file, class and line only — never values.
+      Wired as the `release-artifact-scan` gate in `bun run release`, which blocks before the
+      record. `apps/desktop/tests/artifact-scan.test.ts` (8 pass) covers clean/dirty trees,
+      tarballs, opaque containers, CLI exit codes and secret non-disclosure.
+- [x] T004 Add a release checklist that compares the record's SHA-256, version and commit with the
       artifact served and with About.
+      Implemented: `scripts/release/check.mjs` (`checkRelease`, plus CLI) loads a record,
+      re-hashes the served file and compares hash, bytes, version, commit and (when given)
+      signing status against the About values the tester reads. A mismatch names the field,
+      never file contents, and exits 1; unreadable inputs and schema failures exit 3, usage
+      errors exit 2. `apps/desktop/tests/release-check.test.ts` (5 pass) covers the comparison
+      matrix, an end-to-end record→check run with tamper and version drift, secret
+      non-disclosure and refusal codes.
 
 ## Phase 2 — Signing and notarisation
 
@@ -68,8 +102,83 @@ intended order; they are not approval to sign, notarise or enable updates.
 - [ ] T022 Link the release record and update policy from `docs/DEPLOYMENT.md` and update
       `specs/README.md` when D-115 is accepted.
 
+## Phase 6 — Author-facing installed-product lifecycle
+
+The clarification tasks below precede the local install/upgrade work. Each decision blocks only the
+dependent lifecycle task; none changes D-115's existing block on signing, notarisation, update-feed
+access or automatic updates. No task here authorizes a download, publication, credential use or real
+profile test.
+
+- [ ] T023 Resolve and record in the public decision register whether D-115 also gates user-driven
+      local installation and compatible local upgrade. State explicitly that signing, notarisation,
+      update-feed access and automatic updates remain blocked by D-115. This decision blocks only
+      local install/upgrade implementation and acceptance; it is not itself authorization to package
+      or install anything.
+      Research recorded 2026-11-03 (not accepted): `research/local-install-upgrade.md` pins the
+      version-free shared settings file, write confinement to the profile root, no app version in
+      the profile or `book.json`, side-effect-free opens and pre-write schema refusal; D-172
+      proposes D-115 does not gate manual local install/compatible upgrade under override
+      disclosure, unsigned labeling, same-schema-only and no feed/automation conditions.
+      T027/T030 still wait on T024; T028 waits on T024/T025.
+- [ ] T024 Resolve the lifecycle support matrix: claimed desktop targets/OS floors, native install and
+      uninstall methods, stable per-user profile location per target, and how authors find that
+      location. This blocks only platform-specific lifecycle implementation/acceptance, not unrelated
+      release-record or documentation work.
+      Research recorded 2026-11-03 (not accepted): `research/lifecycle-matrix.md` declares the
+      three builder targets with standing, survey-only install/uninstall methods and per-OS
+      profile paths, and defers exact OS floors to upstream confirmation; D-173 proposes the
+      matrix with macOS release-blocking, profile-stays-on-uninstall and Settings discovery.
+      T027/T028/T030 remain blocked; T025 still needs its own decision.
+- [ ] T025 Decide whether any platform will offer a separate optional app-profile cleanup on
+      uninstall. Keeping profile data and the library is the default either way. This blocks only an
+      optional cleanup control; it does not block preservation-only uninstall behavior.
+      Research recorded 2026-11-03 (not accepted): `research/profile-cleanup.md` inventories the
+      two-file profile and proves pointer-not-prose storage, missing-file defaults and the shared
+      root; D-174 proposes a uniform in-app optional cleanup with itemized confirmation, never
+      default-on, library never in scope. T028's optional cleanup waits on acceptance;
+      preservation-only uninstall is unblocked regardless.
+- [x] T026 Reuse the 013 build metadata in About/recovery information for version, commit, schema,
+      target, platform, architecture and observed signing status. Test with a synthetic artifact
+      fixture; this identity display does not depend on the local install/upgrade policy.
+      Implemented: `BuildMetadata` carries `platform`/`arch` via an injected `BuildHost`
+      (desktop reports OS/CPU, web reports `web`/`unknown` per the unknown-label rule); About
+      gains an Architecture row (`Unknown` when undetectable) beside the existing
+      version/commit/schema/Format/target/platform/Signing rows. No support-summary UI exists
+      yet — when user story 7/T029 builds it, it reuses this same metadata object. Tested
+      with real and synthetic metadata in `settings-about.test.tsx` and `build.test.ts`.
+- [ ] T027 Implement the approved stable profile identity and show its location separately from the
+      chosen library; complete the compatible user-driven upgrade path. **Blocked on T023 and T024.**
+      Prove with synthetic profiles and libraries that settings and library selection remain available
+      and library bytes do not change; do not add update-feed or automatic-update behavior.
+- [ ] T028 Implement the platform uninstall contract: remove the app but preserve the app profile and
+      library by default. **Blocked on T024.** Add any optional cleanup only if T025 explicitly chooses
+      it, with an itemized confirmation and a cancellation test. Use synthetic isolated data only.
+- [x] T029 Integrate the schema refusal and manual recovery/reporting journey. Opening a book
+      written by a newer build refuses before any write and opens a recovery dialog instead of a
+      toast: it names the detected vs supported schema, points at the newer build that wrote the
+      files and states reinstalling an older build does not change library files (FR-047). The
+      user-reviewed local support summary reuses the T026 build metadata (version, commit, target,
+      platform, arch, signing) with the compatibility outcome; it carries no manuscript text, no
+      credentials and no absolute paths, and is copied only on request — nothing is sent anywhere
+      (FR-048). Tested with synthetic newer-schema failures in `schema-refusal.test.tsx`
+      (contract, summary content, copy, back-without-write); `mustCompatible` routes the
+      workspace open path while mid-review re-reads keep their existing failure copy. No
+      automatic transmission or real profile.
+- [ ] T030 Exercise cancelled and failed local install/upgrade paths on each target approved by T024.
+      **Blocked on T023 and T024.** Verify the prior-app/reinstall instruction is truthful and that
+      every synthetic profile/library file remains unchanged; do not claim rollback can reverse a
+      schema migration.
+- [ ] T031 Complete the lifecycle acceptance matrix only for targets actually approved and exercised.
+      Use synthetic isolated profiles/libraries; report unsupported or unverified targets as such and
+      do not infer their result from another platform.
+
 ## Completion condition
 
 The spec is complete when phases 1 and 5 pass without certificates, and phases 2–4 pass with a staging
 Developer ID and a signed update feed after D-115. The unsigned fixture remains a supported test path,
 not a public release.
+
+The installed-product lifecycle remains Draft until its clarification tasks are resolved and each
+dependent acceptance task has passed on its claimed platform. D-115 continues to gate signing,
+notarisation and online update work; its effect on user-driven local install/upgrade is decided only by
+T023.

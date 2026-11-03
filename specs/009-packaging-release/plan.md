@@ -1,7 +1,7 @@
 # Implementation Plan: Packaging and release integrity
 
 **Branch**: `009-packaging-release` · **Date**: 2026-10-26 · **Spec**: [spec.md](spec.md)
-**Status**: Draft, gated by D-115
+**Status**: Draft; signing and online update work is gated by D-115; local install/upgrade policy is unresolved
 
 ## Summary
 
@@ -17,6 +17,13 @@ parts:
 The build, artifact naming, staging and deployment rollback stay in spec 013. The updater replaces the
 application bundle only; it never opens or writes a library.
 
+Add a distinct author-facing installed-product lifecycle: identify the running app, keep one stable
+per-user profile across compatible builds, preserve the profile and the author-chosen library on
+uninstall by default, refuse an unsupported library schema without writing, and give manual recovery
+and reporting steps. This is not 013's artifact build, staging/promotion or deployed-artifact rollback.
+Whether D-115 also governs user-driven local install/upgrade remains open; this plan does not authorize
+those operations.
+
 ## Current state
 
 - `apps/desktop/electron-builder.yml` produces an unsigned unpacked app with `package:dir`; `bun run
@@ -24,10 +31,20 @@ application bundle only; it never opens or writes a library.
   013.
 - `docs/DEPLOYMENT.md` defines artifact names, gates, promotion and rollback.
 - `scripts/build-info.mjs` stamps version, commit and schema into the build.
-- There is no signing configuration, notarisation hook, release record generator, update manifest or
-  updater in the repository.
+- There is no signing configuration, notarisation hook, update manifest or updater in the
+  repository. Release records exist in two forms: the human Markdown record from 012 T023
+  (`bun run release`) and the machine JSON record from 009 T001
+  (`node scripts/release/record.mjs`).
 - D-115 is deferred: no certificate and no public update channel. Unsigned builds are the current
   shipping path.
+- Public spec 013 defines build metadata, desktop packaging and deployment rollback; public specs 001
+  and 002 define library schema refusal. They do not define installed-profile continuity, uninstall
+  retention or manual installed-app recovery. These lifecycle items are proposed, not reported as
+  implemented or accepted.
+- The desktop main process already uses Electron's per-user `userData` area for app-owned state. The
+  proposed contract is to keep that profile stable across compatible versions and distinct from the
+  author-selected library; exact supported targets, platform paths and native uninstall behavior need
+  clarification before platform-specific implementation.
 
 ## Technical approach
 
@@ -120,6 +137,38 @@ channel:
   the rollback.
 - Logs include version, commit, channel and reason, never prose, keys or full signed URLs.
 
+### Author-facing installed-product lifecycle (manual path; policy unresolved)
+
+- Keep the installable application, Electron per-user `userData` profile and author-chosen library as
+  three separate locations. A package install/upgrade may replace application files only; it does not
+  move the profile, reset settings, choose a new profile based on the version, or migrate the library.
+- Surface the exact app-profile location and installed build identity (version, commit, schema, target,
+  platform, architecture and observed signing state) in About or recovery information. Reuse the shared
+  build metadata from 013 rather than creating a second version source.
+- Uninstall preserves profile and library by default. If a platform-native uninstaller offers profile
+  cleanup, make it a separate, unselected author choice listing the exact data categories; cancellation
+  preserves all data. Never include the library in app-data cleanup.
+- Reuse the library's existing schema guard before writes. A build that cannot use the detected schema
+  gives a refusal and compatible-build action before touching files; installation itself never migrates
+  the library.
+- A cancelled or failed local install/upgrade reports the actual outcome, preserves profile/library
+  bytes and avoids a false success state. If a native installer cannot keep the prior app runnable,
+  manual recovery points to the prior compatible artifact and does not promise to reverse a schema
+  migration.
+- A support summary is produced only on author action, is reviewable before copy/save, excludes prose
+  and credentials, and is not uploaded. Absolute profile/library paths are omitted unless the author
+  explicitly includes them.
+- Do not add an updater or update-feed request to this manual path. The signing, notarisation, feed and
+  automatic-update gates remain D-115's; the question of whether D-115 also covers local install and
+  upgrade is a separate open clarification.
+
+### Boundary with spec 013
+
+Spec 013 owns workspace/build production, immutable artifacts, staging, promotion and rollback of a
+deployed artifact. Spec 009 owns the author's trust and installed-product lifecycle after an artifact
+exists, including compatibility-aware manual recovery of the local app. Neither path may imply that
+restoring an application artifact restores or rewinds author data.
+
 ### Testing
 
 - **Unit**: manifest schema, signature envelope, hash/URL validation, downgrade/schema/OS refusal,
@@ -160,6 +209,19 @@ docs/DEPLOYMENT.md                       link to release record/update policy
 5. **Release automation** — secret-scoped macOS job, artifact scan and release notes.
 6. **Verification** — unit/integration/release tests and spec 012 gates.
 
+## Installed-product lifecycle delivery slice
+
+This is additive to the existing release phases. First resolve the local-operation boundary for D-115,
+the supported target/install-method matrix and stable per-user profile path. These clarifications block
+only their dependent install/upgrade/uninstall implementation and acceptance tasks. They do not change
+D-115's existing block on signing, notarisation, update feeds or automatic updates, and do not block
+unrelated release-record/documentation tasks. A decision that declines local install/upgrade leaves the
+corresponding behavior unimplemented rather than authorizing a workaround.
+
+Use temporary synthetic profile and library fixtures for every lifecycle test. Verify the launched
+artifact, not a source/dev build; compare profile/library file lists and hashes before and after
+upgrade, cancel, failure, uninstall and schema refusal. Never use a real author profile for acceptance.
+
 ## Risks and mitigations
 
 | Risk | Mitigation |
@@ -171,6 +233,9 @@ docs/DEPLOYMENT.md                       link to release record/update policy
 | Update while app is read-only or disk full | Preflight write/space checks; leave current app intact |
 | Rebuild after checksum | Release record generated from served bytes; promotion, not rebuild, per 013 |
 | Windows/Linux signing scope creep | v1 documents them as future; macOS is the release gate |
+| Platform installer resets or deletes app data | Keep profile and library ownership separate; test each claimed native uninstall/upgrade path with synthetic fixtures |
+| Version-specific profile identity strands settings or credentials | Stable product identity, visible profile location and a compatible-upgrade fixture gate |
+| Old app opens a newer library | Reuse the schema guard; refuse before writes and report a compatible-build action |
 
 ## Verification
 
@@ -181,6 +246,10 @@ docs/DEPLOYMENT.md                       link to release record/update policy
 - Update enabled (staging): good update installs; bad signature/hash/downgrade/schema/OS/read-only/disk
   full are refused; library hash unchanged; previous version runs after rollback.
 - Secret scan of artifact and notes reports zero credentials and no source maps.
+- Installed lifecycle (proposed): on each claimed platform, an isolated synthetic profile/library
+  survives compatible manual upgrade, uninstall, cancellation and injected failure; incompatible
+  schema refusal leaves library bytes unchanged and the author sees a manual next step. Support
+  summaries contain no prose or credentials and are never sent automatically.
 
 ## Out of scope
 
@@ -191,3 +260,9 @@ App Store distribution, Windows/Linux signing, delta updates and hosted update s
 
 D-115 must be accepted with a named certificate owner, an update feed location and a rollback window
 before phases 2–4 start. Until then, only phase 1 (record/checksums) and documentation can land.
+
+This existing D-115 gate continues to apply to signing, notarisation, update-feed access and automatic
+updates. Separately, the public decision record must answer whether D-115 also gates user-driven local
+installation/upgrade before those dependent tasks begin; do not treat this plan as having chosen either
+answer. Platform targets, install/uninstall behavior and profile paths must also be clarified before
+their dependent platform implementation. These decisions do not block unrelated phases.

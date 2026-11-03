@@ -44,9 +44,26 @@
 
 ## Phase 5 — The connector
 
-- [ ] T015 Write the connector application note: the manifest, the account-linking story, the
+- [x] T015 Write the connector application note: the manifest, the account-linking story, the
   scopes, the side effects and the test credentials.
-- [ ] T016 Record the WebMCP and connector surfaces in `docs/TOOLKIT.md` and the changelog.
+  Implemented: `specs/026-glasses/connector-application.md` records the fixed manifest head
+  (name, description, OAuth account-linking strings, three scopes), the 22-tool
+  classification with the 7 sensitive names, per-tier side effects and the uniform refusal
+  behavior, the unwired account-linking story with its ordered prerequisites, and a
+  credentials-free test story (loopback backend, sample library, `bookwriter mcp`,
+  `glasses:check`, the 024 round trip). An excerpt was rendered from the real
+  `surfaces.ts` functions to verify every quoted string. No application sent: no public
+  endpoint exists (D-155, D-157).
+- [x] T016 Record the WebMCP and connector surfaces in `docs/TOOLKIT.md` and the changelog.
+  Implemented: `docs/TOOLKIT.md` now records the tier-to-shape mapping, the six read
+  and seven sensitive tool names, the per-tool side-effects/refusal contract, the
+  leave-out name rule, and a pointer to the application note with its no-submission
+  status. Resolved after landing: `untrustedContentHint` was `false` while both the
+  code comment and the WebMCP annotation semantics ("output contains data that is
+  untrusted", i.e. user-generated or third-party text the caller must treat as
+  data) call for `true` — book prose is author-supplied text the studio did not
+  write. Now `true` on every tier in `surfaces.ts` and the glasses page, pinned by
+  the annotations test.
 
 ## Phase 6 — The real glasses
 

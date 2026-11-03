@@ -36,11 +36,25 @@ A task blocked on an open decision must not start until it is accepted.
 
 ## Phase 3 — Drift report
 
-- [ ] T006 Add a drift report dialog on library open and on window focus after the configured interval.
+- [x] T006 Add a drift report dialog on library open and on window focus after the configured interval.
   Review is required before writing; actions are review, keep the disk version, keep mine (conflict copy),
   open both, and export. Keyboard focus and the mobile full-screen dialog follow the existing patterns.
-- [ ] T007 Add a Settings section for the sync location, last scan, device name and a "Check for changes"
+  Implemented: `DriftReportDialog` at App level, opened by the main-process scan on library open and
+  on throttled window focus (interval setting, 15 minutes default), plus an on-demand check. Review
+  deep-links into the chapter; keep-disk accepts paths into the baseline (both-changed also clears the
+  draft and reloads from disk); keep-mine flushes the draft through the normal checked path so a
+  mismatch still lands as a conflict copy; open-both resolves the chapter through `conflicts.list`;
+  export reuses the library archive. Own writes note themselves into the journal at save time
+  (`commitText`, trash moves, thread and image stores), so they never report as someone else's edit;
+  the first scan establishes the baseline, while a corrupt or newer journal is left for the author
+  to rebuild. Known limits: renderer text not yet debounced to main misses `both-changed` (the
+  editor save guards stay authoritative), and two devices sharing one copied `device.json` would
+  share a journal (D-124 stays open).
+- [x] T007 Add a Settings section for the sync location, last scan, device name and a "Check for changes"
   action. The copy states that sync is the chosen folder's provider, not a studio account.
+  Implemented: a Sync block in the Settings library section with the device name, last scan time, the
+  interval editor (1–1440 minutes) and a Check button that opens the review on dirty. The browser
+  build hides the interval editor — its shell has no interval — and offers the same check.
 
 ## Phase 4 — App lock
 

@@ -224,7 +224,7 @@ Rules:
 - [`specs/README.md`](specs/README.md) is the index and the roadmap; update it when a spec lands.
 - **Current product spec**: [`specs/002-studio-v1/spec.md`](specs/002-studio-v1/spec.md) is the
   white-room definition of v1 and supersedes the foundation roadmap's separate feature specs. The
-  migration from the previous app is [`specs/003-legacy-port/spec.md`](specs/003-legacy-port/spec.md).
+  migration from the previous app is [`specs/003-earlier-studio-import/spec.md`](specs/003-earlier-studio-import/spec.md).
 - **Delivery track**: [011](specs/011-model-access/spec.md) model access (OpenRouter SSO, keys,
   ChatGPT plan), [012](specs/012-automated-verification/spec.md) verification and
   [013](specs/013-builds-and-deployment/spec.md) builds. They refine 002; where they disagree, the newer

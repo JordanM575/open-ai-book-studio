@@ -122,8 +122,15 @@ defaults yet.
   stubbed auth failure.
 - [ ] T035c Refresh an expired credential once in the background, then mark it as needing attention if
   refresh fails. This stays blocked until a refresh-token provider is accepted; ChatGPT access is gated by D-102.
-- [ ] T036 Add the D-116 hooks: per-turn cost ceiling and monthly warning, with the defaults read from
+- [x] T036 Add the D-116 hooks: per-turn cost ceiling and monthly warning, with the defaults read from
   settings and left unset until the decision is accepted.
+  Implemented: `perTurnCeilingUsd` and `monthlyWarningUsd` on the per-book agent settings (both
+  null by default; old books still open), pure `turnCostWarning`/`monthlySpend`/`monthlyWarning`
+  evaluators in `providers/usage.ts`, a `spending` block on `AgentStatus`, and a Spending section
+  in the agent dialog with dollar inputs, the month-to-date line (lower-bound qualified when turns
+  went unpriced) and both warnings. Informational only per 036 T004: nothing blocks, refuses or
+  retries a turn, and D-116 stays Proposed. Scope note: the monthly level is per book, like the
+  usage log it reads; a studio-wide monthly roll-up waits on the D-116 acceptance.
 
 ## Phase 8 — Web enablement
 

@@ -42,6 +42,8 @@ spec's Assumptions section. An `Open` decision blocks the task that needs it, no
 | D-105 | Browser credentials use disclosed origin-scoped storage; no passphrase or encryption claim in v1 | ADR 0011 |
 | D-112 | Portable libraries use a versioned, hash-validated ZIP archive; import never merges silently | ADR 0012 |
 | D-114 | Bun tests core/adapters; Playwright on Node for browser and Electron E2E; live-provider tests opt in | spec 012 |
+| D-161 | Provider settings shows each connection's status from the author's last explicit Test only, with a volatile check time that clears when Settings closes; opening Settings never probes. Voice shows configured availability from `voice.connections()`/`voice.speakers()` with no check time and states it is never tested automatically. A stored health fact would need its own sync (FR-001), background checks would violate the no-background-network-call non-goal, and probing voice via TTS/transcribe would send author text or audio. | spec 028 |
+| D-162 | Biome is the configured linter; `bun run lint` fails on errors and runs first in `verify`. Warnings stay advisory debt, headed by non-null assertions; suppressions name the reason and sit on the diagnostic line. | spec 012 T002 |
 
 ## Open decisions
 
@@ -106,11 +108,13 @@ needed and the spec or task it blocks.
 
 | | |
 | --- | --- |
-| **Status** | Open |
+| **Status** | Proposed |
 | **Question** | Which DOCX, PDF and EPUB implementations produce KDP-acceptable output and deterministic files? |
-| **Needed** | Compare `docx`, LibreOffice headless, `pdf-lib`, Typst, `epub-gen`; test a book with front matter, images and verse. |
-| **Blocks** | spec 002 export tasks |
-| **Owner** | spec 002 |
+| **Recommendation** | Select no renderer yet. Keep `docx` 9.x for DOCX (verified: deterministic content parts, fixed zip entry dates; only `docProps/core.xml` wall-clock timestamps vary), LibreOffice headless, `pdf-lib` (assembly only, needs a layout pass), Typst and an EPUB container assembler in play — none of the latter were evaluated locally (no binaries present, none installed) and no publisher upload is verifiable locally. Proposed acceptance: same book bytes in, byte-identical container out (normalized container metadata, fixed entry dates, unmodified image bytes), enforced by a two-build premise test; shelled-out renderers pin their binary version in the export. Proposed packaging: DOCX keeps inline `word/media` after the body with captions and alt text; PDF is single-file with embedded images in DOCX order; EPUB is OPF manifest + one XHTML per chapter with `images/` sidecars and no remote resources. Rationale: content determinism is already proven for the current pipeline, so the decision can demand container determinism without new infrastructure; KDP acceptance, exact pagination/trim (needs T008), font embedding, PDF/UA and EPUBCheck remain explicitly unresolved with no conformance claim allowed. |
+| **Evidence** | `specs/035-book-formatting/research/export-renderers.md`; `apps/desktop/tests/export-renderers-premises.test.ts` (content determinism, fixed entry dates, core-timestamp shape). |
+| **Needed** | Author acceptance of the determinism requirements and per-target packaging contract, or a narrower alternative with its own conformance plan. |
+| **Blocks** | spec 002 export tasks; spec 035 renderer selection, per-target image placement/packaging and conformance tasks (T013–T014 wait on the accepted decision alongside matter and profile decisions) |
+| **Owner** | spec 035 |
 
 ### D-109 · Voice stack
 
@@ -172,6 +176,11 @@ needed and the spec or task it blocks.
 | **Blocks** | spec 011 usage tasks, spec 002 image batch |
 | **Owner** | spec 011 |
 
+**Update (2026-11-03).** The informational hooks landed via 011 T036 and stay unenforced: per-book
+`perTurnCeilingUsd`/`monthlyWarningUsd` settings (null by default), pure per-turn and monthly
+evaluators, and a display-only Spending section in the agent dialog. Nothing blocks or refuses a turn.
+Acceptance — the unknown-price policy and the enforcement itself — is still open.
+
 ### D-117 · iOS through Capacitor
 
 | | |
@@ -217,8 +226,13 @@ needed and the spec or task it blocks.
 | **Recommendation** | A per-device journal under `.studio/sync/<deviceId>.json` records the last observed hash and the hash this device last wrote. Drift is a read-only comparison; deletions are tombstones; a missing/corrupt journal falls back to a full comparison with a warning. Timestamps are display-only. |
 | **Needed** | Author acceptance. The harness results and corrupt/stale-journal tests are recorded below. |
 | **Evidence** | `packages/core/src/sync/` journal, scan and detector; 14 unit tests; 10 two-system scenarios in `apps/desktop/tests/sync/`; a trash move is a deletion, not a rename; a copied journal with another device id is ignored. Device identity inside a synced folder is tracked as D-124. |
-| **Blocks** | spec 016 T006–T007 (the review UI) |
+| **Blocks** | spec 016 T006–T007 (the review UI — implemented 2026-11-03 on the recommendation; acceptance still open) |
 | **Owner** | spec 016 |
+
+**Update (2026-11-03).** T006–T007 are implemented on the recommended baseline: the review dialog with
+keep-disk/keep-mine/open-both/export, the Settings sync section, own-write journal notes at save
+time, and the first-scan baseline. The decision itself stays proposed — no timestamp logic, no
+enforcement, and the D-124 device-identity question stands.
 
 ### D-121 · App lock scope and PIN policy
 
@@ -263,6 +277,242 @@ needed and the spec or task it blocks.
 | **Needed** | A desktop profile identity store with a migration from the current file, a browser adapter check, and a harness run that copies `.studio/device.json` and asserts the journals stay separate. |
 | **Blocks** | Nothing yet; it constrains T006–T007 and the iOS pass. Until it is accepted, the drift report must not claim the journal is per-device. |
 | **Owner** | spec 016 |
+
+### D-163 · Story Bible extension storage
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Do optional planning records live in an extension of `book.json` or in a separate versioned book-level file, and with what versioning, compatibility, unknown-field and archive behavior? |
+| **Recommendation** | A separate versioned `planning.json` beside `book.json`: `looseObject` schema with spread-on-write (like `book.json`, explicitly unlike `images.json`, which strips unknown keys), newer-schema refusal, write refusal while the on-disk shape is unsupported (never reset to empty), lazy creation on the first record, and `bookId` ownership validation. Rationale: failure isolation (a corrupt planning file never bricks the book — verified with the repo's zod that a nested strict section would fail the whole `book.json` parse) and conflict granularity (planning saves commit one file, disjoint from book edits). |
+| **Evidence** | `specs/030-story-bible-extensions/research/storage-alternatives.md`; `packages/core/tests/story-bible-storage-premises.test.ts` (unknown-field survival, no-rewrite opens). |
+| **Needed** | Author acceptance of the recommendation or the one-file alternative with section-tolerant book parsing. |
+| **Blocks** | spec 030 T002–T008 (format, schema, storage, IPC, UI) |
+| **Owner** | spec 030 |
+
+### D-164 · Planning revision and conflict representation
+
+| | |
+| --- | --- |
+| **Status** | Open |
+| **Question** | Which file/snapshot is the baseline for a planning save, how do entity revisions relate to that source, and where is a stale draft retained for review — within the existing expected-hash commit and common adapter contract? |
+| **Needed** | D-163 acceptance first (the baseline depends on the file decision), then a two-writer synthetic plus injected-failure suite against the chosen file, reusing the chapter-conflict copy conventions. |
+| **Blocks** | spec 030 storage, IPC and UI tasks |
+| **Owner** | spec 030 |
+
+### D-165 · Planning bounds and identity rules
+
+| | |
+| --- | --- |
+| **Status** | Open |
+| **Question** | Are the proposed bounds (200 records per kind, 200-unit names/labels, 20,000-unit bodies), identity grammar/uniqueness and revision representation confirmed against validation, archive and user-visible error needs? |
+| **Needed** | D-163 acceptance (schema shape follows the file decision), then boundary fixtures proving over-limit rejection without partial writes and duplicate/foreign-identity refusal. |
+| **Blocks** | spec 030 schema and UI tasks |
+| **Owner** | spec 030 |
+
+### D-166 · Organization data storage matrix
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | For collections, recent entries, goals and annotations, which records are ordinary library files and which are disposable preferences — with scope, schema/version, limits, checked writes, conflict behavior, archive and sync treatment? |
+| **Recommendation** | Collections in library-root `collections.json`; recent entries as disposable host-profile preferences (desktop `studio.json`, web origin storage); per-book `goals.json` and `annotations.json` sidecars. All files validated, versioned, loose schemas with spread round-trip; corrupt/unsupported-future refused, never reset; lazy creation; every write through the expected-hash commit (never `updateBook`'s `kind: "any"` path). Rationale: failure isolation per book, no false conflicts between goal/book edits, machine-local resume state, archive travel by construction. |
+| **Evidence** | `specs/033-library-organization/research/storage-matrix.md`; `packages/core/tests/organization-storage-premises.test.ts` (sidecar trash/restore travel, root-file archive ride + trash independence); existing pins for expected-hash refusal, unknown-file archive round-trip and whole-book trash moves. |
+| **Needed** | Author acceptance of the matrix or a named alternative, plus numeric caps for record counts, field sizes and file bytes. |
+| **Blocks** | spec 033 T004–T008 (services, surfaces, integration) |
+| **Owner** | spec 033 |
+
+### D-167 · Collection identity and membership
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Can a book belong to one or multiple collections? Are collection names unique? Which stable collection identity survives rename, and how are references handled on trash/restore of the same versus a different book identity? |
+| **Recommendation** | Many-to-many membership by stable book id; case-insensitive unique collection names; stable `col_` identity surviving renames (needs an `idSchema` prefix extension at implementation); idempotent add/remove that rewrite nothing on no-ops; trash/restore handled by id lookup (dangling = unavailable, never substituted, same-id restore revalidates). |
+| **Evidence** | `specs/033-library-organization/research/collection-identity.md`; `packages/core/tests/collection-identity-premises.test.ts` (rename preserves id/paths, trashed ids unresolvable and never substituted, restore keeps identity). |
+| **Needed** | Author acceptance of the membership/name/identity rules (or the exclusive-shelf alternative) plus numeric caps. |
+| **Blocks** | spec 033 T005 (collection persistence and CRUD) |
+| **Owner** | spec 033 |
+
+### D-168 · Source-anchor representation and verification
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | How is a passage encoded against saved chapter text, and what exact evidence suffices to open it or mark it stale after edits, moves, duplicate text, line-ending changes, Unicode, reorder, rename or restore — never retargeting by guess? |
+| **Recommendation** | Anchor = `bookId`, `chapterId`, `chapterVersion`, whole-file `chapterHash`, 1-based inclusive body line range plus verbatim excerpt, taken only from a confirmed saved source. Verification is exact and ordered: resolvable chapter, version+hash equality, excerpt-at-range equality — any failure is visibly stale with excerpt retained and nothing selected. No fuzzy fallback, no passage-hash-only or file-offset variants (documented rejections). |
+| **Evidence** | `specs/033-library-organization/research/source-anchors.md`; `packages/core/tests/annotation-anchor-premises.test.ts` (version/hash advance on any edit, stable on no-op re-save, deterministic body lines, trashed chapters unresolvable). |
+| **Needed** | Author acceptance of the serialization and rule (point-anchor and wording details stay with T008 implementation). |
+| **Blocks** | spec 033 annotation persistence, navigation and re-anchoring (T008) |
+| **Owner** | spec 033 |
+
+### D-169 · Ordered matter schema and legacy conversion
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | How are populated `frontMatter` records classified, ordered, preserved, reviewed and rolled back — including 003-imported subtitle/author/dedication/disclaimer/about-author keys — without migrating or reinterpreting existing records before acceptance? |
+| **Recommendation** | Kind is a pure function of the key at render time (title-page, dedication, epigraph, acknowledgements, author-note, disclaimer, about-author; anything else stays unplaced and preserved verbatim — never renamed, deleted or reinterpreted). Ordering is an additive `matterOrder: string[]` on the book (default `[]` = known kinds in table order, then unplaced keys in record order); conversion writes that field only, shows the proposed placements and requires explicit confirmation, and always writes the complete record because `updateBook` replaces whole-record. Rollback is clearing `matterOrder`; matter edits share `book.json` last-writer-wins with no new conflict machinery. Unreadable records (non-string values, which today reject the whole book with `format`) are carried tolerantly: preserved verbatim, surfaced as a review issue, rendered only where string — strict parsing stays for studio-made writes. Rationale: authorial order is not derivable from kinds, but the fallback keeps unconverted books deterministic; order-only conversion keeps the original record intact by construction; tolerant carry fixes the import readability hazard without inventing a repair UI. |
+| **Evidence** | `specs/035-book-formatting/research/matter-schema.md`; `packages/core/tests/matter-schema-premises.test.ts` (ordered string survival, strict-open brick on rich values, failed patch leaves bytes intact, whole-record replace). |
+| **Needed** | Author acceptance of the kind table, the additive order field, order-only conversion with confirmation, and tolerant carry for unreadable records. |
+| **Blocks** | spec 035 persisted matter schema, conversion UI and matter export (T009–T014 wait on the accepted decision alongside renderer and profile decisions) |
+| **Owner** | spec 035 |
+
+### D-170 · Format-profile persistence and physical-layout controls
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Do target-specific format profiles persist per book or per export, and which physical-layout controls, if any, are modeled? |
+| **Recommendation** | Persist per-book nothing target-specific until a selected renderer consumes it. Per-export choices stay transient dialog state defaulting to the canonical `settings.manuscript` values (the target selector itself stays transient). When a renderer can honor target-specific values, profiles persist as an additive top-level `formatProfiles` section — top-level because the settings object strips unknown nested sections on every save, and the FormatDialog full-merge pattern is already compatible with a top-level section. Canonical manuscript stays the fallback and the only shared-typography editor (FR-002 survives profiling). Model zero physical-layout controls until D-108 renderer acceptance: the only geometry in the file is the `docx` library's invisible A4/1-inch default, and per-target trim in explicit inches overrides documented defaults rather than implying measurement. Rejected: persisting profiles now (dead settings), nesting under `settings` (proven silent data loss), physical controls against the current pipeline (overriding unseen defaults for nonexistent targets). |
+| **Evidence** | `specs/035-book-formatting/research/format-profiles.md`; `packages/core/tests/format-profile-premises.test.ts` (settings-nesting stripped, top-level survival across full-settings merge); `apps/desktop/tests/export-renderers-premises.test.ts` (page geometry is the library default). |
+| **Needed** | Author acceptance of transient-per-export now, reserved top-level shape later, and no physical controls until renderer acceptance. |
+| **Blocks** | spec 035 persistent target-specific settings and physical-size controls only |
+| **Owner** | spec 035 |
+
+### D-171 · Report save, export, retention and deletion
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | After the disposable first milestone, may authors save or export review reports, where do saved reports live, what manuscript excerpts may they contain, and how are they deleted and retained? |
+| **Recommendation** | Allow both narrowly. Export a human-readable summary (scope, timestamps, counts, coverage, findings with excerpts) to the clipboard and to one author-chosen Markdown file via the safe-publication pattern; excerpts capped at 500 characters with an ellipsis marker, plus captured-at and may-have-changed markings. Save JSON beside the book under `books/<bookId>/reviews/<runId>.json` — additive per-book derived file, no library format field, nothing in profile/index/threads/usage/sync baselines (FR-011's exclusion list extends to saved reports). Results carry references and excerpts but never bodies, excerpts are unbounded in the type today, and freshness is computed never stored — so the decision sets the cap and requires export-time staleness marking. Retention: derived and disposable, at most 20 per book with oldest-first eviction and visible count; explicit per-report Delete plus book-fate deletion; no external registry or metadata; excluded from portable archive and sync until 016 decides. Rejected: volatile-only forever, threads/usage storage, unbounded excerpts, syncing reports. Saved reports revalidate version+hash on open and show stale when the source moved. |
+| **Evidence** | `specs/034-manuscript-review/research/report-retention.md`; `packages/core/tests/review/report-persistence-premises.test.ts` (excerpts without bodies, unbounded excerpts, computed freshness); `apps/desktop/tests/review-report.test.tsx` (volatile run, no writes, discard on switch). |
+| **Needed** | Author acceptance of the export cap and markings, the reviews directory with its cap and deletion rules, and the archive/sync exclusion. |
+| **Blocks** | spec 034 report persistence/export implementation (no such task may begin before acceptance and any required format/ADR review) |
+| **Owner** | spec 034 |
+
+### D-172 · D-115 scope over user-driven local install and upgrade
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Does D-115 also gate user-driven local installation and compatible local upgrade, or only signing, notarisation, update feeds and automatic updates? |
+| **Recommendation** | D-115 does not gate manual local install or compatible local upgrade. Allowed now, by hand only: place an unsigned build, run it, upgrade by replacing the bundle — profile continuity is structural (one version-free `studio.json` under the per-app `userData`) and compatible upgrades touch only the bundle (library opens rewrite nothing, newer schemas refuse before writes, `book.json` carries no app version). Required every time: Gatekeeper-override disclosure (unsigned downloads are quarantined; untested locally, documented as a survey limit), the unsigned label in About and the record, same-schema only with refuse-and-guide otherwise, no update feed, no automatic behavior, no credential use, no publication. Rejected: gating everything on a certificate with no technical basis; unconditional local install without the override/label/schema conditions; deciding profile location and uninstall behavior here (T024/T025/T028 matters). D-115 keeps signing, notarisation, update feeds and automatic updates. |
+| **Evidence** | `specs/009-packaging-release/research/local-install-upgrade.md`; `apps/desktop/tests/profile-stability-premises.test.ts` (shared version-free settings file, writes confined to the profile root, no app version in the file, older readers tolerate unknown keys); 030 open-rewrites-nothing premise; `assertSchemaVersion` refusing newer schemas pre-write. |
+| **Needed** | Author acceptance that manual local install/upgrade proceeds under the stated conditions while D-115 keeps signing, notarisation, feeds and automatic updates. |
+| **Blocks** | spec 009 local install/upgrade implementation and acceptance only (T027/T030 still wait on T024; T028 waits on T024/T025); not authorization to package or install anything |
+| **Owner** | spec 009 |
+
+### D-173 · Lifecycle support matrix
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Which desktop targets and native install/uninstall methods are supported, what stable per-user profile path applies on each, and how do authors find that location? |
+| **Recommendation** | Accept the matrix: macOS (dmg, zip, arm64/x64) release-blocking; Windows (assisted nsis, custom dir allowed) and Linux (AppImage) configured best-effort until a gate builds them. Native methods: drag-install/trash (mac), wizard/uninstaller entry (win), chmod-and-run/delete-file (linux); profile stays on uninstall (T025 owns cleanup). Per-user profile is Electron's per-app `userData` (`~/Library/Application Support/AI Book Studio`, `%APPDATA%/AI Book Studio`, `~/.config/AI Book Studio`), stable because `productName`/`appId` are version-free and one `studio.json` rule holds on every root, relocatable via `STUDIO_USER_DATA`; Settings is the discovery surface (T027). OS floors follow upstream Electron 45, confirmed at acceptance — none asserted here. Rejected: macOS-only support, per-version profile directories, deciding uninstall cleanup here. |
+| **Evidence** | `specs/009-packaging-release/research/lifecycle-matrix.md`; `apps/desktop/tests/lifecycle-matrix-premises.test.ts` (version-free identity keys, one settings rule on synthetic per-OS roots); `apps/desktop/electron-builder.yml`; T023 profile premises. |
+| **Needed** | Author acceptance of the matrix, plus confirming the exact upstream OS floors and the Windows uninstaller profile behavior at acceptance. |
+| **Blocks** | spec 009 platform-specific lifecycle implementation/acceptance only (T027/T028/T030; T025 still needs its own decision); not authorization to package or install anything |
+| **Owner** | spec 009 |
+
+### D-174 · Profile cleanup on uninstall
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Should any platform offer a separate optional app-profile cleanup on uninstall, and what exactly may it delete? |
+| **Recommendation** | Offer a separate, optional, in-app profile cleanup (Settings), available any time — not tied to the uninstall moment, identical on all targets. The profile is exactly `studio.json` (settings pointers) and `credentials.json` (encrypted vault) under the per-app `userData` root: it holds no manuscript (proven), regenerates from defaults, and deletes closedly per file. Rules: explicit opt-in, never default-on, never bundled; itemized confirmation naming each file with its plain description and full path; cancel removes nothing; the library is never listed or touched; no telemetry of the choice. Rejected: no cleanup ever, per-platform uninstaller hooks, a single delete-everything button, any library scope. Keeping profile data and the library remains the default either way. |
+| **Evidence** | `specs/009-packaging-release/research/profile-cleanup.md`; `apps/desktop/tests/profile-cleanup-premises.test.ts` (pointer-not-prose settings, missing-file defaults, vault under the same root); T023/T024 premises (shared version-free root, builder targets). |
+| **Needed** | Author acceptance of the in-app optional cleanup with the itemization and cancellation rules. |
+| **Blocks** | spec 009 optional cleanup implementation only (T028); preservation-only uninstall is unblocked regardless |
+| **Owner** | spec 009 |
+
+### D-175 · Chapter history storage layout and lifecycle
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | What author-owned file layout and schema store chapter-history snapshot bodies, provenance, safety copies, and restore-undo records, and how do they travel through archive import/export and chapter trash/restore? |
+| **Recommendation** | Book-scoped `books/<bookId>/history/<chapterId>/<timestamp>-<label-slug>[-n].md`, one file per record, YAML front matter plus canonical body — the chapter-file shape. Front matter carries `schemaVersion: 1`, `kind` (`snapshot`, `safety`, `intent`), identity, `sourceVersion`/`sourceHash`/`bodyHash`/`capturedAt`, and intent state; intents carry no body. Loose schemas with spread round-trips, newer-schema refusal, never reset-to-empty. Archive and whole-book trash carry history by construction; chapter trash leaves it keyed by stable id; author deletion moves the record to chapter trash. Rejected: `.studio/history/` (archive-excluded device scope), reusing `checkpoints/` (D-113 owns it), one `history.json` per book (single-point failure), JSON-plus-body pairs (orphan risk), history inside chapter files (rewrites saved bytes). |
+| **Evidence** | `specs/032-chapter-history/research/storage-layouts.md`; `packages/core/tests/chapter-history-storage-premises.test.ts` (trash/restore travel, archive manifest ride, chapter-trash separation, stable identity across rename/reorder, atomic hash-guarded record writes); FORMAT archive/trash rules; D-112 (accepted archive); D-163/D-166 loose-schema and sidecar precedents. |
+| **Needed** | Author acceptance of the layout, record kinds, and lifecycle rules, or a named alternative. Field-level schema and label grammar stay with T003. |
+| **Blocks** | spec 032 snapshot persistence, restore/undo persistence, and archive/trash integration (T003/T004/T007–T009) |
+| **Owner** | spec 032 |
+
+### D-176 · Chapter history retention and cleanup
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | What retention, size-limit, and cleanup policy applies to named and safety snapshots, given that no period or quota may be chosen by assumption? |
+| **Recommendation** | No automatic pruning, quota, expiry, or compaction for snapshots, safety copies, or intents — including unapplied intents, which are recovery material. Explicit author deletion moves the record to chapter trash; storage/write failures report without deleting. Size visibility comes from storage stats at list time, not a new format field. Numeric caps only later, with measured evidence and acceptance. Rejected: count/age/quota auto-rules (assumed numbers that pick the author's loss), delete-means-unlink (violates the no-permanent-delete rule). D-171's 20-cap stays scoped to review reports. |
+| **Evidence** | `specs/032-chapter-history/research/retention.md`; `packages/core/tests/chapter-history-retention-premises.test.ts` (unbounded conflicts and trash, failed writes preserve bytes); 034 T013 volatility precedent; FORMAT transport-only caps. |
+| **Needed** | Author acceptance of no-automatic-pruning with trash-based deletion, or a named evidenced alternative. |
+| **Blocks** | spec 032 pruning, size-limit, and cleanup implementation only (T011); capture, browse, compare, checked restore, and restore undo proceed without it |
+| **Owner** | spec 032 |
+
+### D-177 · Discuss default and read-tool policy
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | In Discuss mode, are positively read-only built-in tools available or does the model receive no tools — and what is the initial composer mode? |
+| **Recommendation** | Read-only built-ins only, Discuss as the new-turn default. A Discuss turn is offered exactly the six read-tier tools (`table_of_contents`, `read_story_bible`, `read_chapter`, `chapter_stats`, `find_in_chapter`, `find_in_chapters`) and no plugin tools; write, destructive, unclassified, and future tools are unoffered and bridge-denied if invoked. Enforcement is the existing three layers: the read-only subset via the `disabledTools` seam, bridge denial of unknown/withheld names, and the checked writer below. A Discuss turn that needs a write explains the Edit-mode next step; nothing is queued or written. The submitted mode is fixed for the turn. Rejected: no tools in Discuss (forces read-only questions into Edit), write tools on a promise (not a boundary), plugins on self-declaration (no declaration field; handlers receive writers — needs 025 first), Edit as default (unsafe default). |
+| **Evidence** | `specs/031-agent-interaction/research/discuss-read-policy.md`; `apps/desktop/tests/discuss-read-policy-premises.test.ts` (exact read-tier six, subset seam, plugin write default); `tool-bridge.test.ts` (unknown/destructive refusal); `tool-set.test.ts` (withdrawal, no-shadow, plugin writers); `agent-runtime.test.ts` (approval flow). |
+| **Needed** | Author acceptance of the read-only six and the Discuss default, or a named alternative (no-tools Discuss, plugin inclusion with a 025 capability). |
+| **Blocks** | spec 031 Discuss tool set and composer default only (T007/T008); mode persistence (T004–T006) and plan/guidance (T002/T003) are separate decisions |
+| **Owner** | spec 031 |
+
+### D-178 · Pause acknowledgment and continuation semantics
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | What counts as a completed pause, does Start/Resume continue the live turn or start a new turn, and what happens on non-background window close? |
+| **Recommendation** | Pause completes on the terminal `stopped` event, not the stop call's return: by then no tool can start and the in-flight tool has its definitive outcome recorded. The composer shows "Stopping…" until the event, then "Paused" with the change count and undo availability. Continuation is always a new explicit turn from the stored plan (no live-turn continuation exists to resurrect); approvals stay strictly per turn and are re-raised, never inherited. Non-background window close stops the turn like an author stop; restart expires unfinished plans visibly, never resumable; a plan never grants background. Rejected: pause-on-return (races the settling tail), same-turn resume (no machinery; re-enters unknown tool state), approval inheritance (breaks the per-turn gate), close-as-park (frozen close/quit behavior plus a second lifecycle). |
+| **Evidence** | `specs/031-agent-interaction/research/pause-continuation.md`; `apps/desktop/tests/pause-boundary-premises.test.ts` (per-turn approval death, mid-write atomic stop with reported outcome, new-turn continuation); `agent-runtime.test.ts` (approval waits, stop expiry); `AgentTurnInput.background` and 017 FR-012/FR-015/FR-017 (explicit per-turn background). |
+| **Needed** | Author acceptance of the event boundary, new-turn continuation, and close-stops/restart-expires rules, or a named alternative. |
+| **Blocks** | spec 031 pause/resume runtime controls only (T006); plan display, cancel, expiry, and ordinary Edit turns are not blocked |
+| **Owner** | spec 031 |
+
+### D-179 · In-flight guidance semantics
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | Can new guidance be added to a running or paused plan, and does that revise the same plan or require a new turn? |
+| **Recommendation** | No live steering: a running or paused plan cannot receive new guidance. The submitted prompt is fixed in the thread for the life of the turn; revised guidance travels by stopping and starting a new turn in the same conversation, which revalidates everything it touches. Guidance editing stays in the pre-send composer, proposed-plan review, `SKILLS.md` between turns, and each new turn's prompt. Rejected: same-plan mid-run revision (no live object to revise; races dispatch), a standing guidance queue (alternative A with extra state and staleness questions), live loop steering (no channel; breaks the D-178 event boundary and approval isolation), guidance-as-approval-answers (corrupts the audit trail). |
+| **Evidence** | `specs/031-agent-interaction/research/inflight-guidance.md`; `apps/desktop/tests/inflight-guidance-premises.test.ts` (prompt fixity in-thread, stop-plus-new-turn guidance journey); `agent-threads.test.ts` (retry reuse); D-178 (event boundary, new-turn continuation). |
+| **Needed** | Author acceptance of new-turn-only guidance, or a named alternative with a steer-capable protocol and trust-boundary design. |
+| **Blocks** | spec 031 in-flight plan guidance only; pre-send guidance and proposed-plan editing proceed now |
+| **Owner** | spec 031 |
+
+### D-180 · Legacy import idempotency by content fingerprint
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | How does the studio recognise an already-imported legacy export, given the public legacy schema carries no old book identifier for 003 FR-030's match-by-identifier to use? |
+| **Recommendation** | Fingerprint each legacy book with SHA-256 over canonical JSON (sorted keys, arrays in order) and keep `{ version, books: { fingerprint: { bookId, title, importedAt } } }` in `.studio/migrations.json`, written atomically after each import that adds books. A second run skips every fingerprint whose book still exists and names each recognised book in the report (`recognised: [{ title, bookId }]`); the library view says "Already imported N books. Nothing was added." A book deleted since the first run re-imports; an unreadable record warns and imports everything again rather than refusing the migration. Rejected: matching by title (legitimate duplicate titles collide — `createBook` allows them), a BookMeta origin marker (a schema and format change for one importer; the record is derived data whose loss only costs a re-import, never data). |
+| **Evidence** | `apps/desktop/tests/legacy-import.test.ts` (double-run creates zero books and zero chapter files and names the recognised book; added-book run imports only the new one; corrupt record warns and re-imports). |
+| **Needed** | Author acceptance of the fingerprint record, the archive-restore caveat (the record is excluded from portable archives, so re-importing after a restore imports again), and the re-import-on-delete semantic, or a named alternative. |
+| **Blocks** | Nothing further; FR-038 closes on acceptance. |
+| **Owner** | spec 003 |
+
+### D-181 · Legacy picture pages import as plain image records
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | How do legacy image pages and versions land in the studio when `ImageRecord` has no page, version, anchor or current fields and the old anchor format is unverified locally? |
+| **Recommendation** | Every image version present in the export's image map is decoded and stored through `ImageStore.add` as source `imported` (kind `cover` for a cover-flagged page's pictures, `other` otherwise), with prompt, model and cost carried where the entry has them and dimensions and MIME read from the bytes, never the declaration. Missing, unreadable and oversized pictures become author-words warnings and never fail the book. Deferred: marking the current version (no model home), rebinding chapter anchors (no guessing at the unverified old format), the cover include-in-export setting (export-pipeline work), image style (003 FR-011), and a kept page with no picture (needs a page model). Rejected: importing only the current version (hides surviving bytes the author may want); inventing anchor parsing from the abstract spec (a wrong guess corrupts chapter bindings). |
+| **Evidence** | `apps/desktop/tests/legacy-import.test.ts` picture tests (byte-identical round-trip, cover kind, mismatch warning, missing/unreadable warnings, picture double-run recognition). |
+| **Needed** | Author acceptance of flat records now with page-model work later, or a named page model. |
+| **Blocks** | 003 FR-021/022/023/024 full compliance only; the carried bytes, counts and warnings above proceed now. |
+| **Owner** | spec 003 |
+
+### D-182 · Book grid reads every chapter; the catalog stays unread
+
+| | |
+| --- | --- |
+| **Status** | Proposed |
+| **Question** | `listBooks` re-reads `book.json` plus every chapter file of every book to build grid stats, while `library.json` already carries `chapterCount` and `wordCount` per book but is documented as never read as truth. When, if ever, does the grid stop paying novel-scale reads? |
+| **Recommendation** | Keep re-reading for now: the catalog is untrusted by design because a sync folder can hand the app a stale copy, and trusting it would trade silent stale grids for speed. Per-book stats in `book.json` would need every mutation path (save, delete, trash, restore, import, conflicts) to maintain them — a format change with wide regression surface. Revisit only with measured evidence of a slow library; local-disk reads are millisecond-scale for realistic libraries. Rejected: trusting the catalog without a staleness story (contradicts `FORMAT.md` and risks showing wrong counts after external sync); stuffing stats into `book.json` now (cost without a measured problem). |
+| **Evidence** | `packages/core/src/library/service.ts` (`listBooks`, `summarize`, `rebuildCatalog`), `docs/FORMAT.md` (`library.json` "never reads it as truth"), `packages/core/tests/library-service.test.ts` (grid stats summed from chapters, catalog consistency). |
+| **Needed** | Author acceptance of re-reading until measured slowness, or a named staleness story for catalog trust. |
+| **Blocks** | Only the "opens without loading all" clause of 002 FR-003; the grid stats themselves are proven above. |
+| **Owner** | spec 002 |
 
 ## Resolved browser decisions
 

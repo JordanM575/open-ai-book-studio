@@ -57,6 +57,7 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 | `memories` | array | `id` (`mem_…`), `text` (≤180 chars by convention), `importance`, timestamps. |
 | `stage` | `onboarding` \| `drafting` | Setup or writing. |
 | `settings.manuscript` | object | Export typography: `bodyFont`, `bodyFontSize`, `firstLineIndent`, `lineSpacing`, `chapterTitleAlignment`, `includeTableOfContents`, `preserveLineBreaks`. |
+| `settings.agent` | object | Agent behavior: `disabledTools` (withdrawn tool names), `skillsEnabled`, `tone` (free text, at most 500 characters, empty means none), `answerLength` (`brief`, `standard` or `detailed`). Older books gain the defaults on read. |
 | `defaultProvider` | string \| null | Provider chosen for this book (`openrouter`, `openai`, `anthropic`, `gemini`, `meta`), or `null` when not chosen. Older books gain `null` on read. |
 | `defaultConnectionId` | string \| null | A connection id such as `conn_…`. The secret lives in the app's protected storage, never here. |
 | `defaultModelId` | string \| null | Model id as the provider names it. A model that disappears stays recorded and is shown as unavailable. |
@@ -124,11 +125,13 @@ as a chapter and is not part of `library.json`; a missing or stale catalog never
 | `bookId` | string | The owning book. |
 | `title` | string | Author-facing label; defaults to "New conversation". |
 | `createdAt`, `updatedAt` | ISO 8601 | `updatedAt` changes on every save. |
-| `messages` | array | Each has `id`, `role`, `parts`, optional `model` and `usage`, and `createdAt`. |
+| `messages` | array | Each has `id`, `role`, `parts`, optional `model`, `mode` and `usage`, and `createdAt`. `mode` (`discuss` or `edit`) records the permission level of the turn that produced an assistant message; older messages have none and are shown as unrecorded. |
 | `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation. |
 
-Message parts are `text`, `reasoning`, `tool-call`, `tool-result`, `source`, `file` and `error`. Tool
-calls and results keep their ids, so a resumed conversation can be inspected without replaying prose.
+Message parts are `text`, `reasoning`, `tool-call`, `tool-result`, `source`, `file`, `error` and
+`guidance`. Tool calls and results keep their ids, so a resumed conversation can be inspected
+without replaying prose. A `guidance` part carries one turn of author instructions (1–2,000
+characters, never truncated) with the submitted user message; it applies to that turn only.
 The schema lives in `packages/core/src/agent/messages.ts`.
 
 A corrupt file is never rewritten or deleted by a list operation; opening it reports the error. Thread
@@ -168,6 +171,17 @@ each author-owned file, the hash this device last wrote, and tombstones for dele
 after a reviewed scan, never during one. It contains no prose or credentials, is excluded from portable
 archives, and is safe to delete; the next scan rebuilds it by comparing the files and warns that it had
 no baseline. A journal copied from another device is ignored by its device id.
+
+## Migration record
+
+`.studio/migrations.json` maps each imported legacy book's content fingerprint to the book it
+created: `{ version: 1, books: { "<sha256>": { bookId, title, importedAt } } }`. The fingerprint is
+the SHA-256 of the canonical legacy book payload, so a second run over the same export recognises
+every book whose target still exists, imports nothing, and names each recognised book in the report.
+
+It contains no prose, only ids, titles, timestamps and hashes. Like sync journals it is excluded
+from portable archives: restoring an archive and re-importing the same export imports the books
+again. Deleting it is safe; the next run simply imports every book in the export.
 
 ## `library.json`
 

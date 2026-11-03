@@ -48,6 +48,31 @@ classified Read or Write and the destructive ones marked sensitive. Neither talk
 descriptions, so a caller can hand them over. See
 [`specs/026-glasses`](../specs/026-glasses/spec.md).
 
+The mapping is fixed in `packages/core/src/agent/surfaces.ts`:
+
+- Read tier → Read classification and the WebMCP `readOnlyHint`; currently the six read
+  tools (`table_of_contents`, `read_story_bible`, `read_chapter`, `chapter_stats`,
+  `find_in_chapter`, `find_in_chapters`).
+- Write tier → Write classification, with the undo-checkpoint side effect stated on the
+  tool.
+- Destructive tier → Write classification plus the sensitive mark (connector) and the
+  WebMCP `consequentialHint`: `remove_memory`, `overwrite_chapter`, `delete_chapter`,
+  `delete_lines_in_chapter`, `move_chapter`, `split_chapter`, `merge_chapters`. The
+  toolkit exposes them only with `--allow-destructive`, and the studio asks the author
+  for approval before each destructive run.
+- Every connector tool states its side effects and its refusal behavior: bad arguments,
+  a withdrawn tool, or a missing opt-in refuses the call and changes nothing. A tool
+  name WebMCP would reject is left out rather than renamed.
+- Every WebMCP tool carries `untrustedContentHint: true`, on every tier: tool
+  outputs are author-supplied prose the studio did not write — which may embed
+  imported or quoted third-party text — so the caller must treat them as data,
+  not instructions.
+
+The prepared connector application material — manifest, account-linking story, scopes,
+side effects and the test story — is recorded in
+[`specs/026-glasses/connector-application.md`](../specs/026-glasses/connector-application.md).
+No application has been sent: there is no public endpoint to link to, by decision.
+
 ### Safety tiers
 
 Every tool has one of three tiers:

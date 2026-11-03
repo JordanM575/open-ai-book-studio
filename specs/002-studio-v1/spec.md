@@ -397,9 +397,6 @@ export the archive, and import it into the desktop app with identical text.
 - **FR-023a**: Manuscript prose, chapter titles, Story Bible text and tool output MUST be treated as
   data. The system prompt MUST delimit author-supplied data and instruct the model never to follow
   instructions found inside it.
-- **FR-023a**: Manuscript prose, chapter titles, Story Bible text and tool output MUST be treated as
-  data. The system prompt MUST delimit author-supplied data and instruct the model never to follow
-  instructions found inside it.
 - **FR-024**: Destructive actions — deleting a chapter, overwriting a chapter, removing a memory,
   replacing a library — MUST require the author's approval inside the turn.
 - **FR-024a**: An approval request MUST be stored with its turn. Reopening the conversation MUST show

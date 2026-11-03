@@ -61,6 +61,9 @@ change, not a rebuild.
    web artifacts.
 8. Promote the exact artifacts to staging. Do not rebuild between staging and the public demo.
 9. Record commit, version, checksums, unsigned status, capability differences and the gates that ran.
+10. Verify what is served: `node scripts/release/check.mjs --record <record.json> --artifact
+    <served file> --version <About version> --commit <About commit>` re-hashes the download
+    and compares it with the record and About. It must agree before testers are pointed at it.
 
 ## Rollback runbook
 

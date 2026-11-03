@@ -46,13 +46,13 @@ source.
 
 1. **Given** a valid library export, **When** the author selects it, **Then** the studio shows the
    books, chapter counts and image counts before writing anything, and writes only after confirmation.
-2. **Given** the author confirms, **When** importion finishes, **Then** each book is a folder with
+2. **Given** the author confirms, **When** import finishes, **Then** each book is a folder with
    `book.json` and one Markdown file per chapter, and the library lists them.
 3. **Given** a book with 40 chapters, **When** it is imported, **Then** chapter order, titles and
    prologue status match the old book.
-4. **Given** the export contains images, **When** importion finishes, **Then** each image is a file in
+4. **Given** the export contains images, **When** import finishes, **Then** each image is a file in
    the book folder and the cover is marked as the cover.
-5. **Given** importion finishes, **When** the author reads the report, **Then** it lists books,
+5. **Given** import finishes, **When** the author reads the report, **Then** it lists books,
    chapters, words, characters, memories and images imported, plus every skipped item and why.
 
 ---
@@ -60,12 +60,12 @@ source.
 ### User Story 2 - Migrate a single book (Priority: P1)
 
 An author only wants one book from a large export, or has a single-book export file. They choose the
-book from a list, importe it, and leave the rest alone.
+book from a list, import it, and leave the rest alone.
 
 **Why this priority**: The old application offered both exports; authors with several books often
 back up one at a time.
 
-**Independent Test**: Migrate one book from a five-book export, then importe the same file again and
+**Independent Test**: Migrate one book from a five-book export, then import the same file again and
 confirm the other four were not created and the first was not duplicated.
 
 **Acceptance Scenarios**:
@@ -84,7 +84,7 @@ The author's outline, story arc, cast, memories, genre, length target, manuscrip
 back matter and image style arrive with the book, so the Story Bible is populated on first open and
 the first export looks like the last one.
 
-**Why this priority**: A imported book that has lost its cast and outline is a manuscript, not a book;
+**Why this priority**: An imported book that has lost its cast and outline is a manuscript, not a book;
 the agent would start from ignorance.
 
 **Independent Test**: Migrate a book with a filled Story Bible and compare every field with the source
@@ -109,7 +109,7 @@ Some old data has no equivalent: browser checkpoints, undo history, tour progres
 per-message agent state. The author is told, in plain words, what was left behind and what they can do
 about it, instead of discovering a gap months later.
 
-**Why this priority**: The importion is only trustworthy if its limits are visible. Silence is how the
+**Why this priority**: The migration is only trustworthy if its limits are visible. Silence is how the
 old application lost authors' trust.
 
 **Independent Test**: Migrate a book containing checkpoints and a conversation; confirm the report
@@ -117,7 +117,7 @@ names them as not imported, the book opens normally, and the archived conversati
 
 **Acceptance Scenarios**:
 
-1. **Given** an export with data that has no equivalent, **When** importion finishes, **Then** the
+1. **Given** an export with data that has no equivalent, **When** import finishes, **Then** the
    report names each category and says it was not carried across.
 2. **Given** an old conversation, **When** the book is imported, **Then** the transcript is stored as a
    read-only archive inside the book folder and is not replayed as agent history.
@@ -135,7 +135,7 @@ says so, writes nothing partial into the library, and leaves the original file u
 
 **Independent Test**: Feed the importer a truncated file, a non-export JSON, a newer schema version, and
 a book with one damaged chapter; confirm the library is unchanged in the first three and the fourth
-importes the good chapters with the bad one reported.
+imports the good chapters with the bad one reported.
 
 **Acceptance Scenarios**:
 
@@ -143,28 +143,28 @@ importes the good chapters with the bad one reported.
    studio refuses with a plain explanation and writes nothing.
 2. **Given** an export from a newer version, **When** the author selects it, **Then** the studio says
    the file is newer than the app and offers no partial import.
-3. **Given** one book in an otherwise valid export is malformed, **When** importion runs, **Then** the
+3. **Given** one book in an otherwise valid export is malformed, **When** migration runs, **Then** the
    valid books are imported and the malformed one is reported.
-4. **Given** the author cancels during importion, **When** cancellation completes, **Then** books
+4. **Given** the author cancels during migration, **When** cancellation completes, **Then** books
    already written remain valid, unfinished work is removed, and the report says what was completed.
 
 ---
 
-### User Story 6 - Undo the importion (Priority: P3)
+### User Story 6 - Undo the import (Priority: P3)
 
-The author importes the wrong export or changes their mind. They can remove the books a importion
+The author imports the wrong export or changes their mind. They can remove the books a migration
 created, in one action, without touching books that existed before.
 
 **Why this priority**: A one-way door still needs a handle on this side.
 
-**Independent Test**: Run two importions, remove the second by its report, and confirm the first and
+**Independent Test**: Run two migrations, remove the second by its report, and confirm the first and
 its files are untouched.
 
 **Acceptance Scenarios**:
 
-1. **Given** a completed importion, **When** the author chooses "Remove these imported books", **Then**
+1. **Given** a completed migration, **When** the author chooses "Remove these imported books", **Then**
    exactly those books move to the library trash.
-2. **Given** a book was edited after importion, **When** the author removes it, **Then** the studio
+2. **Given** a book was edited after migration, **When** the author removes it, **Then** the studio
    warns that edits will be lost and requires confirmation.
 
 ---
@@ -185,7 +185,7 @@ its files are untouched.
 - An image entry is missing, has a mismatched MIME type, or is not valid base64.
 - An image page points at a version that is not in the image map.
 - The export is hundreds of megabytes and the machine has little memory.
-- The disk fills or becomes read-only mid-importion.
+- The disk fills or becomes read-only mid-migration.
 - The library already contains a book previously imported from the same export.
 - The export was produced by a newer schema version.
 - The export was produced by a different application that happens to use `books`.
@@ -255,7 +255,7 @@ its files are untouched.
 
 - **FR-025**: The studio MUST NOT treat an old conversation as agent history, and MUST store it as a
   read-only archive in the book folder when present.
-- **FR-026**: The studio MUST NOT importe browser checkpoints, undo records, tour progress, storage
+- **FR-026**: The studio MUST NOT import browser checkpoints, undo records, tour progress, storage
   relief markers, or provider keys, and MUST name them in the report as not imported.
 - **FR-027**: The studio MUST report an old model identifier without adopting it as the book's model.
 
@@ -263,16 +263,16 @@ its files are untouched.
 
 - **FR-028**: The studio MUST never modify, move or delete the selected export file.
 - **FR-029**: The studio MUST write each book into a temporary folder and only publish it into the
-  library when complete, so a failed importion leaves no half-book.
+  library when complete, so a failed migration leaves no half-book.
 - **FR-030**: The studio MUST be idempotent: a second run over the same export MUST NOT duplicate books
   or chapters, and MUST report what it recognised as already imported.
 - **FR-031**: The studio MUST proceed past a damaged book or chapter, importing what is valid and
   reporting the rest, unless the whole file is unrecognisable.
 - **FR-032**: The studio MUST let the author cancel, leaving completed books valid and removing
   unfinished work.
-- **FR-033**: The studio MUST write a machine-readable and human-readable importion report into the
+- **FR-033**: The studio MUST write a machine-readable and human-readable migration report into the
   library's studio folder, listing source file, time, per-book counts, skipped items and warnings.
-- **FR-034**: The studio MUST let the author remove the books created by a given importion, moving them
+- **FR-034**: The studio MUST let the author remove the books created by a given migration, moving them
   to trash with confirmation.
 - **FR-035**: The studio MUST stream or incrementally parse a large export so memory use stays bounded
   and MUST warn before importing an export above a configured size.
@@ -305,19 +305,19 @@ its files are untouched.
 
 - **SC-001**: 100% of chapter text in a valid export appears in the imported library, with only the
   documented newline normalisation applied.
-- **SC-002**: A second importion of the same export creates zero books and zero chapter files.
+- **SC-002**: A second migration of the same export creates zero books and zero chapter files.
 - **SC-003**: The report's chapter, word, character, memory and image counts match counts derived
   independently from the imported files in 100% of test exports.
 - **SC-004**: Every imported image is byte-identical to the image in the export.
-- **SC-005**: A representative 250,000-word library importes in under 2 minutes on the reference
+- **SC-005**: A representative 250,000-word library imports in under 2 minutes on the reference
   machine with peak memory below 1 GB.
-- **SC-006**: No importion failure leaves a partially written book visible in the library in 100% of
+- **SC-006**: No migration failure leaves a partially written book visible in the library in 100% of
   fault-injection runs (full disk, kill mid-run, malformed book).
-- **SC-007**: Authors can identify what did not importe without opening a log file, in one screen, for
+- **SC-007**: Authors can identify what did not import without opening a log file, in one screen, for
   100% of tested exports containing unsupported data.
-- **SC-008**: Removal of an imported set touches zero books that existed before the importion.
-- **SC-009**: The importion completes with no network access.
-- **SC-010**: 95% of authors who start a importion finish it without contacting support, measured on
+- **SC-008**: Removal of an imported set touches zero books that existed before the migration.
+- **SC-009**: The migration completes with no network access.
+- **SC-010**: 95% of authors who start a migration finish it without contacting support, measured on
   the first ten real exports used in testing.
 
 ## Assumptions
@@ -338,10 +338,10 @@ its files are untouched.
   recovered from a browser and are reported, not fabricated.
 - **Model choice**: the old `modelId` is not adopted; the author's current default is used, because the
   old identifier may no longer exist or may not support tools.
-- **Duplicates**: importion never merges into an existing book. It matches by old identifier to avoid
+- **Duplicates**: migration never merges into an existing book. It matches by old identifier to avoid
   duplicates and otherwise creates a new book with a distinguishing suffix.
-- **Library location**: importion writes into the currently open library; the author chooses where that
+- **Library location**: migration writes into the currently open library; the author chooses where that
   is before importing.
-- **Rollback**: rollback is removal to trash, not a byte-level restore of the pre-importion library.
+- **Rollback**: rollback is removal to trash, not a byte-level restore of the pre-migration library.
 - **Report location**: reports live in the library's studio folder and are listed in the library
   interface.

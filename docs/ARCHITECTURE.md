@@ -196,10 +196,17 @@ safe to delete.
 - `apps/desktop/tests/sync/` is a two-system harness. Ten scenarios cover clean and concurrent edits,
   offline delivery, deletion, placeholders, torn copies, corrupt journals, repeated scans, provider
   conflict copies and renames. Every one asserts the report and that author bytes survive.
+- Own writes note themselves into the journal at save time (`commitText`, trash moves, the thread
+  and image stores), so the next scan reads them as local. The first scan on a fresh library
+  records the baseline; a corrupt or newer journal is never overwritten by a scan.
+- The drift report dialog (`DriftReportDialog`) opens from the main-process scan on library open
+  and on throttled window focus, plus an on-demand check and a Settings section with the scan
+  interval. Review is required before the baseline advances; every resolution reuses the existing
+  save, conflict-copy, archive and draft paths.
 
-The drift report UI and the app lock are not built. `.studio/device.json` inside a synced folder is the
-open D-124 question: a provider can copy the identity, so the authoritative device id should move to the
-host profile before the review UI claims the journal is per-device.
+The app lock is not built. `.studio/device.json` inside a synced folder is the open D-124 question:
+a provider can copy the identity, and two devices sharing one copied file now share a journal too,
+so the authoritative device id should move to the host profile.
 
 ## Testing seams
 

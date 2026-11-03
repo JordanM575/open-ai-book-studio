@@ -10,6 +10,112 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- `AGENTS.md` no longer refers to a document that was removed, and four research notes now say
+  "locally" instead of process jargon.
+
+### Fixed
+
+- Corrected the 010 roadmap row: shared UI extraction landed in 013 (`packages/ui`,
+  `packages/app`); only the native folder-picker matrix remains there.
+- Corrected the 018 roadmap row: the manual desktop/MCP pass (T011) ran against a
+  real backend and MCP client with reads verified on disk; it is not pending.
+
+### Added
+
+- Spec 026 T015/T016: connector application material. `specs/026-glasses/connector-application.md`
+  records the fixed manifest head, the 22-tool classification with the 7 sensitive names,
+  per-tier side effects, the refusal contract, the unwired account-linking story and a
+  credentials-free test story; `docs/TOOLKIT.md` records the tier-to-shape mapping and
+  points at the note. No application sent: no public endpoint exists. All quoted
+  strings verified against the real surface functions with synthetic fixtures only.
+- Spec 031 T003 (research only): in-flight guidance semantics. `research/inflight-guidance.md`
+  pins prompt fixity and the stop-plus-new-turn journey and D-179 proposes no live
+  steering, with guidance staying pre-send, in proposed-plan review, and in `SKILLS.md`.
+  In-flight guidance remains blocked. No behavior changes.
+- Spec 031 T002 (research only): pause acknowledgment and continuation semantics.
+  `research/pause-continuation.md` pins terminal-stop facts and mid-write atomicity and
+  D-178 proposes event-boundary pause, new-turn continuation, per-turn approvals, and
+  close-stops/restart-expires. Pause/resume controls remain blocked. No behavior changes.
+- Spec 031 T001 (research only): Discuss default and read-tool policy. `research/discuss-read-policy.md`
+  pins the exact read-tier six, the withdrawal subset seam, bridge denial and the plugin
+  write-capable surface; D-177 proposes read-only built-ins only with Discuss as the new-turn
+  default. The Discuss tool set and composer default remain blocked. No behavior changes.
+- Spec 032 T001/T002 (research only): chapter-history storage and retention. `research/storage-layouts.md`
+  compares six layouts against the book/trash/archive facts and D-175 proposes book-scoped
+  `history/` records mirroring chapter files; `research/retention.md` pins unbounded trash/conflicts
+  and failure preservation and D-176 proposes no automatic pruning with trash-based deletion.
+  Dependent persistence work remains blocked. No behavior changes.
+- Spec 009 T025 (research only): profile cleanup on uninstall. `research/profile-cleanup.md`
+  inventories the two-file profile and proves pointer-not-prose storage, missing-file defaults
+  and the shared root; D-174 proposes a uniform in-app optional cleanup with itemized
+  confirmation, never default-on, library never in scope. Nothing is deleted; dependent work
+  remains blocked. No behavior changes.
+- Spec 009 T024 (research only): lifecycle support matrix. `research/lifecycle-matrix.md`
+  declares the three builder targets with standing, survey-only native methods and per-OS
+  profile paths, deferring exact OS floors to upstream confirmation; D-173 proposes the matrix
+  with macOS release-blocking, profile-stays-on-uninstall and Settings discovery. Dependent
+  work remains blocked. No behavior changes.
+- Spec 009 T023 (research only): D-115 scope over user-driven local install and upgrade.
+  `research/local-install-upgrade.md` pins the version-free shared settings file, write
+  confinement to the profile root, no app version in profile or library files, side-effect-free
+  opens and pre-write schema refusal; D-172 proposes D-115 does not gate manual local
+  install/compatible upgrade under override disclosure, unsigned labeling, same-schema-only
+  and no feed/automation conditions. Nothing installs; dependent work remains blocked. No
+  behavior changes except a pure settings-path helper with identical behavior.
+- Spec 034 T003 (research only): report save, export, retention and deletion compared with
+  synthetic evidence. `research/report-retention.md` pins the report shape (source references and
+  excerpts, never bodies; unbounded excerpts; computed freshness) against the volatile baseline;
+  D-171 proposes narrow clipboard/Markdown export with capped excerpts and markings, JSON save
+  under `books/<bookId>/reviews/` with a 20-per-book cap, explicit and book-fate deletion, and
+  archive/sync exclusion. No persistence work; dependent work remains blocked. No behavior changes.
+- Spec 035 T008 (research only): format-profile persistence and physical-layout controls
+  compared with synthetic evidence. `research/format-profiles.md` pins the settings-nesting strip
+  hazard (unknown nested sections are dropped by supported saves), top-level survival across the
+  FormatDialog full-settings merge, transient target state and library-default A4/1-inch page
+  geometry; D-170 proposes transient per-export now, a reserved top-level `formatProfiles` shape
+  later, and no physical controls until D-108 acceptance. Nothing persists; dependent work remains
+  blocked. No behavior changes.
+- Spec 035 T007 (research only): ordered-matter schema and legacy conversion compared with
+  synthetic evidence. `research/matter-schema.md` pins whole-record replace, ordered string
+  survival, the strict-open brick on rich values and failed-patch byte preservation; D-169 proposes
+  the key-function kind table, additive `matterOrder` with a deterministic fallback, order-only
+  confirmed conversion, clear-to-rollback and tolerant carry for unreadable records. No migration,
+  no reinterpretation; dependent work remains blocked. No behavior changes.
+- Spec 035 T006 (research only): export renderer and determinism alternatives compared with
+  synthetic evidence. `research/export-renderers.md` verifies the `docx` pipeline's deterministic
+  content parts and fixed zip entry dates (only `docProps/core.xml` wall-clock timestamps vary)
+  and surveys LibreOffice headless, `pdf-lib`, Typst and EPUB assemblers from documentation only;
+  D-108 proposes the determinism requirements and per-target illustration/packaging contract with
+  KDP acceptance, pagination/trim, font embedding and validator tooling explicitly unresolved. No
+  renderer selected, no conformance claimed; dependent work remains blocked. No behavior changes.
+- Spec 033 T003 (research only): source-anchor representation and verification compared with
+  synthetic evidence. `research/source-anchors.md` and premise tests propose exact ordered
+  verification (version+hash equality, excerpt-at-range equality, no fuzzy fallback) (D-168,
+  awaiting author acceptance); T008 remains blocked. No behavior changes.
+- Spec 033 T002 (research only): collection identity and membership compared with synthetic
+  evidence. `research/collection-identity.md` and premise tests propose many-to-many id-ref
+  membership, unique names, stable identities and id-lookup trash handling (D-167, awaiting
+  author acceptance); T005 remains blocked. No behavior changes.
+- Spec 033 T001 (research only): organization data storage matrix compared with synthetic evidence.
+  `research/storage-matrix.md` and premise tests propose library-root collections, disposable
+  recent-work pointers and per-book goal/annotation sidecars (D-166, awaiting author acceptance);
+  D-167/D-168 stay Open and T004–T008 remain blocked. No behavior changes.
+- Spec 030 T001 (research only): Story Bible extension storage alternatives compared with synthetic
+  evidence. `research/storage-alternatives.md` and premise tests propose a separate versioned
+  `planning.json` (D-163, awaiting author acceptance); D-164/D-165 stay Open and T002–T008 remain
+  blocked. No behavior changes.
+- Spec 029 T001–T003, T005: manuscript import decisions recorded with the author (whole-file
+  default with line-boundary splits, Markdown literal, filename-derived editable title; 5 MiB
+  strict-UTF-8 source with one BOM strip, NUL/control rejection, empty refusal). New pure parser
+  `packages/core/src/manuscript-import/` (`validateSource`, `previewImport` with canonical bodies
+  and per-chapter edge-blank-line accounting) covered by 11 synthetic-fixture tests. Publication
+  verified: the desktop adapter atomically publishes a staged tree with one same-filesystem rename,
+  refuses cross-device moves, and gained `removeDirectory` for staging cleanup (desktop, in-memory
+  and web stubs) with contract and conformance tests. Web copy+delete does not qualify, so the
+  first profile's publisher stays desktop-gated.
+
+### Changed
+
 - Removed the competitor branding research and its references from the event branch, and stopped
   tracking Spec Kit's machine-local extension cache. A public repository should not carry another
   product's name or 240 KB of someone's tool state.
