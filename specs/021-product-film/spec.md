@@ -46,6 +46,15 @@ productions.
 
 Every shot carries one benefit line. Feature names alone are not enough.
 
+**Amendment (2026-11-03).** This story changed to follow the event's demo-scope rule:
+
+- Pre-event context sits in one opening segment labelled “Built before the event”, and every later
+  segment shows only event work.
+- Spec 020 is superseded (D-158), so the cutout beat is gone.
+
+The current shot list, capture order and fallbacks are in
+[`video/script.md`](../../video/script.md) (draft 2).
+
 ## Requirements
 
 ### Truthfulness

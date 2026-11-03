@@ -21,10 +21,18 @@
 
 ## Phase 3 — Publication and evidence
 
-- [ ] T007 Run `bun run submission:check`, `bun run verify` and `bun run smoke`; record the commit and
+- [x] T007 Run `bun run submission:check`, `bun run verify` and `bun run smoke`; record the commit and
   test count in `hackathon/SUBMISSION.md`.
-- [ ] T008 Clean clone the submitted revision and repeat the install/verify/smoke pass; record the
+  Ran 2026-11-03 on the working tree at `d7148ed` and recorded a dated addendum: verify passes
+  (1278 tests, 0 fail), smoke passes 29/29, and the submission check reports not ready for exactly
+  one reason — the tree is uncommitted (118 modified, 129 untracked), with no forbidden path,
+  secret or sample problem. The submitted `8a42620` evidence stands unchanged; submitting newer
+  work needs the author's own review and commit.
+- [x] T008 Clean clone the submitted revision and repeat the install/verify/smoke pass; record the
   result.
+  Recorded in `hackathon/SUBMISSION.md` ("Code verified at" `8a42620`, 2026-10-26): fresh Gitea clone,
+  487 packages, verify (typecheck, 568 tests, desktop/toolkit/web builds), e2e 8/8 and coverage above
+  the floor. T007's 2026-11-03 addendum re-confirms verify/smoke on the working tree.
 - [ ] T009 Make the repository public only after the scan passes; fill the repository link and the
   private-window check.
 - [ ] T010 Fill the video links, thumbnails and captions; check both from a private window.

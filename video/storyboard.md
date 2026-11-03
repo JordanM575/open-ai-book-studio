@@ -5,6 +5,14 @@
 **Motion:** HTML/CSS plates using the design tokens; capture through Playwright. Real UI is never
 redrawn.
 
+**Status (2026-11-03):** script draft 2 replaces this shot list for capture. Its order, setup and
+fallbacks are in [`script.md`](script.md#capture-tonight). None of the following is in the film:
+
+- S04–S06 show work from before the event.
+- S10 shows the SAM cutout, retired by D-158.
+
+The rest of this file keeps the motion and capture notes.
+
 ## Shot list
 
 ### S01 — The problem (0:00–0:16)

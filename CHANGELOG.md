@@ -119,6 +119,15 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- Film script draft 2 and a truth pass on the submission packet, which follow the event's
+  demo-scope rule. All pre-event context is in one opening segment labelled "Built before the
+  event". Every later shot names only event work and marks whether it needs a live Meta call. A
+  capture order with per-shot fallbacks replaces the SAM shot.
+- The packet, the hackathon README and spec 021 no longer claim SAM cutouts (retired, D-158), Muse
+  Wonder or open weights. The packet names OpenRouter's voice as a non-Meta service, no longer claims
+  a cache-hit rate, follows the film in its demo runbook, and lists the event work since the October
+  26 cut. Its evidence table now holds fields to fill from the final clean clone, with today's numbers
+  shown separately. That includes coverage below the floor.
 - `AGENTS.md` no longer refers to a document that was removed, and four research notes now say
   "locally" instead of process jargon.
 

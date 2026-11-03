@@ -28,8 +28,8 @@
 AI Book Studio is a local-first writing studio for long-form fiction. The book is a folder of Markdown
 and JSON the author owns; the agent reads the Story Bible and chapters, edits through tools, makes
 checked saves with undo checkpoints, can keep working after the window closes, and returns a native
-notification. Illustrations are generated with Muse Image and characters are cut out with SAM 3.1.
-The same library is available to other agents through the `bookwriter` CLI and MCP server, over a
+notification. Illustrations are generated with Muse Image and carried into the Word export. The same
+library is available to other agents through the `bookwriter` CLI and MCP server, over a
 loopback-only backend with a per-run token.
 
 **One line:** the agent works on the actual book, and the author keeps the actual files.
@@ -69,6 +69,31 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   change costs nothing.
 - A bridge from the studio to a phone on the local network, which is the Mac half of the glasses app,
   proven from a separate process.
+- The sync drift review over the existing detector: a scan when the library opens and when the window
+  regains focus, a review dialog with keep-disk, keep-mine, open-both and export actions, and a
+  Settings section (spec 016, in progress).
+- Integration health: one derived state for each library location and each provider, with
+  plain-language warnings and safe actions (spec 028, in progress).
+- Manuscript import: plain text and Markdown into a new book through a preview and a staged atomic
+  publication (spec 029, desktop).
+- Manuscript review: an evidence-linked report on saved text (spec 034, desktop, in progress).
+- Book formatting: a target selector, typography settings, an approximate preview, and a Markdown
+  export beside the Word export (spec 035 and 002 FR-051; PDF and EPUB are not built).
+- Agent and provider reporting:
+  - the answering model named in plain words, and capabilities on each model card;
+  - the whole-turn usage line;
+  - offline and rate-limit notes;
+  - checkpoints for a failed turn;
+  - per-turn and monthly spending warnings;
+  - tone and answer-length settings (specs 011 and 031).
+- Verification added during the event (spec 012), on top of the existing tests and desktop smoke:
+  - one `verify` gate covering lint, typecheck, tests, the quarantine and waiver ledgers and both
+    builds;
+  - component tests;
+  - the coverage ratchet;
+  - the accessibility and visual gates.
+
+The commit history after the cut tag is the complete record of event work.
 
 The event branch is `meta-hackathon`; the cut tag is `meta-base-2026-10-26`. The Gitea history is
 canonical. The GitHub clean replay is a separate publication step and must not be used to hide
@@ -78,56 +103,73 @@ pre-event work.
 
 | Need | Surface |
 | --- | --- |
-| Planning, drafting, revision | Muse Spark 1.3 / Muse Wonder via Meta Model API |
+| Planning, drafting, revision | Muse Spark 1.3 through the author's own Meta connection (Meta Model API) |
 | Cheap agent testing | Muse Spark 1.3 Contributor, only on the synthetic fixture and only with book consent |
 | Illustration | Muse Image 1.0 |
-| Character cutout | SAM 3.1 |
 | Dictation and captions | Muse Voice Transcribe 1.0 |
-| Open-weight fallback | Muse Spark Open / Muse Glimmer through Baseten, Modal or Fireworks, if used |
+| Spoken replies in the hands-free strip | OpenRouter's text-to-speech model (a partner service, not a Meta model) |
+
+SAM 3.1 is not used: its request returned no records (D-158), so the studio ships no cutout feature.
 
 Contributor mode may train on prompts and outputs. The app defaults it off and refuses a contributor
 turn until the book opts in; the sample and film fixture are the only intended Contributor data.
 
 ## Verification evidence
 
+Fill every bracketed result from the final clean clone of the submitted commit. Do not submit a
+placeholder.
+
 | Check | Command | Result at submission |
 | --- | --- | --- |
-| Typecheck | `bun run typecheck` | Pass (desktop, web, toolkit) |
-| Tests | `bun test` | **568 pass, 0 fail** |
-| Desktop build | `bun run build` | Pass |
-| Web build | `bun run build:web` | Pass |
-| Toolkit | `bun run toolkit:build` | Pass, 15 KB `bookwriter` binary |
-| Smoke | `bun run smoke` | **18/18** |
-| End to end | `bun run e2e` | **8/8** — app, web, audit, phone width, glasses, ambient, plugins, bridge |
-| UI audit | `bun run ui:audit` | **no dead ends**; every control named, every image with an `alt`, one `h1`, keyboard focus visible |
-| Coverage | `bun run coverage` | **86.0% functions, 93.0% lines**, floor 85/92 |
-| Plugin probe | `bun run plugin:probe` | **ok** — the plugin's tool listed, run, and a broken plugin left the others working |
-| Submission check | `bun run submission:check` | **ready** · 162 commits · 549 tracked files |
-| Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | **Pass** · 487 packages · verify 568 tests · e2e 8/8 · coverage above the floor |
+| Verify | `bun run verify` | `<lint, typecheck, tests, ledgers, desktop and web builds>` |
+| Toolkit | `bun run toolkit:build` | `<result>` |
+| Smoke | `bun run smoke` | `<n/n>` |
+| End to end | `bun run e2e` | `<n/n>` |
+| UI audit | `bun run ui:audit` | `<result>` |
+| Accessibility | `bun run a11y` | `<result>` |
+| Visual | `bun run visual` | `<n/n baselines>` |
+| Coverage | `bun run coverage` | `<functions / lines, against the floor>` |
+| Submission check | `bun run submission:check` | `<ready · commits · tracked files>` |
+| Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | `<commit, packages, results>` |
 
-**Code verified at:** `8a42620` on 2026-10-26, cloned fresh from Gitea at the pushed branch head.
-The clean clone installed 487 packages and passed all three gates: `bun run verify` (typecheck,
-568 tests, the desktop and toolkit builds, the web build), `bun run e2e` (8/8 — the app, the web
-build, the audit at 1440×900 and at 390×844, the glasses page, the ambient agent, plugins, and the
-bridge from a separate process), and `bun run coverage` (81.4% of functions, 88.3% of lines, above
-the 80/87 floor). The only commit after it is this documentation, so the app code did not change
-after the clean-clone pass.
-**Clean-clone path:** a fresh temporary directory
-(temporary; deleted after evidence was recorded).
+**Latest re-check (2026-11-03, the working tree before the event commits):**
+
+| Check | Result |
+| --- | --- |
+| `bun run verify` | Pass: 1,387 tests, 0 failures; lint, typecheck, the quarantine and waiver ledgers, and both builds |
+| Smoke | 30/30 |
+| e2e | 8/8 |
+| `ui:audit` | Pass |
+| Accessibility | No critical or serious findings, and focus order held |
+| Visual | 112/112 baselines |
+| Coverage | 83.63% of functions and 90.13% of lines, **below the 85/92 floor**. Whether to change the floor is an open decision, and the gate stays red until it is made. |
+
+An earlier clean-clone pass on 2026-10-26 (`8a42620`, 568 tests) is superseded by the event commits.
 
 ## Demo runbook
 
-1. Open `samples/the-salt-road` in the desktop app with a throwaway profile.
-2. Show the library and the Finder folder: `book.json`, chapters, `images.json`.
-3. Open the Story Bible: outline, cast, memory.
-4. Ask the agent for the next scene; show tool calls, the checked save and the undo checkpoint.
-5. Open **Agent** (the bot icon in the header): the tool metrics, the cache hit rate, the switch that
-   withdraws a tool, and the plugin folder. Turn a tool off and show the toolkit refusing it.
-6. Dictate a sentence; show the transcript at the caret.
-7. Tick Background, close the window, show the notification, reopen and show the stored thread.
-8. Open the illustration: generate with Muse Image, then cut out Mara with SAM 3.1 and attach her.
-9. Run `bookwriter books` and show the MCP tool list against the same open book.
-10. Export DOCX and show the illustration; close on the folder and the tagline.
+This runbook follows the film. Step 1 is context from before the event; every later step shows event
+work.
+
+1. **Built before the event.** Open `samples/the-salt-road` in the desktop app with a throwaway
+   profile, and show the book's folder in Finder.
+2. Choose **Muse Spark 1.3 Contributor**. The picker warns that it may train on what you send and
+   refuses until the book opts in. Opt the sample in, ask for the next scene, and the conversation
+   names the model that answered.
+3. Open **Agent** (the bot icon in the header) to show calls and successes per tool. Turn a tool off,
+   and show `bookwriter call` refusing it.
+4. Dictate a sentence; the transcript lands at the caret.
+5. In the strip at the bottom of the workspace, press **Say where you are**, then ask a question out
+   loud. The reply is spoken with OpenRouter's voice.
+6. Tick Background, close the window, show the notification, then reopen on the stored conversation.
+7. Illustrate a chapter with Muse Image (**Generate · $0.01**) and attach the image. Export the Word
+   document, and show the illustration in it.
+8. Run `bookwriter books`, `bookwriter tools` and `bookwriter read` against the same open book, then
+   start `bookwriter mcp`.
+9. Optional:
+   - With Wi-Fi off, show the plain offline note.
+   - Show the 600×600 glasses page at its real size, labelled as not run on glasses.
+10. Close on the book folder (`images/` and `images.json`) and the tagline.
 
 **Offline fallback:** open the sample, edit and save a chapter, and play the recorded film for model
 features. Never fake a provider response or a save.
@@ -136,9 +178,9 @@ features. Never fake a provider response or a save.
 
 | Criterion | Evidence |
 | --- | --- |
-| Impact (30%) | A real author workflow: files, chapters, Story Bible, agent edits, export. The sample opens without an account. |
-| Meta AI tooling (25%) | Muse text, Muse Image, SAM 3.1, Muse Voice Transcribe and Contributor mode, each behind a capability and consent boundary. |
-| Technical depth (20%) | Atomic library writes, conflict copies, checkpoints, provider adapter seam, loopback toolkit token, a cacheable prompt prefix with its hit rate, per-tool metrics, a plugin seam, tests and smoke. |
+| Impact (30%) | An author's own book, worked on by Meta models, by voice, in the background and by other agents, while the files stay the author's. The sample opens without an account. |
+| Meta AI tooling (25%) | Muse Spark 1.3 with its Contributor consent guard, Muse Image and Muse Voice Transcribe, each behind a capability and consent boundary. |
+| Technical depth (20%) | Provider adapter seam, loopback toolkit token, per-book tool control across the model, the CLI and MCP, per-tool metrics, a cacheable prompt prefix that measures its hit rate when the provider reports one, a plugin seam, and the verification gates. |
 | Demo (25%) | One continuous story from prompt to illustration to a file in Finder; the film and live demo show the app, not a mock. |
 
 ## Links and final checklist
@@ -146,7 +188,8 @@ features. Never fake a provider response or a save.
 - [ ] Repository public and links checked in a private window.
 - [ ] `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md` present.
 - [ ] No secret, `.env`, credential file or real library in the tree or history.
-- [ ] Sample opens; two chapters, Story Bible, illustration and cutout present.
+- [ ] Sample opens; two chapters, the Story Bible and the illustration present.
+- [ ] Film: the opening is labelled “Built before the event” and every later segment shows event work.
 - [ ] Film master, 0:30 cut, 0:15 vertical and SRT uploaded; links work privately.
 - [ ] `bun run submission:check` passes.
 - [ ] Clean clone passes install, verify and smoke.

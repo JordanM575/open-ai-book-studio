@@ -113,6 +113,7 @@
 
       /* voice */
       .wave { display: flex; align-items: center; gap: 10px; height: 190px; margin-top: 58px; }
+      /* biome-ignore lint/style/noDescendingSpecificity: .wave i and .terminal .bar i target different elements; order follows the section comments */
       .wave i { display: block; width: 16px; border-radius: 10px; background: var(--blue-600); height: 18px; }
       .transcript { margin-top: 26px; width: 1120px; font-family: var(--font-reading); font-size: 38px; line-height: 1.35; }
       .transcript span { color: var(--plate-muted); }
@@ -253,7 +254,7 @@ AI Book Studio MCP server on stdio (read-only).</pre>
         for (const scene of scenes) scene.classList.toggle("active", scene.dataset.scene === name);
       }
       setScene(active);
-      const ease = (t) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+      const ease = (t) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 3;
       window.motionScenes = scenes.map((scene) => scene.dataset.scene);
       window.renderAt = (ms) => {
         const scene = document.querySelector(".scene.active");
