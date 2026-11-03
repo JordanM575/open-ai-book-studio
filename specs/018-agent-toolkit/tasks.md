@@ -41,9 +41,19 @@ Tasks are ordered. `[P]` marks work that can run in parallel within a phase.
   read tool from a real client. Record it in `docs/research/toolkit-2026-10-26.md`. The pass ran the
   compiled binary against a real backend over a real library, and a separate MCP client process
   drove a read and a write that were read back from the file.
+- [x] T012 Automate the T011 pass as `scripts/toolkit-e2e.mjs` (`bun run e2e toolkit`): the built app
+  runs hidden over a synthetic library, and the compiled binary and two `bookwriter mcp` processes
+  are checked against the bytes on disk. It covers the read, a checked save, a stale save that leaves
+  a conflict copy and the newer text, and the `--allow-writes` gate on both surfaces. A tool withdrawn
+  in the Agent dialog (025 FR-004, FR-013) is refused by `bookwriter call` and MCP `tools/call`. MCP
+  writes go through the studio's tools, which replaced `save_chapter` under 024 D-145 and save with
+  the version and hash read inside the studio, so the stale writer in the check is the CLI. MCP
+  `tools/list` and `bookwriter tools` still list a withdrawn tool because neither names a book; the
+  check reports that as a gap, never as a pass.
 
 ## Dependencies
 
 - T001–T009 need no model key.
 - T011 needs the desktop app running with a sample library and an MCP client.
+- T012 needs `bun run build` and `bun run toolkit:build`; no model key and no network.
 - Remote access (D-129) is deferred; no task depends on it.

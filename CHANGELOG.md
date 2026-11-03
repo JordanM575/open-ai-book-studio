@@ -10,6 +10,14 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- An end-to-end check of the agent toolkit, `scripts/toolkit-e2e.mjs` (`bun run e2e toolkit`). It
+  launches the built app hidden over a synthetic library, drives the compiled `bookwriter` CLI and
+  `bookwriter mcp` over stdio, and checks every answer against the bytes on disk. A tool switched
+  off in the Agent dialog is refused by `bookwriter call` and by MCP `tools/call` with the author's
+  words; a checked save changes the file, and a stale one leaves a conflict copy and the newer text
+  untouched; nothing writes without `--allow-writes`, and a read-only MCP server lists no write tool.
+  It also reports, without failing, that MCP `tools/list` and `bookwriter tools` still list a
+  withdrawn tool, because neither names a book.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

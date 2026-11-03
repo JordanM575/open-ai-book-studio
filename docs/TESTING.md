@@ -49,7 +49,7 @@ is not a goal in itself; it is a way of noticing that a change removed more test
 
 ## The end-to-end layer
 
-`bun run e2e` builds the desktop app, the web build and the toolkit, then runs seven checks in
+`bun run e2e` builds the desktop app, the web build and the toolkit, then runs nine checks in
 order:
 
 | Check | What it drives |
@@ -60,6 +60,7 @@ order:
 | `phone` | The same walk at 390×844, because the phone layout is a surface people use and it has its own ways to strand someone. |
 | `glasses` | The 600×600 page for Meta Ray-Ban Display, in a browser at that size: the book, the passage, no scrolling, the D-pad, a write that asks first, and — with a stub model context — the tools the page hands an assistant, and one of them called through the assistant's own path. |
 | `ambient` | The ambient agent over the control plane, and the toolkit saying the same thing. |
+| `toolkit` | The compiled `bookwriter` CLI and `bookwriter mcp` over stdio against the hidden app, checked on disk: a tool switched off in the Agent dialog is refused by `bookwriter call` and by MCP `tools/call`; a checked save changes the bytes, a stale one leaves a conflict copy and the newer text untouched; nothing writes without `--allow-writes`. It reports, without failing, that MCP `tools/list` and `bookwriter tools` still list a withdrawn tool, because neither names a book. |
 | `plugins` | A folder of TypeScript tools, loaded by the built app, called, and a broken plugin that must not take the others with it. |
 | `bridge` | The phone's half: a **separate process** speaking to the running app over the local network with the per-run token. |
 
