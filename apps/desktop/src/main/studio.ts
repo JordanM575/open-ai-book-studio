@@ -9,6 +9,8 @@ export class Studio {
   restoreError: string | null = null;
   /** Wired by the app to the renderer event channel. */
   onExternalChange?: (event: LibraryChangeEvent) => void;
+  /** Wired by the app to run the drift scan after a library opens. */
+  onLibraryOpened?: (info: LibraryInfo) => void;
 
   constructor(
     private readonly settings: SettingsStore,
@@ -48,7 +50,9 @@ export class Studio {
       }, 500);
     });
     await this.settings.update({ libraryRoot: library.root });
-    return info(library);
+    const opened = info(library);
+    this.onLibraryOpened?.(opened);
+    return opened;
   }
 
   current(): LibraryInfo | null {

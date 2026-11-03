@@ -6,6 +6,8 @@ import {
   type BookMeta,
   type BookSummary,
   type Chapter,
+  type ChapterReadIssue,
+  type ChapterReadIssueReason,
   type ChapterConflict,
   type ChapterMeta,
   type ReorderChapterResult,
@@ -14,6 +16,7 @@ import {
   type SaveChapterResult
 } from "../schema";
 import {
+  FormatError,
   chapterFileName,
   countWords,
   isConflictCopyName,
@@ -38,7 +41,11 @@ import {
   conflictPath,
   conflictsPath,
   libraryIndexPath,
+  stagingBookFilePath,
+  stagingChapterPath,
+  stagingPath,
   studioPath,
+  syncJournalPath,
   threadsPath,
   trashPath
 } from "./paths";
@@ -49,6 +56,18 @@ import type {
   LibraryEnvironment,
   LibraryFileSnapshot
 } from "./port";
+import { locationHealth, type LocationHealth } from "../sync/health";
+import {
+  acceptDriftPaths,
+  journalForScan,
+  noteMovedPrefix,
+  noteWrittenFiles,
+  readSyncJournal,
+  writeSyncJournal
+} from "../sync/journal";
+import { scanLibrary } from "../sync/scan";
+import { detectDrift } from "../sync/detector";
+import type { DriftReport } from "../sync/types";
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
@@ -120,6 +139,62 @@ export class LibraryService {
     };
   }
 
+  /**
+   * Derive the location health line from a fresh read-only scan. The scan never
+   * reads placeholders as content and never writes; the journal keeps reviewed
+   * conflict copies from being reported again.
+   */
+  async locationHealth(): Promise<LocationHealth> {
+    const { files } = await scanLibrary(this.env.storage);
+    const journal = await readSyncJournal(this.env.storage, this.device.id);
+    return locationHealth(files, journal);
+  }
+
+  /**
+   * The drift report for the review dialog. Read-only: the scan never writes, placeholders are
+   * never mistaken for content, and a second scan reports the same entries until the author
+   * accepts them. Chapter ids with unsaved editor text turn an outside edit into `both-changed`.
+   */
+  /**
+   * Record the first baseline for a library that has never been scanned. Only writes when no
+   * journal file exists at all: a corrupt, foreign or newer journal is left alone for the author
+   * to review and rebuild through `acceptDrift`. Returns whether a baseline was written.
+   */
+  async establishBaseline(): Promise<boolean> {
+    const { storage } = this.env;
+    const existing = await storage.readFile(syncJournalPath(this.device.id));
+    if (existing) return false;
+    const { files } = await scanLibrary(storage);
+    const now = this.env.runtime.now();
+    await writeSyncJournal(
+      storage,
+      journalForScan({ deviceId: this.device.id, previous: null, files, now })
+    );
+    return true;
+  }
+
+  async checkDrift(dirtyChapterIds?: Iterable<string>): Promise<DriftReport> {
+    const { files } = await scanLibrary(this.env.storage);
+    const journal = await readSyncJournal(this.env.storage, this.device.id);
+    const now = this.env.runtime.now();
+    if (dirtyChapterIds === undefined) return detectDrift({ journal, files, now });
+    return detectDrift({ journal, files, dirtyChapterIds, now });
+  }
+
+  /**
+   * Fold reviewed paths into this device's baseline and return the fresh report. Only the listed
+   * paths change: accepting one change never reviews another. Call after the author has reviewed
+   * the report, never during detection.
+   */
+  async acceptDrift(paths: string[]): Promise<DriftReport> {
+    const { files } = await scanLibrary(this.env.storage);
+    const previous = await readSyncJournal(this.env.storage, this.device.id);
+    const now = this.env.runtime.now();
+    const next = acceptDriftPaths({ deviceId: this.device.id, previous, files, accept: paths, now });
+    await writeSyncJournal(this.env.storage, next);
+    return detectDrift({ journal: next, files, now });
+  }
+
   /* -------------------------------------------------------------------- books */
 
   async listBooks(): Promise<BookSummary[]> {
@@ -165,8 +240,8 @@ export class LibraryService {
     const snapshot = await this.env.storage.readFile(bookFilePath(bookId));
     if (!snapshot) throw new LibraryError("not-found", `No book called ${bookId} in this library.`);
     const book = parseBookJson(textDecoder.decode(snapshot.bytes), libraryPathToArchivePath(bookFilePath(bookId)));
-    const chapters = await this.readChapters(bookId);
-    return { book, chapters };
+    const { chapters, chapterReadIssues } = await this.readChaptersWithIssues(bookId);
+    return { book, chapters, chapterReadIssues };
   }
 
   async updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {
@@ -232,8 +307,18 @@ export class LibraryService {
     expected: { baseVersion: number; baseHash: string }
   ): Promise<SaveChapterResult> {
     return this.serializeWrite(bookId, async () => {
-      const { chapter: disk, fileName } = await this.locateChapter(bookId, chapterId);
       const normalized = normalizeBody(content);
+      const located = await this.locateChapterForWrite(bookId, chapterId);
+      if ("unreadableFileName" in located) {
+        return this.preserveUnreadableVersion(
+          bookId,
+          chapterId,
+          located.unreadableFileName,
+          normalized,
+          expected.baseVersion + 1
+        );
+      }
+      const { chapter: disk, fileName } = located;
 
       if (disk.content === normalized) {
         return { status: "saved", chapter: disk };
@@ -430,6 +515,13 @@ export class LibraryService {
         ]);
         try {
           await this.env.storage.moveFile(chapterPath(bookId, fileName), destination);
+          await noteMovedPrefix({
+            storage: this.env.storage,
+            deviceId: this.device.id,
+            from: libraryPathToArchivePath(chapterPath(bookId, fileName)),
+            to: libraryPathToArchivePath(destination),
+            now: this.env.runtime.now()
+          });
           await this.rebuildCatalog();
           return { trashedAt: libraryPathToArchivePath(destination) };
         } catch (error) {
@@ -452,6 +544,13 @@ export class LibraryService {
         const destination = bookTrashPath(`${stamp}${suffix}`, bookId);
         try {
           await this.env.storage.moveDirectory(bookPath(bookId), destination);
+          await noteMovedPrefix({
+            storage: this.env.storage,
+            deviceId: this.device.id,
+            from: libraryPathToArchivePath(bookPath(bookId)),
+            to: libraryPathToArchivePath(destination),
+            now: this.env.runtime.now()
+          });
           await this.rebuildCatalog();
           return { trashedAt: libraryPathToArchivePath(destination) };
         } catch (error) {
@@ -483,6 +582,158 @@ export class LibraryService {
       }
     }
     return hits;
+  }
+
+  /* ------------------------------------------------------------------- import */
+
+  /**
+   * Publish a complete imported manuscript as one book (spec 029 T009).
+   *
+   * The book is written under a unique unpublished staging path, read back and
+   * checked file by file, then published with a single directory move — never as
+   * sequential visible `createBook`/`createChapter` calls. Any failure before the
+   * move leaves no visible book; the staging area is removed on the way out.
+   */
+  async importManuscript(input: {
+    bookTitle: string;
+    chapters: Array<{ title: string; content: string }>;
+  }): Promise<BookDetail> {
+    const title = input.bookTitle.trim() || "Untitled book";
+    if (input.chapters.length === 0) {
+      throw new LibraryError("format", "An import needs at least one chapter. Nothing was written.");
+    }
+    const now = this.env.runtime.now();
+    const bookId = this.env.runtime.newId("book");
+    return this.serializeWrite(bookId, () => this.importManuscriptUnlocked(bookId, title, input.chapters, now));
+  }
+
+  private async importManuscriptUnlocked(
+    bookId: string,
+    title: string,
+    drafts: Array<{ title: string; content: string }>,
+    now: string
+  ): Promise<BookDetail> {
+    const stagedChapters: Array<{ fileName: string; meta: ChapterMeta; content: string }> = [];
+    try {
+      const book = bookSchema.parse({
+        schemaVersion: SCHEMA_VERSION,
+        id: bookId,
+        title,
+        description: "",
+        outline: "",
+        createdAt: now,
+        updatedAt: now
+      });
+      await this.env.storage.ensureDirectory(stagingPath(bookId));
+      const bookResult = await this.env.storage.commitFile(
+        stagingBookFilePath(bookId),
+        textEncoder.encode(`${JSON.stringify(book, null, 2)}\n`),
+        { kind: "absent" }
+      );
+      if (bookResult.status !== "written") {
+        throw new LibraryError("io", "The import staging area is already in use. Nothing was published.");
+      }
+      let order = 0;
+      for (const draft of drafts) {
+        order += 1;
+        const meta = chapterMetaSchema.parse({
+          id: this.env.runtime.newId("ch"),
+          title: draft.title.trim() || `Chapter ${order}`,
+          order,
+          version: 1,
+          createdAt: now,
+          updatedAt: now
+        });
+        const content = normalizeBody(draft.content);
+        const text = serializeChapter(meta, content);
+        let fileName: string | null = null;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const candidate = this.uniqueChapterFileName(order, meta.title, attempt);
+          const result = await this.env.storage.commitFile(
+            stagingChapterPath(bookId, candidate),
+            textEncoder.encode(text),
+            { kind: "absent" }
+          );
+          if (result.status === "written") {
+            fileName = candidate;
+            break;
+          }
+        }
+        if (fileName === null) {
+          throw new LibraryError("io", "Could not find a free chapter file name. Nothing was published.");
+        }
+        stagedChapters.push({ fileName, meta, content });
+      }
+      await this.verifyStagedImport(bookId, title, stagedChapters);
+      await this.env.storage.moveDirectory(stagingPath(bookId), bookPath(bookId));
+    } catch (error) {
+      throw await this.failStagedImport(bookId, error);
+    }
+    await this.ensureBookLayout(bookId);
+    await this.rebuildCatalog();
+    return this.readBook(bookId);
+  }
+
+  /** Read the staged book and every staged chapter back; anything unexpected fails the import. */
+  private async verifyStagedImport(
+    bookId: string,
+    title: string,
+    stagedChapters: Array<{ fileName: string; meta: ChapterMeta; content: string }>
+  ): Promise<void> {
+    const stagingId = bookId;
+    const fail = (detail: string): LibraryError =>
+      new LibraryError("io", `The staged import did not read back ${detail}. Nothing was published.`);
+    const bookSnapshot = await this.env.storage.readFile(stagingBookFilePath(stagingId));
+    if (!bookSnapshot) throw fail("its book record");
+    let stored: unknown;
+    try {
+      stored = JSON.parse(textDecoder.decode(bookSnapshot.bytes));
+    } catch {
+      throw fail("its book record as valid JSON");
+    }
+    const parsed = bookSchema.safeParse(stored);
+    if (!parsed.success || parsed.data.id !== bookId || parsed.data.title !== title) {
+      throw fail("its book record unchanged");
+    }
+    for (const staged of stagedChapters) {
+      const snapshot = await this.env.storage.readFile(stagingChapterPath(stagingId, staged.fileName));
+      if (!snapshot) throw fail(`chapter ${staged.meta.order}`);
+      let read: { meta: ChapterMeta; content: string };
+      try {
+        const file = parseChapterFile(
+          textDecoder.decode(snapshot.bytes),
+          stagingChapterPath(stagingId, staged.fileName).join("/"),
+          staged.meta
+        );
+        read = { meta: file.meta, content: file.content };
+      } catch {
+        throw fail(`chapter ${staged.meta.order} in its written form`);
+      }
+      if (
+        read.meta.id !== staged.meta.id ||
+        read.meta.order !== staged.meta.order ||
+        read.meta.title !== staged.meta.title ||
+        read.meta.version !== 1 ||
+        read.content !== staged.content
+      ) {
+        throw fail(`chapter ${staged.meta.order} unchanged`);
+      }
+    }
+  }
+
+  /** Remove unpublished staging after a failure. The original error surfaces unless cleanup fails. */
+  private async failStagedImport(stagingId: string, error: unknown): Promise<Error> {
+    try {
+      await this.env.storage.removeDirectory(stagingPath(stagingId));
+    } catch {
+      const reason = error instanceof Error ? error.message : String(error);
+      const staging = stagingPath(stagingId).join("/");
+      return new LibraryError(
+        "io",
+        `The import failed (${reason}) and its unpublished staging at ${staging} could not be removed. No book was published.`
+      );
+    }
+    return error instanceof Error ? error : new LibraryError("io", "The import failed. No book was published.");
   }
 
   /* ---------------------------------------------------------------- conflicts */
@@ -551,7 +802,19 @@ export class LibraryService {
     text: string,
     expected: FileExpectation
   ): Promise<CommitFileResult> {
-    return this.env.storage.commitFile(path, textEncoder.encode(text), expected);
+    const result = await this.env.storage.commitFile(path, textEncoder.encode(text), expected);
+    if (result.status === "written") {
+      // The journal records what this device wrote, so the next scan reads it as local, not
+      // remote. After the prose commit, never before; best-effort so a note failure cannot fail
+      // the save it follows.
+      await noteWrittenFiles({
+        storage: this.env.storage,
+        deviceId: this.device.id,
+        paths: [libraryPathToArchivePath(path)],
+        now: this.env.runtime.now()
+      });
+    }
+    return result;
   }
 
   private async locateChapter(bookId: string, chapterId: string): Promise<{ chapter: Chapter; fileName: string }> {
@@ -563,17 +826,110 @@ export class LibraryService {
     throw new LibraryError("not-found", `No chapter ${chapterId} in this book.`);
   }
 
+  /**
+   * Locate a chapter for a write. A file that is listed but cannot be read is
+   * an online-only placeholder (or an unreadable file): the write must not
+   * proceed or fail raw. The caller preserves the author's version as a
+   * placeholder conflict copy instead. A genuinely absent chapter keeps the
+   * not-found error.
+   */
+  private async locateChapterForWrite(
+    bookId: string,
+    chapterId: string
+  ): Promise<{ chapter: Chapter; fileName: string } | { unreadableFileName: string }> {
+    let unreadable: string | null = null;
+    for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
+      if (entry.kind !== "file" || !entry.name.endsWith(".md") || isConflictCopyName(entry.name)) continue;
+      let chapter: Chapter;
+      try {
+        chapter = await this.readChapterFile(bookId, entry.name);
+      } catch {
+        unreadable ??= entry.name;
+        continue;
+      }
+      if (chapter.id === chapterId) return { chapter, fileName: entry.name };
+    }
+    if (unreadable) return { unreadableFileName: unreadable };
+    throw new LibraryError("not-found", `No chapter ${chapterId} in this book.`);
+  }
+
+  /**
+   * Preserve the author's version when the chapter on disk cannot be read. The
+   * stand-in carries the known identity; the unreadable file name seeds the
+   * copy name and the display title, which is best-effort by design.
+   */
+  private async preserveUnreadableVersion(
+    bookId: string,
+    chapterId: string,
+    unreadableFileName: string,
+    localContent: string,
+    localVersion: number
+  ): Promise<SaveChapterResult> {
+    await this.ensureBookLayout(bookId);
+    const now = this.env.runtime.now();
+    const stamp = now.replace(/[:.]/g, "-");
+    const base = unreadableFileName.replace(/\.md$/, "");
+    const savedName = `${base}.conflict-placeholder.${this.device.id}.${stamp}.md`;
+    const title = base.replace(/^\d+-/, "").replace(/[-_]+/g, " ").trim() || "Untitled chapter";
+    const text = serializeChapter(
+      {
+        id: chapterId,
+        title,
+        order: 1,
+        arc: "middle",
+        purpose: "",
+        synopsis: "",
+        notes: "",
+        isPrologue: false,
+        color: null,
+        version: localVersion,
+        createdAt: now,
+        updatedAt: now
+      },
+      localContent
+    );
+    await this.commitText(conflictPath(bookId, savedName), text, { kind: "absent" });
+
+    return {
+      status: "conflict",
+      conflict: {
+        bookId,
+        chapterId,
+        chapterTitle: title,
+        savedAs: conflictDisplayPath(bookId, savedName),
+        reason: "placeholder",
+        diskVersion: localVersion - 1,
+        localVersion
+      }
+    };
+  }
+
   private async readChapters(bookId: string): Promise<Chapter[]> {
+    return (await this.readChaptersWithIssues(bookId)).chapters;
+  }
+
+  private async readChaptersWithIssues(
+    bookId: string
+  ): Promise<{ chapters: Chapter[]; chapterReadIssues: ChapterReadIssue[] }> {
     const chapters: Chapter[] = [];
+    const chapterReadIssues: ChapterReadIssue[] = [];
     for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
       if (entry.kind !== "file" || !entry.name.endsWith(".md") || isConflictCopyName(entry.name)) continue;
       try {
         chapters.push(await this.readChapterFile(bookId, entry.name));
-      } catch (error) {
-        console.warn(`[library] Skipping unreadable chapter ${entry.name}:`, (error as Error).message);
+      } catch (error: unknown) {
+        const issue = chapterReadIssue(entry.name, error);
+        chapterReadIssues.push(issue);
+        console.warn(`[library] Skipping unreadable chapter (${issue.reason}).`);
       }
     }
-    return chapters.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+    chapters.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+    chapterReadIssues.sort(
+      (a, b) =>
+        (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) ||
+        a.fileName.localeCompare(b.fileName)
+    );
+    return { chapters, chapterReadIssues };
   }
 
   private async readChapterFile(bookId: string, fileName: string): Promise<Chapter> {
@@ -675,6 +1031,22 @@ function summarize(detail: BookDetail): BookSummary {
     wordCount: detail.chapters.reduce((total, chapter) => total + chapter.wordCount, 0),
     updatedAt: detail.book.updatedAt
   };
+}
+
+function chapterReadIssue(fileName: string, error: unknown): ChapterReadIssue {
+  let reason: ChapterReadIssueReason = "unreadable";
+  if (error instanceof FormatError || (error instanceof LibraryError && (error.code === "format" || error.code === "invalid"))) {
+    reason = "invalid-format";
+  } else if (
+    (error instanceof LibraryError && error.code === "not-found") ||
+    (error instanceof LibraryPortError && error.code === "not-found")
+  ) {
+    reason = "file-missing";
+  } else if (error instanceof LibraryPortError && error.code === "permission-required") {
+    reason = "permission-needed";
+  }
+
+  return { fileName, order: parseOrderFromFileName(fileName), reason };
 }
 
 function chapterFrom(meta: ChapterMeta, content: string, fileName: string, hash: string): Chapter {

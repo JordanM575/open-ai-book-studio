@@ -21,6 +21,10 @@
     "./hooks/*": {
       "types": "./src/hooks/*.ts",
       "default": "./src/hooks/*.ts"
+    },
+    "./views/*": {
+      "types": "./src/views/*.tsx",
+      "default": "./src/views/*.tsx"
     }
   },
   "dependencies": {

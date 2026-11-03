@@ -5,6 +5,7 @@ declare const libraryPathBrand: unique symbol;
 /** A validated sequence of library-relative path segments (not an OS path). */
 export type LibraryPath = readonly string[] & { readonly [libraryPathBrand]: true };
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the range IS the security boundary — control bytes are rejected from path segments
 const controlCharacters = /[\u0000-\u001f\u007f]/;
 
 /** Validate and freeze path segments before they cross into a storage adapter. */

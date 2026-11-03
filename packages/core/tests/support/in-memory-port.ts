@@ -150,6 +150,23 @@ export class InMemoryLibraryPort implements LibraryPort, LibraryRuntime {
     }
   }
 
+  async removeDirectory(path: LibraryPath): Promise<void> {
+    const prefix = key(path);
+    const entries = [...this.files.keys()].filter(
+      (file) => file === prefix || file.startsWith(`${prefix}/`)
+    );
+    if (entries.length === 0 && !this.directories.has(prefix)) {
+      throw new LibraryPortError("not-found", "The library folder was not found.");
+    }
+    for (const file of entries) {
+      this.files.delete(file);
+      this.notify(file);
+    }
+    for (const directory of [...this.directories]) {
+      if (directory === prefix || directory.startsWith(`${prefix}/`)) this.directories.delete(directory);
+    }
+  }
+
   async removeFile(path: LibraryPath): Promise<void> {
     const target = fileKey(path);
     if (!this.files.delete(target)) throw new LibraryPortError("not-found", "The library file was not found.");

@@ -22,9 +22,17 @@
       "types": "./src/markdown.ts",
       "default": "./src/markdown.ts"
     },
+    "./manuscript-import": {
+      "types": "./src/manuscript-import/index.ts",
+      "default": "./src/manuscript-import/index.ts"
+    },
     "./speech-text": {
       "types": "./src/speech-text.ts",
       "default": "./src/speech-text.ts"
+    },
+    "./review": {
+      "types": "./src/review/index.ts",
+      "default": "./src/review/index.ts"
     },
     "./agent": {
       "types": "./src/agent.ts",
@@ -41,6 +49,14 @@
     "./providers/*": {
       "types": "./src/providers/*.ts",
       "default": "./src/providers/*.ts"
+    },
+    "./routing": {
+      "types": "./src/routing/index.ts",
+      "default": "./src/routing/index.ts"
+    },
+    "./routing/*": {
+      "types": "./src/routing/*.ts",
+      "default": "./src/routing/*.ts"
     },
     "./images": {
       "types": "./src/images/index.ts",
@@ -65,6 +81,14 @@
     "./sync/*": {
       "types": "./src/sync/*.ts",
       "default": "./src/sync/*.ts"
+    },
+    "./words": {
+      "types": "./src/words.ts",
+      "default": "./src/words.ts"
+    },
+    "./paste": {
+      "types": "./src/paste.ts",
+      "default": "./src/paste.ts"
     }
   },
   "dependencies": {

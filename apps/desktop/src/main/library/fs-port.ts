@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { watch as watchFiles } from "node:fs";
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, sep } from "node:path";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
@@ -136,6 +136,22 @@ export class FileSystemLibraryPort implements LibraryPort {
     try {
       await mkdir(dirname(destination), { recursive: true });
       await rename(source, destination);
+    } catch (error) {
+      // A directory copy cannot publish atomically, so a cross-device staging move is
+      // refused instead of falling back to copying file by file.
+      if (errorCode(error) === "EXDEV") {
+        throw new LibraryPortError(
+          "unsupported",
+          "The staged book and its destination must live on the same volume."
+        );
+      }
+      throw toPortError(error);
+    }
+  }
+
+  async removeDirectory(path: LibraryPath): Promise<void> {
+    try {
+      await rm(this.absolute(path), { recursive: true, force: false });
     } catch (error) {
       throw toPortError(error);
     }

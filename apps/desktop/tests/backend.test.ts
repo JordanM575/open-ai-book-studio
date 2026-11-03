@@ -49,7 +49,8 @@ const detail: BookDetail = {
     createdAt: "2026-10-26T12:00:00.000Z",
     updatedAt: "2026-10-26T12:00:00.000Z"
   }),
-  chapters: [chapter]
+  chapters: [chapter],
+  chapterReadIssues: []
 };
 
 const hit: SearchHit = {

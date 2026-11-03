@@ -60,11 +60,7 @@ export function parseChapterFile(raw: string, path: string, fallback: ChapterMet
   return { meta: result.data, content: normalizeBody(raw.slice(match[0].length)), hadFrontMatter: true };
 }
 
-export function countWords(content: string): number {
-  const trimmed = content.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/u).length;
-}
+export { countWords } from "./words";
 
 /** A filename-safe slug. Never used for identity; only for a readable file name. */
 export function slugify(input: string, maxLength = 60): string {

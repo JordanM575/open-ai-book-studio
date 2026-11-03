@@ -17,7 +17,8 @@ export const LIBRARY_FILES = {
   index: "library.json",
   device: "device.json",
   fileIndex: "files.json",
-  images: "images.json"
+  images: "images.json",
+  migrations: "migrations.json"
 } as const;
 
 export const studioPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio]);
@@ -43,6 +44,16 @@ export const threadsPath = (bookId: string): LibraryPath =>
 export const checkpointsPath = (bookId: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.checkpoints]);
 /** Device-local sync baselines; never exported in the portable archive. */
+/**
+ * Unpublished import staging. A staged book becomes visible only when the whole
+ * directory is moved under `books/`; until then readers never see it.
+ */
+export const stagingPath = (stagingId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.studio, "staging", stagingId]);
+export const stagingBookFilePath = (stagingId: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.studio, "staging", stagingId, "book.json"]);
+export const stagingChapterPath = (stagingId: string, fileName: string): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.studio, "staging", stagingId, LIBRARY_DIRS.chapters, fileName]);
 export const syncPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.sync]);
 export const syncJournalPath = (deviceId: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.sync, `${deviceId}.json`]);
@@ -55,6 +66,8 @@ export const trashPath = (bookId?: string): LibraryPath =>
     : toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_DIRS.trash, bookId]);
 export const libraryIndexPath = (): LibraryPath => toLibraryPath([LIBRARY_FILES.index]);
 export const devicePath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_FILES.device]);
+export const migrationsPath = (): LibraryPath =>
+  toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_FILES.migrations]);
 export const fileIndexPath = (): LibraryPath => toLibraryPath([LIBRARY_DIRS.studio, LIBRARY_FILES.fileIndex]);
 
 /** A human-readable path for a chapter's metadata fallback and for logs. Never used as a host path. */

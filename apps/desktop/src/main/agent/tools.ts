@@ -2,6 +2,7 @@ import { asSchema, tool } from "ai";
 import { z } from "zod";
 import type { BookMeta, Chapter } from "@ai-book-studio/core/schema";
 import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools";
+import { countWords } from "@ai-book-studio/core/words";
 import { newId } from "../library/paths";
 import type { Library } from "../library/store";
 
@@ -14,6 +15,12 @@ const MAX_APPEND = 30_000;
 const MAX_OVERWRITE = 100_000;
 const MAX_LINE = 100_000;
 const MAX_MEMORY = 180;
+/**
+ * Ceiling for an author-stated word check. No writable text can hold more words than
+ * `MAX_OVERWRITE` holds characters, so this guards absurd input without ever binding a real
+ * rewrite.
+ */
+const MAX_WORD_CHECK = 100_000;
 
 interface ToolResult {
   ok: boolean;
@@ -23,6 +30,19 @@ interface ToolResult {
 
 function result(ok: boolean, message: string, extra: Record<string, unknown> = {}): ToolResult {
   return { ok, message, ...extra };
+}
+
+/**
+ * Check an author-stated word limit against rewritten text after it is saved, and report the
+ * outcome with the saved count. A miss is reported, never silently reverted: the author approved
+ * the words and can see they run long.
+ */
+function wordCheckSummary(sample: string, maxWords: number, totalWords: number): string {
+  const words = countWords(sample);
+  const verdict = words <= maxWords ? "within" : "over";
+  const passage = `${words} ${words === 1 ? "word" : "words"}`;
+  const chapter = `${totalWords} ${totalWords === 1 ? "word" : "words"}`;
+  return `The rewritten passage is ${passage} (${verdict} the ${maxWords}-word limit); the chapter is now ${chapter}.`;
 }
 
 /**
@@ -241,9 +261,16 @@ export function createChapterTools(
       inputSchema: z.object({
         chapterId: z.string(),
         find: z.string().min(1).max(MAX_FIND).describe(`Exact text to replace, at most ${MAX_FIND} characters`),
-        replace: z.string().max(MAX_REPLACE).describe(`Replacement text, at most ${MAX_REPLACE} characters`)
+        replace: z.string().max(MAX_REPLACE).describe(`Replacement text, at most ${MAX_REPLACE} characters`),
+        maxWords: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_WORD_CHECK)
+          .optional()
+          .describe(`Word limit to check the rewritten passage against, at most ${MAX_WORD_CHECK} words`)
       }),
-      execute: async ({ chapterId, find, replace }) => {
+      execute: async ({ chapterId, find, replace, maxWords }) => {
         const chapter = await library.readChapter(bookId, chapterId);
         const occurrences = countOccurrences(chapter.content, find);
         if (occurrences === 0) {
@@ -257,7 +284,11 @@ export function createChapterTools(
         if (saved.status === "conflict") {
           return result(false, "The chapter changed on disk while editing, so nothing was replaced. Read it again.");
         }
-        return result(true, `Replaced the passage in “${saved.chapter.title}”.`, {
+        const checked =
+          maxWords === undefined
+            ? ""
+            : ` ${wordCheckSummary(replace, maxWords, saved.chapter.wordCount)}`;
+        return result(true, `Replaced the passage in “${saved.chapter.title}”.${checked}`, {
           chapterId,
           wordCount: saved.chapter.wordCount
         });
@@ -269,15 +300,26 @@ export function createChapterTools(
         "Replace a chapter's entire text in one call. This is destructive and needs the author's approval. Read the chapter first; prefer replace_in_chapter for a small change.",
       inputSchema: z.object({
         chapterId: z.string(),
-        content: z.string().max(MAX_OVERWRITE).describe(`New chapter text, at most ${MAX_OVERWRITE} characters`)
+        content: z.string().max(MAX_OVERWRITE).describe(`New chapter text, at most ${MAX_OVERWRITE} characters`),
+        maxWords: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_WORD_CHECK)
+          .optional()
+          .describe(`Word limit to check the rewritten chapter against, at most ${MAX_WORD_CHECK} words`)
       }),
-      execute: async ({ chapterId, content }) => {
+      execute: async ({ chapterId, content, maxWords }) => {
         const chapter = await library.readChapter(bookId, chapterId);
         const saved = await checkpoint(chapter, content);
         if (saved.status === "conflict") {
           return result(false, "The chapter changed on disk while replacing it, so nothing changed. Read it again.");
         }
-        return result(true, `Replaced “${saved.chapter.title}”.`, {
+        const checked =
+          maxWords === undefined
+            ? ""
+            : ` ${wordCheckSummary(content, maxWords, saved.chapter.wordCount)}`;
+        return result(true, `Replaced “${saved.chapter.title}”.${checked}`, {
           chapterId,
           wordCount: saved.chapter.wordCount
         });
@@ -590,7 +632,10 @@ export function createChapterTools(
         const index = book.characters.findIndex((entry) => entry.name.toLowerCase() === wanted.toLowerCase());
         const characters = [...book.characters];
         if (index >= 0) {
-          const existing = characters[index]!;
+          const existing = characters[index];
+          if (existing === undefined) {
+            return result(false, "That character was not found. Read the Story Bible for the current list.");
+          }
           characters[index] = {
             ...existing,
             ...(role !== undefined ? { role } : {}),
@@ -648,7 +693,10 @@ export function createChapterTools(
         const index = book.memories.findIndex((memory) => memory.id === memoryId);
         if (index < 0) return result(false, "That memory was not found. Read the Story Bible for the current list.");
         const memories = [...book.memories];
-        const existing = memories[index]!;
+        const existing = memories[index];
+        if (existing === undefined) {
+          return result(false, "That memory was not found. Read the Story Bible for the current list.");
+        }
         memories[index] = {
           ...existing,
           ...(text !== undefined ? { text: text.trim() } : {}),

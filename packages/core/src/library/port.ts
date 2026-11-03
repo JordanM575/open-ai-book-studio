@@ -51,9 +51,22 @@ export interface LibraryPort {
   ensureDirectory(path: LibraryPath): Promise<void>;
   commitFile(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult>;
   moveFile(from: LibraryPath, to: LibraryPath): Promise<void>;
-  /** Move an entire directory tree. The destination must not exist. */
+  /**
+   * Move an entire directory tree. The destination must not exist. Whether readers see
+   * either the old location or the new one — never a partial tree — depends on the
+   * adapter: a same-filesystem rename publishes atomically, while a copy fallback does
+   * not. Publication-critical callers (spec 029 imports) must use only adapters whose
+   * atomic publication has passed conformance; a cross-device staging move is refused
+   * with `unsupported` instead of copying file by file.
+   */
   moveDirectory(from: LibraryPath, to: LibraryPath): Promise<void>;
   removeFile(path: LibraryPath): Promise<void>;
+  /**
+   * Remove a directory tree and everything under it. This exists for unpublished
+   * staging cleanup (an import that never became visible); it must not be used to
+   * delete author-visible books, which retire through trash instead.
+   */
+  removeDirectory(path: LibraryPath): Promise<void>;
   /** Notifications are advisory; callers still compare versions and hashes before saving. */
   watch?(path: LibraryPath, onChange: (changedPath: LibraryPath) => void): () => void;
   deviceInfo(): Promise<LibraryDeviceInfo>;

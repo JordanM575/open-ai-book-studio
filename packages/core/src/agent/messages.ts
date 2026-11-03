@@ -61,6 +61,33 @@ export const agentFilePartSchema = z.object({
 
 export const AGENT_APPROVAL_STATUSES = ["pending", "approved", "denied", "expired"] as const;
 export type AgentApprovalStatus = (typeof AGENT_APPROVAL_STATUSES)[number];
+export type AgentGuidancePart = z.infer<typeof agentGuidancePartSchema>;
+
+/**
+ * The permission level of one turn. Stored on the assistant message with the
+ * turn's model and usage, so a reopened conversation shows the recorded mode
+ * instead of the composer's current selection. Absent on older turns, which
+ * the interface shows as unrecorded rather than guessing.
+ */
+export const AGENT_MODES = ["discuss", "edit"] as const;
+export const agentModeSchema = z.enum(AGENT_MODES);
+export type AgentMode = z.infer<typeof agentModeSchema>;
+
+/**
+ * One-turn author guidance, stored with the submitted user message. Bounded
+ * here; the composer enforces the same limit before sending, and oversize
+ * input is rejected rather than truncated.
+ */
+/**
+ * One turn of author guidance: at least one character, at most 2,000, never
+ * silently truncated. Shared by the stored part and the request validation.
+ */
+export const agentGuidanceTextSchema = z.string().min(1).max(2_000);
+
+export const agentGuidancePartSchema = z.object({
+  type: z.literal("guidance"),
+  text: agentGuidanceTextSchema
+});
 
 /**
  * A destructive tool call waiting for the author. It is stored with the turn so a reload can show
@@ -80,7 +107,9 @@ export const agentApprovalPartSchema = z.object({
 export const agentErrorPartSchema = z.object({
   type: z.literal("error"),
   code: z.string().min(1).max(80),
-  message: z.string().min(1).max(2_000)
+  message: z.string().min(1).max(2_000),
+  /** Seconds the provider asked the studio to wait before asking again, when it named one. */
+  retryAfterSeconds: z.number().int().nonnegative().max(86_400).optional()
 });
 
 export const agentPartSchema = z.discriminatedUnion("type", [
@@ -91,13 +120,16 @@ export const agentPartSchema = z.discriminatedUnion("type", [
   agentSourcePartSchema,
   agentFilePartSchema,
   agentApprovalPartSchema,
-  agentErrorPartSchema
+  agentErrorPartSchema,
+  agentGuidancePartSchema
 ]);
 
 export const agentModelSchema = z.object({
   provider: providerIdSchema,
   modelId: z.string().min(1).max(200),
-  connectionLabel: z.string().max(200)
+  connectionLabel: z.string().max(200),
+  /** The catalogue's display name, so the conversation can name the model in plain words. */
+  name: z.string().min(1).max(200).optional()
 });
 
 export const agentUsageSchema = z.object({
@@ -117,6 +149,8 @@ export const agentMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   parts: z.array(agentPartSchema).min(1).max(1_000),
   model: agentModelSchema.optional(),
+  /** The permission level of the turn that produced this message, when recorded. */
+  mode: agentModeSchema.optional(),
   usage: agentUsageSchema.optional(),
   /** Where the request's estimated context went, stored with the turn. */
   context: contextBreakdownSchema.optional(),

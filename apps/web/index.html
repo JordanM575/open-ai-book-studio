@@ -6,8 +6,9 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://openrouter.ai; worker-src 'self' blob:; base-uri 'none'; form-action 'none'"
     />
+    <!-- The browser build contacts only OpenRouter (sign-in and model access). A new browser-wired provider means widening connect-src deliberately, not with https:. -->
     <title>AI Book Studio</title>
   </head>
   <body>

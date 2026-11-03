@@ -110,10 +110,12 @@ describe("the annotations", () => {
   test("follow the tier and nothing else", () => {
     expect(webMcpAnnotations("read")).toEqual({
       readOnlyHint: true,
-      untrustedContentHint: false,
+      untrustedContentHint: true,
       consequentialHint: false
     });
     expect(webMcpAnnotations("write").readOnlyHint).toBe(false);
+    expect(webMcpAnnotations("write").untrustedContentHint).toBe(true);
     expect(webMcpAnnotations("destructive").consequentialHint).toBe(true);
+    expect(webMcpAnnotations("destructive").untrustedContentHint).toBe(true);
   });
 });

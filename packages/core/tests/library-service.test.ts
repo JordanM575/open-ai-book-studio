@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { LibraryService } from "../src/library/service";
 import { LibraryError, LibraryPortError } from "../src/library/errors";
-import { chapterPath } from "../src/library/paths";
+import { chapterPath, checkpointsPath } from "../src/library/paths";
 import { libraryPathFromArchivePath, toLibraryPath } from "../src/library/path";
 import type { LibraryPort } from "../src/library/port";
 import { serializeChapter } from "../src/markdown";
@@ -19,6 +19,27 @@ function bytes(value: string): Uint8Array {
 
 function text(value: Uint8Array | undefined): string {
   return new TextDecoder().decode(value);
+}
+
+async function snapshotLibraryFiles(
+  port: LibraryPort,
+  directory = toLibraryPath([])
+): Promise<Record<string, { sha256: string; bytesHex: string }>> {
+  const files: Record<string, { sha256: string; bytesHex: string }> = {};
+  for (const entry of await port.listDirectory(directory)) {
+    const path = toLibraryPath([...directory, entry.name]);
+    if (entry.kind === "directory") {
+      Object.assign(files, await snapshotLibraryFiles(port, path));
+      continue;
+    }
+    const snapshot = await port.readFile(path);
+    if (!snapshot) throw new Error(`Fixture file ${path.join("/")} disappeared while snapshotting.`);
+    files[path.join("/")] = {
+      sha256: snapshot.sha256,
+      bytesHex: Array.from(snapshot.bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+    };
+  }
+  return files;
 }
 
 describe("LibraryService over the in-memory port", () => {
@@ -56,6 +77,58 @@ describe("LibraryService over the in-memory port", () => {
     });
   });
 
+  test("book list summaries carry stats summed from chapters and match the catalog", async () => {
+    const { port, service } = await openLibrary();
+    const book = await service.createBook({ title: "The Salt Road", description: "A crossing." });
+    await service.createChapter(book.id, { title: "The Door", content: "The hall was cold.\n" });
+    await service.createChapter(book.id, { title: "The Gate", content: "Morning came slowly over the water.\n" });
+    await service.createChapter(book.id, { title: "Notes", content: "" });
+    await service.updateBook(book.id, { stage: "drafting", description: "A crossing at low tide." });
+
+    const summaries = await service.listBooks();
+    expect(summaries.length).toBe(1);
+    expect(summaries[0]).toMatchObject({
+      id: book.id,
+      title: "The Salt Road",
+      description: "A crossing at low tide.",
+      stage: "drafting",
+      chapterCount: 3,
+      wordCount: 10
+    });
+
+    const catalog = await port.readFile(toLibraryPath(["library.json"]));
+    expect(JSON.parse(text(catalog?.bytes)).books).toEqual([
+      expect.objectContaining({ id: book.id, chapterCount: 3, wordCount: 10 })
+    ]);
+  });
+
+  test("book reads preserve per-file failures without writing or changing any library bytes", async () => {
+    const { port, service } = await openLibrary();
+    const book = await service.createBook({ title: "Synthetic review fixture" });
+    const saved = await service.createChapter(book.id, { title: "Readable", content: "Saved fixture text." });
+    const brokenPath = chapterPath(book.id, "0002-broken.md");
+    const checkpointPath = toLibraryPath([...checkpointsPath(book.id), "fixture-checkpoint.json"]);
+
+    expect((await port.commitFile(brokenPath, bytes("---\nitems: [\n---\nBroken fixture.\n"), { kind: "absent" })).status).toBe("written");
+    expect((await port.commitFile(checkpointPath, bytes('{"fixture":true}\n'), { kind: "absent" })).status).toBe("written");
+    const before = await snapshotLibraryFiles(port);
+
+    const detail = await service.readBook(book.id);
+    const after = await snapshotLibraryFiles(port);
+
+    expect(detail.chapterReadIssues).toEqual([
+      { fileName: "0002-broken.md", order: 2, reason: "invalid-format" }
+    ]);
+    expect(detail.chapters).toHaveLength(1);
+    expect(detail.chapters[0]).toMatchObject({
+      id: saved.id,
+      content: saved.content,
+      version: saved.version,
+      hash: saved.hash
+    });
+    expect(after).toEqual(before);
+  });
+
   test("a save bumps the version once and identical text is a no-op", async () => {
     const { service } = await openLibrary();
     const book = await service.createBook({ title: "Book" });
@@ -77,6 +150,24 @@ describe("LibraryService over the in-memory port", () => {
     expect(same.status).toBe("saved");
     if (same.status !== "saved") return;
     expect(same.chapter.version).toBe(2);
+  });
+
+  test("verse keeps its line breaks, stanza gaps and hard breaks through a save and read", async () => {
+    const { service } = await openLibrary();
+    const book = await service.createBook({ title: "Book" });
+    const chapter = await service.createChapter(book.id, { title: "Verse" });
+
+    const verse = "Roses are red  \nViolets are blue\n\nSugar is sweet\nAnd so are you\n";
+    const saved = await service.saveChapter(book.id, chapter.id, verse, {
+      baseVersion: chapter.version,
+      baseHash: chapter.hash
+    });
+    expect(saved.status).toBe("saved");
+    if (saved.status !== "saved") return;
+
+    const chapters = await service.readChapters(book.id);
+    const reread = chapters.find((entry) => entry.id === chapter.id);
+    expect(reread?.content).toBe(verse);
   });
 
   test("a stale version keeps the local text as a conflict copy and leaves the disk file alone", async () => {

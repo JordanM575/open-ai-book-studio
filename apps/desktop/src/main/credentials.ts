@@ -16,18 +16,19 @@ export class DesktopCredentialVault extends FileCredentialVault {
     super(join(app.getPath("userData"), "credentials.json"), osCipher);
   }
 
+  private static backend(): string {
+    if (process.platform === "darwin") return "macOS Keychain";
+    if (process.platform === "win32") return "Windows protected storage";
+    return "OS protected storage";
+  }
+
   /**
-   * Force one encryption/decryption round-trip. On macOS this uses the Keychain item created by
-   * Electron's safeStorage, so a locked login keychain fails here even when `isAvailable()` is true.
-   * The probe never leaves memory and no keychain password is read or stored.
+   * Fast availability read for view opens (D-161: opening Settings never probes). The keychain
+   * round-trip lives in `check()` behind the explicit control: when the operating system wants
+   * the author's confirmation, that call waits for them instead of wedging the open path.
    */
   override async status(): Promise<{ available: boolean; backend: string; detail: string }> {
-    const backend =
-      process.platform === "darwin"
-        ? "macOS Keychain"
-        : process.platform === "win32"
-          ? "Windows protected storage"
-          : "OS protected storage";
+    const backend = DesktopCredentialVault.backend();
     if (!safeStorage.isAsyncEncryptionAvailable()) {
       return {
         available: false,
@@ -38,20 +39,25 @@ export class DesktopCredentialVault extends FileCredentialVault {
             : "The system keyring is locked or unavailable. Unlock it, then check again."
       };
     }
-    try {
-      const probe = `ai-book-studio-probe-${Date.now()}`;
-      const encrypted = safeStorage.encryptString(probe);
-      if (safeStorage.decryptString(encrypted) !== probe) throw new Error("probe mismatch");
-      return { available: true, backend, detail: "" };
-    } catch {
-      return {
-        available: false,
-        backend,
-        detail:
-          process.platform === "darwin"
-            ? "The login keychain is locked. Unlock it in Keychain Access or run `security unlock-keychain`, then check again."
-            : "The system keyring is locked. Unlock it, then check again."
-      };
-    }
+    return { available: true, backend, detail: "" };
+  }
+
+  /**
+   * Force one encryption/decryption round-trip. On macOS this uses the Keychain item created by
+   * Electron's safeStorage, so a locked login keychain fails here even when `isAvailable()` is true.
+   * The probe never leaves memory and no keychain password is read or stored.
+   */
+  override async check(): Promise<{ available: boolean; backend: string; detail: string }> {
+    const backend = DesktopCredentialVault.backend();
+    const state = await super.check();
+    if (state.available) return { available: true, backend, detail: "" };
+    return {
+      available: false,
+      backend,
+      detail:
+        process.platform === "darwin"
+          ? "The login keychain is locked. Unlock it in Keychain Access or run `security unlock-keychain`, then check again."
+          : "The system keyring is locked. Unlock it, then check again."
+    };
   }
 }

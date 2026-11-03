@@ -180,5 +180,7 @@ export function sampleLibraryPath(): string {
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
-  return candidates[1]!;
+  const fallback = candidates[1];
+  if (fallback === undefined) throw new Error("No sample library candidate exists.");
+  return fallback;
 }

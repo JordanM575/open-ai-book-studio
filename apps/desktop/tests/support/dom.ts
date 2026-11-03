@@ -35,5 +35,12 @@ export async function mountDom(): Promise<typeof import("@testing-library/react/
 export async function unmountDom(): Promise<void> {
   if (!owned) return;
   owned = false;
+  // React can still hold work it scheduled outside act(), such as the render after a late state update
+  // in a file's last test. That work reads `window.event` when it runs, so it runs here, while the
+  // window still exists, rather than inside whichever file comes next.
+  for (let turn = 0; turn < 3; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
   await GlobalRegistrator.unregister();
 }

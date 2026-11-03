@@ -98,6 +98,13 @@ class Files extends Map<string, Uint8Array> implements LibraryPort {
     this.delete(path.join("/"));
   }
 
+  async removeDirectory(path: LibraryPath): Promise<void> {
+    const prefix = `${path.join("/")}/`;
+    for (const key of [...this.keys()]) {
+      if (key.startsWith(prefix)) this.delete(key);
+    }
+  }
+
   async deviceInfo(): Promise<LibraryDeviceInfo> {
     return { id: "device_test", name: "Test", createdAt: "2026-10-25T00:00:00.000Z" };
   }

@@ -1,4 +1,5 @@
 import type { DraftInput, Result, StudioApi, StudioError } from "@ai-book-studio/core/ipc";
+import { normalizeBody } from "@ai-book-studio/core/markdown";
 import { ArchiveError } from "@ai-book-studio/core/archive/errors";
 import { LibraryError, LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { buildMetadata } from "@ai-book-studio/core/build";
@@ -51,7 +52,9 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
 
   return {
     app: {
-      info: () => safe(async () => buildMetadata("web"))
+      // The browser reports its own platform channel as "web"; CPU architecture is
+      // not reliably detectable there, so it stays honestly unknown.
+      info: () => safe(async () => buildMetadata("web", { platform: "web", arch: "unknown" }))
     },
     library: {
       choose: () => safe(() => libraries.chooseFolder()),
@@ -101,6 +104,7 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
             throw error;
           }
         }),
+      locationHealth: () => safe(() => libraries.require().locationHealth()),
       // Browser storage has no cross-tab change event; the lock and hash checks remain the guard.
       onChange: () => () => {}
     },
@@ -115,6 +119,15 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
         Promise.resolve(
           failure("invalid", "Word export is available in the desktop app. Export the library archive instead.")
         ),
+      exportMarkdown: () =>
+        Promise.resolve(
+          failure("invalid", "Markdown export is available in the desktop app. Export the library archive instead.")
+        ),
+      // Staged publication needs the desktop atomic rename; the browser profile stays read-only for imports (T016).
+      importManuscript: () =>
+        Promise.resolve(failure("invalid", "Manuscript import is available in the desktop app.")),
+      pickImportSource: () =>
+        Promise.resolve(failure("invalid", "Manuscript import is available in the desktop app.")),
       search: (bookId, query) => safe(() => libraries.require().search(bookId, query))
     },
 
@@ -166,6 +179,53 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
           return null;
         })
     },
+    sync: {
+      check: () =>
+        safe(async () => {
+          const service = libraries.require();
+          await service.establishBaseline();
+          return service.checkDrift(drafts.chapterIds());
+        }),
+      accept: (paths) => safe(() => libraries.require().acceptDrift(paths)),
+      keepMine: (bookId, chapterId) =>
+        safe(async () => {
+          const held = drafts.get({ bookId, chapterId });
+          if (!held) return null;
+          const service = libraries.require();
+          const disk = await service.readChapter(bookId, chapterId);
+          if (disk.content === normalizeBody(held.content)) {
+            drafts.clear(bookId, chapterId);
+            return { status: "saved", chapter: disk } as const;
+          }
+          const result = await service.saveChapter(bookId, chapterId, held.content, {
+            baseVersion: held.baseVersion,
+            baseHash: held.baseHash
+          });
+          drafts.clear(bookId, chapterId);
+          return result;
+        }),
+      discardDraft: (bookId, chapterId) =>
+        safe(async () => {
+          drafts.clear(bookId, chapterId);
+          return null;
+        }),
+      settings: () =>
+        Promise.resolve(
+          failure(
+            "invalid",
+            "The scan interval lives in the desktop app. This build scans when it opens a folder."
+          )
+        ),
+      updateSettings: () =>
+        Promise.resolve(
+          failure(
+            "invalid",
+            "The scan interval lives in the desktop app. This build scans when it opens a folder."
+          )
+        ),
+      // Browser storage has no cross-tab change event; scans run when a folder opens.
+      onDrift: () => () => {}
+    },
 
     providers: {
       list: () => safe(async () => PROVIDER_LIST),
@@ -178,6 +238,15 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       status: () =>
         safe(async () => {
           const state = (await credentials.status?.()) ?? {
+            available: await credentials.isAvailable(),
+            backend: "Browser origin storage",
+            detail: ""
+          };
+          return { ...state, connections: (await credentials.list()).length };
+        }),
+      check: () =>
+        safe(async () => {
+          const state = (await credentials.check?.()) ?? {
             available: await credentials.isAvailable(),
             backend: "Browser origin storage",
             detail: ""

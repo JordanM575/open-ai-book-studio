@@ -185,6 +185,19 @@ export interface BookSummary {
 export interface BookDetail {
   book: BookMeta;
   chapters: Chapter[];
+  /** Chapter files omitted from `chapters` because the current saved read could not verify them. */
+  chapterReadIssues: ChapterReadIssue[];
+}
+
+export type ChapterReadIssueReason = "file-missing" | "permission-needed" | "invalid-format" | "unreadable";
+
+export interface ChapterReadIssue {
+  /** File name relative to the library's chapters folder; never a host path. */
+  fileName: string;
+  /** Recovered from the file name when available; otherwise null. */
+  order: number | null;
+  /** Stable safe category; never includes raw adapter or parser error text. */
+  reason: ChapterReadIssueReason;
 }
 
 /** A copy of a chapter that could not be saved over the version on disk. */
@@ -194,7 +207,7 @@ export interface ChapterConflict {
   chapterTitle: string;
   /** Where the losing version was preserved, library-relative. */
   savedAs: string;
-  reason: "newer-version" | "external-edit" | "provider-conflict-copy" | "missing-file";
+  reason: "newer-version" | "external-edit" | "provider-conflict-copy" | "missing-file" | "placeholder";
   diskVersion: number;
   localVersion: number;
 }

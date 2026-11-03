@@ -3,6 +3,9 @@ import { afterAll, beforeAll, afterEach, describe, expect, mock, test } from "bu
 import React from "react";
 import { mountDom, unmountDom } from "./support/dom";
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
+import { countWords as studioCountWords } from "@ai-book-studio/core/words";
+import type { EditorHandle, SaveStatus } from "@ai-book-studio/app/components/ManuscriptEditor";
+import { runAfterReviewSave } from "@ai-book-studio/app/lib/review-save-gate";
 
 let testing!: typeof import("@testing-library/react/pure");
 // Loaded in beforeAll, once the DOM exists.
@@ -95,7 +98,26 @@ describe("ManuscriptEditor", () => {
     expect(onSaved).toHaveBeenCalledWith(saved);
   });
 
-  test("keeps the typed text and reports a conflict", async () => {    const conflict: ChapterConflict = {
+  test("paste normalises line endings and quotes before the text lands", async () => {
+    mockStudio({ ok: true, data: null });
+    const onSaved = mock(() => {});
+    const onStatus = mock(() => {});
+
+    testing.render(
+      React.createElement(ManuscriptEditor, { bookId: BOOK, chapter: CHAPTER, ordinal: 1, onSaved, onStatus })
+    );
+    const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
+    textarea.selectionStart = textarea.value.length;
+    textarea.selectionEnd = textarea.value.length;
+    testing.fireEvent.paste(textarea, {
+      clipboardData: { getData: () => "Pasted.\r\n“Quoted.”\n\n\nVerse.\nVerse.  \n" }
+    });
+
+    expect(textarea.value).toBe("Original.\nPasted.\n\"Quoted.\"\n\nVerse.\nVerse.  \n");
+  });
+
+  test("flush returns a conflict instead of claiming the edit was saved", async () => {
+    const conflict: ChapterConflict = {
       bookId: BOOK,
       chapterId: CHAPTER.id,
       chapterTitle: "One",
@@ -104,20 +126,92 @@ describe("ManuscriptEditor", () => {
       diskVersion: 2,
       localVersion: 2
     };
-    const { save } = mockStudio({ ok: true, data: { status: "conflict", conflict } });
+    const { save, setDraft } = mockStudio({ ok: true, data: { status: "conflict", conflict } });
     const onSaved = mock(() => {});
     const onStatus = mock(() => {});
+    const editor = React.createRef<EditorHandle>();
 
     testing.render(
-      React.createElement(ManuscriptEditor, { bookId: BOOK, chapter: CHAPTER, ordinal: 1, onSaved, onStatus })
+      React.createElement(ManuscriptEditor, { ref: editor, bookId: BOOK, chapter: CHAPTER, ordinal: 1, onSaved, onStatus })
     );
     const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
     testing.fireEvent.change(textarea, { target: { value: "New text.\n" } });
+    await testing.waitFor(() => expect(setDraft).toHaveBeenCalledTimes(1), { timeout: 1000 });
 
-    await testing.waitFor(() => expect(onStatus).toHaveBeenCalledWith({ kind: "conflict", conflict }), { timeout: 2500 });
+    let flushStatus: SaveStatus | undefined;
+    await testing.act(async () => {
+      flushStatus = await editor.current!.flush();
+    });
+
+    expect(flushStatus).toEqual({ kind: "conflict", conflict });
+    expect(onStatus).toHaveBeenCalledWith({ kind: "conflict", conflict });
     expect(save).toHaveBeenCalledTimes(1);
     expect(onSaved).not.toHaveBeenCalled();
     expect(textarea.value).toBe("New text.\n");
+  });
+
+  test("flush returns a failed save outcome and keeps the author's text", async () => {
+    const { save, setDraft } = mockStudio({ ok: false, error: { code: "io", message: "Synthetic save failure." } });
+    const editor = React.createRef<EditorHandle>();
+    const textarea = "New text.\n";
+
+    testing.render(
+      React.createElement(ManuscriptEditor, {
+        ref: editor,
+        bookId: BOOK,
+        chapter: CHAPTER,
+        ordinal: 1,
+        onSaved: () => {},
+        onStatus: () => {}
+      })
+    );
+    testing.fireEvent.change(testing.within(document.body).getByTestId("manuscript-text"), { target: { value: textarea } });
+    await testing.waitFor(() => expect(setDraft).toHaveBeenCalledTimes(1), { timeout: 1000 });
+
+    let flushStatus: SaveStatus | undefined;
+    await testing.act(async () => {
+      flushStatus = await editor.current!.flush();
+    });
+
+    expect(flushStatus).toEqual({ kind: "error", message: "Synthetic save failure." });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect((testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(textarea);
+  });
+
+  test("flush confirms the saved chapter returned by the normal save path", async () => {
+    const saved: Chapter = {
+      ...CHAPTER,
+      version: 2,
+      content: "Confirmed text.\n",
+      hash: "d".repeat(64)
+    };
+    const { save, setDraft } = mockStudio({ ok: true, data: { status: "saved", chapter: saved } });
+    const editor = React.createRef<EditorHandle>();
+    const onSaved = mock(() => {});
+
+    testing.render(
+      React.createElement(ManuscriptEditor, {
+        ref: editor,
+        bookId: BOOK,
+        chapter: CHAPTER,
+        ordinal: 1,
+        onSaved,
+        onStatus: () => {}
+      })
+    );
+    testing.fireEvent.change(testing.within(document.body).getByTestId("manuscript-text"), {
+      target: { value: saved.content }
+    });
+    await testing.waitFor(() => expect(setDraft).toHaveBeenCalledTimes(1), { timeout: 1000 });
+
+    let flushStatus: SaveStatus | undefined;
+    await testing.act(async () => {
+      flushStatus = await editor.current!.flush();
+    });
+
+    expect(flushStatus?.kind).toBe("saved");
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(onSaved).toHaveBeenCalledWith(saved);
   });
 
   test("shows an attached illustration below the manuscript", () => {
@@ -156,6 +250,86 @@ describe("ManuscriptEditor", () => {
     );
     expect(testing.within(document.body).getByTestId("chapter-illustration")).toBeTruthy();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  test("the live header count agrees with the studio counter", () => {
+    mockStudio({ ok: true, data: { status: "saved", chapter: CHAPTER } });
+    const tricky = { ...CHAPTER, content: "one — two ...\n", wordCount: 4 };
+    testing.render(
+      React.createElement(ManuscriptEditor, {
+        bookId: BOOK,
+        chapter: tricky,
+        ordinal: 1,
+        onSaved: () => {},
+        onStatus: () => {}
+      })
+    );
+    // The expected number comes from the shared core counter, so a divergence
+    // between the editor display and every saved count fails here (FR-016).
+    expect(studioCountWords(tricky.content)).toBe(4);
+    expect(testing.within(document.body).getByTestId("manuscript-editor").textContent).toContain("4 words");
+  });
+});
+
+describe("manuscript review save gate", () => {
+  test("requires an explicit choice for unsaved text and does not start analysis", async () => {
+    let started = false;
+    const result = await runAfterReviewSave({ kind: "dirty" }, undefined, async () => ({ kind: "saved", at: 1 }), () => {
+      started = true;
+    });
+
+    expect(result).toEqual({ status: "choice-required" });
+    expect(started).toBe(false);
+  });
+
+  test("runs only after the explicit save path confirms saved", async () => {
+    const flush = mock(async () => ({ kind: "saved", at: 1 } as const));
+    const run = mock(async () => "synthetic report");
+
+    const result = await runAfterReviewSave({ kind: "dirty" }, "save", flush, run);
+
+    expect(result).toEqual({ status: "ready", value: "synthetic report" });
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps review blocked after a save conflict or failure", async () => {
+    const conflict: Exclude<SaveStatus, { kind: "saved" }> = {
+      kind: "conflict",
+      conflict: {
+        bookId: BOOK,
+        chapterId: CHAPTER.id,
+        chapterTitle: CHAPTER.title,
+        savedAs: "books/book_ui000001/conflicts/0001-one.conflict-external-edit.md",
+        reason: "external-edit",
+        diskVersion: 2,
+        localVersion: 2
+      }
+    };
+    const outcomes: Exclude<SaveStatus, { kind: "saved" }>[] = [
+      conflict,
+      { kind: "error", message: "Synthetic save failure." },
+      { kind: "saving" }
+    ];
+
+    for (const saveStatus of outcomes) {
+      const run = mock(() => "must not run");
+      const result = await runAfterReviewSave({ kind: "dirty" }, "save", async () => saveStatus, run);
+
+      expect(result).toEqual({ status: "blocked", saveStatus });
+      expect(run).not.toHaveBeenCalled();
+    }
+  });
+
+  test("cancel leaves pending editor text untouched and does not flush or analyze", async () => {
+    const flush = mock(async () => ({ kind: "saved", at: 1 } as const));
+    const run = mock(async () => "synthetic report");
+
+    const result = await runAfterReviewSave({ kind: "dirty" }, "cancel", flush, run);
+
+    expect(result).toEqual({ status: "cancelled" });
+    expect(flush).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
   });
 });
 
@@ -454,5 +628,191 @@ describe("ModelPickerDialog contributor consent", () => {
       })
     );
     expect(onSaved).toHaveBeenCalled();
+  });
+});
+
+describe("ModelPickerDialog active connection", () => {
+  const WORK = {
+    id: "conn_work0001",
+    provider: "openrouter",
+    label: "Work",
+    kind: "api-key",
+    createdAt: "2026-10-26T12:00:00.000Z"
+  };
+  const PERSONAL = {
+    id: "conn_home0001",
+    provider: "openrouter",
+    label: "Personal",
+    kind: "api-key",
+    createdAt: "2026-10-26T12:00:00.000Z"
+  };
+  const MODEL = {
+    id: "m1",
+    name: "Model One",
+    contextLength: 1_000,
+    supportsTools: true,
+    supportsImages: false,
+    inputPricePerMillion: null,
+    outputPricePerMillion: null
+  };
+
+  function mockPickerStudio() {
+    (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
+      providers: {
+        list: mock(() =>
+          Promise.resolve({ ok: true as const, data: [{ id: "openrouter", name: "OpenRouter" }] })
+        ),
+        models: mock(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: { fetchedAt: "2026-10-26T12:00:00.000Z", models: [MODEL] }
+          })
+        )
+      },
+      connections: {
+        list: mock(() => Promise.resolve({ ok: true as const, data: [WORK, PERSONAL] }))
+      },
+      books: { update: mock(() => Promise.resolve({ ok: true as const, data: {} })) }
+    };
+  }
+
+  function connectionButton(label: string): HTMLButtonElement {
+    return testing.within(document.body).getByText(label).closest("button") as HTMLButtonElement;
+  }
+
+  test("marks the book's connection among several accounts, not the one being browsed", async () => {
+    mockPickerStudio();
+    const parsed = bookSchema.parse({
+      id: BOOK,
+      title: "The Salt Road",
+      createdAt: "2026-10-26T12:00:00.000Z",
+      updatedAt: "2026-10-26T12:00:00.000Z",
+      defaultConnectionId: "conn_work0001"
+    });
+    testing.render(
+      React.createElement(ModelPickerDialog, {
+        open: true,
+        book: parsed,
+        onClose: () => {},
+        onSaved: mock(() => {})
+      })
+    );
+
+    await testing.waitFor(() => testing.within(document.body).getByText("Personal"));
+    const work = connectionButton("Work");
+    const personal = connectionButton("Personal");
+    expect(testing.within(work).getByTestId("connection-active").textContent).toBe("Book default");
+    expect(testing.within(personal).queryByTestId("connection-active")).toBeNull();
+
+    // Browsing the other account must not move the mark; it follows the book default.
+    testing.fireEvent.click(personal);
+    await testing.waitFor(() => expect(testing.within(personal).queryByTestId("connection-active")).toBeNull());
+    expect(testing.within(work).getByTestId("connection-active").textContent).toBe("Book default");
+  });
+
+  test("shows capabilities in plain words, naming what the provider does not say", async () => {
+    const CONNECTION = {
+      id: "conn_cap0001",
+      provider: "openrouter",
+      label: "OpenRouter",
+      kind: "api-key",
+      createdAt: "2026-10-26T12:00:00.000Z"
+    };
+    (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
+      providers: {
+        list: mock(() =>
+          Promise.resolve({ ok: true as const, data: [{ id: "openrouter", name: "OpenRouter" }] })
+        ),
+        models: mock(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: {
+              fetchedAt: "2026-10-26T12:00:00.000Z",
+              models: [
+                {
+                  id: "m-full",
+                  name: "Full Model",
+                  contextLength: 128_000,
+                  supportsTools: true,
+                  supportsImages: true,
+                  inputPricePerMillion: 3,
+                  outputPricePerMillion: 15
+                },
+                {
+                  id: "m-blank",
+                  name: "Blank Model",
+                  contextLength: null,
+                  supportsTools: null,
+                  supportsImages: null,
+                  inputPricePerMillion: null,
+                  outputPricePerMillion: null
+                }
+              ]
+            }
+          })
+        )
+      },
+      connections: {
+        list: mock(() => Promise.resolve({ ok: true as const, data: [CONNECTION] }))
+      },
+      books: { update: mock(() => Promise.resolve({ ok: true as const, data: {} })) }
+    };
+    const parsed = bookSchema.parse({
+      id: BOOK,
+      title: "The Salt Road",
+      createdAt: "2026-10-26T12:00:00.000Z",
+      updatedAt: "2026-10-26T12:00:00.000Z",
+      defaultConnectionId: "conn_cap0001"
+    });
+    testing.render(
+      React.createElement(ModelPickerDialog, {
+        open: true,
+        book: parsed,
+        onClose: () => {},
+        onSaved: mock(() => {})
+      })
+    );
+
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getByText("Full Model")).toBeDefined());
+    const full = view.getByText("Full Model").closest("button") as HTMLButtonElement;
+    expect(full.textContent).toContain("128k context");
+    expect(full.textContent).toContain("Uses tools");
+    expect(full.textContent).toContain("Reads pictures");
+    const blank = view.getByText("Blank Model").closest("button") as HTMLButtonElement;
+    expect(blank.textContent).toContain("Context not reported");
+    expect(blank.textContent).toContain("Price not reported");
+    expect(blank.textContent).toContain("Tools not reported");
+    expect(blank.textContent).toContain("Pictures not reported");
+  });
+
+  test("names the turn override apart from the book default", async () => {
+    mockPickerStudio();
+    const parsed = bookSchema.parse({
+      id: BOOK,
+      title: "The Salt Road",
+      createdAt: "2026-10-26T12:00:00.000Z",
+      updatedAt: "2026-10-26T12:00:00.000Z",
+      defaultConnectionId: "conn_work0001"
+    });
+    testing.render(
+      React.createElement(ModelPickerDialog, {
+        open: true,
+        book: parsed,
+        onClose: () => {},
+        onPick: mock(() => {}),
+        initial: { connectionId: "conn_home0001", modelId: "m1" }
+      })
+    );
+
+    await testing.waitFor(() => testing.within(document.body).getByText("Personal"));
+    const marks = testing.within(document.body).getAllByTestId("connection-active");
+    expect(marks.map((mark) => mark.textContent).sort()).toEqual(["Book default", "This turn"]);
+    expect(
+      testing.within(connectionButton("Work")).getByTestId("connection-active").textContent
+    ).toBe("Book default");
+    expect(
+      testing.within(connectionButton("Personal")).getByTestId("connection-active").textContent
+    ).toBe("This turn");
   });
 });

@@ -118,6 +118,95 @@ export function ceilingWarning(spentUsd: number, ceilingUsd: number | null): Cei
   return null;
 }
 
+type TurnCost = Pick<UsageRecord, "costUsd" | "costBasis">;
+
+/**
+ * The per-turn spending hook (011 T036). Informational only: D-116 stays Proposed, so a
+ * warning never blocks, refuses or retries a turn. Turns with an unknown or plan cost never
+ * warn — the studio shows "—" and plan usage instead of inventing a comparison.
+ */
+export function turnCostWarning(cost: TurnCost, ceilingUsd: number | null): CeilingWarning | null {
+  if (ceilingUsd === null || !Number.isFinite(ceilingUsd) || ceilingUsd <= 0) return null;
+  if (cost.costUsd === null || cost.costBasis === "unknown" || cost.costBasis === "plan") {
+    return null;
+  }
+  if (cost.costUsd >= ceilingUsd) {
+    return {
+      level: "reached",
+      message: `This turn cost ${formatUsd(cost.costUsd)} — over its ${formatUsd(ceilingUsd)} per-turn limit.`
+    };
+  }
+  if (cost.costUsd >= ceilingUsd * 0.8) {
+    return {
+      level: "approaching",
+      message: `This turn cost ${formatUsd(cost.costUsd)} of its ${formatUsd(ceilingUsd)} per-turn limit.`
+    };
+  }
+  return null;
+}
+
+/** What this book spent in one calendar month. */
+export interface MonthlySpend {
+  /** Reported and estimated costs added together, rounded to cents. */
+  totalUsd: number;
+  /** Turns the provider did not price. The total is a lower bound when this is above zero. */
+  unknownCostTurns: number;
+  /** Turns priced from the catalogue instead of the provider's report. */
+  estimatedCostTurns: number;
+}
+
+/**
+ * Month-to-date spend for records whose `at` falls in `now`'s UTC month. The usage store
+ * writes `at` as UTC, so the studio month is a UTC month everywhere.
+ */
+export function monthlySpend(
+  records: Pick<UsageRecord, "at" | "costUsd" | "costBasis">[],
+  now: Date
+): MonthlySpend {
+  const spend: MonthlySpend = { totalUsd: 0, unknownCostTurns: 0, estimatedCostTurns: 0 };
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  for (const record of records) {
+    const at = new Date(record.at);
+    if (Number.isNaN(at.getTime())) continue;
+    if (at.getUTCFullYear() !== year || at.getUTCMonth() !== month) continue;
+    if (record.costUsd === null || record.costBasis === "unknown") {
+      spend.unknownCostTurns += 1;
+    } else {
+      spend.totalUsd += record.costUsd;
+      if (record.costBasis === "estimated") spend.estimatedCostTurns += 1;
+    }
+  }
+  spend.totalUsd = roundUsd(spend.totalUsd);
+  return spend;
+}
+
+/**
+ * The monthly spending hook (011 T036). A warning level, not a limit: reaching it changes
+ * nothing except the message. When some turns did not report a cost, the message says the
+ * total is a lower bound rather than stating it as the whole spend.
+ */
+export function monthlyWarning(spend: MonthlySpend, warningUsd: number | null): CeilingWarning | null {
+  if (warningUsd === null || !Number.isFinite(warningUsd) || warningUsd <= 0) return null;
+  const lowerBound =
+    spend.unknownCostTurns > 0
+      ? ` The total is a lower bound: ${spend.unknownCostTurns} turn${spend.unknownCostTurns === 1 ? "" : "s"} did not report a cost.`
+      : "";
+  if (spend.totalUsd >= warningUsd) {
+    return {
+      level: "reached",
+      message: `This book has reached its ${formatUsd(warningUsd)} monthly warning level.${lowerBound}`
+    };
+  }
+  if (spend.totalUsd >= warningUsd * 0.8) {
+    return {
+      level: "approaching",
+      message: `This book has used ${formatUsd(spend.totalUsd)} of its ${formatUsd(warningUsd)} monthly warning level.${lowerBound}`
+    };
+  }
+  return null;
+}
+
 export function isKnownProvider(value: string): value is ProviderId {
   return providerIdSchema.safeParse(value).success;
 }

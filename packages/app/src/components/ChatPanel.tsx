@@ -1,4 +1,5 @@
-import { FormEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { Cpu, GitBranch, History, Pencil, Plus, Send, Square, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
 import type { ThreadSummary } from "@ai-book-studio/core/agent/threads";
@@ -11,6 +12,7 @@ import {
   toolDetailText,
   toolLabel,
   usageNote,
+  waitWords,
   type Approval,
   type Message
 } from "../lib/chat-view";
@@ -84,9 +86,14 @@ export function ChatPanel({
     noticeRef.current = onNotice;
   }, [onNotice]);
 
+  // The refs are read now, not inside the update: the callers clear them right after
+  // patching, and an update that runs later must still land on this turn's message.
   const patchAssistant = useCallback((turnId: string, patch: (message: Message) => Message) => {
+    const liveTurn = turnRef.current;
+    const liveAssistant = assistantRef.current;
+    if (liveTurn !== turnId) return;
     setMessages((current) =>
-      current.map((message) => (message.id === assistantRef.current && turnRef.current === turnId ? patch(message) : message))
+      current.map((message) => (message.id === liveAssistant ? patch(message) : message))
     );
   }, []);
 
@@ -310,8 +317,8 @@ export function ChatPanel({
           text: event.text || message.text,
           turnId: event.turnId,
           model: event.model.connectionLabel
-            ? `${event.model.connectionLabel} · ${event.model.modelId}`
-            : event.model.modelId,
+            ? `${event.model.connectionLabel} · ${event.model.name ?? event.model.modelId}`
+            : (event.model.name ?? event.model.modelId),
           context: event.context,
           changed: event.changed ?? 0,
           undoAvailable: event.undoAvailable,
@@ -350,6 +357,7 @@ export function ChatPanel({
           failed: true,
           note: event.message,
           errorCode: event.code,
+          ...(event.retryAfterSeconds !== undefined ? { retryAfterSeconds: event.retryAfterSeconds } : {}),
           turnId: event.turnId,
           changed: event.changed ?? 0,
           undoAvailable: event.undoAvailable,
@@ -365,6 +373,7 @@ export function ChatPanel({
     return unsubscribe;
   }, [onChanged, patchAssistant]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is the trigger, not a closure value — the transcript scrolls to the bottom whenever a message lands
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
@@ -384,6 +393,7 @@ export function ChatPanel({
       bookId,
       chapterId,
       prompt,
+      mode: "edit",
       threadId: threadId ?? undefined,
       history,
       ...(background ? { background: true } : {}),
@@ -442,10 +452,12 @@ export function ChatPanel({
     }
   };
 
-  const undo = async (turnId: string): Promise<void> => {
+  // The turn is over by the time its undo runs, so the message is patched by id: the
+  // turn-scoped patch no longer matches once the turn is gone.
+  const undo = async (messageId: string): Promise<void> => {
     try {
       const result = await must(window.studio.agent.undoLast(bookId));
-      patchAssistant(turnId, (message) => ({
+      patchMessage(messageId, (message) => ({
         ...message,
         changed: result.skipped,
         undoAvailable: false,
@@ -539,7 +551,7 @@ export function ChatPanel({
                   data-testid="model-change"
                 >
                   <span className="h-px flex-1 bg-[var(--border)]" aria-hidden />
-                  <span>{message.model}</span>
+                  <span>Now answering with {message.model}</span>
                   <span className="h-px flex-1 bg-[var(--border)]" aria-hidden />
                 </div>
               ) : null}
@@ -556,6 +568,7 @@ export function ChatPanel({
                   {message.tools.map((tool, index) => {
                     const detail = toolDetailText(tool);
                     return (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: tools update in place by index and never reorder within a message; the index is a tiebreaker for repeated tool names
                       <li key={`${tool.id ?? tool.name}-${index}`} className="text-[var(--text-caption-size)]">
                         <div className="flex items-center gap-2">
                           <span
@@ -630,8 +643,20 @@ export function ChatPanel({
                   This attempt changed {message.changed} {message.changed === 1 ? "chapter" : "chapters"}. Undo it before retrying.
                 </p>
               ) : null}
+              {message.failed && message.errorCode === "offline" ? (
+                <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="agent-offline-note">
+                  You are offline. Your words are safe — writing, planning and exporting all still work.
+                </p>
+              ) : null}
+              {message.failed &&
+              message.errorCode === "rate-limit" &&
+              message.retryAfterSeconds !== undefined ? (
+                <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="agent-rate-note">
+                  The provider asked to wait. Try again {waitWords(message.retryAfterSeconds)}.
+                </p>
+              ) : null}
               {message.role === "assistant" && message.changed && message.turnId && message.undoAvailable !== false ? (
-                <Button variant="secondary" size="sm" className="mt-2" onClick={() => void undo(message.turnId!)}>
+                <Button variant="secondary" size="sm" className="mt-2" onClick={() => void undo(message.id)} data-testid="agent-undo-turn">
                   Undo this turn
                 </Button>
               ) : null}
@@ -661,6 +686,11 @@ export function ChatPanel({
                   {message.errorCode === "invalid-request" ? (
                     <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-request-model">
                       Choose a model
+                    </Button>
+                  ) : null}
+                  {message.errorCode === "refusal" ? (
+                    <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-try-another-model">
+                      Try another model
                     </Button>
                   ) : null}
                 </div>
@@ -758,7 +788,14 @@ export function ChatPanel({
             </p>
           </div>
           {running ? (
-            <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={() => void stop()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              onClick={() => void stop()}
+              data-testid="chat-stop"
+            >
               <Square size={13} />
               Stop
             </Button>

@@ -66,7 +66,7 @@ describe("choosing site storage", () => {
   test("opens a library, labels it, and remembers the choice", async () => {
     withOriginStorage();
     const libraries = new BrowserLibraries();
-    const info = await libraries.useBrowserStorage();
+    const info = await libraries.openBrowserStorage();
 
     expect(info.root).toMatch(/^browser:\/\/library_/);
     expect(info.storage?.tier).toBe("browser");
@@ -81,7 +81,7 @@ describe("choosing site storage", () => {
   test("the next visit reopens the same library, with its books in it", async () => {
     withOriginStorage();
     const first = new BrowserLibraries();
-    await first.useBrowserStorage();
+    await first.openBrowserStorage();
     const book = await first.require().createBook({ title: "The Salt Road" });
 
     const second = new BrowserLibraries();
@@ -95,7 +95,7 @@ describe("choosing site storage", () => {
     // A navigator that has origin storage the first time and loses it the next.
     withOriginStorage();
     const first = new BrowserLibraries();
-    await first.useBrowserStorage();
+    await first.openBrowserStorage();
 
     globals.navigator = {
       storage: {

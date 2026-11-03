@@ -88,7 +88,7 @@ export class BrowserLibraries {
     return `folder://${this.selection.handle.name}`;
   }
 
-  async useBrowserStorage(): Promise<LibraryInfo> {
+  async openBrowserStorage(): Promise<LibraryInfo> {
     const libraryId = newBrowserLibraryId();
     const library = await openBrowserLibrary(libraryId);
     const service = await LibraryService.open({ storage: library.port, runtime: browserRuntime });

@@ -8,6 +8,7 @@ import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolCallResult, ToolDescriptor } from "@ai-book-studio/core/agent/tools";
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import type { AgentTurnResult } from "@ai-book-studio/core/agent";
+import type { AgentMode } from "@ai-book-studio/core/agent/messages";
 import type {
   BookDetail,
   BookSummary,
@@ -82,6 +83,8 @@ export interface BackendAgent {
   run(input: {
     bookId: string;
     prompt: string;
+    /** Required so a backend turn can never run on an assumed level. Callers that predate modes send `edit`. */
+    mode: AgentMode;
     chapterId?: string | null;
     threadId?: string | null;
   }): Promise<AgentTurnResult>;
@@ -319,9 +322,11 @@ export class LocalBackend {
     }
     if (request.method === "POST" && parts.length === 5 && parts[3] === "tools") {
       const body = toolCall.parse(await readJson(request));
+      const name = parts[4];
+      if (name === undefined) throw new HttpError(404, "not-found", "Unknown route.");
       const result = await this.toolRunner().run({
         bookId,
-        name: parts[4]!,
+        name,
         args: body.args ?? {},
         ...(body.allowDestructive ? { allowDestructive: true } : {})
       });
@@ -349,6 +354,7 @@ export class LocalBackend {
       const result = await this.agent.run({
         bookId,
         prompt: body.prompt,
+        mode: "edit",
         ...(body.chapterId ? { chapterId: body.chapterId } : {}),
         ...(body.threadId ? { threadId: body.threadId } : {})
       });

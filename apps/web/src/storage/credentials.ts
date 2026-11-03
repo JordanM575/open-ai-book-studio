@@ -31,6 +31,31 @@ export class BrowserCredentialVault implements CredentialVault {
     };
   }
 
+  /**
+   * Explicit round-trip probe: write, read back and remove one probe record. Origin storage
+   * never prompts, so unlike the desktop keychain this is safe to run, but it stays behind
+   * the Check control to match the desktop contract.
+   */
+  async check(): Promise<Omit<CredentialStatus, "connections">> {
+    try {
+      const probe = `credential-probe-${Date.now()}`;
+      await this.request("readwrite", (store) => store.put({ id: probe }));
+      try {
+        const read = await this.request<unknown>("readonly", (store) => store.get(probe));
+        if (!read) throw new Error("probe mismatch");
+      } finally {
+        await this.request("readwrite", (store) => store.delete(probe)).catch(() => undefined);
+      }
+      return { available: true, backend: "Browser origin storage", detail: "" };
+    } catch {
+      return {
+        available: false,
+        backend: "Browser origin storage",
+        detail: "Origin storage refused the check. The browser may be blocking site data."
+      };
+    }
+  }
+
   async list(): Promise<ConnectionSummary[]> {
     const records = await this.all();
     return records

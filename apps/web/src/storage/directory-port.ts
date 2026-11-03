@@ -244,7 +244,7 @@ export class DirectoryHandleLibraryPort implements LibraryPort {
     }
   }
 
-  private async removeDirectory(path: LibraryPath): Promise<void> {
+  async removeDirectory(path: LibraryPath): Promise<void> {
     try {
       const { directory, name } = await this.parent(path, false);
       await directory.removeEntry(name, { recursive: true });

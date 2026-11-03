@@ -1,4 +1,5 @@
 import {
+  APICallError,
   ToolLoopAgent,
   isStepCount,
   type LanguageModel,
@@ -24,7 +25,7 @@ import type { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import { findModel, unavailableReason } from "@ai-book-studio/core/providers/models";
 import { isContributorModelId } from "@ai-book-studio/core/providers/compatibility";
 import { reportedCost } from "@ai-book-studio/core/providers/openrouter";
-import { normalizeProviderError } from "@ai-book-studio/core/providers/errors";
+import { normalizeProviderError, parseRetryAfter } from "@ai-book-studio/core/providers/errors";
 import { redact } from "@ai-book-studio/core/providers/redact";
 import type { ProviderId, StoredCredential } from "@ai-book-studio/core/providers/types";
 import { ProviderError } from "@ai-book-studio/core/providers/types";
@@ -41,7 +42,7 @@ import { readBookSkills } from "./skills";
 import { cachePrefixFor } from "./cache";
 import { loadPlugins, pluginTools, type LoadedPlugins } from "./plugins";
 import type { PluginTool } from "@ai-book-studio/core/agent/plugins";
-import { MetricsStore } from "../metrics";
+import type { MetricsStore } from "../metrics";
 
 interface PendingApproval {
   approvalId: string;
@@ -81,6 +82,8 @@ interface TurnState {
   toolParts: AgentPart[];
   approvals: AgentApprovalPart[];
   changes: ChapterChange[];
+  /** The catalogue's display name for the turn's model, when the catalogue named one. */
+  modelName: string | null;
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
@@ -297,6 +300,7 @@ export class AgentRuntime {
     }
     const credential = await this.providers.credential(connectionId);
     let contextLength: number | null = null;
+    let modelName: string | null = null;
     try {
       const catalogue = await this.providers.models(connectionId);
       const selected = findModel(catalogue, modelId);
@@ -308,12 +312,14 @@ export class AgentRuntime {
         if (reason) throw new ProviderError("unsupported", reason);
       }
       contextLength = selected?.contextLength ?? null;
+      modelName = selected?.name ?? null;
     } catch (error) {
       if (error instanceof ProviderError) throw error;
       console.warn("[agent] Could not read the model's context length:", redact((error as Error).message));
     }
     const model = this.makeModel(credential, modelId);
     const prepared = await prepareThread(library.threads, input);
+    await this.expireStaleApprovals(input.bookId, prepared.thread);
     const activeChapter = input.chapterId ? (chapters.find((chapter) => chapter.id === input.chapterId) ?? null) : null;
     const skills = await readBookSkills(
       library.root,
@@ -334,6 +340,7 @@ export class AgentRuntime {
       toolParts: [],
       approvals: [],
       changes: [],
+      modelName,
       inputTokens: 0,
       outputTokens: 0,
       cachedInputTokens: 0,
@@ -371,6 +378,9 @@ export class AgentRuntime {
       toolApproval: Object.fromEntries(
         DESTRUCTIVE_TOOL_NAMES.filter((name) => name in tools).map((name) => [name, "user-approval"])
       ) as Record<string, "user-approval">,
+      // A failed request is the author's to retry, not the loop's: the SDK must not hide a
+      // rate limit behind its own backoff and replays.
+      maxRetries: 0,
       stopWhen: isStepCount(MAX_STEPS)
     });
 
@@ -432,6 +442,23 @@ export class AgentRuntime {
     await this.setApprovalStatus(turn, approvalId, approved ? "approved" : "denied");
     turn.pending.resume(approved);
     return null;
+  }
+
+  /**
+   * Expire approvals no live turn can still answer. A previous run's pending approval — left
+   * behind by a closed app or a killed process — is persisted as expired the next time any turn
+   * starts on the thread, so it can never resume and never shows as waiting again. Approvals
+   * held by a live turn are untouched.
+   */
+  private async expireStaleApprovals(bookId: string, thread: AgentThread): Promise<void> {
+    const library = this.studio.requireLibrary();
+    for (const message of thread.messages) {
+      for (const part of message.parts) {
+        if (part.type !== "approval" || part.status !== "pending") continue;
+        if (this.active.has(part.turnId)) continue;
+        await library.threads.updateApproval(bookId, thread.id, message.id, part.approvalId, "expired");
+      }
+    }
   }
 
   private async setApprovalStatus(
@@ -545,7 +572,12 @@ export class AgentRuntime {
         id: messageId,
         role: "assistant",
         parts,
-        model: { provider, modelId, connectionLabel },
+        model: {
+          provider,
+          modelId,
+          connectionLabel,
+          ...(state.modelName ? { name: state.modelName } : {})
+        },
         ...(options.usage ? { usage: options.usage } : {}),
         context: state.context,
         turnId,
@@ -628,10 +660,16 @@ export class AgentRuntime {
       const cacheRead = usage.inputTokenDetails.cacheReadTokens;
       state.cachedInputTokens += cacheRead ?? 0;
       if (cacheRead !== undefined) state.cacheReported = true;
-      state.steps += Math.max(1, (await stream.steps).length);
-      const finalStep = await stream.finalStep;
-      const cost = reportedCost(provider, finalStep.providerMetadata);
-      if (cost !== null) state.costUsd = (state.costUsd ?? 0) + cost;
+      const steps = await stream.steps;
+      state.steps += Math.max(1, steps.length);
+      // Every step reports its own price, so the turn's price is the sum of the steps, not the
+      // last step's alone.
+      let stepCost: number | null = null;
+      for (const step of steps) {
+        const part = reportedCost(provider, step.providerMetadata);
+        if (part !== null) stepCost = (stepCost ?? 0) + part;
+      }
+      if (stepCost !== null) state.costUsd = (state.costUsd ?? 0) + stepCost;
       const costBasis = state.costUsd === null ? "unknown" : "reported";
 
       if (waiting && approval) {
@@ -718,7 +756,12 @@ export class AgentRuntime {
         type: "done",
         turnId,
         text: state.text,
-        model: { provider, modelId, connectionLabel },
+        model: {
+          provider,
+          modelId,
+          connectionLabel,
+          ...(state.modelName ? { name: state.modelName } : {})
+        },
         inputTokens: state.inputTokens,
         outputTokens: state.outputTokens,
         costUsd: state.costUsd,
@@ -761,10 +804,20 @@ export class AgentRuntime {
         this.publish({ type: "stopped", turnId, changed: state.changes.length, undoAvailable });
         this.reportOutcome(turnId, "stopped", state);
       } else {
+        // A provider transport failure arrives as an API error carrying its status, body and
+        // headers. Anything else is only words, and the normalizer treats it that way.
+        const apiError = APICallError.isInstance(error) ? error : null;
+        const retryAfter = parseRetryAfter(
+          apiError?.responseHeaders?.["retry-after"] ?? apiError?.responseHeaders?.["Retry-After"]
+        );
         const normalized = normalizeProviderError({
           provider,
-          message: error instanceof Error ? error.message : String(error)
+          message: error instanceof Error ? error.message : String(error),
+          ...(apiError?.statusCode !== undefined ? { status: apiError.statusCode } : {}),
+          ...(apiError?.responseBody ? { body: apiError.responseBody } : {}),
+          ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {})
         });
+        const wait = normalized.options.retryAfterSeconds;
         const undoAvailable = await saveCheckpoint();
         expirePendingApprovals(state);
         const contextNote =
@@ -779,12 +832,25 @@ export class AgentRuntime {
         // A turn that never paused keeps only its user message, so Retry can reuse it. A turn that
         // did pause already has a stored assistant message; record the failure on that same message.
         if (state.persisted) {
-          const failure: AgentErrorPart = { type: "error", code: normalized.code, message };
+          const failure: AgentErrorPart = {
+            type: "error",
+            code: normalized.code,
+            message,
+            ...(wait !== undefined ? { retryAfterSeconds: wait } : {})
+          };
           await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, failure), ...state.approvals], {
             checkpoint: state.changes.length > 0 && undoAvailable
           });
         }
-        this.publish({ type: "error", turnId, code: normalized.code, message, changed: state.changes.length, undoAvailable });
+        this.publish({
+          type: "error",
+          turnId,
+          code: normalized.code,
+          message,
+          changed: state.changes.length,
+          undoAvailable,
+          ...(wait !== undefined ? { retryAfterSeconds: wait } : {})
+        });
         this.reportOutcome(turnId, "error", state, { message });
       }
     } finally {
@@ -799,7 +865,8 @@ export class AgentRuntime {
  */
 export async function prepareThread(
   store: ThreadStore,
-  input: AgentTurnInput,
+  // Thread preparation needs only routing and content, never the turn's permission level.
+  input: Pick<AgentTurnInput, "bookId" | "threadId" | "prompt" | "history">,
   now: () => string = () => new Date().toISOString()
 ): Promise<{ thread: AgentThread; reused: boolean }> {
   const prompt = input.prompt.trim();

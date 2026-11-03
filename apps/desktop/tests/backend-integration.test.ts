@@ -134,7 +134,7 @@ describe("toolkit against a real library", () => {
       Readable.from([
         '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
         '{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n',
-        JSON.stringify({
+        `${JSON.stringify({
           jsonrpc: "2.0",
           id: 3,
           method: "tools/call",
@@ -142,7 +142,7 @@ describe("toolkit against a real library", () => {
             name: "append_to_chapter",
             arguments: { bookId, chapterId, text: "A line from another agent." }
           }
-        }) + "\n"
+        })}\n`
       ]),
       output
     );

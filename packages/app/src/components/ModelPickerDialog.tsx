@@ -190,6 +190,11 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                   >
                     <span className="block font-medium">{item.label}</span>
                     <span className="block text-[var(--text-caption-size)] text-muted-foreground">{providerName(item.provider)}</span>
+                    {item.id === book.defaultConnectionId || (turnMode && initial && item.id === initial.connectionId) ? (
+                      <span className="block text-[var(--text-caption-size)] text-muted-foreground" data-testid="connection-active">
+                        {item.id === book.defaultConnectionId ? "Book default" : "This turn"}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -242,6 +247,19 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                           {model.inputPricePerMillion === null
                             ? "Price not reported"
                             : `$${model.inputPricePerMillion.toFixed(2)} in · $${(model.outputPricePerMillion ?? 0).toFixed(2)} out per million`}
+                        </span>
+                        <span className="block text-[var(--text-caption-size)] text-muted-foreground">
+                          {model.supportsTools === null
+                            ? "Tools not reported"
+                            : model.supportsTools
+                              ? "Uses tools"
+                              : "No tools"}
+                          {" · "}
+                          {model.supportsImages === null
+                            ? "Pictures not reported"
+                            : model.supportsImages
+                              ? "Reads pictures"
+                              : "No pictures"}
                         </span>
                         {model.trainingOnData ? (
                           <span className="block text-[var(--text-caption-size)] text-muted-foreground">

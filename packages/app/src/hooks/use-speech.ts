@@ -23,12 +23,20 @@ export interface Speech {
   supported: boolean;
   /** Which voice is in use. */
   using: VoiceSource;
-  /** True while the voice is talking. */
+  /** True while the voice is talking. Stays true while paused. */
   speaking: boolean;
+  /** True while the voice is held mid-utterance and can go on. */
+  paused: boolean;
+  /** True when the last utterance fell back to the device because the service failed. */
+  fellBack: boolean;
   /** The voices the service offers, when there is one. */
   voices: string[];
   /** Say something. Resolves false when nothing could be said. */
   speak: (text: string, options?: { voice?: string }) => Promise<boolean>;
+  /** Hold the current utterance. Does nothing when nothing is being said. */
+  pause: () => void;
+  /** Go on after a pause. Does nothing when nothing is held. */
+  resume: () => void;
   /** Stop talking. */
   cancel: () => void;
 }
@@ -36,7 +44,11 @@ export interface Speech {
 export function useSpeech(): Speech {
   const [speakers, setSpeakers] = useState<VoiceSpeakers | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [fellBack, setFellBack] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
+  /** Which voice is saying the current utterance, so pause and resume hold the right one. */
+  const source = useRef<"tts" | "device" | null>(null);
   const token = useRef(0);
 
   const deviceSupported =
@@ -70,9 +82,12 @@ export function useSpeech(): Speech {
 
   const cancel = useCallback(() => {
     token.current += 1;
+    source.current = null;
     stopAudio();
     if (deviceSupported) window.speechSynthesis.cancel();
     setSpeaking(false);
+    setPaused(false);
+    setFellBack(false);
   }, [deviceSupported, stopAudio]);
 
   const speakWithDevice = useCallback(
@@ -80,14 +95,57 @@ export function useSpeech(): Speech {
       if (!deviceSupported) return false;
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "en-US";
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
+      utterance.onend = () => {
+        if (source.current === "device") source.current = null;
+        setSpeaking(false);
+        setPaused(false);
+      };
+      utterance.onerror = () => {
+        if (source.current === "device") source.current = null;
+        setSpeaking(false);
+        setPaused(false);
+      };
+      source.current = "device";
       setSpeaking(true);
       window.speechSynthesis.speak(utterance);
       return true;
     },
     [deviceSupported]
   );
+
+  const pause = useCallback(() => {
+    if (!speaking || paused) return;
+    if (source.current === "device") {
+      if (deviceSupported) window.speechSynthesis.pause();
+    } else {
+      audio.current?.pause();
+    }
+    setPaused(true);
+  }, [deviceSupported, paused, speaking]);
+
+  const resume = useCallback(() => {
+    if (!paused) return;
+    if (source.current === "device") {
+      if (deviceSupported) window.speechSynthesis.resume();
+      setPaused(false);
+      return;
+    }
+    const element = audio.current;
+    if (!element) {
+      setPaused(false);
+      setSpeaking(false);
+      return;
+    }
+    void element.play().then(
+      () => setPaused(false),
+      () => {
+        if (audio.current === element) audio.current = null;
+        if (source.current === "tts") source.current = null;
+        setPaused(false);
+        setSpeaking(false);
+      }
+    );
+  }, [deviceSupported, paused]);
 
   const speak = useCallback(
     async (text: string, options: { voice?: string } = {}): Promise<boolean> => {
@@ -96,6 +154,14 @@ export function useSpeech(): Speech {
       if (!trimmed) return false;
       cancel();
       const mine = token.current;
+
+      // The device's voice is better than silence, and the panel says which one spoke.
+      const fallBackToDevice = (): boolean => {
+        if (mine !== token.current) return false;
+        const said = speakWithDevice(trimmed);
+        if (said) setFellBack(true);
+        return said;
+      };
 
       if (speakers?.available) {
         try {
@@ -110,21 +176,33 @@ export function useSpeech(): Speech {
             audio.current = element;
             element.onended = () => {
               if (audio.current === element) audio.current = null;
+              if (source.current === "tts") source.current = null;
               setSpeaking(false);
+              setPaused(false);
             };
             element.onerror = () => {
               if (audio.current === element) audio.current = null;
+              if (source.current === "tts") source.current = null;
               setSpeaking(false);
+              setPaused(false);
+              fallBackToDevice();
             };
+            source.current = "tts";
             setSpeaking(true);
-            await element.play().catch(() => undefined);
+            try {
+              await element.play();
+            } catch {
+              if (audio.current === element) audio.current = null;
+              if (mine !== token.current) return false;
+              setSpeaking(false);
+              return fallBackToDevice();
+            }
             return true;
           }
-          // The service refused. The device's voice is better than silence, and the caller is
-          // told which one it got by `using`.
-          return speakWithDevice(trimmed);
+          // The service refused. The device's voice is better than silence.
+          return fallBackToDevice();
         } catch {
-          return speakWithDevice(trimmed);
+          return fallBackToDevice();
         }
       }
 
@@ -143,8 +221,12 @@ export function useSpeech(): Speech {
     supported: using !== "none",
     using,
     speaking,
+    paused,
+    fellBack,
     voices: speakers?.voices ?? [],
     speak,
+    pause,
+    resume,
     cancel
   };
 }

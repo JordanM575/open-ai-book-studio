@@ -53,7 +53,9 @@ describe("SegmentationService", () => {
 
     expect(result).toEqual({ prompt: "red hat", model: "sam-3.1", matches: [], costUsd: null });
     expect(captured.url).toBe("https://api.meta.ai/v1/responses");
-    expect((captured.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
+    const init = captured.init;
+    if (!init) throw new Error("the provider was never called");
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
     const body = JSON.parse(String(captured.init?.body)) as Record<string, any>;
     expect(body).toMatchObject({
       model: "sam-3.1",

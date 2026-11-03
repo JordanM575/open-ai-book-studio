@@ -13,12 +13,31 @@ export interface AppSettings {
    * disk: a book that travels to another machine never carries the path with it.
    */
   pluginFolder?: string | null;
+  /**
+   * Minutes between drift scans when the window regains focus. The scan itself is read-only;
+   * raising this only spaces the reminders out.
+   */
+  syncCheckIntervalMinutes?: number;
+  /** When the drift scan last ran, as an ISO timestamp. Display only. */
+  lastSyncScanAt?: string | null;
 }
+
+/** The focus-scan interval when nothing is configured. */
+export const DEFAULT_SYNC_CHECK_INTERVAL_MINUTES = 15;
 
 const DEFAULTS: AppSettings = { libraryRoot: null };
 
+/**
+ * The profile file lives directly under Electron's per-app userData directory,
+ * which carries the app name but no version. Two compatible builds therefore
+ * share one settings file; local install/upgrade never relocates it.
+ */
+export function settingsFilePath(userDataDir: string): string {
+  return join(userDataDir, "studio.json");
+}
+
 export class SettingsStore {
-  private readonly path = join(app.getPath("userData"), "studio.json");
+  private readonly path = settingsFilePath(app.getPath("userData"));
   private value: AppSettings = { ...DEFAULTS };
 
   async load(): Promise<AppSettings> {
@@ -27,7 +46,12 @@ export class SettingsStore {
       this.value = {
         libraryRoot: typeof parsed.libraryRoot === "string" ? parsed.libraryRoot : null,
         ...(parsed.windowBounds ? { windowBounds: parsed.windowBounds } : {}),
-        ...(typeof parsed.pluginFolder === "string" ? { pluginFolder: parsed.pluginFolder } : {})
+        ...(typeof parsed.pluginFolder === "string" ? { pluginFolder: parsed.pluginFolder } : {}),
+        ...(typeof parsed.syncCheckIntervalMinutes === "number" &&
+        Number.isFinite(parsed.syncCheckIntervalMinutes)
+          ? { syncCheckIntervalMinutes: parsed.syncCheckIntervalMinutes }
+          : {}),
+        ...(typeof parsed.lastSyncScanAt === "string" ? { lastSyncScanAt: parsed.lastSyncScanAt } : {})
       };
     } catch {
       this.value = { ...DEFAULTS };

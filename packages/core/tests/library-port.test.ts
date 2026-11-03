@@ -68,6 +68,56 @@ describe("LibraryPort contract", () => {
     const port = new InMemoryLibraryPort();
     await expect(port.removeFile(toLibraryPath(["books", "missing.md"]))).rejects.toBeInstanceOf(LibraryPortError);
   });
+
+  test("publishes a staged directory as one move and refuses to cover a destination", async () => {
+    const port = new InMemoryLibraryPort();
+    const staged = toLibraryPath([".studio", "staging", "import_test000001"]);
+    await port.ensureDirectory(toLibraryPath([...staged, "chapters"]));
+    await port.commitFile(toLibraryPath([...staged, "book.json"]), new TextEncoder().encode("{}"), {
+      kind: "absent"
+    });
+    await port.commitFile(
+      toLibraryPath([...staged, "chapters", "0001-first.md"]),
+      new TextEncoder().encode("First.\n"),
+      { kind: "absent" }
+    );
+
+    const published = toLibraryPath(["books", "book_test000001"]);
+    await port.moveDirectory(staged, published);
+
+    // The staged tree is gone and the published tree is complete: readers see either
+    // the old location or the new one, never a partial book.
+    expect(await port.listDirectory(staged)).toEqual([]);
+    expect(await port.readFile(toLibraryPath([...staged, "book.json"]))).toBeNull();
+    expect(await port.listDirectory(published)).toEqual([
+      { name: "book.json", kind: "file" },
+      { name: "chapters", kind: "directory" }
+    ]);
+
+    await port.ensureDirectory(toLibraryPath([...staged, "chapters"]));
+    await port.commitFile(toLibraryPath([...staged, "book.json"]), new TextEncoder().encode("{}"), {
+      kind: "absent"
+    });
+    await expect(port.moveDirectory(staged, published)).rejects.toMatchObject({ code: "already-exists" });
+  });
+
+  test("removes an unpublished staging tree without touching sibling content", async () => {
+    const port = new InMemoryLibraryPort();
+    const staged = toLibraryPath([".studio", "staging", "import_test000001"]);
+    await port.ensureDirectory(toLibraryPath([...staged, "chapters"]));
+    await port.commitFile(toLibraryPath([...staged, "book.json"]), new TextEncoder().encode("{}"), {
+      kind: "absent"
+    });
+    const kept = toLibraryPath(["books", "book_test000001", "book.json"]);
+    await port.commitFile(kept, new TextEncoder().encode("keep"), { kind: "absent" });
+
+    await port.removeDirectory(staged);
+
+    expect(await port.listDirectory(staged)).toEqual([]);
+    expect(await port.readFile(toLibraryPath([...staged, "book.json"]))).toBeNull();
+    expect(new TextDecoder().decode((await port.readFile(kept))?.bytes)).toBe("keep");
+    await expect(port.removeDirectory(staged)).rejects.toMatchObject({ code: "not-found" });
+  });
 });
 
 describe("library-relative paths", () => {

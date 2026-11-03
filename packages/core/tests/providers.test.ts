@@ -115,6 +115,27 @@ describe("provider errors", () => {
     expect(normalizeProviderError({ provider: "openai", status: 400 }).code).toBe("invalid-request");
   });
 
+  test("separates a valid key that lacks permission from a rejected key", () => {
+    expect(normalizeProviderError({ provider: "openai", status: 403 }).code).toBe("permission");
+    expect(
+      normalizeProviderError({ provider: "gemini", body: "insufficient permissions for this model" }).code
+    ).toBe("permission");
+    expect(normalizeProviderError({ provider: "anthropic", body: "missing scope: images" }).code).toBe(
+      "permission"
+    );
+    expect(normalizeProviderError({ provider: "meta", body: "forbidden" }).code).toBe("permission");
+    const error = normalizeProviderError({ provider: "openai", status: 403 });
+    expect(error.message).toBe(
+      "This key does not have permission for that request. Check the key's scopes or plan."
+    );
+    // A rejected key is still auth, and refusal still wins over either.
+    expect(normalizeProviderError({ provider: "openai", status: 401 }).code).toBe("auth");
+    expect(normalizeProviderError({ provider: "openai", body: "invalid key" }).code).toBe("auth");
+    expect(normalizeProviderError({ provider: "meta", status: 403, body: "content policy" }).code).toBe(
+      "refusal"
+    );
+  });
+
   test("maps provider messages without needing a status", () => {
     expect(normalizeProviderError({ provider: "gemini", status: 400, body: "context length exceeded" }).code).toBe("context");
     expect(normalizeProviderError({ provider: "meta", status: 403, body: "content policy" }).code).toBe("refusal");

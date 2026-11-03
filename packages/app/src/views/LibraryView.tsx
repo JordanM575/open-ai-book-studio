@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArchiveRestore, Download, FolderOpen, FolderSearch, Monitor, Moon, MoreHorizontal, Plus, Settings2, Sun, Upload } from "lucide-react";
+import { ArchiveRestore, Download, FileUp, FolderOpen, FolderSearch, Monitor, Moon, MoreHorizontal, Plus, Settings2, Sun, Upload } from "lucide-react";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
+import {
+  buildImportReport,
+  type ImportPreview,
+  type ImportResultReport
+} from "@ai-book-studio/core/manuscript-import";
 import type { BookSummary } from "@ai-book-studio/core/schema";
+import type { LocationHealth } from "@ai-book-studio/core/sync/health";
 import { Button } from "@ai-book-studio/ui/button";
 import { Wordmark } from "@ai-book-studio/ui/brand";
 import { NewBookDialog } from "../components/NewBookDialog";
+import {
+  ImportPreviewDialog,
+  type ConfirmedImportMapping,
+  type ImportPreviewInput
+} from "../components/ImportPreviewDialog";
+import { ImportResultDialog } from "../components/ImportResultDialog";
 import { BookActionsDialog } from "../components/BookActionsDialog";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { formatCount, formatWords, must } from "../lib/utils";
@@ -21,15 +33,26 @@ interface Props {
 
 export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLibraryImported, onNotice }: Props) {
   const [books, setBooks] = useState<BookSummary[] | null>(null);
+  const [health, setHealth] = useState<LocationHealth | null>(null);
   const [creating, setCreating] = useState(false);
   const [managed, setManaged] = useState<BookSummary | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [archiving, setArchiving] = useState<"export" | "import" | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
+  const [manuscript, setManuscript] = useState<
+    | { stage: "idle" }
+    | { stage: "picking" }
+    | { stage: "preview"; input: ImportPreviewInput }
+    | { stage: "publishing"; mapping: ConfirmedImportMapping; preview: ImportPreview }
+    | { stage: "result"; report: ImportResultReport }
+  >({ stage: "idle" });
   const isMac = window.studio.platform === "darwin";
   const isWeb = window.studio.platform === "web";
   const canChooseFolder = !isWeb || "showDirectoryPicker" in window;
+  // Staged publication needs the desktop atomic rename on the macOS reference target (T004).
+  const canImportManuscript = window.studio.platform === "darwin";
+  const manuscriptBusy = manuscript.stage === "picking" || manuscript.stage === "publishing";
 
   const refresh = useCallback(async () => {
     try {
@@ -40,9 +63,20 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
     }
   }, [onNotice]);
 
+  const refreshHealth = useCallback(async () => {
+    setHealth(null);
+    try {
+      setHealth(await must(window.studio.library.locationHealth()));
+    } catch (error) {
+      onNotice(error);
+    }
+  }, [onNotice]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: library.root is the trigger, not a closure value — dropping it would leave a stale book list after a library switch
   useEffect(() => {
     void refresh();
-  }, [library.root, refresh]);
+    void refreshHealth();
+  }, [library.root, refresh, refreshHealth]);
 
   const importBackup = async (): Promise<void> => {
     if (importing) return;
@@ -51,15 +85,86 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
       const report = await must(window.studio.library.importLegacy());
       if (!report) return;
       const chapters = report.books.reduce((sum, book) => sum + book.chapters, 0);
-      setImportNote(
-        `Imported ${report.imported} ${report.imported === 1 ? "book" : "books"} and ${chapters} ${chapters === 1 ? "chapter" : "chapters"}.`
-      );
+      if (report.imported === 0 && report.recognised.length > 0) {
+        const known = report.recognised.length;
+        setImportNote(`Already imported ${known} ${known === 1 ? "book" : "books"}. Nothing was added.`);
+      } else {
+        const pictures = report.books.reduce((sum, book) => sum + book.images, 0);
+        const picturePart = pictures > 0 ? ` with ${pictures} ${pictures === 1 ? "picture" : "pictures"}` : "";
+        setImportNote(
+          `Imported ${report.imported} ${report.imported === 1 ? "book" : "books"} and ${chapters} ${chapters === 1 ? "chapter" : "chapters"}${picturePart}.`
+        );
+      }
       await refresh();
     } catch (error) {
       onNotice(error);
     } finally {
       setImporting(false);
     }
+  };
+
+  /**
+   * The manuscript import journey (spec 029 T011). Choosing and previewing never
+   * write; confirming publishes one complete book; cancelling before the commit
+   * adds nothing. Cancellation is unavailable while the publish resolves, so the
+   * reported outcome is always the actual result.
+   */
+  const startManuscriptImport = async (): Promise<void> => {
+    if (manuscriptBusy) return;
+    setManuscript({ stage: "picking" });
+    try {
+      const pick = await must(window.studio.books.pickImportSource());
+      if (pick.status === "cancelled") {
+        setManuscript({ stage: "idle" });
+        return;
+      }
+      if (pick.status === "refused") {
+        setManuscript({ stage: "preview", input: { kind: "refusal", refusal: pick } });
+        return;
+      }
+      setManuscript({ stage: "preview", input: { kind: "source", source: pick.source } });
+    } catch (error) {
+      onNotice(error);
+      setManuscript({ stage: "idle" });
+    }
+  };
+
+  const confirmManuscriptImport = async (
+    mapping: ConfirmedImportMapping,
+    preview: ImportPreview
+  ): Promise<void> => {
+    setManuscript({ stage: "publishing", mapping, preview });
+    setImportNote("Importing…");
+    try {
+      const detail = await must(window.studio.books.importManuscript(mapping));
+      const report = buildImportReport({
+        sourceName: preview.fileName,
+        normalization: preview.normalization,
+        splits: preview.chapters.map((chapter) => ({
+          order: chapter.order,
+          startLine: chapter.startLine,
+          endLine: chapter.endLine
+        })),
+        published: {
+          bookId: detail.book.id,
+          bookTitle: detail.book.title,
+          chapters: detail.chapters.map((chapter) => ({ title: chapter.title, body: chapter.content }))
+        }
+      });
+      setManuscript({ stage: "result", report });
+      const chapters = report.chapters.length;
+      setImportNote(`Imported ${report.bookTitle} with ${chapters} ${chapters === 1 ? "chapter" : "chapters"}.`);
+      await refresh();
+    } catch (error) {
+      setImportNote(null);
+      onNotice(error);
+      setManuscript({ stage: "idle" });
+    }
+  };
+
+  const dismissManuscriptPreview = (cancelled: boolean): void => {
+    setManuscript({ stage: "idle" });
+    if (cancelled) setImportNote("Import cancelled. Nothing was added.");
   };
 
   const exportArchive = async (): Promise<void> => {
@@ -113,6 +218,26 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
               {importNote}
             </span>
           ) : null}
+          {canImportManuscript ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void startManuscriptImport()}
+              disabled={manuscriptBusy}
+              data-testid="import-manuscript"
+              aria-label="Import manuscript"
+              title="Import manuscript"
+            >
+              <FileUp size={15} />
+              <span className="hidden min-[520px]:inline">
+                {manuscript.stage === "picking"
+                  ? "Choosing…"
+                  : manuscript.stage === "publishing"
+                    ? "Importing…"
+                    : "Import manuscript"}
+              </span>
+            </Button>
+          ) : null}
           {isWeb ? null : (
             <Button
               variant="ghost"
@@ -140,9 +265,11 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
           <Button variant="ghost" size="icon" onClick={theme.cycle} aria-label={`Theme: ${theme.choice}`} title={`Theme: ${theme.choice}`}>
             {theme.choice === "light" ? <Sun size={16} /> : theme.choice === "dark" ? <Moon size={16} /> : <Monitor size={16} />}
           </Button>
-          <Button variant="primary" onClick={() => setCreating(true)}>
+          <Button variant="primary" onClick={() => setCreating(true)} aria-label="New book">
             <Plus size={15} />
-            <span className="hidden min-[420px]:inline">New book</span>
+            <span className="hidden min-[420px]:inline" aria-hidden="true">
+              New book
+            </span>
           </Button>
         </div>
       </header>
@@ -154,10 +281,30 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
               <h1 className="text-[30px] leading-[36px] font-semibold tracking-[-0.4px] min-[700px]:text-[var(--text-large-title-size)] min-[700px]:leading-[var(--text-large-title-leading)]">Library</h1>
               <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[var(--text-subheadline-size)] text-muted-foreground">
                 <FolderOpen size={13} className="shrink-0" />
-                <span className="min-w-0 max-w-[62ch] truncate font-mono text-[12px]" title={library.root}>
+                <span
+                  className="min-w-0 max-w-[62ch] truncate font-mono text-[12px]"
+                  title={library.root}
+                  data-testid="library-root"
+                >
                   {library.root}
                 </span>
               </p>
+              {health ? (
+                <p
+                  className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[var(--text-caption-size)] text-muted-foreground"
+                  data-testid="location-health"
+                >
+                  <span className={health.severity === "danger" ? "font-medium text-destructive" : "font-medium"}>
+                    {health.label}
+                  </span>
+                  <span aria-hidden="true" className="opacity-50">
+                    ·
+                  </span>
+                  <span className="min-w-0 truncate" title={health.message}>
+                    {health.message}
+                  </span>
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {isWeb ? null : (
@@ -177,7 +324,6 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                 onClick={() => void exportArchive()}
                 disabled={archiving !== null}
                 data-testid="export-archive"
-                aria-label="Export library archive"
                 title="Export library archive"
               >
                 <Download size={14} />
@@ -189,7 +335,6 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                 onClick={() => void importArchive()}
                 disabled={archiving !== null}
                 data-testid="import-archive"
-                aria-label="Import library archive"
                 title="Import library archive"
               >
                 <ArchiveRestore size={14} />
@@ -302,6 +447,29 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
         }}
         onNotice={onNotice}
       />
+
+      {manuscript.stage === "preview" ? (
+        <ImportPreviewDialog
+          open
+          input={manuscript.input}
+          onConfirm={(mapping, preview) => void confirmManuscriptImport(mapping, preview)}
+          onCancel={() => dismissManuscriptPreview(manuscript.input.kind === "source")}
+          onOpenChange={(open) => {
+            if (!open) dismissManuscriptPreview(manuscript.input.kind === "source");
+          }}
+        />
+      ) : null}
+
+      {manuscript.stage === "result" ? (
+        <ImportResultDialog
+          open
+          report={manuscript.report}
+          onClose={() => setManuscript({ stage: "idle" })}
+          onOpenChange={(open) => {
+            if (!open) setManuscript({ stage: "idle" });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

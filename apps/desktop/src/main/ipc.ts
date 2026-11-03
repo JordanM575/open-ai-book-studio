@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { readFile } from "node:fs/promises";
+import { app, dialog, ipcMain, shell } from "electron";
+import type { BrowserWindow } from "electron";
+import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import {
@@ -18,19 +19,33 @@ import { imageIdSchema } from "@ai-book-studio/core/images/schema";
 import { ProviderError, connectionIdSchema, providerIdSchema } from "@ai-book-studio/core/providers/types";
 import { redact } from "@ai-book-studio/core/providers/redact";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
+import {
+  importManuscriptInputSchema,
+  type ImportSourcePick
+} from "@ai-book-studio/core/manuscript-import";
+import { pickImportSource, readImportSource, type ImportFilePicker } from "./import";
 import { buildMetadata } from "@ai-book-studio/core/build";
 import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
-import { buildDocx } from "./export";
-import type { DocxImage } from "./export";
-import { writeFileAtomic } from "./library/atomic";
+import { collectDocxImages, exportManuscriptDocx, exportManuscriptMarkdown } from "./export";
 import { importLegacyBackup } from "./legacy-import";
 import { importLibraryArchiveToFolder, writeLibraryArchive } from "./library/archive";
 import { ArchiveError } from "@ai-book-studio/core/archive/errors";
 import { UsageStore } from "./usage";
 import { MetricsStore } from "./metrics";
+import { DEFAULT_SYNC_CHECK_INTERVAL_MINUTES } from "./settings";
+import { SyncService } from "./sync";
+import type { SyncSettings } from "@ai-book-studio/core/ipc";
 import { summarizeCache } from "@ai-book-studio/core/agent/metrics";
-import type { AgentStatus, PluginStatus } from "@ai-book-studio/core/agent/metrics";
+import {
+  monthlySpend,
+  monthlyWarning,
+  turnCostWarning,
+  type UsageRecord
+} from "@ai-book-studio/core/providers/usage";
+import type { AgentStatus, PluginStatus, SpendingStatus } from "@ai-book-studio/core/agent/metrics";
+import { agentGuidanceTextSchema, agentModeSchema } from "@ai-book-studio/core/agent/messages";
+import { ANSWER_LENGTHS } from "@ai-book-studio/core/agent/settings";
 import { loadPlugins, pluginTools, validatePluginFolder } from "./agent/plugins";
 import { readBookSkills } from "./agent/skills";
 import { AmbientService } from "./agent/ambient";
@@ -155,7 +170,7 @@ export function registerIpc(
 
   /* ---------------------------------------------------------------------- app */
 
-  handle(IPC.app.info, () => buildMetadata("desktop"));
+  handle(IPC.app.info, () => buildMetadata("desktop", { platform: process.platform, arch: process.arch }));
 
   /* ------------------------------------------------------------------ library */
 
@@ -246,6 +261,8 @@ export function registerIpc(
     return { library: info, bookCount: imported.bookCount };
   });
 
+  handle(IPC.library.locationHealth, async () => studio.requireLibrary().locationHealth());
+
   /* -------------------------------------------------------------------- books */
 
   handle(IPC.books.list, async () => studio.requireLibrary().listBooks());
@@ -258,6 +275,45 @@ export function registerIpc(
   });
 
   handle(IPC.books.open, async (payload) => studio.requireLibrary().readBook(idSchema.parse(payload)));
+
+  handle(IPC.books.importManuscript, async (payload) => {
+    const input = importManuscriptInputSchema.parse(payload);
+    return studio.requireLibrary().importManuscript(input);
+  });
+
+  handle(IPC.books.pickImportSource, async (): Promise<ImportSourcePick> => {
+    const forced = process.env.STUDIO_IMPORT_PATH;
+    if (forced) {
+      // A headless run cannot answer a native dialog; it names the fixture instead.
+      const read = await readImportSource(forced);
+      if (read.status !== "ready") {
+        return { status: "refused", reason: read.reason, message: read.message };
+      }
+      return { status: "ready", source: read.validation };
+    }
+    const window = getWindow();
+    const picker: ImportFilePicker = {
+      showOpenDialog: (options) =>
+        window
+          ? dialog.showOpenDialog(window, {
+              ...options,
+              title: "Choose a manuscript",
+              buttonLabel: "Choose manuscript"
+            })
+          : dialog.showOpenDialog({
+              ...options,
+              title: "Choose a manuscript",
+              buttonLabel: "Choose manuscript"
+            })
+    };
+    const picked = await pickImportSource(picker);
+    if (picked.status !== "selected") return picked;
+    const read = await readImportSource(picked.absolutePath);
+    if (read.status !== "ready") {
+      return { status: "refused", reason: read.reason, message: read.message };
+    }
+    return { status: "ready", source: read.validation };
+  });
 
   handle(IPC.books.delete, async (payload) => studio.requireLibrary().deleteBook(idSchema.parse(payload)));
 
@@ -277,59 +333,90 @@ export function registerIpc(
     const bookId = idSchema.parse(payload);
     const library = studio.requireLibrary();
     const detail = await library.readBook(bookId);
-    const illustrations = new Map<string, DocxImage>();
-    try {
-      const listed = await library.listImages(bookId);
-      for (const record of listed.manifest.images) {
-        if (!record.chapterId || record.mimeType === "image/webp") continue;
-        if (illustrations.has(record.chapterId)) continue;
-        try {
-          const stored = await library.readImage(bookId, record.id);
-          if (stored) {
-            illustrations.set(record.chapterId, {
-              bytes: stored.bytes,
-              width: record.width,
-              height: record.height,
-              mimeType: record.mimeType,
-              prompt: record.prompt
-            });
-          }
-        } catch (error) {
-          console.warn("[export] Skipping an unavailable illustration:", (error as Error).message);
-        }
-      }
-    } catch (error) {
-      console.warn("[export] Could not read illustrations:", (error as Error).message);
-    }
-    const data = await buildDocx(detail, illustrations);
-    const stem =
-      detail.book.title
-        .trim()
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 60) || "manuscript";
-    const options = {
-      title: "Export manuscript",
-      defaultPath: `${stem}.docx`,
-      filters: [{ name: "Word document", extensions: ["docx"] }]
-    };
-    /*
-     * A headless run cannot answer a save dialog, so it names the folder instead. The hook only
-     * exists for the checks: otherwise the export is never exercised end to end, and the parts
-     * that go wrong are the ones nobody clicked.
-     */
-    const forced = process.env.STUDIO_EXPORT_PATH;
-    if (forced) {
-      const target = join(forced, `${stem}.docx`);
-      await writeFileAtomic(target, data);
-      return target;
-    }
-    const window = getWindow();
-    const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
-    if (choice.canceled || !choice.filePath) return null;
-    await writeFileAtomic(choice.filePath, data);
-    return choice.filePath;
+    const illustrations = await collectDocxImages(detail, library);
+    return exportManuscriptDocx(detail, illustrations, library.root, {
+      /*
+       * A headless run cannot answer a save dialog, so it names the folder instead. The hook
+       * only exists for the checks: otherwise the export is never exercised end to end, and the
+       * parts that go wrong are the ones nobody clicked.
+       */
+      pickDestination: async (suggestedName) => {
+        const forced = process.env.STUDIO_EXPORT_PATH;
+        if (forced) return join(forced, suggestedName);
+        const options = {
+          title: "Export manuscript",
+          defaultPath: suggestedName,
+          filters: [{ name: "Word document", extensions: ["docx"] }]
+        };
+        const window = getWindow();
+        const choice = window
+          ? await dialog.showSaveDialog(window, options)
+          : await dialog.showSaveDialog(options);
+        if (choice.canceled || !choice.filePath) return null;
+        return choice.filePath;
+      },
+      confirmReplace: async (path) => {
+        const options = {
+          type: "question" as const,
+          buttons: ["Replace", "Cancel"],
+          defaultId: 1,
+          cancelId: 1,
+          message: `“${basename(path)}” already exists. Replace it?`,
+          detail: "The current file will be overwritten."
+        };
+        const window = getWindow();
+        const answer = window
+          ? await dialog.showMessageBox(window, options)
+          : await dialog.showMessageBox(options);
+        return answer.response === 0;
+      },
+      statDestination: async (path) =>
+        stat(path)
+          .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
+          .catch(() => null)
+    });
+  });
+
+  handle(IPC.books.exportMarkdown, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    const library = studio.requireLibrary();
+    const detail = await library.readBook(bookId);
+    return exportManuscriptMarkdown(detail, library.root, {
+      pickDestination: async (suggestedName) => {
+        const forced = process.env.STUDIO_EXPORT_PATH;
+        if (forced) return join(forced, suggestedName);
+        const options = {
+          title: "Export manuscript",
+          defaultPath: suggestedName,
+          filters: [{ name: "Markdown document", extensions: ["md", "markdown"] }]
+        };
+        const window = getWindow();
+        const choice = window
+          ? await dialog.showSaveDialog(window, options)
+          : await dialog.showSaveDialog(options);
+        if (choice.canceled || !choice.filePath) return null;
+        return choice.filePath;
+      },
+      confirmReplace: async (path) => {
+        const options = {
+          type: "question" as const,
+          buttons: ["Replace", "Cancel"],
+          defaultId: 1,
+          cancelId: 1,
+          message: `“${basename(path)}” already exists. Replace it?`,
+          detail: "The current file will be overwritten."
+        };
+        const window = getWindow();
+        const answer = window
+          ? await dialog.showMessageBox(window, options)
+          : await dialog.showMessageBox(options);
+        return answer.response === 0;
+      },
+      statDestination: async (path) =>
+        stat(path)
+          .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
+          .catch(() => null)
+    });
   });
 
   /* ----------------------------------------------------------------- chapters */
@@ -407,6 +494,43 @@ export function registerIpc(
     return null;
   });
 
+  /* --------------------------------------------------------------------- sync */
+
+  const sync = new SyncService(studio, settings);
+
+  handle(IPC.sync.check, async () => sync.check());
+
+  handle(IPC.sync.accept, async (payload) => {
+    const paths = z.array(z.string().min(1).max(500)).max(500).parse(payload);
+    return sync.accept(paths);
+  });
+
+  handle(IPC.sync.keepMine, async (payload) => {
+    const input = z.object({ bookId: idSchema, chapterId: idSchema }).parse(payload);
+    return sync.keepMine(input.bookId, input.chapterId);
+  });
+
+  handle(IPC.sync.discardDraft, async (payload) => {
+    const input = z.object({ bookId: idSchema, chapterId: idSchema }).parse(payload);
+    sync.discardDraft(input.bookId, input.chapterId);
+    return null;
+  });
+
+  const syncSettings = (): SyncSettings => ({
+    checkIntervalMinutes: settings.get().syncCheckIntervalMinutes ?? DEFAULT_SYNC_CHECK_INTERVAL_MINUTES,
+    lastScanAt: settings.get().lastSyncScanAt ?? null
+  });
+
+  handle(IPC.sync.settings, async () => syncSettings());
+
+  handle(IPC.sync.updateSettings, async (payload) => {
+    const patch = z.object({ checkIntervalMinutes: z.number().min(1).max(1440).optional() }).parse(payload);
+    if (patch.checkIntervalMinutes !== undefined) {
+      await settings.update({ syncCheckIntervalMinutes: patch.checkIntervalMinutes });
+    }
+    return syncSettings();
+  });
+
   /* --------------------------------------------------------------- providers */
 
   handle(IPC.providers.list, () => PROVIDER_LIST);
@@ -420,6 +544,8 @@ export function registerIpc(
   handle(IPC.connections.available, async () => providers.available());
 
   handle(IPC.connections.status, async () => providers.status());
+
+  handle(IPC.connections.check, async () => providers.check());
 
   handle(IPC.connections.addKey, async (payload) => {
     const input = z
@@ -455,6 +581,28 @@ export function registerIpc(
   });
 
   /* -------------------------------------------------------------------- agent */
+
+  /**
+   * The book's spending hooks evaluated against its usage log. Every warning is display-only:
+   * nothing here blocks, refuses or retries a turn; enforcement waits on D-116.
+   */
+  const spendStatus = (
+    agent: { perTurnCeilingUsd?: number | null; monthlyWarningUsd?: number | null },
+    records: UsageRecord[]
+  ): SpendingStatus => {
+    const perTurnCeilingUsd = agent.perTurnCeilingUsd ?? null;
+    const monthlyWarningUsd = agent.monthlyWarningUsd ?? null;
+    const month = monthlySpend(records, new Date());
+    const last = records.at(-1) ?? null;
+    return {
+      perTurnCeilingUsd,
+      monthlyWarningUsd,
+      monthToDateUsd: month.totalUsd,
+      monthUnknownCostTurns: month.unknownCostTurns,
+      lastTurnWarning: last ? turnCostWarning(last, perTurnCeilingUsd) : null,
+      monthlyWarning: monthlyWarning(month, monthlyWarningUsd)
+    };
+  };
 
   /** Everything the app shows about a book's agent. */
   const agentStatus = async (bookId: string): Promise<AgentStatus> => {
@@ -492,6 +640,9 @@ export function registerIpc(
         };
       }),
       toolTotals: metrics,
+      tone: book.settings?.agent?.tone ?? "",
+      answerLength: book.settings?.agent?.answerLength ?? "standard",
+      spending: spendStatus(book.settings?.agent ?? {}, usage),
       skills: {
         present: skills !== null,
         enabled: book.settings?.agent?.skillsEnabled !== false,
@@ -511,6 +662,10 @@ export function registerIpc(
         patch: z.object({
           disabledTools: z.array(z.string().min(2).max(60)).max(64).optional(),
           skillsEnabled: z.boolean().optional(),
+          tone: z.string().max(500).optional(),
+          answerLength: z.enum(ANSWER_LENGTHS).optional(),
+          perTurnCeilingUsd: z.number().positive().finite().nullable().optional(),
+          monthlyWarningUsd: z.number().positive().finite().nullable().optional(),
           cachePrefixMode: z.enum(["off", "auto"]).optional()
         })
       })
@@ -521,6 +676,10 @@ export function registerIpc(
     const cache = { ...book.settings.cache };
     if (input.patch.disabledTools) agent.disabledTools = [...new Set(input.patch.disabledTools)];
     if (input.patch.skillsEnabled !== undefined) agent.skillsEnabled = input.patch.skillsEnabled;
+    if (input.patch.tone !== undefined) agent.tone = input.patch.tone;
+    if (input.patch.answerLength !== undefined) agent.answerLength = input.patch.answerLength;
+    if (input.patch.perTurnCeilingUsd !== undefined) agent.perTurnCeilingUsd = input.patch.perTurnCeilingUsd;
+    if (input.patch.monthlyWarningUsd !== undefined) agent.monthlyWarningUsd = input.patch.monthlyWarningUsd;
     if (input.patch.cachePrefixMode) cache.prefixMode = input.patch.cachePrefixMode;
     await library.updateBook(input.bookId, { settings: { ...book.settings, agent, cache } });
     return agentStatus(input.bookId);
@@ -755,6 +914,8 @@ export function registerIpc(
     bookId: idSchema,
     chapterId: idSchema.nullable().optional(),
     prompt: z.string().min(1).max(50_000),
+    mode: agentModeSchema,
+    guidance: agentGuidanceTextSchema.optional(),
     threadId: idSchema.nullable().optional(),
     background: z.boolean().optional(),
     model: z

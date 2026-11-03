@@ -174,7 +174,7 @@ describe("the tool bridge", () => {
     await library.updateBook(book.id, {
       settings: {
         ...book.settings,
-        agent: { disabledTools: ["append_to_chapter"], skillsEnabled: true }
+        agent: { ...book.settings.agent, disabledTools: ["append_to_chapter"] }
       }
     });
     const bridge = new ToolBridge(() => library);

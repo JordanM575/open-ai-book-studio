@@ -65,8 +65,11 @@ export function webMcpTools(catalog: ToolDescriptor[]): WebMcpTool[] {
 export function webMcpAnnotations(tier: ToolTier): WebMcpAnnotations {
   return {
     readOnlyHint: tier === "read",
-    // Every studio tool returns book content, which the caller must treat as data.
-    untrustedContentHint: false,
+    // Every studio tool returns book content: prose the author supplied, which the
+    // studio did not write and which may embed third-party text. WebMCP's
+    // untrustedContentHint marks output the caller must treat as data, not
+    // instructions — so it is always true here.
+    untrustedContentHint: true,
     consequentialHint: tier === "destructive"
   };
 }

@@ -59,7 +59,9 @@ describe("ImageService", () => {
     });
     expect(result.inspection).toMatchObject({ format: "png", width: 1, height: 1 });
     expect(captured.url).toBe("https://api.meta.ai/v1/images/generations");
-    expect((captured.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
+    const init = captured.init;
+    if (!init) throw new Error("the provider was never called");
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
     expect(JSON.parse(String(captured.init?.body))).toMatchObject({
       model: "muse-image-1.0",
       prompt: "a lighthouse",

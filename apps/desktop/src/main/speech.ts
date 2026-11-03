@@ -120,7 +120,7 @@ export class SpeechService {
         });
       }
 
-      const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim();
+      const type = (response.headers.get("content-type") ?? "").split(";")[0]?.trim() ?? "";
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength === 0) {
         throw new ProviderError("unknown", "The voice service returned no audio.");

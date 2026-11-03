@@ -5,7 +5,10 @@ import {
   estimateCost,
   formatCost,
   formatUsd,
+  monthlySpend,
+  monthlyWarning,
   summarizeUsage,
+  turnCostWarning,
   usageRecordSchema,
   type UsageRecord
 } from "@ai-book-studio/core/providers/usage";
@@ -90,5 +93,55 @@ describe("usage", () => {
     expect(ceilingWarning(8, 10)?.level).toBe("approaching");
     expect(ceilingWarning(10, 10)?.level).toBe("reached");
     expect(ceilingWarning(12, 10)?.message).toContain("reached");
+  });
+
+  test("a per-turn warning needs a set ceiling and a priced turn", () => {
+    const priced = { costUsd: 0.5, costBasis: "reported" } as const;
+    expect(turnCostWarning(priced, null)).toBeNull();
+    expect(turnCostWarning(priced, 0)).toBeNull();
+    expect(turnCostWarning(priced, Number.NaN)).toBeNull();
+    expect(turnCostWarning({ costUsd: null, costBasis: "unknown" }, 1)).toBeNull();
+    expect(turnCostWarning({ costUsd: 5, costBasis: "unknown" }, 1)).toBeNull();
+    expect(turnCostWarning({ costUsd: 5, costBasis: "plan" }, 1)).toBeNull();
+    expect(turnCostWarning(priced, 10)).toBeNull();
+  });
+
+  test("a per-turn warning names the turn and its limit", () => {
+    expect(turnCostWarning({ costUsd: 8, costBasis: "estimated" }, 10)?.level).toBe("approaching");
+    const reached = turnCostWarning({ costUsd: 12, costBasis: "reported" }, 10);
+    expect(reached?.level).toBe("reached");
+    expect(reached?.message).toContain("This turn cost");
+    expect(reached?.message).toContain("per-turn limit");
+  });
+
+  test("monthly spend counts only the current UTC month", () => {
+    const now = new Date("2026-11-15T12:00:00.000Z");
+    const spend = monthlySpend(
+      [
+        record({ at: "2026-11-01T00:00:00.000Z", costUsd: 1.5, costBasis: "reported" }),
+        record({ at: "2026-10-31T23:59:59.000Z", costUsd: 100, costBasis: "reported" }),
+        record({ at: "2026-11-20T00:00:00.000Z", costUsd: 0.5, costBasis: "estimated" }),
+        record({ at: "2026-11-21T00:00:00.000Z", costUsd: null, costBasis: "unknown" }),
+        record({ at: "not-a-date", costUsd: 50, costBasis: "reported" })
+      ],
+      now
+    );
+    expect(spend.totalUsd).toBe(2);
+    expect(spend.unknownCostTurns).toBe(1);
+    expect(spend.estimatedCostTurns).toBe(1);
+    expect(monthlySpend([], now)).toEqual({ totalUsd: 0, unknownCostTurns: 0, estimatedCostTurns: 0 });
+  });
+
+  test("a monthly warning is a level, never a limit, and admits the lower bound", () => {
+    expect(monthlyWarning({ totalUsd: 1, unknownCostTurns: 0, estimatedCostTurns: 0 }, null)).toBeNull();
+    expect(monthlyWarning({ totalUsd: 1, unknownCostTurns: 0, estimatedCostTurns: 0 }, 0)).toBeNull();
+    expect(monthlyWarning({ totalUsd: 1, unknownCostTurns: 0, estimatedCostTurns: 0 }, 10)).toBeNull();
+    const approaching = monthlyWarning({ totalUsd: 8, unknownCostTurns: 0, estimatedCostTurns: 1 }, 10);
+    expect(approaching?.level).toBe("approaching");
+    expect(approaching?.message).toContain("monthly warning level");
+    expect(approaching?.message).not.toContain("lower bound");
+    const reached = monthlyWarning({ totalUsd: 12, unknownCostTurns: 2, estimatedCostTurns: 0 }, 10);
+    expect(reached?.level).toBe("reached");
+    expect(reached?.message).toContain("lower bound");
   });
 });

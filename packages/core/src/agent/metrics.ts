@@ -1,3 +1,6 @@
+import type { CeilingWarning } from "../providers/usage";
+import type { AgentAnswerLength } from "./settings";
+
 /**
  * The tool metrics.
  *
@@ -142,12 +145,34 @@ export interface AgentSkillsStatus {
   characters: number;
 }
 
+/** Where this book's spending hooks stand. Warnings never block a turn (D-116 stays Proposed). */
+export interface SpendingStatus {
+  /** The author's per-turn cost ceiling in USD, or null when unset. */
+  perTurnCeilingUsd: number | null;
+  /** The author's monthly warning level in USD, or null when unset. */
+  monthlyWarningUsd: number | null;
+  /** What this book spent in the current UTC month. */
+  monthToDateUsd: number;
+  /** This month's turns the provider did not price. The month total is a lower bound above zero. */
+  monthUnknownCostTurns: number;
+  /** The per-turn check against the latest turn, or null when nothing warns. */
+  lastTurnWarning: CeilingWarning | null;
+  /** The monthly check, or null when nothing warns. */
+  monthlyWarning: CeilingWarning | null;
+}
+
 /** Everything the app shows about a book's agent, in one call. */
 export interface AgentStatus {
   /** The tools the agent may call, and which ones are withdrawn. */
   tools: AgentToolStatus[];
   /** The totals across every tool. */
   toolTotals: ToolMetricsSummary;
+  /** The per-book tone, as the author wrote it. Empty means none. */
+  tone: string;
+  /** The per-book answer length. */
+  answerLength: AgentAnswerLength;
+  /** The per-book spending hooks and where this month stands. */
+  spending: SpendingStatus;
   /** The book's skills file. */
   skills: AgentSkillsStatus;
   /** The cache settings and what the cache actually did. */

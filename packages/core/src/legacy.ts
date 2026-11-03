@@ -52,9 +52,30 @@ const manuscriptSettingsSchema = z.looseObject({
   preserveLineBreaks: z.boolean().optional()
 });
 
+export const legacyImageSchema = z.looseObject({
+  mimeType: z.string().optional(),
+  data: z.string().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  prompt: z.string().optional(),
+  model: z.string().optional(),
+  costUsd: z.number().optional()
+});
+
+export const legacyImagePageSchema = z.looseObject({
+  id: z.string().optional(),
+  anchor: z.string().optional(),
+  caption: z.string().optional(),
+  altText: z.string().optional(),
+  currentVersion: z.string().optional(),
+  versions: z.array(z.string()).optional(),
+  cover: z.boolean().optional()
+});
+
 const bookSchema = z.looseObject({
   title: z.string().min(1),
   description: z.string().optional(),
+  imagePages: z.array(legacyImagePageSchema).optional(),
   genres: z.array(z.string()).optional(),
   influences: z.array(z.string()).optional(),
   isErotica: z.boolean().optional(),
@@ -74,10 +95,13 @@ export type LegacyScene = z.infer<typeof sceneSchema>;
 export type LegacyCharacter = z.infer<typeof characterSchema>;
 export type LegacyMemory = z.infer<typeof memorySchema>;
 export type LegacyBook = z.infer<typeof bookSchema>;
+export type LegacyImage = z.infer<typeof legacyImageSchema>;
+export type LegacyImagePage = z.infer<typeof legacyImagePageSchema>;
 export type LegacyManuscriptSettings = z.infer<typeof manuscriptSettingsSchema>;
 
 export interface LegacyExport {
   books: LegacyBook[];
+  imageMap?: Record<string, unknown>;
   exportedAt?: string;
 }
 
@@ -122,14 +146,19 @@ export function parseLegacyExport(raw: unknown): LegacyExport {
 
   if (books.length === 0) throw new LegacyImportError("This backup does not contain any books.");
 
+  const imageMap = payload.imageMap;
   return {
     books,
-    ...(typeof payload.exportedAt === "string" ? { exportedAt: payload.exportedAt } : {})
+    ...(typeof payload.exportedAt === "string" ? { exportedAt: payload.exportedAt } : {}),
+    ...(typeof imageMap === "object" && imageMap !== null && !Array.isArray(imageMap)
+      ? { imageMap: imageMap as Record<string, unknown> }
+      : {})
   };
 }
 
 export interface LegacyImportReport {
   imported: number;
-  books: Array<{ title: string; chapters: number; characters: number; memories: number }>;
+  books: Array<{ title: string; chapters: number; characters: number; memories: number; images: number }>;
+  recognised: Array<{ title: string; bookId: string }>;
   warnings: string[];
 }

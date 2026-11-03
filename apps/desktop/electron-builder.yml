@@ -1,5 +1,6 @@
 appId: studio.aibook.app
 productName: AI Book Studio
+afterPack: ../../scripts/flip-fuses.mjs
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 directories:
   buildResources: build

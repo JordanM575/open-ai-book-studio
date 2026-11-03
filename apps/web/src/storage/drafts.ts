@@ -88,6 +88,11 @@ export class BrowserDraftBuffer {
     return this.drafts.get(this.key(key.bookId, key.chapterId)) ?? null;
   }
 
+  /** Chapter ids with unsent text, for the drift detector's `both-changed` check. */
+  chapterIds(): string[] {
+    return [...this.drafts.values()].map((draft) => draft.chapterId);
+  }
+
   get size(): number {
     return this.drafts.size;
   }

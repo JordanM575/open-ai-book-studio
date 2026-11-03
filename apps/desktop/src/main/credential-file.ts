@@ -50,6 +50,28 @@ export class FileCredentialVault implements CredentialVault {
   }
 
   /**
+   * Explicit round-trip probe for the keychain check control. This is the only vault call that
+   * touches a secret-shaped value, so views must not call it on open: when the operating
+   * system wants the author's confirmation, this call waits for them.
+   */
+  async check(): Promise<Omit<CredentialStatus, "connections">> {
+    if (!(await this.cipher.available())) {
+      return { available: false, backend: "Protected storage", detail: "Protected storage is unavailable." };
+    }
+    try {
+      const probe = `credential-probe-${Date.now()}`;
+      if (this.cipher.decrypt(this.cipher.encrypt(probe)) !== probe) throw new Error("probe mismatch");
+      return { available: true, backend: "Protected storage", detail: "" };
+    } catch {
+      return {
+        available: false,
+        backend: "Protected storage",
+        detail: "Protected storage refused the check. Unlock the system keyring, then check again."
+      };
+    }
+  }
+
+  /**
    * Owner-only permissions are part of the promise, not just the write path. A file restored from a
    * backup or copied between machines can arrive world-readable; check it at startup and correct it.
    * Windows does not expose POSIX modes, so a failed chmod is reported rather than treated as fatal.

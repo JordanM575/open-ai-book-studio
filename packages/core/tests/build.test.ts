@@ -11,6 +11,19 @@ describe("build metadata", () => {
     expect(metadata.commit).toBe("unknown");
   });
 
+  test("every build reports unsigned signing until D-115 is accepted", () => {
+    for (const target of ["desktop", "web"] as const) {
+      expect(buildMetadata(target).signing).toEqual({ status: "unsigned" });
+    }
+  });
+
+  test("host identity is injected at the edge and unknown by default", () => {
+    expect(buildMetadata("desktop")).toMatchObject({ platform: "unknown", arch: "unknown" });
+    const observed = buildMetadata("desktop", { platform: "darwin", arch: "arm64" });
+    expect(observed).toMatchObject({ platform: "darwin", arch: "arm64" });
+    expect(observed.target).toBe("desktop");
+  });
+
   test("desktop and web capabilities come from one table", () => {
     const desktop = new Map(buildMetadata("desktop").capabilities.map((capability) => [capability.id, capability]));
     const web = new Map(buildMetadata("web").capabilities.map((capability) => [capability.id, capability]));

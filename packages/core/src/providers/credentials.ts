@@ -16,8 +16,13 @@ export interface CredentialVault {
   remove(id: string): Promise<void>;
   /** Record that a connection was used, without rewriting the secret. */
   touch(id: string, at?: string): Promise<void>;
-  /** Probe the protected storage without exposing a secret. */
+  /** Fast availability read. Never touches a secret-shaped value, so views may call it on open. */
   status?(): Promise<Omit<CredentialStatus, "connections">>;
+  /**
+   * Round-trip one probe value through the cipher. Explicit only: on some systems the first
+   * real use asks the author to confirm, so opening a view must never call this.
+   */
+  check?(): Promise<Omit<CredentialStatus, "connections">>;
 }
 
 export class MemoryVault implements CredentialVault {

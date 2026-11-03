@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, Gauge, Plug, ScrollText, Smartphone, Wrench } from "lucide-react";
-import type { AgentStatus } from "@ai-book-studio/core/agent/metrics";
+import { FolderOpen, Gauge, Plug, ScrollText, SlidersHorizontal, Smartphone, Wallet, Wrench } from "lucide-react";
+import type { AgentStatus, SpendingStatus } from "@ai-book-studio/core/agent/metrics";
+import type { AgentAnswerLength } from "@ai-book-studio/core/agent/settings";
 import type { BridgeStatus } from "@ai-book-studio/core/ipc";
+import { formatUsd } from "@ai-book-studio/core/providers/usage";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { must } from "../lib/utils";
@@ -21,6 +23,22 @@ const TIER_LABEL: Record<AgentStatus["tools"][number]["tier"], string> = {
 
 const TIER_ORDER: AgentStatus["tools"][number]["tier"][] = ["read", "write", "destructive"];
 
+/** Parse a dollar limit the author typed: empty clears it, anything else must be a positive number. */
+function parseLimit(text: string): number | null | undefined {
+  if (text.trim() === "") return null;
+  const value = Number(text);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** The month line: what this book spent, honestly qualified when some turns went unpriced. */
+function monthText(spending: SpendingStatus): string {
+  const amount = formatUsd(spending.monthToDateUsd);
+  if (spending.monthUnknownCostTurns <= 0) return `Spent ${amount} so far this month.`;
+  const turns =
+    spending.monthUnknownCostTurns === 1 ? "1 turn" : `${spending.monthUnknownCostTurns} turns`;
+  return `Spent at least ${amount} so far this month: ${turns} did not report a cost.`;
+}
+
 /**
  * The agent's own settings and numbers.
  *
@@ -33,6 +51,9 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [toneDraft, setToneDraft] = useState<string | null>(null);
+  const [perTurnDraft, setPerTurnDraft] = useState<string | null>(null);
+  const [monthlyDraft, setMonthlyDraft] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -107,6 +128,35 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
 
   const withdrawn = status?.tools.filter((tool) => !tool.enabled) ?? [];
   const visible = showAll ? status?.tools ?? [] : (status?.tools ?? []).filter((tool) => tool.enabled);
+
+  const toneValue = toneDraft ?? status?.tone ?? "";
+  const saveTone = async (): Promise<void> => {
+    await setSettings({ tone: toneValue });
+    setToneDraft(null);
+  };
+  const clearTone = async (): Promise<void> => {
+    setToneDraft(null);
+    await setSettings({ tone: "" });
+  };
+
+  const perTurnLimit = status?.spending.perTurnCeilingUsd ?? null;
+  const monthlyLimit = status?.spending.monthlyWarningUsd ?? null;
+  const perTurnValue = perTurnDraft ?? (perTurnLimit === null ? "" : String(perTurnLimit));
+  const monthlyValue = monthlyDraft ?? (monthlyLimit === null ? "" : String(monthlyLimit));
+  const perTurnParsed = parseLimit(perTurnValue);
+  const monthlyParsed = parseLimit(monthlyValue);
+  const spendingUnchanged = perTurnParsed === perTurnLimit && monthlyParsed === monthlyLimit;
+  const saveSpending = async (): Promise<void> => {
+    if (perTurnParsed === undefined || monthlyParsed === undefined) return;
+    await setSettings({ perTurnCeilingUsd: perTurnParsed, monthlyWarningUsd: monthlyParsed });
+    setPerTurnDraft(null);
+    setMonthlyDraft(null);
+  };
+  const clearSpending = async (): Promise<void> => {
+    setPerTurnDraft(null);
+    setMonthlyDraft(null);
+    await setSettings({ perTurnCeilingUsd: null, monthlyWarningUsd: null });
+  };
 
   const toggleBridge = async (): Promise<void> => {
     if (busy) return;
@@ -189,6 +239,174 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
               <span>Use the SKILLS.md</span>
             </label>
           ) : null}
+        </section>
+
+        <section className="mt-6">
+          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+            <SlidersHorizontal size={15} />
+            Tone and answer length
+          </h3>
+          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            Tell the agent how to sound and how long its answers should run. The tone and answer
+            length travel with every turn you send for this book.
+          </p>
+          <label
+            className="mt-3 block text-[var(--text-caption-size)] text-muted-foreground"
+            htmlFor="agent-tone"
+          >
+            Tone
+          </label>
+          <input
+            id="agent-tone"
+            type="text"
+            value={toneValue}
+            maxLength={500}
+            placeholder="For example: plainspoken with dry humor"
+            onChange={(event) => setToneDraft(event.target.value)}
+            disabled={busy}
+            className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+            data-testid="agent-tone"
+            aria-label="Tone"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void saveTone()}
+              disabled={busy || toneValue === (status?.tone ?? "")}
+              data-testid="agent-tone-save"
+            >
+              Save tone
+            </Button>
+            {toneValue !== "" ? (
+              <Button variant="ghost" size="sm" onClick={() => void clearTone()} disabled={busy} data-testid="agent-tone-clear">
+                Clear
+              </Button>
+            ) : null}
+          </div>
+          <label
+            className="mt-4 block text-[var(--text-caption-size)] text-muted-foreground"
+            htmlFor="agent-answer-length"
+          >
+            Answer length
+          </label>
+          <select
+            id="agent-answer-length"
+            value={status?.answerLength ?? "standard"}
+            onChange={(event) => void setSettings({ answerLength: event.target.value as AgentAnswerLength })}
+            disabled={busy || !status}
+            className="mt-1 rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+            data-testid="agent-answer-length"
+            aria-label="Answer length"
+          >
+            <option value="brief">Brief</option>
+            <option value="standard">Standard</option>
+            <option value="detailed">Detailed</option>
+          </select>
+        </section>
+
+        <section className="mt-6">
+          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+            <Wallet size={15} />
+            Spending
+          </h3>
+          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            Set a per-turn ceiling and a monthly warning level for this book, in dollars. The studio
+            warns you here when spending nears them. A warning never stops the agent.
+          </p>
+          <p
+            className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground"
+            data-testid="agent-spending-month"
+          >
+            {status?.spending ? monthText(status.spending) : "Reading…"}
+          </p>
+          {status?.spending?.lastTurnWarning ?? status?.spending?.monthlyWarning ? (
+            <ul className="mt-2 space-y-1" data-testid="agent-spending-warnings">
+              {status?.spending?.lastTurnWarning ? (
+                <li className="text-[var(--text-caption-size)] text-muted-foreground">
+                  {status.spending.lastTurnWarning.message}
+                </li>
+              ) : null}
+              {status?.spending?.monthlyWarning ? (
+                <li className="text-[var(--text-caption-size)] text-muted-foreground">
+                  {status.spending.monthlyWarning.message}
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label
+                className="block text-[var(--text-caption-size)] text-muted-foreground"
+                htmlFor="agent-spending-per-turn"
+              >
+                Per-turn ceiling
+              </label>
+              <input
+                id="agent-spending-per-turn"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="Dollars, for example 5"
+                value={perTurnValue}
+                onChange={(event) => setPerTurnDraft(event.target.value)}
+                disabled={busy || !status}
+                className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+                data-testid="agent-spending-per-turn"
+                aria-label="Per-turn ceiling in dollars"
+              />
+            </div>
+            <div>
+              <label
+                className="block text-[var(--text-caption-size)] text-muted-foreground"
+                htmlFor="agent-spending-monthly"
+              >
+                Monthly warning level
+              </label>
+              <input
+                id="agent-spending-monthly"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="Dollars, for example 20"
+                value={monthlyValue}
+                onChange={(event) => setMonthlyDraft(event.target.value)}
+                disabled={busy || !status}
+                className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+                data-testid="agent-spending-monthly"
+                aria-label="Monthly warning level in dollars"
+              />
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void saveSpending()}
+              disabled={
+                busy ||
+                perTurnParsed === undefined ||
+                monthlyParsed === undefined ||
+                spendingUnchanged
+              }
+              data-testid="agent-spending-save"
+            >
+              Save spending limits
+            </Button>
+            {perTurnLimit !== null || monthlyLimit !== null ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void clearSpending()}
+                disabled={busy}
+                data-testid="agent-spending-clear"
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
         </section>
 
         <section className="mt-6">

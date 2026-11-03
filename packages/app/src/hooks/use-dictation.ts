@@ -36,7 +36,9 @@ export function useDictation({ onText, onError, maxMs = MAX_DICTATION_MS }: Dict
   }, []);
 
   const release = useCallback(() => {
-    stream.current?.getTracks().forEach((track) => track.stop());
+    stream.current?.getTracks().forEach((track) => {
+      track.stop();
+    });
     stream.current = null;
   }, []);
 
@@ -93,7 +95,9 @@ export function useDictation({ onText, onError, maxMs = MAX_DICTATION_MS }: Dict
       return;
     }
     if (cancelled.current || !mounted.current) {
-      media.getTracks().forEach((track) => track.stop());
+      media.getTracks().forEach((track) => {
+        track.stop();
+      });
       return;
     }
     stream.current = media;

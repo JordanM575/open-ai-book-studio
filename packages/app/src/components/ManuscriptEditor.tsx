@@ -4,6 +4,7 @@ import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import { pushHistory, redoHistory, undoHistory } from "../lib/editor-history";
 import { countWords, formatCount, savedTime } from "../lib/utils";
 import { insertTranscript as insertAtSelection } from "../lib/voice-text";
+import { normalizePasteText } from "@ai-book-studio/core/paste";
 import { VoiceButton } from "./VoiceButton";
 
 export type SaveStatus =
@@ -14,7 +15,17 @@ export type SaveStatus =
   | { kind: "error"; message: string };
 
 export interface EditorHandle {
-  flush: () => Promise<void>;
+  /** Flush pending chapter text and report whether the saved source is confirmed. */
+  flush: () => Promise<SaveStatus>;
+  /** The live buffer status, without waiting for the mirrored React state to land. */
+  getStatus: () => SaveStatus;
+}
+
+export interface EditorSelection {
+  start: number;
+  end: number;
+  /** Changes every time a new span is requested, even for the same offsets. */
+  nonce: number;
 }
 
 interface Props {
@@ -26,6 +37,8 @@ interface Props {
   /** The chapter illustration, served from the book folder. */
   illustration?: ImageRecord | null;
   illustrationData?: string | null;
+  /** An evidence span to highlight, for example from a manuscript review finding. */
+  selection?: EditorSelection | null;
 }
 
 interface Base {
@@ -36,13 +49,14 @@ interface Base {
 }
 
 export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function ManuscriptEditor(
-  { bookId, chapter, ordinal, onSaved, onStatus, illustration, illustrationData },
+  { bookId, chapter, ordinal, onSaved, onStatus, illustration, illustrationData, selection },
   ref
 ) {
   const [content, setContent] = useState(chapter.content);
   const [title, setTitle] = useState(chapter.title);
   const [status, setStatus] = useState<SaveStatus>({ kind: "saved", at: Date.now() });
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const statusRef = useRef(status);
 
   const base = useRef<Base>({ version: chapter.version, hash: chapter.hash, content: chapter.content, title: chapter.title });
   const latest = useRef(content);
@@ -50,19 +64,36 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
 
+  const updateStatus = useCallback((next: SaveStatus): SaveStatus => {
+    statusRef.current = next;
+    setStatus(next);
+    return next;
+  }, []);
+
   useEffect(() => {
     onStatus(status);
   }, [status, onStatus]);
 
+  const selectionNonce = selection?.nonce;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectionNonce is the change token; selection is a prop whose identity may change without new content, and following it would steal focus on every render
+  useEffect(() => {
+    if (!selection || selectionNonce === undefined) return;
+    const element = textarea.current;
+    if (!element) return;
+    element.focus();
+    element.setSelectionRange(selection.start, selection.end);
+    element.scrollIntoView({ block: "center" });
+  }, [selectionNonce]);
+
   const save = useCallback(
-    async (text: string): Promise<void> => {
+    async (text: string): Promise<SaveStatus> => {
       if (timer.current) {
         clearTimeout(timer.current);
         timer.current = null;
       }
-      if (text === base.current.content) return;
+      if (text === base.current.content) return statusRef.current;
 
-      setStatus({ kind: "saving" });
+      updateStatus({ kind: "saving" });
       try {
         const result = await window.studio.chapters.save({
           bookId,
@@ -73,36 +104,37 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         });
 
         if (!result.ok) {
-          setStatus({ kind: "error", message: result.error.message });
-          return;
+          return updateStatus({ kind: "error", message: result.error.message });
         }
         if (result.data.status === "conflict") {
-          setStatus({ kind: "conflict", conflict: result.data.conflict });
-          return;
+          return updateStatus({ kind: "conflict", conflict: result.data.conflict });
         }
 
         const saved = result.data.chapter;
         base.current = { version: saved.version, hash: saved.hash, content: saved.content, title: saved.title };
         onSaved(saved);
         void window.studio.drafts.clear(bookId, chapter.id);
-        setStatus({ kind: "saved", at: Date.now() });
+        return updateStatus({ kind: "saved", at: Date.now() });
       } catch (error) {
-        setStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+        return updateStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [bookId, chapter.id, onSaved]
+    [bookId, chapter.id, onSaved, updateStatus]
   );
 
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  useImperativeHandle(ref, () => ({ flush: () => saveRef.current(latest.current) }), []);
+  useImperativeHandle(ref, () => ({ flush: () => saveRef.current(latest.current), getStatus: () => statusRef.current }), []);
 
   // Last line of defence: leaving the chapter must not drop the last keystrokes. The main process
   // also holds a draft copy and flushes it before the window closes.
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      // A draft write after unmount would hit a torn-down bridge in checks and serves no author:
+      // dirty text is saved above and the main process holds its own draft copy.
+      if (draftTimer.current) clearTimeout(draftTimer.current);
       if (latest.current !== base.current.content) void saveRef.current(latest.current);
     };
   }, []);
@@ -110,7 +142,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const applyText = (next: string): void => {
     setContent(next);
     latest.current = next;
-    setStatus({ kind: "dirty" });
+    updateStatus({ kind: "dirty" });
 
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
@@ -158,6 +190,32 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     });
   };
 
+  /**
+   * Paste through the studio normaliser: line endings, spacing and quotation marks are unified
+   * before the text lands, while single breaks, stanza breaks and hard breaks pass through so
+   * verse survives. The insert takes the normal applyText -> draft -> save path, and the caret
+   * lands after the inserted text.
+   */
+  const onPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>): void => {
+    const pasted = event.clipboardData?.getData("text");
+    if (!pasted) return;
+    event.preventDefault();
+    const element = textarea.current;
+    const start = element?.selectionStart ?? latest.current.length;
+    const end = element?.selectionEnd ?? start;
+    const current = latest.current;
+    const inserted = normalizePasteText(pasted);
+    pushHistory(chapter.id, current, Date.now(), true);
+    applyText(`${current.slice(0, start)}${inserted}${current.slice(end)}`);
+    requestAnimationFrame(() => {
+      const next = textarea.current;
+      if (!next) return;
+      next.focus();
+      const caret = start + inserted.length;
+      next.setSelectionRange(caret, caret);
+    });
+  };
+
   const commitTitle = async (): Promise<void> => {
     const next = title.trim();
     if (!next || next === base.current.title) {
@@ -172,19 +230,19 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         { baseVersion: base.current.version, baseHash: base.current.hash }
       );
       if (!result.ok) {
-        setStatus({ kind: "error", message: result.error.message });
+        updateStatus({ kind: "error", message: result.error.message });
         return;
       }
       if (result.data.status === "conflict") {
-        setStatus({ kind: "conflict", conflict: result.data.conflict });
+        updateStatus({ kind: "conflict", conflict: result.data.conflict });
         return;
       }
       const saved = result.data.chapter;
       base.current = { version: saved.version, hash: saved.hash, content: saved.content, title: saved.title };
       onSaved(saved);
-      setStatus({ kind: "saved", at: Date.now() });
+      updateStatus({ kind: "saved", at: Date.now() });
     } catch (error) {
-      setStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+      updateStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     }
   };
 
@@ -235,6 +293,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
           value={content}
           data-testid="manuscript-text"
           onChange={(event) => onChange(event.target.value)}
+          onPaste={onPaste}
           onBlur={() => void saveRef.current(latest.current)}
           onKeyDown={(event) => {
             const key = event.key.toLowerCase();

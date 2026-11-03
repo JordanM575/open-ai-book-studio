@@ -6,4 +6,5 @@ declare global {
   }
 }
 
+// biome-ignore lint/complexity/noUselessEmptyExport: the empty export keeps this a module so `declare global` augments instead of erroring
 export {};

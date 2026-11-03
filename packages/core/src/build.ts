@@ -10,12 +10,35 @@ export interface BuildCapability {
   reason?: string;
 }
 
+/**
+ * How the artifact is signed. Every build is unsigned until D-115 is accepted;
+ * the wider shape reserves the signed claim (which always names its identity)
+ * so About and the release record share one vocabulary.
+ */
+export interface BuildSigning {
+  status: "unsigned" | "signed";
+  identity?: string;
+}
+
+/**
+ * The observed host identity, injected at the platform edge. Desktop reports
+ * the OS and CPU it runs on; the browser cannot reliably detect CPU
+ * architecture, so web reports "unknown" there per the unknown-label rule.
+ */
+export interface BuildHost {
+  platform: string;
+  arch: string;
+}
+
 export interface BuildMetadata {
   target: BuildTarget;
   version: string;
   commit: string;
   schemaVersion: number;
   capabilities: BuildCapability[];
+  signing: BuildSigning;
+  platform: string;
+  arch: string;
 }
 
 interface CapabilityRow {
@@ -90,12 +113,16 @@ export function capabilitiesFor(target: BuildTarget): BuildCapability[] {
   });
 }
 
-export function buildMetadata(target: BuildTarget): BuildMetadata {
+export function buildMetadata(target: BuildTarget, host: BuildHost = { platform: "unknown", arch: "unknown" }): BuildMetadata {
   return {
     target,
     version: typeof __BUILD_VERSION__ === "undefined" ? DEV_VERSION : __BUILD_VERSION__,
     commit: typeof __BUILD_COMMIT__ === "undefined" ? UNKNOWN_COMMIT : __BUILD_COMMIT__,
     schemaVersion: SCHEMA_VERSION,
-    capabilities: capabilitiesFor(target)
+    capabilities: capabilitiesFor(target),
+    // Unsigned on every target until D-115 is accepted.
+    signing: { status: "unsigned" },
+    platform: host.platform,
+    arch: host.arch
   };
 }

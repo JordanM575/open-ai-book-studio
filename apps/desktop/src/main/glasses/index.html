@@ -208,10 +208,10 @@
     </main>
 
     <nav>
-      <button class="focusable" id="read-aloud">Read aloud</button>
-      <button class="focusable" id="next-chapter">Next chapter</button>
-      <button class="focusable" id="story-bible">Story Bible</button>
-      <button class="focusable" id="append">Write…</button>
+      <button type="button" class="focusable" id="read-aloud">Read aloud</button>
+      <button type="button" class="focusable" id="next-chapter">Next chapter</button>
+      <button type="button" class="focusable" id="story-bible">Story Bible</button>
+      <button type="button" class="focusable" id="append">Write…</button>
       <input
         class="focusable"
         id="composer"
@@ -225,8 +225,8 @@
       <h2 id="confirm-title">Allow this change?</h2>
       <p id="confirm-body"></p>
       <nav>
-        <button class="focusable" id="confirm-yes">Yes</button>
-        <button class="focusable" id="confirm-no">No</button>
+        <button type="button" class="focusable" id="confirm-yes">Yes</button>
+        <button type="button" class="focusable" id="confirm-no">No</button>
       </nav>
     </div>
 
@@ -458,9 +458,9 @@
 
       function focusables() {
         if (el.confirm.classList.contains("open")) {
-          return Array.from(document.querySelectorAll("#confirm " + FOCUSABLE));
+          return Array.from(document.querySelectorAll(`#confirm ${FOCUSABLE}`));
         }
-        return Array.from(document.querySelectorAll("nav " + FOCUSABLE));
+        return Array.from(document.querySelectorAll(`nav ${FOCUSABLE}`));
       }
 
       function moveFocus(direction) {
@@ -541,7 +541,8 @@
               inputSchema: tool.inputSchema,
               annotations: {
                 readOnlyHint: tool.tier === "read",
-                untrustedContentHint: false,
+                // Book prose is author-supplied text; the caller must treat it as data.
+                untrustedContentHint: true,
                 consequentialHint: tool.tier === "destructive"
               },
               execute: async (args) => {

@@ -23,10 +23,7 @@ export function savedTime(at: number): string {
   return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(at);
 }
 
-export function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed ? trimmed.split(/\s+/u).length : 0;
-}
+export { countWords } from "@ai-book-studio/core/words";
 
 export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return count === 1 ? singular : plural;

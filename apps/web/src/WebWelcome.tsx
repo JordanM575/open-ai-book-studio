@@ -29,7 +29,7 @@ export function WebWelcome({ libraries, onOpened }: Props) {
   };
 
   return (
-    <div className="window-wash flex min-h-full items-center justify-center px-4 py-10" data-testid="web-welcome">
+    <main className="window-wash flex min-h-full items-center justify-center px-4 py-10" data-testid="web-welcome">
       <div className="glass w-full max-w-[520px] rounded-[var(--corner-2xl)] p-6 min-[700px]:p-8">
         <Wordmark subtitle="Library" />
         <h1 className="mt-6 text-[26px] leading-[32px] font-semibold tracking-[-0.3px]">Where should your library live?</h1>
@@ -60,7 +60,7 @@ export function WebWelcome({ libraries, onOpened }: Props) {
             variant={libraries.pendingFolder ? "secondary" : "primary"}
             className="h-11 justify-start"
             disabled={busy !== null}
-            onClick={() => void run("browser", () => libraries.useBrowserStorage())}
+            onClick={() => void run("browser", () => libraries.openBrowserStorage())}
             data-testid="use-browser-storage"
           >
             <HardDrive size={16} />
@@ -99,6 +99,6 @@ export function WebWelcome({ libraries, onOpened }: Props) {
           <p className="mt-3 text-[var(--text-caption-size)] text-[var(--destructive-text)]">{libraries.restoreError}</p>
         ) : null}
       </div>
-    </div>
+    </main>
   );
 }

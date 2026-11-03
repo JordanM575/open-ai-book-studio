@@ -34,6 +34,8 @@ export interface Message {
   failed?: boolean | undefined;
   retryable?: boolean | undefined;
   errorCode?: string | undefined;
+  /** Seconds the provider asked the studio to wait, when the failed turn named one. */
+  retryAfterSeconds?: number | undefined;
   turnId?: string | undefined;
   changed?: number | undefined;
   undoAvailable?: boolean | undefined;
@@ -93,6 +95,15 @@ export function approvalLabel(name: string): string {
     default:
       return "Allow this change?";
   }
+}
+
+/**
+ * A provider-named wait in the author's own words. No false precision: anything under a
+ * minute and a half is about a minute, anything longer is about that many minutes.
+ */
+export function waitWords(seconds: number): string {
+  if (seconds < 90) return "in about a minute";
+  return `in about ${Math.round(seconds / 60)} minutes`;
 }
 
 /** One usage line, shared by a live turn and a reloaded message. */
@@ -173,12 +184,18 @@ export function toChatMessage(message: AgentMessage, latestCheckpointTurn: strin
     ...(message.model
       ? {
           model: message.model.connectionLabel
-            ? `${message.model.connectionLabel} · ${message.model.modelId}`
-            : message.model.modelId
+            ? `${message.model.connectionLabel} · ${message.model.name ?? message.model.modelId}`
+            : (message.model.name ?? message.model.modelId)
         }
       : {}),
     ...(error && !stopped
-      ? { failed: true, retryable: false, note: error.message, errorCode: error.code }
+      ? {
+          failed: true,
+          retryable: false,
+          note: error.message,
+          errorCode: error.code,
+          ...(error.retryAfterSeconds !== undefined ? { retryAfterSeconds: error.retryAfterSeconds } : {})
+        }
       : error
         ? { note: error.message }
         : pending

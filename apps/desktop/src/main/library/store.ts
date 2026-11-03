@@ -11,6 +11,8 @@ import type {
 } from "@ai-book-studio/core/schema";
 import { LibraryService, type BookPatch, type ChapterMetaPatch } from "@ai-book-studio/core/library/service";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
+import type { LocationHealth } from "@ai-book-studio/core/sync/health";
+import type { DriftReport } from "@ai-book-studio/core/sync/types";
 import { ImageStore, type AddImageInput, type ImageList, type ImageRecord, type StoredImage } from "@ai-book-studio/core/images";
 import { createFileSystemEnvironment } from "./fs-port";
 import { resolveLibraryRoot } from "./paths";
@@ -57,6 +59,22 @@ export class Library {
     return this.service.watch(onChange);
   }
 
+  locationHealth(): Promise<LocationHealth> {
+    return this.service.locationHealth();
+  }
+
+  establishBaseline(): Promise<boolean> {
+    return this.service.establishBaseline();
+  }
+
+  checkDrift(dirtyChapterIds?: Iterable<string>): Promise<DriftReport> {
+    return this.service.checkDrift(dirtyChapterIds);
+  }
+
+  acceptDrift(paths: string[]): Promise<DriftReport> {
+    return this.service.acceptDrift(paths);
+  }
+
   listBooks(): Promise<BookSummary[]> {
     return this.service.listBooks();
   }
@@ -71,6 +89,13 @@ export class Library {
 
   readBook(bookId: string): Promise<BookDetail> {
     return this.service.readBook(bookId);
+  }
+
+  importManuscript(input: {
+    bookTitle: string;
+    chapters: Array<{ title: string; content: string }>;
+  }): Promise<BookDetail> {
+    return this.service.importManuscript(input);
   }
 
   updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {

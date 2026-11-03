@@ -118,7 +118,11 @@ async function run(
         updatedAt: "2026-10-26T12:00:00.000Z"
       }
     ],
-    book: async () => ({ book: { id: BOOK, title: "The Salt Road", description: "A keeper." } as never, chapters: [chapter] }),
+    book: async () => ({
+      book: { id: BOOK, title: "The Salt Road", description: "A keeper." } as never,
+      chapters: [chapter],
+      chapterReadIssues: []
+    }),
     chapter: async () => chapter,
     search: async () => [],
     conflicts: async () => [],

@@ -54,6 +54,16 @@ function buffer(): BrowserDraftBuffer {
 }
 
 describe("BrowserDraftBuffer", () => {
+  test("lists the chapter ids with unsent text", () => {
+    const drafts = buffer();
+    expect(drafts.chapterIds()).toEqual([]);
+    drafts.set(draft());
+    drafts.set(draft({ bookId: "book_test000002", chapterId: "chapter_test000002" }));
+    expect(drafts.chapterIds()).toEqual(["chapter_test000001", "chapter_test000002"]);
+    drafts.clear("book_test000001", "chapter_test000001");
+    expect(drafts.chapterIds()).toEqual(["chapter_test000002"]);
+  });
+
   test("reports confirmed only after the adapter confirms every write", async () => {
     const drafts = buffer();
     const sent: DraftInput[] = [];

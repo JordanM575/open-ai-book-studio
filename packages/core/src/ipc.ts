@@ -19,9 +19,13 @@ import type { UsageSummary } from "./providers/usage";
 import type { VoiceTranscript } from "./providers/speech";
 import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
 import type { AgentThread } from "./agent/messages";
+import type { AgentAnswerLength } from "./agent/settings";
+import type { DriftReport } from "./sync/types";
 import type { ThreadSummary } from "./agent/threads";
 import type { AgentStatus, PluginStatus } from "./agent/metrics";
 import type { AmbientStatus } from "./agent/ambient";
+import type { ImportManuscriptInput, ImportSourcePick } from "./manuscript-import";
+import type { LocationHealth } from "./sync/health";
 
 /** What the studio can speak with, and in which voices. */
 export interface VoiceSpeakers {
@@ -97,15 +101,19 @@ export const IPC = {
     reveal: "library:reveal",
     importLegacy: "library:importLegacy",
     exportArchive: "library:exportArchive",
-    importArchive: "library:importArchive"
+    importArchive: "library:importArchive",
+    locationHealth: "library:locationHealth"
   },
   books: {
     list: "books:list",
     create: "books:create",
+    importManuscript: "books:importManuscript",
+    pickImportSource: "books:pickImportSource",
     update: "books:update",
     delete: "books:delete",
     open: "books:open",
     exportDocx: "books:exportDocx",
+    exportMarkdown: "books:exportMarkdown",
     search: "books:search"
   },
   chapters: {
@@ -124,6 +132,20 @@ export const IPC = {
     set: "drafts:set",
     clear: "drafts:clear"
   },
+  sync: {
+    /** Run a read-only drift scan now and remember when it ran. */
+    check: "sync:check",
+    /** Fold reviewed paths into the baseline and return the fresh report. */
+    accept: "sync:accept",
+    /** Save one chapter's draft through the normal checked path ("keep mine"). */
+    keepMine: "sync:keepMine",
+    /** Discard one chapter's unsent draft ("keep the disk version" for unsaved text). */
+    discardDraft: "sync:discardDraft",
+    /** The sync reminder settings: focus-scan interval and the last scan time. */
+    settings: "sync:settings",
+    /** Change the focus-scan interval, in minutes. */
+    updateSettings: "sync:updateSettings"
+  },
   providers: {
     list: "providers:list",
     models: "providers:models"
@@ -136,6 +158,8 @@ export const IPC = {
     startOpenRouter: "connections:startOpenRouter",
     cancelOpenRouter: "connections:cancelOpenRouter",
     remove: "connections:remove",
+    /** Explicit protected-storage round-trip behind the keychain Check control. Never called on open. */
+    check: "connections:check",
     test: "connections:test"
   },
   usage: {
@@ -211,6 +235,21 @@ export interface LibraryChangeEvent {
   at: string;
 }
 
+/** Main process to renderer: a drift scan found changes to review. */
+export const SYNC_EVENT_CHANNEL = "sync:event";
+
+export interface DriftEvent {
+  report: DriftReport;
+}
+
+/** The sync reminder settings the Settings section shows. */
+export interface SyncSettings {
+  /** Minutes between drift scans when the window regains focus. */
+  checkIntervalMinutes: number;
+  /** When the drift scan last ran, as an ISO timestamp, or null when never. */
+  lastScanAt: string | null;
+}
+
 export interface LibraryInfo {
   root: string;
   deviceId: string;
@@ -280,16 +319,23 @@ export interface StudioApi {
     importLegacy(): Promise<Result<LegacyImportReport | null>>;
     exportArchive(): Promise<Result<ArchiveExportSummary | null>>;
     importArchive(): Promise<Result<ArchiveImportSummary | null>>;
+    /** Read-only location health from a fresh scan: state, count and author copy. */
+    locationHealth(): Promise<Result<LocationHealth>>;
     /** Notifies when a book or trash file changed outside the studio. Returns an unsubscribe. */
     onChange(callback: (event: LibraryChangeEvent) => void): () => void;
   };
   books: {
     list(): Promise<Result<BookSummary[]>>;
     create(input: { title: string; description?: string }): Promise<Result<BookMeta>>;
+    /** Publish a complete imported manuscript staged from the author's confirmed preview mapping. */
+    importManuscript(input: ImportManuscriptInput): Promise<Result<BookDetail>>;
+    /** Choose a manuscript file and read it in the main process. Nothing is written. */
+    pickImportSource(): Promise<Result<ImportSourcePick>>;
     update(bookId: string, patch: Partial<BookMeta>): Promise<Result<BookMeta>>;
     delete(bookId: string): Promise<Result<{ trashedAt: string }>>;
     open(bookId: string): Promise<Result<BookDetail>>;
     exportDocx(bookId: string): Promise<Result<string | null>>;
+    exportMarkdown(bookId: string): Promise<Result<string | null>>;
     search(bookId: string, query: string): Promise<Result<SearchHit[]>>;
   };
   chapters: {
@@ -309,6 +355,15 @@ export interface StudioApi {
     set(input: DraftInput): Promise<Result<null>>;
     clear(bookId: string, chapterId: string): Promise<Result<null>>;
   };
+  sync: {
+    check(): Promise<Result<DriftReport | null>>;
+    accept(paths: string[]): Promise<Result<DriftReport | null>>;
+    keepMine(bookId: string, chapterId: string): Promise<Result<SaveChapterResult | null>>;
+    discardDraft(bookId: string, chapterId: string): Promise<Result<null>>;
+    settings(): Promise<Result<SyncSettings>>;
+    updateSettings(patch: { checkIntervalMinutes?: number }): Promise<Result<SyncSettings>>;
+    onDrift(callback: (drift: DriftEvent) => void): () => void;
+  };
   providers: {
     list(): Promise<Result<ProviderDescription[]>>;
     models(connectionId: string): Promise<Result<Catalogue>>;
@@ -319,6 +374,8 @@ export interface StudioApi {
     available(): Promise<Result<boolean>>;
     /** Non-secret health check: protected storage, backend label, connection count. */
     status(): Promise<Result<CredentialStatus>>;
+    /** Explicit round-trip probe for the keychain Check control. Never called on view open. */
+    check(): Promise<Result<CredentialStatus>>;
     /** Validate a key with the provider before saving it. Rejected keys are never stored. */
     addKey(input: {
       provider: ProviderId;
@@ -409,6 +466,10 @@ export interface StudioApi {
       patch: {
         disabledTools?: string[];
         skillsEnabled?: boolean;
+        tone?: string;
+        answerLength?: AgentAnswerLength;
+        perTurnCeilingUsd?: number | null;
+        monthlyWarningUsd?: number | null;
         cachePrefixMode?: "off" | "auto";
       }
     ): Promise<Result<AgentStatus>>;

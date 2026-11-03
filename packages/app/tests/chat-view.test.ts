@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { agentMessageSchema, type AgentMessage, type AgentPart } from "@ai-book-studio/core/agent/messages";
-import { approvalLabel, toolDetailText, toolLabel, toChatMessage } from "../src/lib/chat-view";
+import { approvalLabel, toolDetailText, toolLabel, toChatMessage, waitWords } from "../src/lib/chat-view";
 
 const AT = "2026-01-01T00:00:00.000Z";
 
@@ -95,6 +95,46 @@ describe("chat view", () => {
     expect(view.retryable).toBe(false);
     expect(view.note).toBe("Reconnect the provider.");
     expect(view.errorCode).toBe("auth");
+  });
+
+  test("keeps a provider-named wait on a reloaded failure", () => {
+    const view = toChatMessage(
+      message([
+        {
+          type: "error",
+          code: "rate-limit",
+          message: "The provider asked us to slow down. Try again shortly.",
+          retryAfterSeconds: 90
+        }
+      ]),
+      undefined
+    );
+    expect(view.failed).toBe(true);
+    expect(view.errorCode).toBe("rate-limit");
+    expect(view.retryAfterSeconds).toBe(90);
+  });
+
+  test("names a wait in about-words, never a false precision", () => {
+    expect(waitWords(45)).toBe("in about a minute");
+    expect(waitWords(90)).toBe("in about 2 minutes");
+    expect(waitWords(300)).toBe("in about 5 minutes");
+  });
+
+  test("names the model in plain words, falling back to its id", () => {
+    const named = toChatMessage(
+      message([{ type: "text", text: "Hi." }], {
+        model: { provider: "openrouter", modelId: "test-model", connectionLabel: "OpenRouter", name: "Model A" }
+      }),
+      undefined
+    );
+    expect(named.model).toBe("OpenRouter · Model A");
+    const unnamed = toChatMessage(
+      message([{ type: "text", text: "Hi." }], {
+        model: { provider: "openrouter", modelId: "test-model", connectionLabel: "OpenRouter" }
+      }),
+      undefined
+    );
+    expect(unnamed.model).toBe("OpenRouter · test-model");
   });
 
   test("shows a stopped turn as stopped, not failed", () => {

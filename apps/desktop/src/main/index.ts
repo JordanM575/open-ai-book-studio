@@ -1,8 +1,10 @@
 import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AGENT_EVENT_CHANNEL, LIBRARY_EVENT_CHANNEL } from "@ai-book-studio/core/ipc";
+import { AGENT_EVENT_CHANNEL, LIBRARY_EVENT_CHANNEL, SYNC_EVENT_CHANNEL } from "@ai-book-studio/core/ipc";
+import type { DriftReport } from "@ai-book-studio/core/sync/types";
 import { DraftBuffer } from "./drafts";
+import { SyncService } from "./sync";
 import { registerIpc } from "./ipc";
 import { DesktopCredentialVault } from "./credentials";
 import { ProviderService } from "./providers";
@@ -344,6 +346,15 @@ app.whenReady().then(async () => {
   studio.onExternalChange = (event) => {
     mainWindow?.webContents.send(LIBRARY_EVENT_CHANNEL, event);
   };
+  const sync = new SyncService(studio, settings);
+  const pushDrift = (report: DriftReport | null): void => {
+    if (report && !report.clean) {
+      mainWindow?.webContents.send(SYNC_EVENT_CHANNEL, { report });
+    }
+  };
+  studio.onLibraryOpened = () => {
+    void sync.check().then(pushDrift);
+  };
   await studio.restore();
 
   // The control plane is for the standalone CLI and MCP server. A hidden test run can start it too,
@@ -381,7 +392,10 @@ app.whenReady().then(async () => {
     bridge: null as LocalBridge | null,
     status: null as BridgeLocator | null,
     async start(address: string): Promise<BridgeLocator> {
-      if (bridgeControl.bridge) return bridgeControl.status!;
+      if (bridgeControl.bridge) {
+        if (!bridgeControl.status) throw new Error("The control plane started without a locator.");
+        return bridgeControl.status;
+      }
       const token = backend?.token_value;
       if (!token) throw new Error("The control plane is not running, so there is no token to share.");
       const bridge = new LocalBridge({
@@ -390,7 +404,7 @@ app.whenReady().then(async () => {
         studio: {
           ambient: (bookId) =>
             new AmbientService(() => studio.library, (id) => agentRuntime.isWorking(id)).status(bookId),
-          turn: (input) => agentRuntime.runToCompletion(input),
+          turn: (input) => agentRuntime.runToCompletion({ ...input, mode: "edit" }),
           tool: (input) => toolsBridge.run(input),
           undo: (bookId) => agentRuntime.undoLast(bookId),
           stop: async (bookId) => ({ stopped: await agentRuntime.stopBook(bookId) })
@@ -454,7 +468,10 @@ app.whenReady().then(async () => {
     const types = details.mediaTypes ?? [];
     callback(types.length > 0 && types.every((type) => type === "audio"));
   });
-  app.on("browser-window-focus", () => notifier.clearBadge());
+  app.on("browser-window-focus", () => {
+    notifier.clearBadge();
+    void sync.maybeCheckOnFocus().then(pushDrift);
+  });
 
   registerIpc(
     studio,

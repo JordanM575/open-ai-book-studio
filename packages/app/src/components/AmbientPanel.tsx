@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Mic, MicOff, Volume2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Mic, MicOff, Pause, Play, Volume2 } from "lucide-react";
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
 import { Button } from "@ai-book-studio/ui/button";
@@ -131,7 +131,7 @@ export function AmbientPanel({
       setReply("");
       setNote("");
       try {
-        const started = await window.studio.agent.start({ bookId, prompt });
+        const started = await window.studio.agent.start({ bookId, prompt, mode: "edit" });
         if (!started.ok) {
           throw Object.assign(new Error(started.error.message), { code: started.error.code });
         }
@@ -238,6 +238,21 @@ export function AmbientPanel({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          {speech.speaking || speech.paused ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (speech.paused) speech.resume();
+                else speech.pause();
+              }}
+              aria-label={speech.paused ? "Resume reading" : "Pause reading"}
+              title={speech.paused ? "Resume reading" : "Pause reading"}
+              data-testid="ambient-pause"
+            >
+              {speech.paused ? <Play size={16} /> : <Pause size={16} />}
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"
@@ -368,6 +383,11 @@ export function AmbientPanel({
                 ))}
               </select>
             </label>
+          ) : null}
+          {speech.fellBack ? (
+            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="ambient-fallback">
+              The studio&apos;s voice failed, so this computer&apos;s own voice read it instead.
+            </p>
           ) : null}
           {speech.using === "device" ? (
             <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">

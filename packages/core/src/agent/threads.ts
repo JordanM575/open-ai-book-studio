@@ -1,7 +1,8 @@
 import { LibraryPortError } from "../library/errors";
-import { toLibraryFilePath, type LibraryPath } from "../library/path";
+import { libraryPathToArchivePath, toLibraryFilePath, type LibraryPath } from "../library/path";
 import { threadsPath } from "../library/paths";
 import type { LibraryPort, LibraryRuntime } from "../library/port";
+import { noteRemovedFiles, noteWrittenFiles } from "../sync/journal";
 import {
   agentThreadSchema,
   lastMessageText,
@@ -41,6 +42,8 @@ export interface ThreadSummary {
  * a turn is appended.
  */
 export class ThreadStore {
+  private notedDeviceId: string | null = null;
+
   constructor(
     private readonly storage: LibraryPort,
     private readonly runtime: LibraryRuntime
@@ -183,6 +186,10 @@ export class ThreadStore {
       if (error instanceof LibraryPortError && error.code === "not-found") return;
       throw error;
     }
+    await this.noteFiles({
+      written: [],
+      removed: [libraryPathToArchivePath(this.filePath(bookId, threadId))]
+    });
   }
 
   private async write(thread: AgentThread, mode: "create" | "save"): Promise<AgentThread> {
@@ -197,7 +204,23 @@ export class ThreadStore {
     if (result.status === "changed") {
       throw new ThreadStoreError("exists", "That conversation already exists.");
     }
+    await this.noteFiles({ written: [libraryPathToArchivePath(path)], removed: [] });
     return next;
+  }
+
+  /**
+   * Fold this store's writes into the sync baseline so the next drift scan reads them as local.
+   * Best-effort: the device id resolves lazily and a note failure never fails the write.
+   */
+  private async noteFiles(input: { written: string[]; removed: string[] }): Promise<void> {
+    try {
+      this.notedDeviceId ??= (await this.storage.deviceInfo()).id;
+      const now = this.runtime.now();
+      await noteWrittenFiles({ storage: this.storage, deviceId: this.notedDeviceId, paths: input.written, now });
+      await noteRemovedFiles({ storage: this.storage, deviceId: this.notedDeviceId, paths: input.removed, now });
+    } catch {
+      // Detection degrades to a reviewable report.
+    }
   }
 
   private filePath(bookId: string, threadId: string): LibraryPath {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Library } from "../src/main/library/store";
 import { FileCredentialVault, newConnectionId, type Cipher } from "../src/main/credential-file";
+import { ProviderService } from "../src/main/providers";
 
 const cipher: Cipher = {
   available: () => true,
@@ -35,6 +36,60 @@ describe("credential vault", () => {
   test("reports protected storage status without a secret", async () => {
     const { vault } = await workspace();
     expect(await vault.status()).toEqual({ available: true, backend: "Protected storage", detail: "" });
+  });
+
+  test("the open-path status never touches the cipher", async () => {
+    const { path } = await workspace();
+    const hostile: Cipher = {
+      available: () => true,
+      encrypt: () => {
+        throw new Error("must not encrypt on open");
+      },
+      decrypt: () => {
+        throw new Error("must not decrypt on open");
+      }
+    };
+    const vault = new FileCredentialVault(path, hostile);
+    expect(await vault.status()).toEqual({ available: true, backend: "Protected storage", detail: "" });
+  });
+
+  test("the explicit check round-trips one probe value", async () => {
+    const { vault } = await workspace();
+    expect(await vault.check()).toEqual({ available: true, backend: "Protected storage", detail: "" });
+  });
+
+  test("the explicit check reports a refused cipher instead of throwing", async () => {
+    const { path } = await workspace();
+    const refusing: Cipher = {
+      available: () => true,
+      encrypt: (value) => `enc:${value}`,
+      decrypt: () => {
+        throw new Error("locked");
+      }
+    };
+    const vault = new FileCredentialVault(path, refusing);
+    const state = await vault.check();
+    expect(state.available).toBe(false);
+    expect(state.detail).toContain("keyring");
+  });
+
+  test("the explicit check reports unavailable storage without probing", async () => {
+    const { path } = await workspace();
+    const absent: Cipher = {
+      available: () => false,
+      encrypt: () => {
+        throw new Error("must not encrypt when unavailable");
+      },
+      decrypt: () => {
+        throw new Error("must not decrypt when unavailable");
+      }
+    };
+    const vault = new FileCredentialVault(path, absent);
+    expect(await vault.check()).toEqual({
+      available: false,
+      backend: "Protected storage",
+      detail: "Protected storage is unavailable."
+    });
   });
 
   test("repairs a vault file that others can read", async () => {
@@ -147,6 +202,119 @@ describe("credential vault", () => {
       expect(await vault.get(id)).toBeNull();
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a removed connection makes no later provider requests", async () => {
+    const { dir, vault } = await workspace();
+    try {
+      const id = newConnectionId();
+      await vault.set({
+        id,
+        provider: "openai",
+        label: "OpenAI",
+        kind: "api-key",
+        createdAt: "2026-10-24T10:00:00.000Z",
+        secret: "sk-test"
+      });
+      let fetches = 0;
+      const service = new ProviderService(
+        vault,
+        async () => {},
+        (async () => {
+          fetches += 1;
+          return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({}) };
+        }) as unknown as typeof fetch
+      );
+      await service.models(id);
+      expect(fetches).toBe(1);
+
+      await service.remove(id);
+      await expect(service.models(id)).rejects.toThrow(/no longer exists/);
+      expect(fetches).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("removing a connection clears its cached models", async () => {
+    const { dir, vault } = await workspace();
+    try {
+      const id = newConnectionId();
+      const record = {
+        id,
+        provider: "openai",
+        label: "OpenAI",
+        kind: "api-key",
+        createdAt: "2026-10-24T10:00:00.000Z",
+        secret: "sk-test"
+      } as Parameters<FileCredentialVault["set"]>[0];
+      await vault.set(record);
+      let fetches = 0;
+      const service = new ProviderService(
+        vault,
+        async () => {},
+        (async () => {
+          fetches += 1;
+          return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({}) };
+        }) as unknown as typeof fetch
+      );
+      await service.models(id);
+      await service.models(id);
+      expect(fetches).toBe(1);
+
+      await service.remove(id);
+      expect(await vault.list()).toEqual([]);
+
+      // The same account connects again. A kept cache would answer without asking.
+      await vault.set(record);
+      await service.models(id);
+      expect(fetches).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("removing a connection keeps the manuscript and its history", async () => {
+    const { dir, vault } = await workspace();
+    const root = await mkdtemp(join(tmpdir(), "abs-keep-manuscript-"));
+    try {
+      const id = newConnectionId();
+      await vault.set({
+        id,
+        provider: "openai",
+        label: "OpenAI",
+        kind: "api-key",
+        createdAt: "2026-10-24T10:00:00.000Z",
+        secret: "sk-test"
+      });
+      const service = new ProviderService(vault, async () => {}, (async () => {
+        throw new Error("no provider requests while proving removal keeps the manuscript");
+      }) as unknown as typeof fetch);
+
+      const library = await Library.open(root);
+      const book = await library.createBook({ title: "Kept" });
+      const chapter = await library.createChapter(book.id, { title: "One", content: "The storm stayed." });
+      const thread = await library.threads.create(book.id, "First talk", [
+        {
+          id: "msg_kept000001",
+          role: "user",
+          parts: [{ type: "text", text: "Keep this." }],
+          createdAt: "2026-10-24T10:00:00.000Z"
+        }
+      ]);
+      const chapterBefore = await library.readChapter(book.id, chapter.id);
+      const threadBefore = await library.threads.read(book.id, thread.id);
+      const filesBefore = await filesUnder(root);
+
+      await service.remove(id);
+
+      expect(await library.readChapter(book.id, chapter.id)).toEqual(chapterBefore);
+      expect(await library.threads.read(book.id, thread.id)).toEqual(threadBefore);
+      expect(await filesUnder(root)).toEqual(filesBefore);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 

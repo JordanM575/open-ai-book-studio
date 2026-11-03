@@ -70,4 +70,10 @@ describe("browser credential vault", () => {
   test("is available only when the origin offers IndexedDB", async () => {
     expect(await new BrowserCredentialVault(`test-credentials-${counter++}`).isAvailable()).toBe(true);
   });
+
+  test("the explicit check round-trips and leaves no probe record", async () => {
+    const vault = new BrowserCredentialVault(`test-credentials-${counter++}`);
+    expect(await vault.check()).toEqual({ available: true, backend: "Browser origin storage", detail: "" });
+    expect(await vault.list()).toEqual([]);
+  });
 });

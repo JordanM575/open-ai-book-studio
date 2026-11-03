@@ -1,7 +1,8 @@
 import { LibraryError } from "../library/errors";
-import { toLibraryPath } from "../library/path";
+import { libraryPathToArchivePath, toLibraryPath } from "../library/path";
 import type { LibraryEnvironment } from "../library/port";
 import { imageFilePath, imagesPath, imageManifestPath, trashPath } from "../library/paths";
+import { noteMovedPrefix, noteRemovedFiles, noteWrittenFiles } from "../sync/journal";
 import {
   IMAGE_SCHEMA_VERSION,
   MAX_IMAGE_BYTES,
@@ -53,8 +54,24 @@ interface ManifestState {
  */
 export class ImageStore {
   private readonly writes = new Map<string, Promise<unknown>>();
+  private notedDeviceId: string | null = null;
 
   constructor(private readonly env: LibraryEnvironment) {}
+
+  /**
+   * Fold this store's writes into the sync baseline so the next drift scan reads them as local.
+   * Best-effort: the device id resolves lazily and a note failure never fails the write.
+   */
+  private async noteFiles(input: { written: string[]; removed: string[] }): Promise<void> {
+    try {
+      this.notedDeviceId ??= (await this.env.storage.deviceInfo()).id;
+      const now = this.env.runtime.now();
+      await noteWrittenFiles({ storage: this.env.storage, deviceId: this.notedDeviceId, paths: input.written, now });
+      await noteRemovedFiles({ storage: this.env.storage, deviceId: this.notedDeviceId, paths: input.removed, now });
+    } catch {
+      // Detection degrades to a reviewable report.
+    }
+  }
 
   async list(bookId: string): Promise<ImageList> {
     const state = await this.readManifest(bookId);
@@ -106,6 +123,10 @@ export class ImageStore {
       if (written.status !== "written") {
         throw new LibraryError("io", "The image file could not be written. Nothing was added.");
       }
+      await this.noteFiles({
+        written: [libraryPathToArchivePath(imageFilePath(bookId, fileName))],
+        removed: []
+      });
 
       const record: ImageRecord = {
         id,
@@ -190,6 +211,18 @@ export class ImageStore {
       const to = toLibraryPath([...trashImages, destination]);
       await this.env.storage.moveFile(from, to);
       try {
+        this.notedDeviceId ??= (await this.env.storage.deviceInfo()).id;
+        await noteMovedPrefix({
+          storage: this.env.storage,
+          deviceId: this.notedDeviceId,
+          from: libraryPathToArchivePath(from),
+          to: libraryPathToArchivePath(to),
+          now: this.env.runtime.now()
+        });
+      } catch {
+        // Detection degrades to a reviewable report.
+      }
+      try {
         await this.commitManifest(
           bookId,
           { ...state.manifest, images: state.manifest.images.filter((image) => image.id !== imageId) },
@@ -246,6 +279,10 @@ export class ImageStore {
     if (result.status !== "written") {
       throw new LibraryError("io", "The image manifest changed while it was being saved. Try again.");
     }
+    await this.noteFiles({
+      written: [libraryPathToArchivePath(imageManifestPath(bookId))],
+      removed: []
+    });
   }
 
   private serialize<T>(bookId: string, work: () => Promise<T>): Promise<T> {

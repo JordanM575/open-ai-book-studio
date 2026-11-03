@@ -81,6 +81,7 @@ export interface CredentialStatus {
 
 export type ProviderErrorCode =
   | "auth"
+  | "permission"
   | "rate-limit"
   | "quota"
   | "context"

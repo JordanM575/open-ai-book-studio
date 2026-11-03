@@ -8,6 +8,115 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Added
+
+- The workspace exports the manuscript as one Markdown file beside the Word export: the book
+  title, then each chapter in reading order under its own heading with its text unchanged. It
+  goes through the same publication boundary as Word (a cancelled picker or a declined
+  replacement writes nothing, a destination inside the library is refused, a file that changes
+  after consent is never overwritten) and the header names the saved file. The Word button now
+  reads "Export Word document" so the two are told apart. The browser build explains that it
+  is a desktop feature. PDF and EPUB remain open under 002 FR-051.
+- Each model card now names its capabilities in plain words beside price and context: whether
+  it uses tools and reads pictures, or that the provider did not report them.
+- A finished turn now shows its whole usage line in the conversation: tokens in and out, the
+  reported cost or its estimate/unknown mark, the share of context used, and the model that
+  answered in plain words.
+- A mid-conversation model change now reads in plain words: the turn records the catalogue's
+  display name, and the divider says "Now answering with {account} · {name}" instead of the
+  raw model id (older turns without a recorded name still show the id).
+- A failed turn that changed chapters now checkpoints before it reports: the error names the
+  changed chapters, Retry stays hidden until they are undone, and undoing restores the prose
+  and returns the Retry request. When no checkpoint could be saved the turn says the chapters
+  need review and offers neither retry nor undo. (Undoing a failed turn previously updated
+  nothing on screen; it now patches the turn's message by id.)
+- A rate-limited turn says how long to wait and never retries in a loop: the provider's
+  `Retry-After` travels from the transport failure to the failed turn, its event and its
+  stored message, and the chat names the wait in plain words ("Try again in about 2 minutes")
+  beside the existing Retry request. Each attempt makes exactly one provider request.
+- An unreachable provider now says so in plain offline words: the failed turn keeps the
+  provider message, adds that writing, planning and exporting all still work, and keeps its
+  Retry request, so the next prompt sends as a new turn.
+- The model picker now shows which account is active: with several accounts on one provider,
+  each keeps its label and the book's connection is marked Book default, with a one-off turn
+  override named This turn when it differs. Browsing another account never moves the mark.
+- A turn that reads before it replies now costs the whole turn: every provider step's reported
+  price is summed instead of keeping only the last step's, and the done event and stored
+  message carry the summed cost with whole-turn tokens.
+- Removing a provider connection is now proven safe: its cached models are dropped (a
+  reconnected account fetches again), and the manuscript, its conversation history and every
+  library file survive byte-identical.
+- Reading aloud can now be held and gone on with: a Pause reading button appears while the
+  chapter is said and becomes Resume reading until it ends, for the computer's own voice and
+  the voice service alike. A fresh read starts unpaused; ending, cancelling or a new read
+  clears the held state.
+- Added migration field-carry coverage: `apps/desktop/tests/legacy-import.test.ts` now proves
+  outline, story arc (including string and list normalisation), front matter and scene
+  purpose/notes survive a legacy import byte-for-byte. `idea` is still silently dropped with no
+  skipped-item report; that product work stays open under spec 003
+  (FR-026, SC-004). No product code changed.
+- Made legacy migration idempotent (003 FR-030): each legacy book is fingerprinted with SHA-256
+  over canonical JSON and recorded in `.studio/migrations.json`; a second run over the same export
+  creates nothing and names each recognised book, and the library view says so instead of
+  reporting a new import. A deleted book re-imports, and an unreadable record warns and imports
+  everything again. Match design recorded as D-180; the record format is documented in
+  `docs/FORMAT.md`, including the archive-restore caveat.
+- Proved author typing survives a live agent turn: text saved while a turn waits on approval
+  applies the approved overwrite, and one undo restores the typed text.
+- Removing a provider connection is now proven terminal: a later request for that connection
+  throws before any network call is made.
+- A turn the provider's content policy declines now says so in plain words and offers Try
+  another model, which opens the model picker. (Image-generation refusals stay open: that flow
+  has no refusal path yet.)
+- Provider failures now distinguish a valid key that lacks permission from a rejected key: 403
+  and permission-signal failures report `permission` with a needs-permission status and a
+  check-the-scopes message, while 401 stays `auth` and content-policy refusals still win.
+- Reveal-in-Finder is now driven through the real main-process handlers in a test: the library
+  reveals the open folder, a conflict reveals its saved file, and a renderer-supplied escape path
+  is refused without touching the shell.
+- A failed studio voice no longer means silence or a stale voice label: read-aloud falls back
+  to the computer's own voice on service refusal, errors, playback failure and blocked playback,
+  and the panel says which voice actually read. The fallback note clears on the next utterance.
+- A rendering crash no longer leaves a blank window: an error boundary around the shared app
+  shows a plain screen with a Reload studio button on desktop and web. Errors in event handlers
+  still report through inline notes.
+- Pinned the agent reply contract in a test: the shipped instructions hold the model to two or
+  three sentences, no tool names, ids, JSON or process talk, and chapters by number and title.
+  Model wording itself is untestable with a mock; no runtime truncation exists by design.
+- Pasting into the manuscript now normalises the text on the way in: Windows and old Mac line
+  endings, non-breaking spaces and curly quotes are unified (quotes match what the author types,
+  keeping pasted and typed prose searchable as one corpus), and runaway blank lines collapse to
+  one. Single breaks, stanza breaks, trailing hard breaks, tabs and dashes pass through, so verse
+  survives. The shared `normalizePasteText` ships as `@ai-book-studio/core/paste`.
+- The agent now checks an author-stated word limit after a rewrite: `replace_in_chapter` and
+  `overwrite_chapter` accept an optional `maxWords`, verify the rewritten passage after saving,
+  and report within/over with the saved chapter count. A miss is reported, never silently
+  reverted. The new bound satisfies the tool limits contract.
+- Proved the library grid stats: `listBooks` summaries carry word counts summed from chapters,
+  stage, description and chapter counts, and the `library.json` catalog matches. The grid still
+  reads all chapter files per the documented catalog-never-truth design; lazy open stays open
+  (D-182).
+- A previous run's approval can never resume: starting any turn expires stored pending approvals
+  no live turn holds (persisted as expired), answering the old turn explains it is no longer
+  waiting, and the new turn runs fresh. Approvals held by a live turn are untouched.
+- Legacy migration now carries pictures (003 FR-020/FR-024, SC-004): every image version present
+  in the export's image map is decoded and stored in the book's image folder byte-identical, with
+  prompt, model and cost where the export has them and dimensions and MIME read from the bytes.
+  Cover-flagged pages import as cover pictures; missing, unreadable and oversized pictures become
+  warnings and never fail the book; per-book picture counts join the report and the library note.
+  Page versions, current-version marking, anchor rebinding, cover export inclusion and image style
+  stay open (D-181).
+
+- Spec 011 T036: informational spending hooks. The agent dialog has a Spending section with a
+  per-turn ceiling and a monthly warning level per book (both unset by default), the month-to-date
+  spend with a lower-bound note when turns went unpriced, and both warnings. Warnings never stop
+  the agent; enforcement waits on decision D-116, which stays proposed.
+- Spec 016 T006/T007: the drift review dialog and the Settings sync section. The main process scans
+  on library open and on throttled window focus; the dialog reviews each change with keep-disk,
+  keep-mine, open-both and export actions, and the Settings section shows the device, last scan and
+  interval. Own saves, trash moves, threads and images note themselves into the sync baseline so
+  they never report as someone else's edit. D-120 stays proposed.
+
 ### Changed
 
 - `AGENTS.md` no longer refers to a document that was removed, and four research notes now say
@@ -15,6 +124,15 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The full test run is green again (four failures and two errors, each file passing alone).
+  Three leaks between files caused them: the agent runtime tests left five-second deadlines
+  running after each test, the workspace's "Saved" note timer fired after the workspace
+  unmounted, and two different Electron mocks raced to define the module. The deadlines are
+  now cleared after every test; the note's timer is cleared on unmount, a real fix that also
+  stops a state update into a closed view; and every file registers the one complete
+  Electron mock in `tests/support`. The DOM teardown also lets React finish work it
+  scheduled outside `act()` before the window closes, which had intermittently failed a
+  later file and once hung the run. Nothing was quarantined.
 - The accessibility and visual gates run to the end again. After their conflict step, opening
   the library now shows the drift report (016 acceptance scenario 2), and both scripts close it
   before opening the book. Before recapturing 76 of the 112 visual baselines, each diff was
@@ -25,8 +143,59 @@ Update the `Unreleased` section before every commit.
 - Hardened the web smoke UI typing journey: it now proves the keystrokes landed in the
   editor and the save committed a newer chapter version, instead of trusting a bare
   "Saved" status that also shows when nothing changed. No product code changed.
+- Fixed the desktop smoke slow-run cancel check on slow machines: the stopped-state
+  wait is now 60s (was 10s) with the outer hang guard at 180s, and a timeout now
+  names the state the report is stuck in. The cancel contract itself was proven
+  instant in-process; only the gate window was too tight for the 3M-word stress
+  fixture. Verified 29/29 twice. No product code changed.
+- Fixed manuscript review cancellation on long books (spec 034 T010/T016): the
+  word-count analysis ran synchronously on the run thread, so on a fast machine a
+  cancel click always landed after the run finished and on a large book the
+  interface froze with a Cancel button that could not act. The analysis now
+  counts in whitespace-aligned slices and yields between 256KB budgets, so
+  Cancel stays clickable, an abort discards partial counts, and small books
+  analyze with no added latency. This supersedes the earlier slow-machine
+  diagnosis: the gate window was never the fault. The smoke review checks now
+  wait for report content rather than the dialog shell, and the stale re-run
+  waits for a new report generation instead of the shell losing its banner.
+  Verified 29/29 in the desktop smoke with the cancel check green.
 - Corrected the 018 roadmap row: the manual desktop/MCP pass (T011) ran against a
   real backend and MCP client with reads verified on disk; it is not pending.
+- Fixed the WebMCP `untrustedContentHint` polarity: every studio tool output is
+  author-supplied prose (which may embed imported or quoted third-party text), so
+  the annotation is now `true` on every tier — in `surfaces.ts`, the
+  `bookwriter tools --format webmcp` output, and the glasses page registration.
+  The value was `false` while the code comments and the WebMCP semantics both
+  describe output the caller must treat as data. No behavior or gate changes.
+- Unified the studio word counter (spec 002 FR-016): one dependency-free
+  `countWords` in `packages/core/src/words.ts`, re-exported by
+  `packages/core/src/markdown.ts` and `packages/app/src/lib/utils.ts`, so the
+  editor's live count can never disagree with chapter metadata, the manuscript
+  review or import mapping again. Covered by a single-implementation pin plus
+  behavior cases and an editor header-count agreement test. No behavior change.
+- Proved failed DOCX exports keep the previous file and leave no partial output
+  (spec 002 FR-055): real-writer failures into an unwritable folder throw with
+  an empty directory for fresh exports and a byte-identical prior file plus no
+  staging droppings for replacements. No product change; the boundary already
+  threw through the atomic writer.
+- Proved DOCX export honors manuscript settings (spec 002 FR-052): the same
+  chapters built under default and custom settings produce documents that carry
+  only their own font, body size, line spacing and first-line indent runs with
+  identical prose. No product change; the existing typography test already
+  covered one custom profile and chapter-title alignment.
+- Covered the Story Bible dialog (spec 002 FR-019): staged character and memory
+  edits save together, Cancel discards a staged removal without writing, blank
+  title disables save, and a failed save keeps the dialog open and reports. No
+  product change; the tool-level add/update/remove paths were already covered.
+- Pinned verse preservation (spec 002 FR-015): a stanza round-trips byte-identical
+  through chapter save and read, the counter counts across its breaks, and the
+  exported DOCX keeps the stanza lines in order. No product change; the
+  canonicaliser already preserved interior breaks.
+- Pinned tool limit honesty (spec 002 FR-022): every stated limit resolves to
+  an enforced input maximum or a proven execute cap, the two 200-match result
+  caps truncate behaviorally with full counts reported, and the system prompt
+  policy sections state no numeric limits. No product change; descriptions
+  interpolate the enforced constants and the schema carries every exact bound.
 
 ### Added
 
@@ -36,6 +205,65 @@ Update the `Unreleased` section before every commit.
   credentials-free test story; `docs/TOOLKIT.md` records the tier-to-shape mapping and
   points at the note. No application sent: no public endpoint exists. All quoted
   strings verified against the real surface functions with synthetic fixtures only.
+- Spec 036 T007: pure task-preview candidate evaluation. `packages/core/src/routing/`
+  adds versioned task-profile schemas and `evaluateCandidates`, a deterministic pure
+  function over per-provider catalogues, connections and build that reports eligible,
+  excluded, unknown or unavailable status with plain-language reasons. No settled task
+  taxonomy is shipped; no network, key, manuscript or runtime import exists. Covered by
+  `packages/core/tests/routing/evaluate.test.ts` with synthetic fixtures only.
+- Spec 036 T008: honest cost/context presentation rules. `unitPriceViews` shows
+  catalogue input, output and cached-input unit prices with provenance; missing or
+  unusable prices stay unknown, never zero, while a published zero stays known.
+  `contextView` shows the catalogue limit with request fit always unknown. No total,
+  ceiling or rejection exists. Covered by
+  `packages/core/tests/routing/presentation.test.ts` with synthetic fixtures only.
+- Spec 036 T009: shared task-preview surface. `TaskPreviewDialog` renders the
+  evaluation over caller-supplied profiles and local catalogues: unranked candidates
+  in catalogue order with statuses, reasons, price/context facts and per-catalogue
+  freshness lines. Only a transient selected-profile id is kept; a "Choose in the
+  model picker" callback replaces selection with no preselect. Covered by
+  `apps/desktop/tests/task-preview.test.tsx` with synthetic fixtures only.
+- Spec 036 T010: preview neutrality proofs. `task-preview-neutrality.test.tsx` drives
+  the dialog through open, profile changes, Close-button close and Escape cancel
+  against a fixture host, proving book default, one-turn override, connection,
+  history, usage and manuscript stay unchanged and the picker callback carries no
+  model. No `window.studio` mock is installed, so bridge access would throw.
+- Spec 036 T011: dedicated preview states. The dialog shows no-catalogue, malformed,
+  unreadable-profile, no-candidate and stale-catalogue states, each stating what is
+  unknown with Close and the model picker as the only next actions; no refresh,
+  retry, replacement choice or manual-flow block exists. Covered by
+  `apps/desktop/tests/task-preview-states.test.tsx` with synthetic fixtures only.
+- Spec 036 T012: preview call/credential spies. `task-preview-calls.test.tsx`
+  exercises the dialog behind a throwing bridge proxy and fetch stub, proving open,
+  profile changes, the picker path and close make zero provider calls, read no
+  credentials and fetch nothing; a positive control opens the real model picker and
+  observes its provider and connection listing.
+- Spec 036 T013: preview consent regression. `task-preview-consent.test.tsx` proves
+  previewing a Contributor candidate shows the existing 022 warning, offers no
+  consent control, leaves the training-consent flag alone and touches no bridge
+  surface.
+- Spec 036 T014: preview access pass. `task-preview-access.test.tsx` verifies the
+  dialog role and name, named native buttons, pressed-state exposure, focusability,
+  list markup for reasons, no inline motion styles, and identical token-only
+  structure under light and dark themes.
+- Spec 036 T020: synthetic-fixture rule verified. All 51 existing preview,
+  neutrality, states, calls, consent and access tests audited: no live providers,
+  real manuscripts, credentials, paid services, devices, Node or network access;
+  bridge objects are self-installed throwing proxies or one canned stub. The rule
+  stays standing for the gated T015–T019 tests.
+- Spec 031 T010: per-book tone and answer-length settings UI. The existing agent settings
+  channel accepts and returns `tone` (500 characters maximum) and `answerLength`
+  (Brief/Standard/Detailed, Standard by default); the agent dialog shows both with
+  Save/Clear actions and a disclosure that the values travel with submitted turns.
+  Values stay in ordinary book data and `SKILLS.md` is unchanged. Covered by
+  `agent-interaction-contract.test.ts` and `agent-tone.test.tsx` with synthetic
+  fixtures only. Runtime inclusion in submitted turns stays with later tasks.
+- Spec 031 T004: interaction contract fields. Turn input requires `mode` with optional
+  bounded one-turn `guidance`; stored turns record `mode` and carry a `guidance` part;
+  per-book agent settings gain `tone` and `answer-length` with defaults for older books.
+  All existing callers send `edit`, preserving behavior; covered by
+  `agent-interaction-contract.test.ts` with synthetic fixtures only. No permission or UI
+  changes; enforcement and the composer default stay with later tasks.
 - Spec 031 T003 (research only): in-flight guidance semantics. `research/inflight-guidance.md`
   pins prompt fixity and the stop-plus-new-turn journey and D-179 proposes no live
   steering, with guidance staying pre-send, in proposed-plan review, and in `SKILLS.md`.
@@ -53,6 +281,12 @@ Update the `Unreleased` section before every commit.
   `history/` records mirroring chapter files; `research/retention.md` pins unbounded trash/conflicts
   and failure preservation and D-176 proposes no automatic pruning with trash-based deletion.
   Dependent persistence work remains blocked. No behavior changes.
+- Spec 009 T029: schema refusal and manual recovery journey. Opening a book written by a
+  newer build now refuses before any write and shows a recovery dialog instead of a toast:
+  detected vs supported schema, the compatible-build next step and the FR-047 no-migration
+  guarantee. The local support summary reuses the About build metadata with the compatibility
+  outcome; it holds no manuscript text, no credentials and no absolute paths, and is copied
+  only on request. Covered by `schema-refusal.test.tsx` with synthetic fixtures only.
 - Spec 009 T025 (research only): profile cleanup on uninstall. `research/profile-cleanup.md`
   inventories the two-file profile and proves pointer-not-prose storage, missing-file defaults
   and the shared root; D-174 proposes a uniform in-app optional cleanup with itemized
@@ -70,6 +304,10 @@ Update the `Unreleased` section before every commit.
   install/compatible upgrade under override disclosure, unsigned labeling, same-schema-only
   and no feed/automation conditions. Nothing installs; dependent work remains blocked. No
   behavior changes except a pure settings-path helper with identical behavior.
+- Spec 009 T026: build-metadata identity in About. The metadata now carries observed
+  platform and architecture (desktop reports OS/CPU, web reports `web`/`unknown`); About
+  shows an Architecture row, `Unknown` when undetectable, alongside version, commit, schema,
+  target, platform and signing. Covered by metadata and About dialog tests.
 - Spec 009 T004: release checklist. `scripts/release/check.mjs` re-hashes the served
   artifact and compares hash, bytes, version, commit and signing status against the record
   and the About values, naming only the mismatched field. Covered by checklist tests with
@@ -79,6 +317,10 @@ Update the `Unreleased` section before every commit.
   and class only; tarballs are extracted and scanned, opaque containers name-checked. Wired as
   the `release-artifact-scan` gate that blocks publication. Covered by new scan tests including
   secret non-disclosure.
+- Spec 009 T002: unsigned-path audit. About (Settings) now carries a Signing row from the
+  build metadata, unsigned on every target until D-115; the release record already states the
+  unsigned status, and no public download page exists yet (testers receive the artifact plus the
+  record directly). Covered by the new About dialog tests and build metadata tests.
 - Spec 009 T001: machine-readable release record. `scripts/release/record.mjs` hashes exactly
   the served files in a flat artifact directory (streaming SHA-256; names, sizes and hashes
   only, never contents) and writes the plan's JSON shape with version, commit, library schema,
@@ -111,6 +353,20 @@ Update the `Unreleased` section before every commit.
   D-108 proposes the determinism requirements and per-target illustration/packaging contract with
   KDP acceptance, pagination/trim, font embedding and validator tooling explicitly unresolved. No
   renderer selected, no conformance claimed; dependent work remains blocked. No behavior changes.
+- Spec 035 T004–T005: DOCX journey characterized and its safe-publication boundary built. T004
+  pins the current journey with synthetic evidence: canonical typography reaches the document
+  (OOXML anchors), attached images resolve through the image store with skip rules, source files
+  stay byte-identical, and dirty editor input saves before `books.exportDocx` runs. T005 adds
+  `exportManuscriptDocx` with picker-cancel, in-library alias refusal, explicit replacement
+  consent, destination recheck, atomic staged writes and prior-file preservation on failure; the
+  IPC contract and headless hook are unchanged. `ManuscriptEditor` unmount now also clears its
+  pending draft timer.
+- Spec 035 T001–T003: Format journey designed, built and contract-tested. A Format dialog
+  (`Format book` toolbar/overflow entry) binds `settings.manuscript` as the canonical source with
+  immediate full-settings-merge saves, offers DOCX with PDF/EPUB/Markdown visibly planned, and shows
+  a local approximate preview with a persistent disclosure making no page or publisher claims.
+  `apps/desktop/tests/format-dialog.test.tsx` pins binding, merge, disclosure, targets, schema
+  parity, failure revert and no chapter writes; hidden smoke covers the preview in the real UI.
 - Spec 033 T003 (research only): source-anchor representation and verification compared with
   synthetic evidence. `research/source-anchors.md` and premise tests propose exact ordered
   verification (version+hash equality, excerpt-at-range equality, no fuzzy fallback) (D-168,
@@ -127,6 +383,33 @@ Update the `Unreleased` section before every commit.
   evidence. `research/storage-alternatives.md` and premise tests propose a separate versioned
   `planning.json` (D-163, awaiting author acceptance); D-164/D-165 stay Open and T002–T008 remain
   blocked. No behavior changes.
+- Spec 028 T007: placeholder-save block. Saving over a chapter whose file is listed but unreadable
+  preserves the author's text as a `conflict-placeholder` copy with a new `placeholder` reason and
+  shows the existing conflict choices with placeholder-specific copy, instead of overwriting or
+  failing raw. Meta-only edits are unchanged (no body text to preserve).
+- Spec 028 T005: location health in the library list. A `library:locationHealth` channel
+  serves the derived state from a fresh read-only scan, and `LibraryView` shows a
+  `location-health` line under the library root until the 016 settings section lands.
+- Spec 029 T016: browser/mobile import capability specified and kept refused.
+  `research/browser-mobile-import.md` records the per-target verdict (web folders and
+  browser storage fail the publication contract — every web port publishes with
+  copy+delete, never an atomic rename; iOS/Android inherit the web refusal through the
+  Capacitor shell), proven by `apps/web/tests/storage/manuscript-import-refusal.test.ts`
+  pinning the honest desktop-app refusal on both channels. Enabling any target needs its
+  own source-read, failure-clean publish and hidden-journey conformance.
+- Spec 029 T015: other-format intake evaluation. `research/other-formats-intake.md`
+  records the per-format verdicts: RTF rejected (`rtf-parser` throws on images and legal
+  escaped spaces, inlines headers/footnotes, flattens tables), ODT validated but not
+  enabled (`fflate` plus `fast-xml-parser` with mandatory `preserveOrder`/`trimValues:false`;
+  enabling needs the format decision, transform, wiring and T013 conformance), legacy
+  `.doc` refused with no validated reader. Proven by
+  `apps/desktop/tests/other-formats-intake-validation.test.ts` with synthesised fixtures;
+  the product path still refuses `.doc`, `.rtf` and `.odt`.
+- Spec 029 T014: DOCX intake validation. `research/docx-intake.md` records the evaluated
+  contract (mammoth plus zip sniffing; chapter split on non-title top-level headings; body
+  fidelity; image refusal instead of base64; table text in order; silent drops reported),
+  proven by `apps/desktop/tests/docx-intake-validation.test.ts` with synthesised documents.
+  The feature is not enabled: `.docx` is still refused.
 - Spec 012 T030: unified summary. The single pass/fail/skip/quarantined summary format now
   carries a tag, and `bun run release` prints the `[release]` summary — per-stage results,
   test counts, quarantined count, verdict — as the last line on both the go and blocked
@@ -178,11 +461,22 @@ Update the `Unreleased` section before every commit.
   on a synthetic 120-chapter / 250,000-word library, measures the web bundle and welcome render,
   and fails only the SC-009 regressions (book open doubles, bundle grows past 20%) against the
   committed baseline, rewritten only by `--update-baseline`.
+- Spec 012 T014: packaged Settings-open stall fixed. Opening Settings no longer runs the
+  synchronous keychain round-trip (it wedged the packaged app when macOS wanted confirmation);
+  `status()` is a fast availability read per D-161 and the probe moved to an explicit
+  `connections:check` channel behind the Check control. Packaged smoke passes 27/27; the smoke
+  runner fails loudly with window state instead of hanging and accepts `SMOKE_APP` overrides.
 - Spec 012 T013: browser end-to-end interface journey. The web smoke now opens the book
   through the library card, types with real keystrokes to a Saved status, proves a page reload
   keeps the prose, forces a two-writer conflict through the UI save path with the copy named on
   reopen, and exports through the UI button (18/18). Denied/cancelled folder handling stays
   covered by the storage harness and permission unit tests; native picker clicks stay manual.
+- Spec 012 T015: per-route content security policy and production fuse hardening. The web
+  page may contact only OpenRouter, the loopback check harnesses nothing external
+  (`apps/web/tests/csp.test.ts` guards every served route against the provider registry), and the
+  packaged app ships with RunAsNode, node-options and CLI inspect off and asar-only loading on via
+  the `scripts/flip-fuses.mjs` afterPack hook (`apps/desktop/tests/fuses.test.ts`; fuse states
+  confirmed by packaged readback, hidden smoke 27/27).
 - Spec 012 T019: maintained repository/artifact secret scan, source-map check and
   manuscript-like text scan. `scripts/submission-check.ts` now exports `scanTrackedSecrets`,
   `scanArtifactDir`/`scanArtifacts`, `enablesSourceMaps`/`sourceMapConfigProblems` and
@@ -191,6 +485,100 @@ Update the `Unreleased` section before every commit.
   `apps/desktop/tests/secret-scan.test.ts` with runtime-built fixtures plus clean-tree
   assertions (full suite 1010 pass, typecheck clean).
 
+- Spec 029 T006, T008: manuscript import parsing and the main-process boundary. Shared core gains
+  `refuseUnsupportedExtension` wording plus determinism and span-reconstruction invariants (every
+  chapter body equals its source span minus the reported edge blanks, and split order never changes
+  the preview). New `apps/desktop/src/main/import.ts` picks through an injected dialog (macOS-gated,
+  cancel stays a cancel) and reads through `stat`-first size refusal, an extension pre-check and
+  strict shared-core validation; every refusal names only the file, never a host path. Covered by
+  `apps/desktop/tests/manuscript-import.test.ts` alongside the parser invariants
+  (full suite 919 pass, typecheck clean).
+- Spec 029 T007: a presentational import preview dialog shows the full chapter text with line
+  ranges, editable book and chapter titles, add/move/remove split controls that re-derive chapters
+  from the same source bytes, honest refusal copy for unsupported input, and normalization notes.
+  It reports the confirmed mapping through `onConfirm` only and never touches the library before
+  the author confirms. Covered by `apps/desktop/tests/manuscript-import-preview.test.tsx`
+  (full suite 928 pass, typecheck clean).
+- Spec 029 T009: `LibraryService.importManuscript` stages a complete book under a unique
+  unpublished `.studio/staging/` path, reads back and checks `book.json` and every chapter, then
+  publishes with one atomic directory move — never as sequential visible calls. Any failure before
+  the move leaves no visible book and removes staging; a cleanup failure names the remaining
+  staging path. Covered by fault-injection tests over a recording in-memory port
+  (full suite 934 pass, typecheck clean).
+- Spec 029 T010: the `books:importManuscript` channel carries the author's confirmed mapping
+  (titles + full bodies, never a path) through a strict shared-core schema to
+  `LibraryService.importManuscript`. The preload bridge exposes it; the web runtime refuses it
+  as desktop-only. Covered by schema contract tests and a dialog-to-contract test
+  (full suite 941 pass, typecheck clean).
+- Spec 029 T011: the library offers a macOS-only Import manuscript journey — choose a file in the
+  main process, inspect the exact preview with title and split edits, confirm to publish one
+  complete book, cancel before the commit with nothing added, and see published, cancelled and
+  failed outcomes truthfully (the publish cannot be cancelled into a different result). Covered by
+  journey tests over a mocked bridge (full suite 948 pass, typecheck clean).
+- Spec 029 T012: after each manuscript publish the library shows a result report with the source
+  file name, book title, per-chapter split lines and word counts, normalization notes and the
+  explicit note that planning data, images and other metadata were not imported. Every count is
+  derived from the committed book, proven by tests that feed the report different committed text
+  (full suite 951 pass, typecheck clean).
+- Spec 029 T013, T017: the manuscript import journey is covered end to end on the macOS reference
+  target. The hidden smoke run stages a synthetic manuscript, drives the real preview, split,
+  confirm and result UI, and proves the book appears only after publication while the fixture and
+  the rest of the library stay unchanged. Recorded acceptance: full suite 951 pass, typecheck
+  clean, hidden smoke 27/27 with synthetic fixtures only (not packaged or release acceptance).
+- Spec 012 T007: deterministic property tests for the format core and save decisions. Fixed-seed
+  generators prove front-matter round-trips, normalization idempotence, slug safety, order
+  round-trips, conflict-name classification, word-count invariance, exact version increments and
+  the conflict-decision matrix — 10 tests, ~4,100 assertions, no new dependencies
+  (full suite 961 pass, typecheck clean).
+- Spec 012 T008: damaged-file isolation at the library-open path. Malformed chapter files fail
+  alone with per-file reasons while the book lists and healthy chapters keep saving; prose
+  without front matter stays readable. The workspace names each skipped file with its reason in
+  a dismissible line (full suite 965 pass, typecheck clean).
+- Spec 012 T012 (partial): chapter rail and conflict-banner component coverage. The real
+  `ChapterRail` is driven through list, select, add, move, delete and keyboard focus; the real
+  `WorkspaceView` proves the reorder shortcut with dialog suppression and both conflict banners
+  with working actions (full suite 977 pass, typecheck clean).
+- Spec 012 T012 (complete): chat composer and connection-card coverage. Enter sends with the
+  continued thread and optional turn model, Shift+Enter adds a newline, the running turn offers
+  Stop; cards show kind copy, test on demand with busy disabling, list models with context
+  sizes, and remove only after confirm (full suite 988 pass, typecheck clean).
+- Spec 012 T011: OAuth sign-in guards for the OpenRouter SSO flow with no network beyond
+  localhost and no real account. Callback state, expiry, decline and malformed input are
+  refused without echoing the code; the loopback flow proves a mismatched callback exchanges
+  nothing, the first callback wins, cancellation frees the flow and a waiting second start is
+  refused (full suite 1002 pass, typecheck clean).
+
+- Spec 034 T001, T002, T015: the first report measures saved words and coverage only. Decided with
+  the author after synthetic normalization examples: the repeated three-token phrase signal is
+  deferred (a future signal unifies curly and straight apostrophes), and desktop ships first with
+  browser and mobile reusing the shared component. The report copy, spec decisions, tasks and the
+  deferred T008 record the outcome; acceptance tests cover every scenario except the deferred
+  repeatable-phrase case, and no provider or network call exists on the run path.
+- Spec 034 T011–T014, T017: the Review manuscript action now produces a read-only, run-local report
+  over the confirmed saved snapshot (`packages/app/src/components/ReviewReportDialog.tsx`). It shows
+  run scope and time, studio word counts, per-chapter coverage with skip reasons, the word-count
+  definition, and an empty-findings state that does not imply the proposed phrase signal ran. Evidence
+  navigation rechecks the saved version and hash, selects the exact span in the editor, and stays
+  disabled while a report is stale; a new run replaces the report and switching books discards it.
+  Running, stopped, failed, partial and insufficient-evidence states each name the next safe action.
+  Covered by `apps/desktop/tests/review-report.test.tsx` (dialog states, synthetic evidence, and a
+  workspace integration run that performs no manuscript writes) and smoke checks that run the
+  report over the fixture book, keep writing through the save gate without touching typed text, and
+  mark a changed chapter stale before a new run replaces it (21/21 smoke checks). Live phrase
+  findings still wait on the metric decision (T008).
+- Fixed the review gate reading mirrored React state, which could lag a fast keystroke by an effect
+  and skip the save choice. The gate now reads the editor's live buffer status
+  (`EditorHandle.getStatus()`), pinned by a fast-click renderer test.
+- Spec 034 T016: the smoke run covers an empty book reporting "Not enough saved text to review"
+  instead of a false no-findings result, and cancelling a slow run during the snapshot read so no
+  analysis starts (23/23 checks). The analysis now reads its own fresh snapshot on the cancellable
+  path with abort checks instead of reusing the gate's read. Still open: evidence navigation (needs
+  live findings from the deferred phrase scanner).
+- Spec 028 T006 (D-161): provider settings shows each connection's health from the author's last
+  explicit Test, with a volatile check time that clears whenever Settings opens; opening Settings
+  never probes. Voice shows configured read-aloud/dictation availability with no check time and
+  states it is never tested automatically. A rejected key renders the redacted safe message, never
+  the secret. Covered by `apps/desktop/tests/settings-status.test.tsx`.
 - Spec 029 T001–T003, T005: manuscript import decisions recorded with the author (whole-file
   default with line-boundary splits, Markdown literal, filename-derived editable title; 5 MiB
   strict-UTF-8 source with one BOM strip, NUL/control rejection, empty refusal). New pure parser
@@ -200,6 +588,12 @@ Update the `Unreleased` section before every commit.
   refuses cross-device moves, and gained `removeDirectory` for staging cleanup (desktop, in-memory
   and web stubs) with contract and conformance tests. Web copy+delete does not qualify, so the
   first profile's publisher stays desktop-gated.
+- Spec 034 T006: the workspace has a Review manuscript action (header and mobile menu) wired to live
+  editor state. A dirty chapter opens a save gate with Save and continue or Keep writing; the save
+  path flushes the editor and re-reads a fresh snapshot before anything runs, while a conflict,
+  failure or cancel never starts the review and leaves typed text untouched
+  (`packages/app/src/components/ReviewGateDialog.tsx`,
+  `apps/desktop/tests/review-gate.test.tsx`).
 
 ### Changed
 

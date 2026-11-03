@@ -1,6 +1,8 @@
 import type { BrowserWindow } from "electron";
 import { app } from "electron";
-import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Studio } from "./studio";
 
@@ -23,8 +25,77 @@ interface Check {
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function evaluate<T>(win: BrowserWindow, script: string): Promise<T> {
-  return (await win.webContents.executeJavaScript(script, true)) as T;
+/**
+ * Redact a failure line before it is written to an artifact file.
+ *
+ * Smoke prose is synthetic, but renderer errors can echo storage paths or tokens, so the same
+ * value-shaped patterns the shared `failure-artifacts.mjs` helper guards are masked here too.
+ * This stays a duplicate on purpose: the smoke bundle cannot import the script helper.
+ */
+const REDACT_PATTERNS: RegExp[] = [
+  /\bsk-or-[A-Za-z0-9_-]{8,}\b/g,
+  /\bsk-ant-[A-Za-z0-9_-]{8,}\b/g,
+  /\bsk-[A-Za-z0-9_-]{16,}\b/g,
+  /\bAIza[0-9A-Za-z_-]{20,}\b/g,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
+  /\bBasic\s+[A-Za-z0-9+/=]{8,}/gi,
+  /([?&](?:api[_-]?key|key|access_token|code|refresh_token)=)[^&\s"']+/gi,
+  /("(?:apiKey|api_key|access_token|refresh_token|secret|password)"\s*:\s*")[^"]+/gi,
+  /\b[A-Fa-f0-9]{64,}\b/g
+];
+const REDACT_REPLACEMENTS: string[] = [
+  "sk-or-[redacted]",
+  "sk-ant-[redacted]",
+  "sk-[redacted]",
+  "AIza[redacted]",
+  "Bearer [redacted]",
+  "Basic [redacted]",
+  "$1[redacted]",
+  "$1[redacted]",
+  "[redacted-token]"
+];
+
+function redactLine(line: string): string {
+  let result = String(line ?? "");
+  for (let index = 0; index < REDACT_PATTERNS.length; index += 1) {
+    try {
+      const pattern = REDACT_PATTERNS[index];
+      const replacement = REDACT_REPLACEMENTS[index];
+      if (pattern === undefined || replacement === undefined) break;
+      pattern.lastIndex = 0;
+      result = result.replace(pattern, replacement);
+    } catch {
+      return "[redacted]";
+    }
+  }
+  return result;
+}
+
+function windowState(win: BrowserWindow): string {
+  const contents = win.webContents;
+  return `destroyed=${win.isDestroyed()} contentsDestroyed=${contents.isDestroyed()} crashed=${contents.isCrashed()} url=${contents.getURL()}`;
+}
+
+/**
+ * An evaluate that never hangs silently: if the renderer stops answering, the check fails with
+ * the window state instead of burning the whole run's timeout. Packaged-only wedges (a dead
+ * renderer, a destroyed window) surface here with something to act on.
+ */
+async function evaluate<T>(win: BrowserWindow, script: string, timeout = 15_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return (await Promise.race([
+      win.webContents.executeJavaScript(script, true),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`the renderer did not answer within ${timeout}ms (${windowState(win)})`)),
+          timeout
+        );
+      })
+    ])) as T;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function waitUntil(predicate: () => Promise<boolean>, description: string, timeout = 10_000): Promise<void> {
@@ -86,7 +157,24 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
     }
   };
 
+  const rendererErrors: string[] = [];
+
   try {
+    win.webContents.on("console-message", (_event, _level, message) => {
+      rendererErrors.push(redactLine(message));
+    });
+    win.webContents.on("render-process-gone", (_event, details) => {
+      console.error(`[smoke] render process gone: ${details.reason}`);
+    });
+    win.webContents.on("unresponsive", () => {
+      console.error("[smoke] renderer unresponsive");
+    });
+    win.webContents.on("responsive", () => {
+      console.error("[smoke] renderer responsive again");
+    });
+    win.on("closed", () => {
+      console.error("[smoke] window closed mid-run");
+    });
     await check("the test window stayed hidden", async () => {
       if (win.isVisible()) throw new Error("the window is visible");
       return "never shown, parked off-screen";
@@ -119,6 +207,15 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       if (!title.includes("Smoke Test Book")) throw new Error(`card read: ${JSON.stringify(title)}`);
       return "Smoke Test Book";
+    });
+
+    await check("the library shows the location health line", async () => {
+      const line = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="location-health"]')?.innerText ?? ""`
+      );
+      if (!line.includes("Ready")) throw new Error(`health line read: ${JSON.stringify(line)}`);
+      return line;
     });
 
     await check("opening a book shows the manuscript", async () => {
@@ -161,8 +258,11 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         "the empty model picker"
       );
       // An author with no key must be able to reach the place where a key is added.
-      const escape = await evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="open-provider-settings"]')`));
-      if (!escape) throw new Error("the empty model picker offered no way to open Settings");
+      const settingsOpener = await evaluate<boolean>(
+        win,
+        inPage(`document.querySelector('[data-testid="open-provider-settings"]')`)
+      );
+      if (!settingsOpener) throw new Error("the empty model picker offered no way to open Settings");
       const closed = await evaluate<boolean>(
         win,
         `(() => {
@@ -261,6 +361,204 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       if (!closed) throw new Error("the Story Bible had no Cancel button");
       return "book fields, cast and memories in one place";
+    });
+
+    await check("an unsaved edit offers save or keep writing", async () => {
+      const marker = `A hidden review check typed this ${Date.now()}.`;
+      const opened = await evaluate<boolean>(
+        win,
+        `(() => {
+          const el = document.querySelector('[data-testid="manuscript-text"]');
+          if (!el) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+          setter.call(el, el.value + "\\n\\n" + ${JSON.stringify(marker)});
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          const review = document.querySelector('[data-testid="review-manuscript"]');
+          if (!review) return false;
+          review.click();
+          return true;
+        })()`
+      );
+      if (!opened) throw new Error("the editor or the Review manuscript button was not found");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="review-dialog"]')`)),
+        "the save choice"
+      );
+      const copy = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="review-dialog"]')?.innerText ?? ""`
+      );
+      if (!copy.includes("Save and continue") || !copy.includes("Keep writing")) {
+        throw new Error(`choice read: ${JSON.stringify(copy.slice(0, 120))}`);
+      }
+      const kept = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-dialog"] button')].find((item) => item.textContent?.trim() === "Keep writing");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!kept) throw new Error("the save choice had no Keep writing button");
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `!document.querySelector('[data-testid="review-dialog"]') && !document.querySelector('[data-testid="review-report"]')`
+            )
+          ),
+        "the choice to close"
+      );
+      const prose = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="manuscript-text"]')?.value ?? ""`
+      );
+      if (!prose.includes(marker)) throw new Error("Keep writing did not leave the typed text untouched");
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`(document.querySelector('[data-testid="save-status"]')?.textContent ?? "").includes("Saved")`)
+          ),
+        "the autosave to settle"
+      );
+      return "Keep writing left the typed text untouched";
+    });
+
+    await check("the manuscript review reports on saved text", async () => {
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="review-manuscript"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!clicked) throw new Error("the Review manuscript button was not found");
+      // The dialog shell renders while the run is still reading, so wait for the report body
+      // itself: the word-count definition and coverage only render with a finished report.
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `(document.querySelector('[data-testid="review-report"]')?.innerText ?? "").includes("Studio word count")`
+            )
+          ),
+        "the manuscript review report"
+      );
+      const copy = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="review-report"]')?.innerText ?? ""`
+      );
+      if (!copy.includes("Studio word count") || !copy.includes("Coverage")) {
+        throw new Error(`report read: ${JSON.stringify(copy.slice(0, 160))}`);
+      }
+      const closed = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-report"] button')].find((item) => item.textContent?.trim() === "Close");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!closed) throw new Error("the manuscript review report had no Close button");
+      return "run scope, studio counts, coverage and definitions over the fixture book";
+    });
+
+    await check("a changed chapter marks the review stale", async () => {
+      const marker = `A hidden review check changed this ${Date.now()}.`;
+      const typed = await evaluate<boolean>(
+        win,
+        `(() => {
+          const el = document.querySelector('[data-testid="manuscript-text"]');
+          if (!el) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+          setter.call(el, el.value + "\\n\\n" + ${JSON.stringify(marker)});
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        })()`
+      );
+      if (!typed) throw new Error("the editor was not found");
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`(document.querySelector('[data-testid="save-status"]')?.textContent ?? "").includes("Saved")`)
+          ),
+        "the edited chapter to save"
+      );
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="review-manuscript"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!clicked) throw new Error("the Review manuscript button was not found");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="review-stale"]')`)),
+        "the stale report"
+      );
+      const stale = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="review-report"]')?.innerText ?? ""`
+      );
+      if (!stale.includes("This report is stale") || !stale.includes("The Light")) {
+        throw new Error(`stale read: ${JSON.stringify(stale.slice(0, 160))}`);
+      }
+      const again = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-report"] button')].find((item) => item.textContent?.trim() === "Run again");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!again) throw new Error("the stale report offered no new run");
+      // Wait for a new report generation: the run meta carries the fresh completion time,
+      // so it can only match once the new run replaces the stale one. The dialog shell also
+      // renders while the new run is reading, so the shell alone proves nothing.
+      const staleMeta = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="review-run-meta"]')?.textContent ?? ""`
+      );
+      try {
+        await waitUntil(
+          () =>
+            evaluate<boolean>(
+              win,
+              inPage(
+                `(() => { const meta = document.querySelector('[data-testid="review-run-meta"]')?.textContent ?? ""; return meta !== "" && meta !== ${JSON.stringify(staleMeta)}; })()`
+              )
+            ),
+          "the fresh report"
+        );
+      } catch {
+        const state = await evaluate<string>(
+          win,
+          `document.querySelector('[data-testid="review-report"]')?.innerText.slice(0, 300) ?? "no report element"`
+        );
+        throw new Error(`the fresh report never replaced the stale one; dialog showed: ${state}`);
+      }
+      const closed = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-report"] button')].find((item) => item.textContent?.trim() === "Close");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!closed) throw new Error("the fresh report had no Close button");
+      return "stale report named The Light, then a new run replaced it";
     });
 
     await check("Settings opens from the workspace", async () => {
@@ -696,6 +994,34 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "the second chapter was dragged to the top";
     });
 
+    await check("the format dialog shows an approximate preview", async () => {
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => { const button = document.querySelector('[data-testid="format-book"]'); if (!button) return false; button.click(); return true; })()`
+      );
+      if (!clicked) throw new Error("the format control was not on screen");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`!!document.querySelector('[data-testid="format-preview"]')`)),
+        "the format preview"
+      );
+      const disclosure = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="format-disclosure"]')?.innerText ?? ""`
+      );
+      if (!disclosure.includes("Approximate preview")) {
+        throw new Error(`disclosure read: ${JSON.stringify(disclosure)}`);
+      }
+      await evaluate<boolean>(
+        win,
+        `(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); return true; })()`
+      );
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="format-preview"]')`)),
+        "the format dialog to close"
+      );
+      return "preview with disclosure";
+    });
+
     await check("the manuscript exports to Word with its illustration", async () => {
       const bookId = await evaluate<string | null>(
         win,
@@ -732,6 +1058,32 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       if (media.length === 0) throw new Error("the illustration is not in the file");
       const words = (document.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? []).length;
       return `${media.length} image${media.length === 1 ? "" : "s"}, ${words} text runs`;
+    });
+
+    await check("the manuscript exports to Markdown", async () => {
+      // The Word export above may still be finishing, and both controls stay disabled until it does.
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="export-markdown"]').disabled`)),
+        "the Markdown export control"
+      );
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => { const button = document.querySelector('[data-testid="export-markdown"]'); if (!button) return false; button.click(); return true; })()`
+      );
+      if (!clicked) throw new Error("the Markdown export control was not on screen");
+      const folder = process.env.STUDIO_EXPORT_PATH;
+      if (!folder) throw new Error("STUDIO_EXPORT_PATH is not set");
+      let file = "";
+      await waitUntil(async () => {
+        const found = (await readdir(folder).catch(() => [] as string[])).find((name) => name.endsWith(".md"));
+        if (!found) return false;
+        file = join(folder, found);
+        return true;
+      }, "the exported Markdown file");
+      const text = await readFile(file, "utf8");
+      const chapters = (text.match(/^## /gm) ?? []).length;
+      if (chapters === 0) throw new Error("the Markdown file has no chapter headings");
+      return `${chapters} chapter heading${chapters === 1 ? "" : "s"}, ${text.length} characters`;
     });
 
     await check("the whole library exports as an archive", async () => {
@@ -837,15 +1189,389 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "renamed, then moved to the trash";
     });
 
+    await check("an empty book reports insufficient evidence", async () => {
+      const creating = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll("button")].find((item) => item.textContent?.trim() === "New book");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!creating) throw new Error("the New book button was not found");
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `[...document.querySelectorAll('[role="dialog"] button')].some((item) => item.textContent?.trim() === "Create book")`
+            )
+          ),
+        "the new book dialog"
+      );
+      const created = await evaluate<boolean>(
+        win,
+        `(() => {
+          const dialog = [...document.querySelectorAll('[role="dialog"]')].find((entry) => (entry.textContent ?? "").includes("Create book"));
+          const field = dialog?.querySelector("input");
+          const create = [...(dialog?.querySelectorAll("button") ?? [])].find((item) => item.textContent?.trim() === "Create book");
+          if (!field || !create) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+          setter.call(field, "Smoke Empty Book");
+          field.dispatchEvent(new Event("input", { bubbles: true }));
+          create.click();
+          return true;
+        })()`
+      );
+      if (!created) throw new Error("the new book dialog could not be completed");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="workspace-view"]')`)),
+        "the empty book workspace"
+      );
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="review-manuscript"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!clicked) throw new Error("the Review manuscript button was not found");
+      // Wait for the verdict copy, not the dialog shell: the shell renders while reading.
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `(document.querySelector('[data-testid="review-report"]')?.innerText ?? "").includes("Not enough saved text to review")`
+            )
+          ),
+        "the insufficient-evidence report"
+      );
+      const copy = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="review-report"]')?.innerText ?? ""`
+      );
+      if (!copy.includes("Not enough saved text to review")) {
+        throw new Error(`report read: ${JSON.stringify(copy.slice(0, 160))}`);
+      }
+      const closed = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-report"] button')].find((item) => item.textContent?.trim() === "Close");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!closed) throw new Error("the report had no Close button");
+      return "a book with no readable chapters says so instead of reporting no findings";
+    });
+
+    await check("a slow run can be cancelled before analysis", async () => {
+      const prepared = await evaluate<{ ok: boolean; error?: string }>(
+        win,
+        `(async () => {
+          try {
+            const books = await window.studio.books.list();
+            if (!books.ok || !books.data[0]) return { ok: false, error: "no book is open" };
+            const created = await window.studio.chapters.create(books.data[0].id, { title: "Long" });
+            if (!created.ok) return { ok: false, error: created.error.message };
+            const chapter = created.data;
+            const saved = await window.studio.chapters.save({
+              bookId: books.data[0].id,
+              chapterId: chapter.id,
+              content: ("word ".repeat(3000000) + "\\n"),
+              baseVersion: chapter.version,
+              baseHash: chapter.hash
+            });
+            if (!saved.ok) return { ok: false, error: saved.error.message };
+            return { ok: true };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+        })()`
+      );
+      if (!prepared.ok) throw new Error(prepared.error ?? "the long chapter could not be written");
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="review-manuscript"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!clicked) throw new Error("the Review manuscript button was not found");
+      // The retained report revalidates against the new chapter and turns stale; a new
+      // run starts from Run again, which reads the long chapter on a cancellable path.
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="review-stale"]')`)),
+        "the stale report"
+      );
+      const restarted = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-report"] button')].find((item) => item.textContent?.trim() === "Run again");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!restarted) throw new Error("the stale report offered no new run");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="review-cancel-run"]')`)),
+        "the running review with its cancel control"
+      );
+      const cancelled = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="review-cancel-run"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!cancelled) throw new Error("the running review had no cancel control");
+      // The stress chapter is 3M words; on a slow machine the stopped state can take
+      // well past the default window to render after the abort lands. The assertion is
+      // unchanged: only the stopped state passes, never a completed report.
+      try {
+        await waitUntil(
+          () =>
+            evaluate<boolean>(
+              win,
+              inPage(`(document.querySelector('[data-testid="review-report"]')?.innerText ?? "").includes("Partial results are discarded")`)
+            ),
+          "the stopped run",
+          60_000
+        );
+      } catch {
+        const state = await evaluate<string>(
+          win,
+          `document.querySelector('[data-testid="review-report"]')?.innerText.slice(0, 300) ?? "no report element"`
+        );
+        throw new Error(`the stopped state never rendered; the report shows: ${state}`);
+      }
+      const body = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="review-report"]')?.innerText ?? ""`
+      );
+      if (body.includes("Studio word count")) throw new Error("the cancelled run still produced a report");
+      const closed = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = [...document.querySelectorAll('[data-testid="review-report"] button')].find((item) => item.textContent?.trim() === "Close");
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!closed) throw new Error("the stopped run had no Close button");
+      return "Cancel run discarded the slow read before any analysis";
+    });
+
+    // Spec 029 T013: the macOS reference journey over a synthetic fixture. The hidden
+    // run answers the native picker with STUDIO_IMPORT_PATH, then drives the real
+    // preview, split, confirm and result UI. The book appears only after publication.
+    const fixturePath = process.env.STUDIO_IMPORT_PATH ?? "";
+    const snapshotTree = async (root: string): Promise<Map<string, string>> => {
+      const files = new Map<string, string>();
+      const walk = async (dir: string, prefix: string): Promise<void> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) await walk(join(dir, entry.name), rel);
+          else files.set(rel, createHash("sha256").update(await readFile(join(dir, entry.name))).digest("hex"));
+        }
+      };
+      await walk(root, "");
+      return files;
+    };
+    let libraryBefore: Map<string, string> | null = null;
+    let fixtureBefore = "";
+    let cardsBefore = 0;
+
+    await check("manuscript import previews the synthetic fixture without publishing", async () => {
+      if (!fixturePath) throw new Error("STUDIO_IMPORT_PATH is not set for the hidden run");
+      const library = studio.library;
+      if (!library) throw new Error("no library is open for the import journey");
+      fixtureBefore = await readFile(fixturePath, "utf8");
+      libraryBefore = await snapshotTree(library.root);
+      const back = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[aria-label="Back to library"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!back) throw new Error("the back button was not found");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="import-manuscript"]')`)),
+        "the manuscript import action"
+      );
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `document.querySelectorAll('[data-testid="book-card"]').length > 0 || (document.body.innerText ?? "").includes("No books yet")`
+            )
+          ),
+        "the library book list to settle"
+      );
+      cardsBefore = await evaluate<number>(win, `document.querySelectorAll('[data-testid="book-card"]').length`);
+      await evaluate(win, `document.querySelector('[data-testid="import-manuscript"]').click()`);
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="import-preview-dialog"]')`)),
+        "the import preview"
+      );
+      const preview = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="import-preview-dialog"]')?.innerText ?? ""`
+      );
+      for (const expected of ["manuscript.txt", "The lighthouse keeper counted the gulls.", "Lines 1 to 6"]) {
+        if (!preview.includes(expected)) throw new Error(`preview read: ${JSON.stringify(preview.slice(0, 200))}`);
+      }
+      const cards = await evaluate<number>(win, `document.querySelectorAll('[data-testid="book-card"]').length`);
+      if (cards !== cardsBefore) throw new Error(`a book appeared before confirmation (${cardsBefore} → ${cards})`);
+      const tree = await snapshotTree(library.root);
+      if (tree.size !== libraryBefore.size) throw new Error("choosing and previewing wrote to the library");
+      return "full fixture text, source name and line range; no book, no writes";
+    });
+
+    await check("confirming the preview publishes exactly one complete book", async () => {
+      const edited = await evaluate<boolean>(
+        win,
+        `(() => {
+          const title = document.querySelector('[data-testid="import-book-title"]');
+          const split = document.querySelector('[data-testid="import-new-split"]');
+          const add = document.querySelector('[data-testid="import-add-split"]');
+          if (!(title instanceof HTMLInputElement) || !(split instanceof HTMLInputElement) || !add) return false;
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+          setter.call(title, "Smoke Import");
+          title.dispatchEvent(new Event("input", { bubbles: true }));
+          setter.call(split, "5");
+          split.dispatchEvent(new Event("input", { bubbles: true }));
+          add.click();
+          return true;
+        })()`
+      );
+      if (!edited) throw new Error("the title and split controls were not found");
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`(document.querySelector('[data-testid="import-chapter-lines-2"]')?.textContent ?? "").includes("Lines 5 to 6")`)
+          ),
+        "the split preview"
+      );
+      await evaluate(win, `document.querySelector('[data-testid="import-confirm"]').click()`);
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="import-result-dialog"]')`)),
+        "the import result"
+      );
+      const result = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="import-result-dialog"]')?.innerText ?? ""`
+      );
+      for (const expected of ["manuscript.txt", "Smoke Import", "Lines 1 to 4", "Lines 5 to 6", "were not imported"]) {
+        if (!result.includes(expected)) throw new Error(`result read: ${JSON.stringify(result.slice(0, 200))}`);
+      }
+      await evaluate(win, `document.querySelector('[data-testid="import-result-close"]').click()`);
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`[...document.querySelectorAll('[data-testid="book-card"]')].some((card) => (card.textContent ?? "").includes("Smoke Import"))`)
+          ),
+        "the imported book card"
+      );
+      const cards = await evaluate<number>(win, `document.querySelectorAll('[data-testid="book-card"]').length`);
+      if (cards !== cardsBefore + 1) throw new Error(`expected one new book card, saw ${cardsBefore} → ${cards}`);
+      return "report, then one new card for Smoke Import";
+    });
+
+    await check("the published book matches the confirmed mapping on disk", async () => {
+      const published = await evaluate<{ ok: boolean; error?: string } | null>(
+        win,
+        `(async () => {
+          try {
+            const books = await window.studio.books.list();
+            if (!books.ok) return null;
+            const match = books.data.find((book) => book.title === "Smoke Import");
+            if (!match) return { ok: false, error: "the imported book is not listed" };
+            const opened = await window.studio.books.open(match.id);
+            if (!opened.ok) return { ok: false, error: opened.error.message };
+            const chapters = opened.data.chapters;
+            if (chapters.length !== 2) return { ok: false, error: chapters.length + " chapters" };
+            if (chapters[0].title !== "Chapter 1" || chapters[1].title !== "Chapter 2") {
+              return { ok: false, error: "chapter titles changed" };
+            }
+            if (chapters[0].content !== "The lighthouse keeper counted the gulls.\\n\\nBy evening the count was wrong again.\\n") {
+              return { ok: false, error: "chapter 1 body changed" };
+            }
+            if (chapters[1].content !== "The light was the only thing that still agreed with him.\\nDawn came grey and gull-less.\\n") {
+              return { ok: false, error: "chapter 2 body changed" };
+            }
+            return { ok: true };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+        })()`
+      );
+      if (!published) throw new Error("the book list could not be read");
+      if (!published.ok) throw new Error(published.error ?? "the published book is wrong");
+      return "two chapters with the confirmed titles and bodies";
+    });
+
+    await check("the fixture and the rest of the library are unchanged", async () => {
+      const library = studio.library;
+      const before = libraryBefore;
+      if (!library || !before) throw new Error("no library snapshot to compare against");
+      const fixtureAfter = await readFile(fixturePath, "utf8");
+      if (fixtureAfter !== fixtureBefore) throw new Error("the source fixture changed");
+      const after = await snapshotTree(library.root);
+      const added = [...after.keys()].filter((path) => !before.has(path));
+      const changed = [...after.keys()].filter((path) => before.has(path) && before.get(path) !== after.get(path));
+      const removed = [...before.keys()].filter((path) => !after.has(path));
+      const fresh = added.filter((path) => path.startsWith("books/") && path.split("/").length > 2);
+      const firstFresh = fresh[0];
+      if (firstFresh === undefined) throw new Error("no published book directory appeared");
+      const freshRoot = firstFresh.split("/").slice(0, 2).join("/");
+      const stray = added.filter((path) => !path.startsWith(`${freshRoot}/`) && path !== "library.json" && !path.startsWith(".studio/"));
+      if (stray.length > 0) throw new Error(`unexpected new files: ${stray.slice(0, 3).join(", ")}`);
+      if (removed.length > 0) throw new Error(`files disappeared: ${removed.slice(0, 3).join(", ")}`);
+      const touched = changed.filter((path) => !path.startsWith(`${freshRoot}/`) && path !== "library.json" && !path.startsWith(".studio/"));
+      if (touched.length > 0) throw new Error(`existing files changed: ${touched.slice(0, 3).join(", ")}`);
+      return `one new book directory, fixture identical, ${changed.length} derived file(s) refreshed`;
+    });
+
   } finally {
-    finish(checks);
+    await finish(win, checks, rendererErrors);
   }
 }
 
-function finish(checks: Check[]): void {
+async function finish(win: BrowserWindow, checks: Check[], rendererErrors: string[]): Promise<void> {
   const passed = checks.filter((entry) => entry.ok).length;
   const ok = passed === checks.length && checks.length > 0;
   console.log(`[smoke] ${passed}/${checks.length} checks passed`);
+  if (!ok) {
+    try {
+      const runDir = join(tmpdir(), `ai-book-studio-smoke-${process.pid}`);
+      await mkdir(runDir, { recursive: true });
+      const shot = join(runDir, "smoke-failure.png");
+      await writeFile(shot, await win.webContents.capturePage().then((image) => image.toPNG()));
+      const log = join(runDir, "smoke-console.log");
+      await writeFile(log, `${rendererErrors.map((line) => redactLine(line)).join("\n")}\n`, "utf8");
+      console.error(`[smoke] artifacts: ${shot} ${log}`);
+    } catch (error) {
+      console.error(`[smoke] artifact capture failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   console.log(`[smoke] result ${JSON.stringify({ ok, checks })}`);
   app.exit(ok ? 0 : 1);
 }

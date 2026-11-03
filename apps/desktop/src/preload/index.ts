@@ -3,16 +3,19 @@ import {
   AGENT_EVENT_CHANNEL,
   IPC,
   LIBRARY_EVENT_CHANNEL,
+  SYNC_EVENT_CHANNEL,
   type AgentEvent,
   type AgentTurnInput,
   type ChapterMetaPatch,
   type DraftInput,
+  type DriftEvent,
   type LibraryChangeEvent,
   type SaveChapterInput,
   type StudioApi
 } from "@ai-book-studio/core/ipc";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderId } from "@ai-book-studio/core/providers/types";
+import type { AgentAnswerLength } from "@ai-book-studio/core/agent/settings";
 
 function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   return ipcRenderer.invoke(channel, ...args) as Promise<T>;
@@ -30,6 +33,7 @@ const api: StudioApi = {
     importLegacy: () => invoke(IPC.library.importLegacy),
     exportArchive: () => invoke(IPC.library.exportArchive),
     importArchive: () => invoke(IPC.library.importArchive),
+    locationHealth: () => invoke(IPC.library.locationHealth),
     onChange: (callback) => {
       const listener = (_event: unknown, change: LibraryChangeEvent) => callback(change);
       ipcRenderer.on(LIBRARY_EVENT_CHANNEL, listener);
@@ -43,7 +47,10 @@ const api: StudioApi = {
     delete: (bookId: string) => invoke(IPC.books.delete, bookId),
     open: (bookId) => invoke(IPC.books.open, bookId),
     search: (bookId: string, query: string) => invoke(IPC.books.search, { bookId, query }),
-    exportDocx: (bookId) => invoke(IPC.books.exportDocx, bookId)
+    exportDocx: (bookId) => invoke(IPC.books.exportDocx, bookId),
+    exportMarkdown: (bookId) => invoke(IPC.books.exportMarkdown, bookId),
+    importManuscript: (input) => invoke(IPC.books.importManuscript, input),
+    pickImportSource: () => invoke(IPC.books.pickImportSource)
   },
   chapters: {
     create: (bookId, input) => invoke(IPC.chapters.create, { bookId, ...input }),
@@ -63,6 +70,19 @@ const api: StudioApi = {
   drafts: {
     set: (input: DraftInput) => invoke(IPC.drafts.set, input),
     clear: (bookId, chapterId) => invoke(IPC.drafts.clear, { bookId, chapterId })
+  },
+  sync: {
+    check: () => invoke(IPC.sync.check),
+    accept: (paths) => invoke(IPC.sync.accept, paths),
+    keepMine: (bookId, chapterId) => invoke(IPC.sync.keepMine, { bookId, chapterId }),
+    discardDraft: (bookId, chapterId) => invoke(IPC.sync.discardDraft, { bookId, chapterId }),
+    settings: () => invoke(IPC.sync.settings),
+    updateSettings: (patch) => invoke(IPC.sync.updateSettings, patch),
+    onDrift: (callback) => {
+      const listener = (_event: unknown, drift: DriftEvent) => callback(drift);
+      ipcRenderer.on(SYNC_EVENT_CHANNEL, listener);
+      return () => ipcRenderer.removeListener(SYNC_EVENT_CHANNEL, listener);
+    }
   },
   usage: {
     summary: (bookId) => invoke(IPC.usage.summary, bookId)
@@ -94,6 +114,7 @@ const api: StudioApi = {
     list: () => invoke(IPC.connections.list),
     available: () => invoke(IPC.connections.available),
     status: () => invoke(IPC.connections.status),
+    check: () => invoke(IPC.connections.check),
     addKey: (input: { provider: ProviderId; secret: string; label?: string; baseUrl?: string }) =>
       invoke(IPC.connections.addKey, input),
     startOpenRouter: () => invoke(IPC.connections.startOpenRouter),
@@ -111,6 +132,10 @@ const api: StudioApi = {
     setSettings: (bookId: string, patch: {
       disabledTools?: string[];
       skillsEnabled?: boolean;
+      tone?: string;
+      answerLength?: AgentAnswerLength;
+      perTurnCeilingUsd?: number | null;
+      monthlyWarningUsd?: number | null;
       cachePrefixMode?: "off" | "auto";
     }) => invoke(IPC.agent.setSettings, { bookId, patch }),
     glassesUrl: () => invoke(IPC.agent.glassesUrl),

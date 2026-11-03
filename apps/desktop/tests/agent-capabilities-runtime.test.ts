@@ -130,7 +130,7 @@ async function runTurn(
     options.pluginFolder ?? (() => null),
     options.metrics
   );
-  await agent.start({ bookId: book.id, prompt });
+  await agent.start({ mode: "edit", bookId: book.id, prompt });
   return { model, done: await done };
 }
 

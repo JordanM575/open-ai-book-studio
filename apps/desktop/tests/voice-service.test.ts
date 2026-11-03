@@ -67,7 +67,9 @@ describe("VoiceService", () => {
       durationMs: 3000
     });
     expect(captured?.url).toBe("https://api.meta.ai/v1/asr/transcribe");
-    expect((captured?.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
+    const init = captured.init;
+    if (!init) throw new Error("the provider was never called");
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
     const form = captured?.init?.body as FormData;
     const request = JSON.parse(await (form.get("request") as Blob).text()) as Record<string, unknown>;
     expect(request).toMatchObject({ mode: "PUSH_TO_TALK", model: "muse-voice-transcribe-1.0", audioEncoding: "WAV" });

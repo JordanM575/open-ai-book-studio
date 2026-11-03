@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ToolLoopAgent, isStepCount, simulateReadableStream } from "ai";
+import { APICallError, ToolLoopAgent, isStepCount, simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
-import { messageText } from "@ai-book-studio/core/agent/messages";
+import { messageText, type AgentApprovalPart } from "@ai-book-studio/core/agent/messages";
 import type { StoredCredential } from "@ai-book-studio/core/providers/types";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderService } from "../src/main/providers";
@@ -32,6 +32,17 @@ const credential: StoredCredential = {
   secret: "sk-test"
 };
 
+/*
+ * Each test races its events against a five-second deadline, and the deadlines are cleared after every
+ * test. One that outlived its test would reject a promise nobody awaits any more, and bun charges that
+ * rejection to whichever test in another file is running when it fires.
+ */
+const deadlines = new Set<ReturnType<typeof setTimeout>>();
+
+function deadline(reject: (error: Error) => void, message: string): void {
+  deadlines.add(setTimeout(() => reject(new Error(message)), 5_000));
+}
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "studio-runtime-"));
   library = await Library.open(root);
@@ -44,6 +55,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  for (const timer of deadlines) clearTimeout(timer);
+  deadlines.clear();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -156,6 +169,56 @@ function approvalModel(reply: string, toolName: string, input: Record<string, un
   });
 }
 
+function twoStepReadModel(chapterId: string): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    doStream: [
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            {
+              type: "tool-call",
+              toolCallId: "call-read",
+              toolName: "read_chapter",
+              input: JSON.stringify({ chapterId })
+            },
+            {
+              type: "finish",
+              finishReason: { unified: "tool-calls", raw: undefined },
+              logprobs: undefined,
+              usage: {
+                inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 5, text: 0, reasoning: 5 }
+              },
+              providerMetadata: { openrouter: { usage: { cost: 0.0004 } } }
+            }
+          ]
+        })
+      },
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "text-1" },
+            { type: "text-delta", id: "text-1", delta: "I read it first." },
+            { type: "text-end", id: "text-1" },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: undefined },
+              logprobs: undefined,
+              usage: {
+                inputTokens: { total: 20, noCache: 20, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 7, text: 7, reasoning: undefined }
+              },
+              providerMetadata: { openrouter: { usage: { cost: 0.0012 } } }
+            }
+          ]
+        })
+      }
+    ]
+  });
+}
+
 const MEMORY = {
   id: "mem_test0001",
   text: "The tide comes in fast.",
@@ -176,12 +239,12 @@ function approvalRuntime(model: MockLanguageModelV4): {
   const approval = new Promise<Extract<AgentEvent, { type: "approval" }>>((resolve, reject) => {
     resolveApproval = resolve;
     rejectApproval = reject;
-    setTimeout(() => reject(new Error("The approval request did not arrive.")), 5_000);
+    deadline(reject, "The approval request did not arrive.");
   });
   const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
     resolveDone = resolve;
     rejectDone = reject;
-    setTimeout(() => reject(new Error("The approved turn did not finish.")), 5_000);
+    deadline(reject, "The approved turn did not finish.");
   });
   const runtime = new AgentRuntime(
     studioFor(),
@@ -214,6 +277,7 @@ describe("agent runtime contract", () => {
     );
     await expect(
       runtime.start({
+        mode: "edit",
         bookId: book.id,
         prompt: "Plan the next scene.",
         model: { connectionId: credential.id, modelId: "muse-spark-1.3-contributor" }
@@ -255,7 +319,7 @@ describe("agent runtime contract", () => {
       }
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Tighten the opening." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Tighten the opening." });
     const finished = await done;
 
     expect(finished.text).toBe("I tightened the opening.");
@@ -282,6 +346,264 @@ describe("agent runtime contract", () => {
     expect(events.some((event) => event.type === "text")).toBe(true);
   });
 
+  function rateLimitModel(header: string): MockLanguageModelV4 {
+    return new MockLanguageModelV4({
+      doStream: (async () => {
+        throw new APICallError({
+          message: "Rate limit exceeded",
+          url: "https://openrouter.ai/api/v1/chat/completions",
+          requestBodyValues: {},
+          statusCode: 429,
+          responseHeaders: { "retry-after": header },
+          responseBody: "Rate limit exceeded",
+          isRetryable: true
+        });
+      }) as MockLanguageModelV4["doStream"]
+    });
+  }
+
+  function failureRuntime(model: MockLanguageModelV4): {
+    runtime: AgentRuntime;
+    approval: Promise<Extract<AgentEvent, { type: "approval" }>>;
+    failed: Promise<Extract<AgentEvent, { type: "error" }>>;
+  } {
+    let resolveApproval!: (event: Extract<AgentEvent, { type: "approval" }>) => void;
+    let resolveFailed!: (event: Extract<AgentEvent, { type: "error" }>) => void;
+    let rejectFailed!: (error: Error) => void;
+    const approval = new Promise<Extract<AgentEvent, { type: "approval" }>>((resolve, reject) => {
+      resolveApproval = resolve;
+      deadline(reject, "The approval request did not arrive.");
+    });
+    const failed = new Promise<Extract<AgentEvent, { type: "error" }>>((resolve, reject) => {
+      resolveFailed = resolve;
+      rejectFailed = reject;
+      deadline(reject, "The limited turn reported nothing.");
+    });
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      (event) => {
+        if (event.type === "approval") resolveApproval(event);
+        else if (event.type === "error") resolveFailed(event);
+        else if (event.type === "done") rejectFailed(new Error("The limited turn should not finish."));
+      },
+      () => model
+    );
+    return { runtime, approval, failed };
+  }
+
+  test("a rate-limited turn fails once with the provider's wait", async () => {
+    const model = rateLimitModel("90");
+    const { runtime, failed } = failureRuntime(model);
+
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Keep going." });
+    const failure = await failed;
+
+    // No retry loop: one provider request, one failure.
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(failure.code).toBe("rate-limit");
+    expect(failure.retryAfterSeconds).toBe(90);
+    // A turn that never wrote an assistant message stores nothing to retry from.
+    const thread = await library.threads.read(book.id, started.threadId);
+    expect(thread?.messages.map((message) => message.role)).toEqual(["user"]);
+  });
+
+  test("a resumed turn that hits the limit stores the wait with the failure", async () => {
+    const chapter = await createChapter();
+    let calls = 0;
+    const model = new MockLanguageModelV4({
+      doStream: (async () => {
+        calls += 1;
+        if (calls > 1) {
+          throw new APICallError({
+            message: "Rate limit exceeded",
+            url: "https://openrouter.ai/api/v1/chat/completions",
+            requestBodyValues: {},
+            statusCode: 429,
+            responseHeaders: { "retry-after": "120" },
+            responseBody: "Rate limit exceeded",
+            isRetryable: true
+          });
+        }
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              {
+                type: "tool-call",
+                toolCallId: "call-overwrite",
+                toolName: "overwrite_chapter",
+                input: JSON.stringify({ chapterId: chapter.id, content: "A new opening.\n" })
+              },
+              {
+                type: "finish",
+                finishReason: { unified: "tool-calls", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE
+              }
+            ]
+          })
+        };
+      }) as MockLanguageModelV4["doStream"]
+    });
+    const { runtime, approval, failed } = failureRuntime(model);
+
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace the opening." });
+    const request = await approval;
+    expect(request.name).toBe("overwrite_chapter");
+    await runtime.approve(started.turnId, request.approvalId, true);
+    const failure = await failed;
+
+    // One request per attempt: the first turn and the approved resume, never a retry loop.
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect(failure.code).toBe("rate-limit");
+    expect(failure.retryAfterSeconds).toBe(120);
+    const thread = await library.threads.read(book.id, started.threadId);
+    const assistant = thread!.messages.find((message) => message.role === "assistant");
+    expect(assistant!.parts.find((part) => part.type === "error")).toMatchObject({
+      code: "rate-limit",
+      retryAfterSeconds: 120
+    });
+  });
+
+  test("records the catalogue's display name with the turn", async () => {
+    let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;
+    let rejectDone!: (error: Error) => void;
+    let timer: ReturnType<typeof setTimeout>;
+    const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+      timer = setTimeout(() => reject(new Error("The mock turn did not finish.")), 5_000);
+    });
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      (event) => {
+        if (event.type === "done") {
+          clearTimeout(timer);
+          resolveDone(event);
+        } else if (event.type === "error") {
+          clearTimeout(timer);
+          rejectDone(new Error(event.message));
+        }
+      },
+      () => textModel("A line.")
+    );
+
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Say something." });
+    const finished = await done;
+
+    expect(finished.model).toMatchObject({
+      modelId: "test-model",
+      connectionLabel: "Test connection",
+      name: "Test Model"
+    });
+    const thread = await library.threads.read(book.id, started.threadId);
+    expect(thread!.messages[1]!.model).toMatchObject({ modelId: "test-model", name: "Test Model" });
+  });
+
+  test("a turn that changed chapters saves its checkpoint before reporting the failure", async () => {
+    const chapter = await createChapter();
+    let calls = 0;
+    const model = new MockLanguageModelV4({
+      doStream: (async () => {
+        calls += 1;
+        if (calls > 1) throw new Error("The model stopped mid-reply.");
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              {
+                type: "tool-call",
+                toolCallId: "call-overwrite",
+                toolName: "overwrite_chapter",
+                input: JSON.stringify({ chapterId: chapter.id, content: "A new opening.\n" })
+              },
+              {
+                type: "finish",
+                finishReason: { unified: "tool-calls", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE
+              }
+            ]
+          })
+        };
+      }) as MockLanguageModelV4["doStream"]
+    });
+    const { runtime, approval, failed } = failureRuntime(model);
+
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace the opening." });
+    const request = await approval;
+    expect(request.name).toBe("overwrite_chapter");
+    await runtime.approve(started.turnId, request.approvalId, true);
+    const failure = await failed;
+
+    // The approved overwrite ran, then the resume failed: one request per attempt.
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
+    expect(failure.changed).toBe(1);
+    expect(failure.undoAvailable).toBe(true);
+    const thread = await library.threads.read(book.id, started.threadId);
+    const assistant = thread!.messages.find((message) => message.role === "assistant");
+    expect(assistant!.parts.some((part) => part.type === "error")).toBe(true);
+
+    // The checkpoint went down before the error, so one undo restores the chapter.
+    const undone = await runtime.undoLast(book.id);
+    expect(undone.restored).toBe(1);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
+  });
+
+  test("totals price and tokens across every step of a turn", async () => {
+    let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;
+    let rejectDone!: (error: Error) => void;
+    let timer: ReturnType<typeof setTimeout>;
+    const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+      timer = setTimeout(() => reject(new Error("The mock turn did not finish.")), 5_000);
+    });
+    const chapter = await createChapter("The old opening.\n");
+    const model = twoStepReadModel(chapter.id);
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      (event) => {
+        if (event.type === "done") {
+          clearTimeout(timer);
+          resolveDone(event);
+        } else if (event.type === "error") {
+          clearTimeout(timer);
+          rejectDone(new Error(event.message));
+        }
+      },
+      () => model
+    );
+
+    const started = await runtime.start({
+      mode: "edit",
+      bookId: book.id,
+      prompt: "Read the opening, then tighten it."
+    });
+    const finished = await done;
+
+    // Both provider steps ran: a read, then the reply.
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect(finished.text).toBe("I read it first.");
+    // Tokens accumulate across both steps, not just the last one.
+    expect(finished.inputTokens).toBe(120);
+    expect(finished.outputTokens).toBe(12);
+    // Each step reported its own price; the turn costs the sum.
+    expect(finished.costUsd).toBeCloseTo(0.0016, 10);
+    expect(finished.costBasis).toBe("reported");
+
+    const thread = await library.threads.read(book.id, started.threadId);
+    const assistant = thread!.messages.find((message) => message.role === "assistant");
+    expect(assistant!.usage?.inputTokens).toBe(120);
+    expect(assistant!.usage?.outputTokens).toBe(12);
+    expect(assistant!.usage?.costUsd).toBeCloseTo(0.0016, 10);
+    expect(assistant!.usage?.costBasis).toBe("reported");
+  });
+
   test("uses a one-off model without changing the book default", async () => {
     const seen: string[] = [];
     const model = textModel("The other model answered.");
@@ -290,7 +612,7 @@ describe("agent runtime contract", () => {
     const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
       resolveDone = resolve;
       rejectDone = reject;
-      setTimeout(() => reject(new Error("The override turn did not finish.")), 5_000);
+      deadline(reject, "The override turn did not finish.");
     });
     const runtime = new AgentRuntime(
       studioFor(),
@@ -306,6 +628,7 @@ describe("agent runtime contract", () => {
     );
 
     const started = await runtime.start({
+      mode: "edit",
       bookId: book.id,
       prompt: "Use the other model.",
       model: { connectionId: credential.id, modelId: "override-model" }
@@ -325,6 +648,7 @@ describe("agent runtime contract", () => {
 
     await expect(
       runtime.start({
+        mode: "edit",
         bookId: book.id,
         prompt: "Use a missing model.",
         model: { connectionId: credential.id, modelId: "missing-model" }
@@ -342,12 +666,12 @@ describe("agent runtime contract", () => {
     const approval = new Promise<Extract<AgentEvent, { type: "approval" }>>((resolve, reject) => {
       resolveApproval = resolve;
       rejectApproval = reject;
-      setTimeout(() => reject(new Error("The approval request did not arrive.")), 5_000);
+      deadline(reject, "The approval request did not arrive.");
     });
     const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
       resolveDone = resolve;
       rejectDone = reject;
-      setTimeout(() => reject(new Error("The approved turn did not finish.")), 5_000);
+      deadline(reject, "The approved turn did not finish.");
     });
     const runtime = new AgentRuntime(
       studioFor(),
@@ -363,7 +687,7 @@ describe("agent runtime contract", () => {
       () => model
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Remove the tide memory." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory." });
     const request = await approval;
     expect(request.name).toBe("remove_memory");
     expect((await library.readBook(book.id)).book.memories).toHaveLength(1);
@@ -398,12 +722,12 @@ describe("agent runtime contract", () => {
     let rejectDone!: (error: Error) => void;
     const approval = new Promise<Extract<AgentEvent, { type: "approval" }>>((resolve, reject) => {
       resolveApproval = resolve;
-      setTimeout(() => reject(new Error("The approval request did not arrive.")), 5_000);
+      deadline(reject, "The approval request did not arrive.");
     });
     const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
       resolveDone = resolve;
       rejectDone = reject;
-      setTimeout(() => reject(new Error("The denied turn did not finish.")), 5_000);
+      deadline(reject, "The denied turn did not finish.");
     });
     const runtime = new AgentRuntime(
       studioFor(),
@@ -416,7 +740,7 @@ describe("agent runtime contract", () => {
       () => model
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Remove the tide memory." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory." });
     const request = await approval;
     await runtime.approve(started.turnId, request.approvalId, false);
     const finished = await done;
@@ -447,7 +771,7 @@ describe("agent runtime contract", () => {
       () => model
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Remove the tide memory." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory." });
     await approval;
     await runtime.stop(started.turnId);
 
@@ -456,6 +780,43 @@ describe("agent runtime contract", () => {
       status: "expired"
     });
     expect(events.some((event) => event.type === "stopped")).toBe(true);
+  });
+
+  test("a previous run's approval never resumes and expires with an explanation", async () => {
+    await library.updateBook(book.id, { memories: [MEMORY] });
+    const first = approvalRuntime(approvalModel("Unused.", "remove_memory", { memoryId: MEMORY.id }));
+    // The abandoned turn never finishes, so its done timer is disarmed, not awaited.
+    first.done.catch(() => {});
+    const started = await first.runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory." });
+    const request = await first.approval;
+    // Simulate the app closing with the approval unanswered: the first runtime is dropped and
+    // nothing ever stops its turn.
+
+    const second = approvalRuntime(textModel("A fresh answer."));
+    // The old turn is gone: answering it explains instead of resuming.
+    await expect(second.runtime.approve(started.turnId, request.approvalId, true)).rejects.toThrow(
+      /no longer waiting/i
+    );
+    // A new turn on the same thread expires the zombie and runs fresh.
+    await second.runtime.start({
+      mode: "edit",
+      bookId: book.id,
+      threadId: started.threadId,
+      prompt: "Say something new."
+    });
+    const finished = await second.done;
+    expect(finished.text).toBe("A fresh answer.");
+
+    const thread = await library.threads.read(book.id, started.threadId);
+    const zombie = thread!.messages
+      .flatMap((message) => message.parts)
+      .find(
+        (part): part is AgentApprovalPart =>
+          part.type === "approval" && part.approvalId === request.approvalId
+      );
+    expect(zombie).toMatchObject({ status: "expired" });
+    expect(zombie?.resolvedAt).toBeTruthy();
+    expect((await library.readBook(book.id)).book.memories).toHaveLength(1);
   });
 
   test("waits for approval before overwriting a chapter and can undo it", async () => {
@@ -467,7 +828,7 @@ describe("agent runtime contract", () => {
       })
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Replace the opening." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace the opening." });
     const request = await approval;
     expect(request.name).toBe("overwrite_chapter");
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
@@ -482,13 +843,48 @@ describe("agent runtime contract", () => {
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
   });
 
+  test("typing during a live turn survives the turn through undo", async () => {
+    const chapter = await createChapter();
+    const { runtime, approval, done } = approvalRuntime(
+      approvalModel("I replaced the opening.", "overwrite_chapter", {
+        chapterId: chapter.id,
+        content: "A new opening.\n"
+      })
+    );
+
+    // The author's editor buffer was loaded before the turn started.
+    const buffer = await library.readChapter(book.id, chapter.id);
+
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace the opening." });
+    const request = await approval;
+    // The turn is live and waiting; the author types and saves against the pre-turn version.
+    expect(runtime.isWorking(book.id)).toBe(true);
+    const typed = await library.saveChapter(book.id, chapter.id, "The old opening. Author typing.\n", {
+      baseVersion: buffer.version,
+      baseHash: buffer.hash
+    });
+    expect(typed.status).toBe("saved");
+
+    await runtime.approve(started.turnId, request.approvalId, true);
+    const finished = await done;
+    expect(finished.text).toBe("I replaced the opening.");
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
+
+    // Nothing the author typed is lost: one undo restores the pre-overwrite text.
+    const undone = await runtime.undoLast(book.id);
+    expect(undone.restored).toBe(1);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe(
+      "The old opening. Author typing.\n"
+    );
+  });
+
   test("waits for approval before deleting a chapter", async () => {
     const chapter = await createChapter();
     const { runtime, approval, done } = approvalRuntime(
       approvalModel("I moved it to the trash.", "delete_chapter", { chapterId: chapter.id })
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Delete the chapter." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Delete the chapter." });
     const request = await approval;
     expect(request.name).toBe("delete_chapter");
     await expect(library.readChapter(book.id, chapter.id)).resolves.toBeDefined();
@@ -510,7 +906,7 @@ describe("agent runtime contract", () => {
       })
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Delete the middle line." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Delete the middle line." });
     const request = await approval;
     expect(request.name).toBe("delete_lines_in_chapter");
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("One.\nTwo.\nThree.\n");
@@ -530,7 +926,7 @@ describe("agent runtime contract", () => {
       approvalModel("I moved it to the end.", "move_chapter", { chapterId: first.id, position: 3 })
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Move the first chapter to the end." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Move the first chapter to the end." });
     const request = await approval;
     expect(request.name).toBe("move_chapter");
     expect((await library.readBook(book.id)).chapters.map((entry) => entry.title)).toEqual([
@@ -556,7 +952,7 @@ describe("agent runtime contract", () => {
       approvalModel("I split the chapter.", "split_chapter", { chapterId: chapter.id, line: 2 })
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Split the chapter." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Split the chapter." });
     const request = await approval;
     expect(request.name).toBe("split_chapter");
     expect((await library.readBook(book.id)).chapters).toHaveLength(1);
@@ -586,7 +982,7 @@ describe("agent runtime contract", () => {
       })
     );
 
-    const started = await runtime.start({ bookId: book.id, prompt: "Merge the two chapters." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Merge the two chapters." });
     const request = await approval;
     expect(request.name).toBe("merge_chapters");
     expect((await library.readBook(book.id)).chapters).toHaveLength(2);
@@ -620,7 +1016,7 @@ describe("agent runtime contract", () => {
     let resolveError!: (event: Extract<AgentEvent, { type: "error" }>) => void;
     const failed = new Promise<Extract<AgentEvent, { type: "error" }>>((resolve, reject) => {
       resolveError = resolve;
-      setTimeout(() => reject(new Error("The context error did not arrive.")), 5_000);
+      deadline(reject, "The context error did not arrive.");
     });
     const runtime = new AgentRuntime(
       studioFor(),
@@ -631,7 +1027,7 @@ describe("agent runtime contract", () => {
       () => model
     );
 
-    await runtime.start({ bookId: book.id, prompt: "Continue the chapter." });
+    await runtime.start({ mode: "edit", bookId: book.id, prompt: "Continue the chapter." });
     const error = await failed;
 
     expect(error.code).toBe("context");

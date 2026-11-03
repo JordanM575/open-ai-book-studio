@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, Bot, ChevronLeft, Cpu, Download, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, type LucideIcon } from "lucide-react";
-import type { BookDetail, Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
+import { BookOpen, Bot, ChevronLeft, Cpu, Download, FileSearch, FileText, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, Type, type LucideIcon } from "lucide-react";
+import type {
+  BookDetail,
+  Chapter,
+  ChapterConflict,
+  ChapterReadIssueReason,
+  ManuscriptSettings
+} from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { Button } from "@ai-book-studio/ui/button";
@@ -12,20 +18,47 @@ import { AgentDialog } from "../components/AgentDialog";
 import { AmbientPanel } from "../components/AmbientPanel";
 import { StoryBibleDialog } from "../components/StoryBibleDialog";
 import { SearchDialog } from "../components/SearchDialog";
+import { FormatDialog } from "../components/FormatDialog";
 import { ChatPanel } from "../components/ChatPanel";
 import { SettingsDialog, type SettingsSection } from "../components/SettingsDialog";
-import { ManuscriptEditor, statusLabel, type EditorHandle, type SaveStatus } from "../components/ManuscriptEditor";
+import {
+  analyzeReviewCoverageAsync,
+  buildReviewReport,
+  revalidateReviewEvidence,
+  reviewNoSourceResult,
+  reviewReportFreshness,
+  reviewSourceSnapshotFromBookDetail,
+  runReviewWork
+} from "@ai-book-studio/core/review";
+import { ManuscriptEditor, statusLabel, type EditorHandle, type EditorSelection, type SaveStatus } from "../components/ManuscriptEditor";
+import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateDialog";
+import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
+import { runAfterReviewSave } from "../lib/review-save-gate";
+import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
 import { formatCount, formatWords, must, pluralize } from "../lib/utils";
 import type { ThemeChoice } from "../hooks/use-theme";
+
+export interface ChapterRequest {
+  bookId: string;
+  chapterId?: string | undefined;
+  nonce: number;
+  /** Drop unsent text and reload the chapter from disk instead of just selecting it. */
+  revert: boolean;
+}
 
 interface Props {
   bookId: string;
   theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void; cycle: () => void };
   libraryRoot: string;
   libraryStorage?: StorageSummary | undefined;
+  deviceName?: string | null | undefined;
+  chapterRequest?: ChapterRequest | null | undefined;
+  onChapterRequestHandled?: (() => void) | undefined;
+  onCheckForChanges?: (() => Promise<{ dirty: boolean }>) | undefined;
   onBack: () => void;
   onNotice: (error: unknown) => void;
+  onSchemaRefusal: (refusal: { detectedSchema: number | null }) => void;
 }
 
 const EMPTY_STATUS: SaveStatus = { kind: "saved", at: Date.now() };
@@ -45,12 +78,43 @@ function compactStatus(status: SaveStatus): string {
   }
 }
 
-export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBack, onNotice }: Props) {
+const readIssueReasonCopy: Record<ChapterReadIssueReason, string> = {
+  "file-missing": "missing",
+  "permission-needed": "needs permission",
+  "invalid-format": "invalid format",
+  unreadable: "unreadable"
+};
+
+/** Plain sentence-case account of the chapter files the saved read had to skip. */
+function readIssueCopy(issues: BookDetail["chapterReadIssues"]): string {
+  if (issues.length === 1) {
+    const issue = issues[0]!;
+    return `Chapter file ${issue.fileName} was skipped (${readIssueReasonCopy[issue.reason]}). The rest of the book is unchanged.`;
+  }
+  const names = issues.map((issue) => `${issue.fileName} (${readIssueReasonCopy[issue.reason]})`);
+  return `${issues.length} chapter files were skipped (${names.join(", ")}). The rest of the book is unchanged.`;
+}
+
+export function WorkspaceView({
+  bookId,
+  theme,
+  libraryRoot,
+  libraryStorage,
+  deviceName,
+  chapterRequest,
+  onChapterRequestHandled,
+  onCheckForChanges,
+  onBack,
+  onNotice,
+  onSchemaRefusal
+}: Props) {
+  const handledRequest = useRef<number | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<SaveStatus>(EMPTY_STATUS);
   const [conflicts, setConflicts] = useState<ChapterConflict[]>([]);
   const [externalChange, setExternalChange] = useState<{ paths: string[]; at: string } | null>(null);
+  const [issuesDismissed, setIssuesDismissed] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Chapter | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -70,6 +134,13 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  // Cleared on unmount, so the note's timer never fires into a workspace that is gone.
+  const exportNoteTimer = useRef<number | undefined>(undefined);
+  const [formatOpen, setFormatOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewView, setReviewView] = useState<ReviewGateView | ReviewRunView>({ kind: "choice" });
+  const [evidenceSelection, setEvidenceSelection] = useState<(EditorSelection & { chapterId: string }) | null>(null);
+  const runController = useRef<AbortController | null>(null);
   const editorRef = useRef<EditorHandle>(null);
   const lastLocalActionAt = useRef(0);
   const isMac = window.studio.platform === "darwin";
@@ -84,14 +155,31 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
     setModelOpen(true);
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bookId is the trigger, not a closure value — the panel resets in place when the author switches books without a remount
   useEffect(() => {
     setTurnModel(null);
+    setIssuesDismissed(false);
   }, [bookId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bookId is the trigger, not a closure value — the run-local report discards in place on a book switch
+  useEffect(() => {
+    // The report is run-local: switching books discards it without writing anything anywhere.
+    runController.current?.abort();
+    runController.current = null;
+    setReviewOpen(false);
+    setReviewView({ kind: "choice" });
+    setEvidenceSelection(null);
+  }, [bookId]);
+
+  useEffect(() => {
+    // New keystrokes supersede a highlighted evidence span.
+    if (status.kind === "dirty") setEvidenceSelection(null);
+  }, [status]);
 
   const load = useCallback(
     async (preferId?: string) => {
       try {
-        const next = await must(window.studio.books.open(bookId));
+        const next = await mustCompatible(window.studio.books.open(bookId));
         setDetail(next);
         setConflicts(await must(window.studio.conflicts.list(bookId)));
         setSelectedId((current) => {
@@ -99,10 +187,16 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
           return next.chapters.some((chapter) => chapter.id === wanted) ? (wanted ?? null) : (next.chapters[0]?.id ?? null);
         });
       } catch (error) {
+        // A newer-schema refusal opens the recovery journey instead of a toast: the
+        // library stays open, the book stays unread, and nothing is written.
+        if (error instanceof SchemaRefusalError) {
+          onSchemaRefusal({ detectedSchema: error.detectedSchema });
+          return;
+        }
         onNotice(error);
       }
     },
-    [bookId, onNotice]
+    [bookId, onNotice, onSchemaRefusal]
   );
 
   useEffect(() => {
@@ -119,6 +213,7 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
   }, []);
 
   const selected = detail?.chapters.find((chapter) => chapter.id === selectedId) ?? null;
+  const readIssues = detail?.chapterReadIssues ?? [];
   const ordinal = selected ? detail!.chapters.filter((chapter) => chapter.order <= selected.order).length : 0;
 
   /** The next chapter, for the agent's "next chapter" action. */
@@ -164,8 +259,35 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
     if (chapterId === selectedId) return;
     await editorRef.current?.flush();
     setStatus(EMPTY_STATUS);
+    setEvidenceSelection(null);
     setSelectedId(chapterId);
   };
+
+  // The drift review navigates here: select the chapter, or drop unsent text and reload it
+  // from disk when the author kept the disk version. Runs once per request.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chapterRequest is the trigger; the nonce ref keeps this to one run per request, and select is an inline helper with a stable purpose
+  useEffect(() => {
+    if (!chapterRequest || chapterRequest.bookId !== bookId) return;
+    if (handledRequest.current === chapterRequest.nonce) return;
+    handledRequest.current = chapterRequest.nonce;
+    const { chapterId, revert } = chapterRequest;
+    void (async () => {
+      try {
+        if (revert && chapterId) {
+          await must(window.studio.drafts.clear(bookId, chapterId));
+          clearEditorHistory(chapterId);
+          await load(chapterId);
+          setReloadKey((key) => key + 1);
+        } else if (chapterId) {
+          await select(chapterId);
+        }
+      } catch (error) {
+        onNotice(error);
+      } finally {
+        onChapterRequestHandled?.();
+      }
+    })();
+  }, [chapterRequest, bookId, load, onNotice, onChapterRequestHandled]);
 
   const addChapter = async (): Promise<void> => {
     if (busy) return;
@@ -186,30 +308,33 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
     }
   };
 
-  const moveChapter = async (chapter: Chapter, direction: "up" | "down"): Promise<void> => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await editorRef.current?.flush();
-      const result = await must(window.studio.chapters.reorder(bookId, chapter.id, direction));
-      lastLocalActionAt.current = Date.now();
-      if (result.status === "conflict") {
-        onNotice(
-          new Error(
-            `The chapter order changed outside the studio. ${result.conflict.savedAs ? `Your version is in ${result.conflict.savedAs}.` : "Reopen the book and try again."}`
-          )
-        );
-        await load(chapter.id);
-        return;
+  const moveChapter = useCallback(
+    async (chapter: Chapter, direction: "up" | "down"): Promise<void> => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await editorRef.current?.flush();
+        const result = await must(window.studio.chapters.reorder(bookId, chapter.id, direction));
+        lastLocalActionAt.current = Date.now();
+        if (result.status === "conflict") {
+          onNotice(
+            new Error(
+              `The chapter order changed outside the studio. ${result.conflict.savedAs ? `Your version is in ${result.conflict.savedAs}.` : "Reopen the book and try again."}`
+            )
+          );
+          await load(chapter.id);
+          return;
+        }
+        setDetail((current) => (current ? { ...current, chapters: result.chapters } : current));
+        setSelectedId(chapter.id);
+      } catch (error) {
+        onNotice(error);
+      } finally {
+        setBusy(false);
       }
-      setDetail((current) => (current ? { ...current, chapters: result.chapters } : current));
-      setSelectedId(chapter.id);
-    } catch (error) {
-      onNotice(error);
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+    [busy, bookId, load, onNotice]
+  );
 
   const moveChapterTo = async (chapter: Chapter, targetIndex: number): Promise<void> => {
     if (busy) return;
@@ -264,20 +389,40 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selected, busy, moveChapter]);
 
-  const exportDocx = async (): Promise<void> => {
+  useEffect(() => () => window.clearTimeout(exportNoteTimer.current), []);
+
+  /** Saves the open chapter, runs one export and names the written file for a few seconds. */
+  const runExport = async (request: () => ReturnType<typeof window.studio.books.exportDocx>): Promise<void> => {
     if (exporting) return;
     setExporting(true);
     try {
       await editorRef.current?.flush();
-      const path = await must(window.studio.books.exportDocx(bookId));
+      const path = await must(request());
       if (!path) return;
       const name = path.split(/[\\/]/).pop() ?? path;
       setExportNote(`Saved ${name}`);
-      window.setTimeout(() => setExportNote(null), 8000);
+      window.clearTimeout(exportNoteTimer.current);
+      exportNoteTimer.current = window.setTimeout(() => setExportNote(null), 8000);
     } catch (error) {
       onNotice(error);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const exportDocx = (): Promise<void> => runExport(() => window.studio.books.exportDocx(bookId));
+  const exportMarkdown = (): Promise<void> => runExport(() => window.studio.books.exportMarkdown(bookId));
+
+  const saveFormatSettings = async (manuscript: ManuscriptSettings): Promise<void> => {
+    if (!detail) return;
+    try {
+      const updated = await must(
+        window.studio.books.update(bookId, { settings: { ...detail.book.settings, manuscript } })
+      );
+      setDetail((current) => (current ? { ...current, book: updated } : current));
+    } catch (error) {
+      onNotice(error);
+      throw error;
     }
   };
 
@@ -300,6 +445,177 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
       setBusy(false);
     }
   };
+
+  const closeReview = useCallback(() => {
+    setReviewOpen(false);
+    setReviewView((current) =>
+      current.kind === "report" || current.kind === "stopped" || current.kind === "failed"
+        ? current
+        : { kind: "choice" }
+    );
+  }, []);
+
+  /**
+   * Spec 034 T011–T014: read the current saved chapters and analyze them in memory, keeping the
+   * report run-local. The read itself is cancellable: an abort before or during it lands the
+   * stopped state instead of starting analysis. A changed source marks the report stale instead
+   * of navigating to an unverified span.
+   */
+  const startAnalysis = useCallback(
+    async () => {
+      const requestedAt = new Date().toISOString();
+      const controller = new AbortController();
+      runController.current = controller;
+      setReviewView({ kind: "running" });
+      let snapshotDetail: BookDetail;
+      try {
+        snapshotDetail = await must(window.studio.books.open(bookId));
+      } catch (error) {
+        onNotice(error);
+        setReviewView({
+          kind: "failed",
+          message: "The saved chapters could not be read. Your manuscript was not changed."
+        });
+        return;
+      }
+      if (controller.signal.aborted) {
+        setReviewView({ kind: "stopped" });
+        return;
+      }
+      lastLocalActionAt.current = Date.now();
+      setDetail(snapshotDetail);
+      const snapshot = reviewSourceSnapshotFromBookDetail(snapshotDetail, requestedAt);
+      // Sliced analysis yields between chunks, so Cancel stays clickable on long books and
+      // an abort discards partial counts instead of finishing behind a blocked thread.
+      const analysisOutcome = await analyzeReviewCoverageAsync(snapshot, controller.signal);
+      if (analysisOutcome.status !== "complete" || controller.signal.aborted) {
+        runController.current = null;
+        setReviewView({ kind: "stopped" });
+        return;
+      }
+      const analysis = analysisOutcome.value;
+      if (analysis.status === "failed") {
+        const failure = reviewNoSourceResult(snapshot.scope, requestedAt, analysis.coverage);
+        setReviewView({ kind: "failed", message: failure.message });
+        return;
+      }
+      const outcome = await runReviewWork({ requestedAt, source: snapshot }, controller.signal, async () =>
+        buildReviewReport(snapshot, analysis, { requestedAt, completedAt: new Date().toISOString() })
+      );
+      runController.current = null;
+      if (outcome.status === "complete") {
+        setReviewView({ kind: "report", report: outcome.value, freshness: { status: "current" } });
+      } else if (outcome.status === "cancelled") {
+        setReviewView({ kind: "stopped" });
+      } else {
+        setReviewView({ kind: "failed", message: outcome.message });
+      }
+    },
+    [bookId, onNotice]
+  );
+
+  /**
+   * Spec 034 T006: a review reads only saved chapter text. The dialog offers the normal save
+   * path or cancel; analysis starts only after a confirmed save and a fresh snapshot re-read.
+   * Cancel leaves pending text untouched and never flushes.
+   */
+  const confirmReviewSave = useCallback(
+    async (decision: "save" | "cancel", currentStatus: SaveStatus) => {
+      if (decision === "cancel") {
+        closeReview();
+        return;
+      }
+      setReviewView({ kind: "saving" });
+      try {
+        // The gate confirms the save; the cancellable analysis reads its own fresh snapshot.
+        const result = await runAfterReviewSave(
+          currentStatus,
+          decision,
+          () => editorRef.current?.flush() ?? Promise.resolve(currentStatus),
+          async () => {}
+        );
+        if (result.status === "ready") await startAnalysis();
+        else if (result.status === "blocked") setReviewView({ kind: "blocked", saveStatus: result.saveStatus });
+        else closeReview();
+      } catch (error) {
+        onNotice(error);
+        closeReview();
+      }
+    },
+    [onNotice, closeReview, startAnalysis]
+  );
+
+  const openReview = useCallback(() => {
+    setReviewOpen(true);
+    // Read the live buffer status: the mirrored state can lag a fast keystroke by an effect.
+    const live = editorRef.current?.getStatus() ?? status;
+    if (reviewView.kind === "report") {
+      // The report is run-local; re-check it against the current saved chapters on every open.
+      void (async () => {
+        try {
+          const fresh = await must(window.studio.books.open(bookId));
+          lastLocalActionAt.current = Date.now();
+          setDetail(fresh);
+          const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+          setReviewView({ kind: "report", report: reviewView.report, freshness: reviewReportFreshness(reviewView.report, snapshot) });
+        } catch (error) {
+          onNotice(error);
+        }
+      })();
+      return;
+    }
+    // A clean buffer skips the choice and goes straight to the save confirmation.
+    if (live.kind === "saved") void confirmReviewSave("save", live);
+    else setReviewView({ kind: "choice" });
+  }, [status, reviewView, bookId, onNotice, confirmReviewSave]);
+
+  /** Start over the current saved chapters, keeping the previous report until the new run lands. */
+  const runAgain = useCallback(() => {
+    const live = editorRef.current?.getStatus() ?? status;
+    if (live.kind === "saved") void confirmReviewSave("save", live);
+    else setReviewView({ kind: "choice" });
+  }, [status, confirmReviewSave]);
+
+  const cancelRun = useCallback(() => {
+    runController.current?.abort();
+  }, []);
+
+  /**
+   * Spec 034 T012: open a finding's exact saved span only while the report is current. A
+   * changed source marks the report stale instead of selecting a different passage.
+   */
+  const navigateToEvidence = useCallback(
+    async (findingId: string, evidenceIndex: number) => {
+      if (reviewView.kind !== "report") return;
+      const current = reviewView.report;
+      try {
+        const fresh = await must(window.studio.books.open(bookId));
+        lastLocalActionAt.current = Date.now();
+        setDetail(fresh);
+        const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+        const navigation = revalidateReviewEvidence(current, snapshot, findingId, evidenceIndex);
+        if (navigation.status === "ready") {
+          setSelectedId(navigation.evidence.chapterId);
+          setEvidenceSelection({
+            chapterId: navigation.evidence.chapterId,
+            start: navigation.evidence.startOffset,
+            end: navigation.evidence.endOffset,
+            nonce: Date.now()
+          });
+          setReviewOpen(false);
+          return;
+        }
+        if (navigation.status === "stale") {
+          setReviewView({ kind: "report", report: current, freshness: navigation });
+          return;
+        }
+        onNotice(new Error("That passage is no longer available. Run the review again for current results."));
+      } catch (error) {
+        onNotice(error);
+      }
+    },
+    [reviewView, bookId, onNotice]
+  );
 
   const onSaved = useCallback((saved: Chapter) => {
     lastLocalActionAt.current = Date.now();
@@ -336,7 +652,7 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         <div className="titlebar-no-drag flex shrink-0 items-center gap-2">
           <span
             className="flex items-center gap-1.5 text-[var(--text-caption-size)] text-muted-foreground"
-            aria-live="polite"
+            role="status"
             aria-label={statusLabel(status)}
             data-testid="save-status"
           >
@@ -384,6 +700,16 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             >
               <ImageIcon size={16} />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openReview}
+              aria-label="Review manuscript"
+              title="Review manuscript"
+              data-testid="review-manuscript"
+            >
+              <FileSearch size={16} />
+            </Button>
             {exportNote ? (
               <span className="max-w-[180px] truncate text-[var(--text-caption-size)] text-muted-foreground" title={exportNote}>
                 {exportNote}
@@ -392,13 +718,34 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             <Button
               variant="ghost"
               size="icon"
+              onClick={() => setFormatOpen(true)}
+              aria-label="Format book"
+              title="Format book"
+              data-testid="format-book"
+            >
+              <Type size={16} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => void exportDocx()}
-              aria-label="Export manuscript"
-              title="Export manuscript"
+              aria-label="Export Word document"
+              title="Export Word document"
               data-testid="export-docx"
               disabled={exporting}
             >
               <Download size={16} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => void exportMarkdown()}
+              aria-label="Export Markdown"
+              title="Export Markdown"
+              data-testid="export-markdown"
+              disabled={exporting}
+            >
+              <FileText size={16} />
             </Button>
             <Button variant="ghost" size="icon" onClick={theme.cycle} aria-label={`Theme: ${theme.choice}`} title={`Theme: ${theme.choice}`}>
               {theme.choice === "light" ? <Sun size={16} /> : theme.choice === "dark" ? <Moon size={16} /> : <Monitor size={16} />}
@@ -447,6 +794,24 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         </div>
       </header>
 
+      {readIssues.length > 0 && !issuesDismissed ? (
+        <p
+          role="status"
+          data-testid="chapter-read-issues"
+          className="mx-3 mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-subheadline-size)] text-muted-foreground min-[700px]:mx-4"
+        >
+          {readIssueCopy(readIssues)}{" "}
+          <button
+            type="button"
+            onClick={() => setIssuesDismissed(true)}
+            data-testid="dismiss-read-issues"
+            className="font-medium text-foreground underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      ) : null}
+
       <main className="relative flex min-h-0 flex-1 gap-3 px-3 pb-3 min-[700px]:gap-4 min-[700px]:px-4 min-[700px]:pb-4">
         <div className="hidden min-[700px]:flex">
           <ChapterRail
@@ -490,11 +855,15 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         <section className="thin-scroll min-w-0 flex-1 overflow-y-auto">
           {conflict ? (
             <div className="glass mb-4 rounded-[var(--corner-lg)] p-4">
-              <p className="text-[var(--text-callout-size)] font-semibold text-[var(--destructive-text)]">This chapter was saved somewhere else</p>
+              <p className="text-[var(--text-callout-size)] font-semibold text-[var(--destructive-text)]">
+                {conflict.reason === "placeholder" ? "This chapter is not downloaded yet" : "This chapter was saved somewhere else"}
+              </p>
               <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
-                {conflict.reason === "external-edit"
-                  ? "The file changed on disk while you were writing, so your text was kept as a separate copy instead of overwriting the change."
-                  : "A newer version of this chapter exists on disk, so your text was kept as a separate copy instead of overwriting it."}
+                {conflict.reason === "placeholder"
+                  ? "The file on disk could not be read. It may still be downloading, so your text was kept as a separate copy instead of overwriting it."
+                  : conflict.reason === "external-edit"
+                    ? "The file changed on disk while you were writing, so your text was kept as a separate copy instead of overwriting the change."
+                    : "A newer version of this chapter exists on disk, so your text was kept as a separate copy instead of overwriting it."}
               </p>
               <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground" title={conflict.savedAs}>
                 {conflict.savedAs}
@@ -582,6 +951,11 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
               onStatus={setStatus}
               illustration={illustration}
               illustrationData={illustrationData}
+              selection={
+                evidenceSelection && evidenceSelection.chapterId === selected.id
+                  ? { start: evidenceSelection.start, end: evidenceSelection.end, nonce: evidenceSelection.nonce }
+                  : null
+              }
             />
           ) : (
             <div className="glass mx-auto mt-10 max-w-[520px] rounded-[var(--corner-xl)] px-8 py-12 text-center">
@@ -678,6 +1052,14 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             onSaved={(book) => setDetail((current) => (current ? { ...current, book } : current))}
             onNotice={onNotice}
           />
+          <FormatDialog
+            open={formatOpen}
+            onClose={() => setFormatOpen(false)}
+            bookTitle={detail.book.title}
+            settings={detail.book.settings.manuscript}
+            chapters={detail.chapters}
+            onSaveSettings={saveFormatSettings}
+          />
         </>
       ) : null}
 
@@ -764,6 +1146,18 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
             <Button
               variant="ghost"
               className="justify-start"
+              data-testid="more-review"
+              onClick={() => {
+                setMoreOpen(false);
+                openReview();
+              }}
+            >
+              <FileSearch size={16} />
+              Review manuscript
+            </Button>
+            <Button
+              variant="ghost"
+              className="justify-start"
               disabled={exporting}
               data-testid="more-export"
               onClick={() => {
@@ -772,7 +1166,32 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
               }}
             >
               <Download size={16} />
-              Export manuscript
+              Export Word document
+            </Button>
+            <Button
+              variant="ghost"
+              className="justify-start"
+              disabled={exporting}
+              data-testid="more-export-markdown"
+              onClick={() => {
+                setMoreOpen(false);
+                void exportMarkdown();
+              }}
+            >
+              <FileText size={16} />
+              Export Markdown
+            </Button>
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid="more-format"
+              onClick={() => {
+                setMoreOpen(false);
+                setFormatOpen(true);
+              }}
+            >
+              <Type size={16} />
+              Format book
             </Button>
             <Button
               variant="ghost"
@@ -816,8 +1235,36 @@ export function WorkspaceView({ bookId, theme, libraryRoot, libraryStorage, onBa
         theme={theme}
         libraryRoot={libraryRoot}
         storage={libraryStorage}
+        deviceName={deviceName}
+        onCheckForChanges={onCheckForChanges}
         section={settingsSection}
       />
+
+      {reviewView.kind === "choice" || reviewView.kind === "saving" || reviewView.kind === "blocked" ? (
+        <ReviewGateDialog
+          open={reviewOpen}
+          view={reviewView}
+          onSave={() => void confirmReviewSave("save", editorRef.current?.getStatus() ?? status)}
+          onCancel={() => void confirmReviewSave("cancel", editorRef.current?.getStatus() ?? status)}
+          onClose={closeReview}
+          onOpenChange={(open) => {
+            if (!open) closeReview();
+          }}
+        />
+      ) : (
+        <ReviewReportDialog
+          open={reviewOpen}
+          view={reviewView}
+          bookTitle={detail?.book.title || "Manuscript"}
+          onCancelRun={cancelRun}
+          onRunAgain={runAgain}
+          onClose={closeReview}
+          onNavigate={(findingId, evidenceIndex) => void navigateToEvidence(findingId, evidenceIndex)}
+          onOpenChange={(open) => {
+            if (!open) closeReview();
+          }}
+        />
+      )}
 
       <Dialog open={pendingDelete !== null} onOpenChange={(open) => (open ? undefined : setPendingDelete(null))}>
         <DialogContent

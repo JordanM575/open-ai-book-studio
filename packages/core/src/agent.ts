@@ -1,11 +1,24 @@
 import type { ContextBreakdown } from "./agent/context";
 import type { CostBasis } from "./providers/usage";
+import type { AgentMode } from "./agent/messages";
 
 export interface AgentTurnInput {
   bookId: string;
   /** The chapter the author is looking at. The agent may still read or edit others. */
   chapterId?: string | null | undefined;
   prompt: string;
+  /**
+   * The permission level of this turn. Required so a turn can never run on an
+   * assumed level; callers that predate modes send `edit`, which preserves
+   * the previous full-tool behavior until the composer chooses otherwise.
+   */
+  mode: AgentMode;
+  /**
+   * Optional one-turn guidance, sent with the prompt and stored with the
+   * turn. Bounded at the schema; oversize input is rejected, never
+   * truncated, and nothing carries it into the next turn.
+   */
+  guidance?: string | undefined;
   /** Continue this conversation. Omit to start a new one. */
   threadId?: string | null | undefined;
   /**
@@ -50,6 +63,8 @@ export interface AgentTurnModel {
   provider: string;
   modelId: string;
   connectionLabel: string;
+  /** The catalogue's display name, so the conversation can name the model in plain words. */
+  name?: string;
 }
 
 export type AgentEvent =
@@ -81,4 +96,4 @@ export type AgentEvent =
       undoAvailable?: boolean;
     }
   | { type: "stopped"; turnId: string; changed?: number; undoAvailable?: boolean }
-  | { type: "error"; turnId: string; code: string; message: string; changed?: number; undoAvailable?: boolean };
+  | { type: "error"; turnId: string; code: string; message: string; changed?: number; undoAvailable?: boolean; retryAfterSeconds?: number };

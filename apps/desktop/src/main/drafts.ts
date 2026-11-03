@@ -1,4 +1,5 @@
 import type { DraftInput } from "@ai-book-studio/core/ipc";
+import type { SaveChapterResult } from "@ai-book-studio/core/schema";
 import type { Library } from "./library/store";
 import { normalizeBody } from "@ai-book-studio/core/markdown";
 
@@ -24,6 +25,41 @@ export class DraftBuffer {
 
   get size(): number {
     return this.drafts.size;
+  }
+
+  /** Chapter ids with unsaved text, for the drift detector's `both-changed` check. */
+  dirtyChapterIds(): string[] {
+    const ids: string[] = [];
+    for (const draft of this.drafts.values()) ids.push(draft.chapterId);
+    return ids;
+  }
+
+  /**
+   * Save one chapter's draft through the normal checked path. Returns the save outcome so the
+   * drift dialog can report a conflict instead of assuming the write landed. The draft clears
+   * either way: a conflict preserves the text as a conflict copy and the renderer still holds it.
+   */
+  async flushOne(
+    library: Library,
+    bookId: string,
+    chapterId: string
+  ): Promise<SaveChapterResult | null> {
+    const draft = this.drafts.get(this.key(bookId, chapterId));
+    if (!draft) return null;
+    const disk = await library.readChapter(draft.bookId, draft.chapterId);
+    if (disk.content === normalizeBody(draft.content)) {
+      this.drafts.delete(this.key(bookId, chapterId));
+      return {
+        status: "saved",
+        chapter: disk
+      };
+    }
+    const result = await library.saveChapter(draft.bookId, draft.chapterId, draft.content, {
+      baseVersion: draft.baseVersion,
+      baseHash: draft.baseHash
+    });
+    this.drafts.delete(this.key(bookId, chapterId));
+    return result;
   }
 
   /** Best effort: a conflict here preserves the draft next to the chapter instead of overwriting it. */

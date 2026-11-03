@@ -2,11 +2,14 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle2, KeyRound, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import type { BuildMetadata } from "@ai-book-studio/core/build";
 import { BROWSER_CREDENTIAL_DISCLOSURE } from "@ai-book-studio/core/providers/credentials";
-import type { ConnectionSummary, CredentialStatus, ModelInfo, ProviderDescription, ProviderId } from "@ai-book-studio/core/providers/types";
+import type { ConnectionSummary, CredentialStatus, ModelInfo, ProviderDescription, ProviderErrorCode, ProviderId } from "@ai-book-studio/core/providers/types";
+import { providerStatus, type ProviderLastCheck } from "@ai-book-studio/core/providers/status";
+import type { SyncSettings, VoiceSpeakers } from "@ai-book-studio/core/ipc";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { browserAvailabilityCopy } from "@ai-book-studio/core/providers/registry";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { SyncSection } from "./SyncSection";
 import { must } from "../lib/utils";
 import type { ThemeChoice } from "../hooks/use-theme";
 
@@ -19,8 +22,86 @@ interface Props {
   theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void };
   libraryRoot?: string;
   storage?: StorageSummary | undefined;
+  deviceName?: string | null | undefined;
+  /** Run a drift scan and report whether it found anything to review. */
+  onCheckForChanges?: (() => Promise<{ dirty: boolean }>) | undefined;
   /** Open on a particular section; reconnect uses "providers". */
   section?: SettingsSection | undefined;
+}
+
+const PROVIDER_ERROR_CODES: readonly ProviderErrorCode[] = [
+  "auth",
+  "permission",
+  "rate-limit",
+  "quota",
+  "context",
+  "refusal",
+  "offline",
+  "invalid-request",
+  "not-found",
+  "unsupported",
+  "unknown"
+];
+
+/** Narrows a bridge error code to the provider vocabulary, without inventing a cause. */
+function toProviderErrorCode(code: string): ProviderErrorCode {
+  return PROVIDER_ERROR_CODES.includes(code as ProviderErrorCode) ? (code as ProviderErrorCode) : "unknown";
+}
+
+function checkedTime(checkedAt: string): string {
+  return new Date(checkedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * One connection's health from the author's last explicit Test. The check time is volatile:
+ * it exists only for this Settings session and Settings never probes on its own (D-161).
+ */
+function ConnectionStatusLine({ check }: { check: ProviderLastCheck | undefined }) {
+  const status = providerStatus({ configured: true, lastCheck: check ?? null });
+  return (
+    <>
+      <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground" data-testid="connection-status">
+        {status.label}
+        {status.checkedAt ? ` · checked ${checkedTime(status.checkedAt)}` : " · not checked yet"}
+      </p>
+      {check && status.state !== "connected" ? (
+        <p className="mt-0.5 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          {status.message}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Voice availability from configured capability only. Voice is never probed, so there is
+ * no check time here — only whether dictation and read-aloud have a connection (D-161).
+ */
+function VoiceStatus({ voice }: { voice: { speakers: VoiceSpeakers | null; transcribeConnections: number } | null }) {
+  if (voice === null) {
+    return (
+      <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="voice-status">
+        Reading voice…
+      </p>
+    );
+  }
+  const output = voice.speakers?.available === true;
+  const input = voice.transcribeConnections > 0;
+  return (
+    <div data-testid="voice-status">
+      <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground">
+        {output
+          ? `Read-aloud is available${voice.speakers?.connectionLabel ? ` through ${voice.speakers.connectionLabel}` : ""}.`
+          : "Read-aloud is not set up."}{" "}
+        {input
+          ? `Dictation is available through ${voice.transcribeConnections} ${voice.transcribeConnections === 1 ? "connection" : "connections"}.`
+          : "Dictation is not set up."}
+      </p>
+      <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+        Voice is never tested automatically, so there is no check time here.
+      </p>
+    </div>
+  );
 }
 
 const THEMES: Array<{ id: ThemeChoice; label: string; icon: typeof Sun }> = [
@@ -29,7 +110,41 @@ const THEMES: Array<{ id: ThemeChoice; label: string; icon: typeof Sun }> = [
   { id: "dark", label: "Dark", icon: Moon }
 ];
 
-export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoot, storage, section }: Props) {
+export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoot, storage, deviceName, onCheckForChanges, section }: Props) {
+  const [syncSettings, setSyncSettings] = useState<SyncSettings | null>(null);
+  const [syncUnsupported, setSyncUnsupported] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setSyncSettings(null);
+    setSyncUnsupported(false);
+    void (async () => {
+      try {
+        setSyncSettings(await must(window.studio.sync.settings()));
+      } catch {
+        // Shells without a scan interval (the browser build) hide the editor, not the section.
+        setSyncUnsupported(true);
+      }
+    })();
+  }, [open]);
+
+  const saveSyncInterval = useCallback(
+    async (minutes: number) => {
+      setSyncBusy(true);
+      try {
+        setSyncSettings(await must(window.studio.sync.updateSettings({ checkIntervalMinutes: minutes })));
+      } finally {
+        setSyncBusy(false);
+      }
+    },
+    []
+  );
+
+  const checkForChanges = useCallback(async () => {
+    if (!onCheckForChanges) return { dirty: false };
+    return onCheckForChanges();
+  }, [onCheckForChanges]);
   const providersRef = useRef<HTMLElement>(null);
   const [liveStorage, setLiveStorage] = useState<StorageSummary | undefined>(storage);
   const [build, setBuild] = useState<BuildMetadata | null>(null);
@@ -76,6 +191,9 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
   const [removing, setRemoving] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, string>>({});
   const [models, setModels] = useState<Record<string, ModelInfo[]>>({});
+  /** The author's last explicit Test per connection. Volatile: cleared whenever Settings opens. */
+  const [checks, setChecks] = useState<Record<string, ProviderLastCheck>>({});
+  const [voice, setVoice] = useState<{ speakers: VoiceSpeakers | null; transcribeConnections: number } | null>(null);
   const [storageAvailable, setStorageAvailable] = useState<boolean | null>(null);
   const [credentialStatus, setCredentialStatus] = useState<CredentialStatus | null>(null);
   const [checkingKeychain, setCheckingKeychain] = useState(false);
@@ -87,6 +205,9 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
   const [keyResult, setKeyResult] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    // Check times are volatile: a fresh open forgets every previous explicit Test.
+    setChecks({});
+    setVoice(null);
     try {
       const [providerList, connectionList, status] = await Promise.all([
         must(window.studio.providers.list()),
@@ -97,6 +218,23 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
       setConnections(connectionList);
       setCredentialStatus(status);
       setStorageAvailable(status.available);
+      // Voice availability is read, never probed: these calls inspect configured
+      // capability and credential metadata, and carry no check time.
+      try {
+        if (window.studio.voice) {
+          const [transcribe, speakers] = await Promise.all([
+            window.studio.voice.connections(),
+            window.studio.voice.speakers()
+          ]);
+          if (transcribe.ok && speakers.ok) {
+            setVoice({ speakers: speakers.data, transcribeConnections: transcribe.data.length });
+            return;
+          }
+        }
+      } catch {
+        // Voice stays "not set up" below when it cannot be read.
+      }
+      setVoice({ speakers: null, transcribeConnections: 0 });
     } catch (error) {
       onNotice(error);
       setConnections([]);
@@ -106,7 +244,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
   const checkKeychain = async (): Promise<void> => {
     setCheckingKeychain(true);
     try {
-      const status = await must(window.studio.connections.status());
+      const status = await must(window.studio.connections.check());
       setCredentialStatus(status);
       setStorageAvailable(status.available);
     } catch (error) {
@@ -154,11 +292,30 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
   const test = async (connection: ConnectionSummary): Promise<void> => {
     setBusy(connection.id);
     try {
-      const response = await must(window.studio.connections.test(connection.id));
-      setResult((current) => ({ ...current, [connection.id]: response.message }));
+      // Read the envelope directly so a failure keeps its structured provider code;
+      // must() would discard it and leave only the message.
+      const response = await window.studio.connections.test(connection.id);
+      const checkedAt = new Date().toISOString();
+      if (response.ok) {
+        setChecks((current) => ({ ...current, [connection.id]: { status: "success", checkedAt } }));
+        setResult((current) => ({ ...current, [connection.id]: response.data.message }));
+      } else {
+        setChecks((current) => ({
+          ...current,
+          [connection.id]: {
+            status: "failure",
+            checkedAt,
+            error: { code: toProviderErrorCode(response.error.code), message: response.error.message }
+          }
+        }));
+        setResult((current) => {
+          const next = { ...current };
+          delete next[connection.id];
+          return next;
+        });
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setResult((current) => ({ ...current, [connection.id]: message }));
+      onNotice(error);
     } finally {
       setBusy(null);
     }
@@ -247,6 +404,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
       >
         <section>
           <h3 className="text-[var(--text-callout-size)] font-medium">Appearance</h3>
+          {/* biome-ignore lint/a11y/useSemanticElements: role="group" is the correct ARIA pattern here; a fieldset would inherit min-inline-size and border styles that change the picker layout */}
           <div className="mt-2 grid grid-cols-3 gap-2" role="group" aria-label="Theme">
             {THEMES.map(({ id, label, icon: Icon }) => (
               <Button
@@ -361,7 +519,12 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
           ) : (
             <ul className="mt-2 space-y-3">
               {connections.map((connection) => (
-                <li key={connection.id} className="rounded-[var(--corner-lg)] border border-border p-3.5">
+                <li
+                  key={connection.id}
+                  className="rounded-[var(--corner-lg)] border border-border p-3.5"
+                  data-testid="connection-card"
+                  data-connection-id={connection.id}
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-[var(--text-body-size)] font-medium">{connection.label}</p>
@@ -369,17 +532,36 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                         {connection.kind === "openrouter-oauth" ? "Signed in with OpenRouter" : "API key"}
                         {connection.lastUsedAt ? ` · last used ${new Date(connection.lastUsedAt).toLocaleDateString()}` : ""}
                       </p>
+                      <ConnectionStatusLine check={checks[connection.id]} />
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <Button variant="ghost" size="sm" disabled={busy === connection.id} onClick={() => void test(connection)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy === connection.id}
+                        onClick={() => void test(connection)}
+                        data-testid="connection-test"
+                      >
                         {busy === connection.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                         Test
                       </Button>
-                      <Button variant="ghost" size="sm" disabled={busy === connection.id} onClick={() => void loadModels(connection)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy === connection.id}
+                        onClick={() => void loadModels(connection)}
+                        data-testid="connection-models"
+                      >
                         Models
                       </Button>
                       {removing === connection.id ? (
-                        <Button variant="danger" size="sm" disabled={busy === connection.id} onClick={() => void remove(connection)}>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          disabled={busy === connection.id}
+                          onClick={() => void remove(connection)}
+                          data-testid="connection-remove-confirm"
+                        >
                           Remove
                         </Button>
                       ) : (
@@ -388,6 +570,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                           size="icon-sm"
                           aria-label={`Remove ${connection.label}`}
                           onClick={() => setRemoving(connection.id)}
+                          data-testid="connection-remove"
                         >
                           <Trash2 size={14} />
                         </Button>
@@ -415,6 +598,11 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="mt-6" aria-label="Voice">
+          <h3 className="text-[var(--text-callout-size)] font-medium">Voice</h3>
+          <VoiceStatus voice={voice} />
         </section>
 
         <section className="mt-6">
@@ -554,6 +742,16 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               ) : null}
             </>
           ) : null}
+          <SyncSection
+            deviceName={deviceName}
+            settings={syncSettings}
+            unsupported={syncUnsupported}
+            busy={syncBusy}
+            onSaveInterval={saveSyncInterval}
+            onCheck={checkForChanges}
+            onCloseSettings={() => onOpenChange(false)}
+            onNotice={onNotice}
+          />
         </section>
 
         <section className="mt-6" data-testid="about">
@@ -567,6 +765,10 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 <div className="flex flex-wrap justify-between gap-2">
                   <dt className="text-muted-foreground">Build</dt>
                   <dd>{build.target === "desktop" ? "Desktop" : "Web"}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Signing</dt>
+                  <dd>{build.signing.status === "signed" ? `Signed — ${build.signing.identity ?? "unknown identity"}` : "Unsigned"}</dd>
                 </div>
                 <div className="flex flex-wrap justify-between gap-2">
                   <dt className="text-muted-foreground">Version</dt>
@@ -583,6 +785,10 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 <div className="flex flex-wrap justify-between gap-2">
                   <dt className="text-muted-foreground">Platform</dt>
                   <dd>{window.studio.platform}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted-foreground">Architecture</dt>
+                  <dd>{build.arch === "unknown" ? "Unknown" : build.arch}</dd>
                 </div>
                 <div className="flex flex-wrap justify-between gap-2">
                   <dt className="text-muted-foreground">Storage</dt>

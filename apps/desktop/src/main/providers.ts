@@ -7,7 +7,7 @@ import { applyModelPreset } from "@ai-book-studio/core/providers/compatibility";
 import { providerById } from "@ai-book-studio/core/providers/registry";
 import type { CredentialVault } from "@ai-book-studio/core/providers/credentials";
 import { ProviderError, type ConnectionSummary, type CredentialStatus, type ProviderId, type StoredCredential } from "@ai-book-studio/core/providers/types";
-import { normalizeProviderError } from "@ai-book-studio/core/providers/errors";
+import { normalizeProviderError, parseRetryAfter } from "@ai-book-studio/core/providers/errors";
 import {
   OPENROUTER_KEY_EXCHANGE_URL,
   OPENROUTER_MODELS_URL,
@@ -54,6 +54,17 @@ export class ProviderService {
   async status(): Promise<CredentialStatus> {
     const state = this.vault.status
       ? await this.vault.status()
+      : { available: await this.vault.isAvailable(), backend: "Protected storage", detail: "" };
+    return { ...state, connections: (await this.vault.list()).length };
+  }
+
+  /**
+   * Explicit keychain round-trip for the Check control. Unlike `status()`, this may wait for the
+   * author's confirmation, so views must not call it on open.
+   */
+  async check(): Promise<CredentialStatus> {
+    const state = this.vault.check
+      ? await this.vault.check()
       : { available: await this.vault.isAvailable(), backend: "Protected storage", detail: "" };
     return { ...state, connections: (await this.vault.list()).length };
   }
@@ -295,14 +306,4 @@ export class ProviderService {
     }
     return credential;
   }
-}
-
-/** `Retry-After` is either seconds or an HTTP date; return seconds or undefined. */
-function parseRetryAfter(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
-  const date = Date.parse(value);
-  if (Number.isNaN(date)) return undefined;
-  return Math.max(0, Math.ceil((date - Date.now()) / 1000));
 }

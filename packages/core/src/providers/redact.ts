@@ -35,6 +35,19 @@ export function redact(value: string): string {
   return result;
 }
 
+/**
+ * The secret shapes without replacements, for scanners that must name the file
+ * and the class but never print the matching value. Derived from PATTERNS so the
+ * two can never drift apart; the global flag is stripped because scanners test
+ * many values with one expression.
+ */
+export function secretShapes(): Array<{ name: string; pattern: RegExp }> {
+  return PATTERNS.map(({ name, pattern }) => ({
+    name,
+    pattern: new RegExp(pattern.source, pattern.flags.replace("g", ""))
+  }));
+}
+
 /** Redact every string reachable from an unknown value without mutating it. */
 export function redactDeep<T>(value: T): T {
   if (typeof value === "string") return redact(value) as T;

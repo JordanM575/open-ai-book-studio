@@ -124,6 +124,7 @@ export async function runLiveChecks(
         await runtime.start({
           bookId: book.id,
           chapterId: chapters[0]?.id ?? null,
+          mode: "edit",
           prompt:
             "Read the first chapter, then add one short paragraph at the end of it in the same voice. Do not change anything else."
         });

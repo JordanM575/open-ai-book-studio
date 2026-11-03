@@ -58,8 +58,8 @@ export class AmbientService {
     const thread = await library.threads.read(bookId, newest.id);
     if (!thread) return null;
     for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
-      const message = thread.messages[index]!;
-      if (message.role !== "assistant") continue;
+      const message = thread.messages[index];
+      if (message === undefined || message.role !== "assistant") continue;
       const text = message.parts
         .filter((part): part is { type: "text"; text: string } => part.type === "text")
         .map((part) => part.text.trim())
@@ -86,12 +86,14 @@ export function describeChange(checkpoint: {
     return { what: "I changed something", at: checkpoint.at };
   }
   if (entries.length === 1) {
-    const entry = entries[0]!;
+    const entry = entries[0];
+    if (entry === undefined) return { what: "I changed something", at: checkpoint.at };
     if (entry.created) return { what: `I wrote ${entry.title}`, at: checkpoint.at };
     if (entry.deleted) return { what: `I removed ${entry.title}`, at: checkpoint.at };
     return { what: `I changed ${entry.title}`, at: checkpoint.at };
   }
-  const first = entries[0]!;
+  const first = entries[0];
+  if (first === undefined) return { what: "I changed something", at: checkpoint.at };
   if (first.created) {
     return { what: `I wrote ${first.title} and ${entries.length - 1} more`, at: checkpoint.at };
   }

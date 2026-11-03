@@ -10,10 +10,24 @@ interface NormalizeInput {
 }
 
 const AUTH = /invalid.*(key|token)|unauthor|forbidden|authentication|expired/i;
+const PERMISSION = /permission|insufficient.*scope|missing.*scope|not entitled|entitlement|forbidden/i;
 const QUOTA = /quota|insufficient.*credit|billing|payment required/i;
 const CONTEXT = /context.*(length|window)|too many tokens|maximum.*tokens/i;
 const REFUSAL = /content policy|safety|refus|moderation/i;
 const RATE = /rate limit|too many requests|slow down/i;
+
+/**
+ * `Retry-After` arrives as seconds or an HTTP date. Either way the studio counts whole
+ * seconds from now; anything else means the provider named no wait.
+ */
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const date = Date.parse(value);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
 
 /** One place that turns a provider response into something the interface can explain. */
 export function normalizeProviderError(input: NormalizeInput): ProviderError {
@@ -33,7 +47,14 @@ export function normalizeProviderError(input: NormalizeInput): ProviderError {
   if (REFUSAL.test(haystack)) {
     return new ProviderError("refusal", "The provider's content policy declined this request.", options);
   }
-  if (status === 401 || status === 403 || AUTH.test(haystack)) {
+  if (status === 403 || PERMISSION.test(haystack)) {
+    return new ProviderError(
+      "permission",
+      "This key does not have permission for that request. Check the key's scopes or plan.",
+      options
+    );
+  }
+  if (status === 401 || AUTH.test(haystack)) {
     return new ProviderError("auth", "The provider rejected this connection. Reconnect or check the key.", options);
   }
   if (CONTEXT.test(haystack)) {
@@ -66,6 +87,7 @@ function isOffline(input: NormalizeInput): boolean {
 export function isProviderErrorCode(value: string): value is ProviderErrorCode {
   return [
     "auth",
+    "permission",
     "rate-limit",
     "quota",
     "context",

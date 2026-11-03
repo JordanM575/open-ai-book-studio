@@ -6,6 +6,9 @@ import { z } from "zod";
  * They live in `BookMeta.settings.agent`, so two books in one library can behave differently and
  * a copied book carries its own behaviour with it.
  */
+export const ANSWER_LENGTHS = ["brief", "standard", "detailed"] as const;
+export type AgentAnswerLength = (typeof ANSWER_LENGTHS)[number];
+
 export const agentSettingsSchema = z
   .object({
     /**
@@ -14,7 +17,22 @@ export const agentSettingsSchema = z
      */
     disabledTools: z.array(z.string().min(2).max(60)).max(64).default([]),
     /** Whether the book's `SKILLS.md` is given to the agent. */
-    skillsEnabled: z.boolean().default(true)
+    skillsEnabled: z.boolean().default(true),
+    /**
+     * Optional per-book tone, shown to the author as free text and included
+     * with submitted turns. Empty means no tone instruction.
+     */
+    tone: z.string().max(500).default(""),
+    /** Answer length for this book's turns. Standard is the default. */
+    answerLength: z.enum(ANSWER_LENGTHS).default("standard"),
+    /**
+     * Informational spending hooks (011 T036). A per-turn cost ceiling and a monthly
+     * warning level, in US dollars. Both default to unset: nothing warns until the author
+     * sets them, and a warning never blocks, refuses or retries a turn — enforcement
+     * waits on D-116.
+     */
+    perTurnCeilingUsd: z.number().positive().finite().nullable().default(null),
+    monthlyWarningUsd: z.number().positive().finite().nullable().default(null)
   })
   /**
    * The default is on the *input*, so a book written before this setting existed still opens:
