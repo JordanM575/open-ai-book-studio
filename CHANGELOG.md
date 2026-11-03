@@ -149,6 +149,9 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The film script's 0:43 line now says a switched-off tool is refused everywhere, rather than that it
+  disappears everywhere. The new toolkit end-to-end check shows the CLI and MCP refuse the tool, but
+  `bookwriter tools` and MCP `tools/list` still list it, because neither lists tools for one book.
 - A fresh clone builds again. The `release/` ignore rule also matched `scripts/release/`, so the
   release record and checklist scripts were never committed while the tests that import them were,
   and a clean clone failed typecheck. Now the ignore rule and `submission:check`'s forbidden-path
