@@ -134,6 +134,11 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
 
     books: {
       list: () => safe(() => libraries.require().listBooks()),
+      listWithIssues: () => safe(() => libraries.require().listBooksWithIssues()),
+      reveal: () =>
+        Promise.resolve(
+          failure("invalid", "Browser storage has no folder window. Export an archive to keep or move this library.")
+        ),
       create: (input) => safe(() => libraries.require().createBook(input)),
       update: (bookId, patch) => safe(() => libraries.require().updateBook(bookId, patch)),
       delete: (bookId) => safe(() => libraries.require().deleteBook(bookId)),

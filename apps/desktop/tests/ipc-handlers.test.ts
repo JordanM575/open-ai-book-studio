@@ -396,6 +396,10 @@ describe("books and chapters", () => {
     const created = await data<{ id: string }>(IPC.books.create, { title: "The Salt Road", description: "A road." });
     expect(JSON.parse(await readFile(join(root, "books", created.id, "book.json"), "utf8")).title).toBe("The Salt Road");
     expect(await data(IPC.books.list)).toEqual([expect.objectContaining({ id: created.id, title: "The Salt Road", chapterCount: 0 })]);
+    expect(await data(IPC.books.listWithIssues)).toEqual({
+      books: [expect.objectContaining({ id: created.id, title: "The Salt Road" })],
+      bookReadIssues: []
+    });
 
     const chapter = await data<Chapter>(IPC.chapters.create, { bookId: created.id, title: "The Tide" });
     const saved = await data<{ status: string }>(IPC.chapters.save, {

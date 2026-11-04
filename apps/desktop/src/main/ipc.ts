@@ -287,6 +287,21 @@ export function registerIpc(
 
   handle(IPC.books.list, async () => studio.requireLibrary().listBooks());
 
+  handle(IPC.books.listWithIssues, async () => studio.requireLibrary().listBooksWithIssues());
+
+  handle(IPC.books.reveal, async (payload) => {
+    // A folder that cannot open may not carry a valid book id, so this checks one plain name instead.
+    const folder = z
+      .string()
+      .min(1)
+      .max(255)
+      .refine((name) => !/[/\\]/.test(name) && !name.startsWith("."), "invalid folder")
+      .parse(payload);
+    const library = studio.requireLibrary();
+    shell.showItemInFolder(safeJoin(library.root, "books", folder));
+    return null;
+  });
+
   handle(IPC.books.create, async (payload) => {
     const input = z
       .object({ title: z.string().min(1).max(300), description: z.string().max(20_000).optional() })

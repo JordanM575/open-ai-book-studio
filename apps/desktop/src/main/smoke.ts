@@ -224,6 +224,25 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return line;
     });
 
+    // The grid's read through the real bridge. Only a refusal is asked of the reveal, because a
+    // folder it accepted would open a Finder window.
+    await check("the grid's read lists the fixture book, and an escaping folder is not shown", async () => {
+      const outcome = await evaluate<string>(
+        win,
+        `(async () => {
+          const listing = await window.studio.books.listWithIssues();
+          if (!listing.ok) return "the listing failed: " + listing.error.code;
+          const titles = listing.data.books.map((book) => book.title).join(", ");
+          if (titles !== "Smoke Test Book" || listing.data.bookReadIssues.length !== 0) return JSON.stringify(listing.data);
+          const reveal = await window.studio.books.reveal("../outside");
+          if (reveal.ok) return "an escaping folder name was shown";
+          return "1 book · 0 that cannot open · " + reveal.error.code;
+        })()`
+      );
+      if (outcome !== "1 book · 0 that cannot open · invalid") throw new Error(outcome);
+      return outcome;
+    });
+
     // Refusals only: the allowed page would open a real browser and a real connection would reach a
     // provider, so a hidden run never asks for either.
     await check("the bridge refuses an unlisted page and a model id for a missing connection", async () => {

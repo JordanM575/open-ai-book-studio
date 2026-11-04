@@ -200,6 +200,24 @@ export interface ChapterReadIssue {
   reason: ChapterReadIssueReason;
 }
 
+export type BookReadIssueReason = "newer-schema" | "syncing" | "unreadable";
+
+/** A folder under `books/` that holds a book the studio cannot open, so the grid can say why. */
+export interface BookReadIssue {
+  /** The folder's name under `books/`; never a host path. */
+  folder: string;
+  /** The title in `book.json` when it could be read; otherwise null. */
+  title: string | null;
+  /** Stable safe category; never includes raw adapter or parser error text. */
+  reason: BookReadIssueReason;
+}
+
+/** The library grid: every book that opens, and every book folder that does not. */
+export interface BookListing {
+  books: BookSummary[];
+  bookReadIssues: BookReadIssue[];
+}
+
 /** A copy of a chapter that could not be saved over the version on disk. */
 export interface ChapterConflict {
   bookId: string;

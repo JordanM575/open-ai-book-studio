@@ -1,5 +1,6 @@
 import type {
   BookDetail,
+  BookListing,
   BookMeta,
   BookSummary,
   Chapter,
@@ -111,6 +112,10 @@ export const IPC = {
   },
   books: {
     list: "books:list",
+    /** The grid's read: the books that open and the book folders that do not, with the reason. */
+    listWithIssues: "books:listWithIssues",
+    /** Show one book folder in the file manager, by its folder name under `books/`. */
+    reveal: "books:reveal",
     create: "books:create",
     importManuscript: "books:importManuscript",
     pickImportSource: "books:pickImportSource",
@@ -394,6 +399,10 @@ export interface StudioApi {
   };
   books: {
     list(): Promise<Result<BookSummary[]>>;
+    /** The books that open and the book folders that do not, so the grid never hides a book. */
+    listWithIssues(): Promise<Result<BookListing>>;
+    /** Show a book folder in the file manager. `folder` is its name under `books/`. */
+    reveal(folder: string): Promise<Result<null>>;
     create(input: { title: string; description?: string }): Promise<Result<BookMeta>>;
     /** Publish a complete imported manuscript staged from the author's confirmed preview mapping. */
     importManuscript(input: ImportManuscriptInput): Promise<Result<BookDetail>>;

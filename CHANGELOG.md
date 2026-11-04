@@ -437,6 +437,23 @@ Update the `Unreleased` section before every commit.
   lists the copies, so the banner counts the files on disk; it also recounts them when a conflict
   happens. Like Refresh, it now clears the chapter's typing history, so undo cannot step back across
   the version on disk.
+- A sync tool's copy of a chapter is no longer a second chapter that the studio writes into (QA D1).
+  When iCloud Drive made `0002-the-door 2.md` or Google Drive made `0002-the-door (1).md` beside
+  `0002-the-door.md`, both files carried the chapter's id. The studio listed both, opened the copy,
+  autosaved into it and trashed it on delete, while the original stayed byte-identical and came back.
+  A Syncthing `.sync-conflict-` copy was listed as a chapter too, though `docs/FORMAT.md` said it was
+  not. Now exactly one file is the chapter for an id. A name with a sync tool's copy mark never is;
+  among the other files with that id, the studio-shaped `NNNN-slug.md` name wins, then the shorter
+  name, then character order (D-187). Only names decide, so every device picks the same file and a
+  save never hands the chapter to its copy, even a newer one. Every other file is listed with the
+  conflict copies, so the workspace's saved-copies line counts it and Show in folder opens the folder
+  at it; the studio never writes, renames, moves or deletes it. Another chapter's unreadable file no
+  longer stops a details change, move or delete from finding its chapter.
+- A book whose `book.json` is newer, still syncing or unreadable no longer disappears from the library
+  without a word (QA D9). It keeps a card that says "This book was saved by a newer version of the
+  studio", "This book is still syncing" or "This book's details could not be read", names its folder,
+  and offers Show in Finder on desktop (Show in folder elsewhere). Nothing in its folder is changed.
+  The library no longer says "No books yet" when the only book cannot open.
 - A refused or unreachable connection (`ECONNREFUSED`, `ENETUNREACH`, `EHOSTUNREACH`, `ECONNRESET`)
   now reads as offline, with the offline note, instead of "The provider's content policy declined this
   request". The refusal pattern matched "ECONNREFUSED".

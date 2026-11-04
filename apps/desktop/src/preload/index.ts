@@ -69,6 +69,8 @@ const api: StudioApi = {
   },
   books: {
     list: () => invoke(IPC.books.list),
+    listWithIssues: () => invoke(IPC.books.listWithIssues),
+    reveal: (folder: string) => invoke(IPC.books.reveal, folder),
     create: (input) => invoke(IPC.books.create, input),
     update: (bookId: string, patch: Partial<BookMeta>) => invoke(IPC.books.update, { bookId, patch }),
     delete: (bookId: string) => invoke(IPC.books.delete, bookId),

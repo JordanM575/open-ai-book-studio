@@ -37,6 +37,7 @@
     "tests/manuscript-import-preview.test.tsx",
     "tests/manuscript-import-journey.test.tsx",
     "tests/library-health.test.tsx",
+    "tests/book-issue-card.test.tsx",
     "tests/placeholder-save.test.tsx",
     "tests/format-dialog.test.tsx",
     "tests/format-dialog-export.test.tsx",

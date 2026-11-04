@@ -76,7 +76,10 @@ enough, and it keeps the format explainable. The index exists for queries, not f
 - Every IPC result is `{ ok: true, data }` or `{ ok: false, error: { code, message } }`. Codes:
   `not-found`, `invalid`, `format`, `newer-schema`, `io`, `internal`. The renderer surfaces
   `message` in a notice; it never sees stack traces.
-- A damaged `book.json` is skipped with a warning rather than crashing the library.
+- A damaged, half-synced or newer `book.json` does not crash the library and does not hide the book:
+  `listBooksWithIssues()` returns it as a `BookReadIssue` (`newer-schema`, `syncing` or `unreadable`,
+  with no parser text), and the grid shows a card that says why it cannot open and offers to show its
+  folder. The reason is worked out only after the read fails, so healthy books cost nothing more.
 - A chapter with no front matter is read using a deterministic fallback identity derived from its
   filename, then healed on the next save. Prose is never rejected for lacking metadata.
 - `schemaVersion` newer than the app → refuse with "This library was written by a newer version of
@@ -94,8 +97,11 @@ Dropbox, a NAS, or a USB stick. The app never talks to a provider and never hold
 
 - Writes are atomic renames, so a sync client sees either the old file or the new one.
 - `version` and the content hash detect concurrent edits that the provider merged badly.
-- Provider "conflicted copy" files are detected by name and shown as conflicts instead of being
-  treated as chapters.
+- A sync tool's copy of a chapter (iCloud ` 2`, Google Drive ` (1)`, Dropbox "conflicted copy",
+  Syncthing `.sync-conflict-`) is detected by name, and any other second file with a chapter's `id`
+  by ranking the names; either way it is listed as a conflict copy and never read, written or trashed
+  as the chapter (FORMAT.md, "Copies of a chapter"). The ranking is names only, so every device picks
+  the same file and a save never moves the chapter to its copy.
 - `.studio/device.json` gives each machine an id, so a conflict copy says where it came from.
 
 This is the weakest link by nature — file sync is not a transaction log. The design goal is not to

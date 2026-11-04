@@ -81,13 +81,33 @@ export function chapterFileName(order: number, title: string): string {
   return `${prefix}-${slugify(title)}.md`;
 }
 
+/** A name `chapterFileName` writes: `NNNN-slug.md`, or `NNNN-slug-2.md` when that one is taken. */
+const STUDIO_CHAPTER_NAME = /^\d{4,}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+
 /**
- * A preserved copy, not a chapter. Matches this studio's `.conflict-<reason>` names and the
- * "(conflicted copy)" names storage providers add. A chapter that merely mentions conflict is
- * still a chapter.
+ * A preserved copy, not a chapter (docs/FORMAT.md, "Copies of a chapter"). Matches this studio's
+ * `.conflict-<reason>` names; Dropbox's and Nextcloud's "(… conflicted copy …)", and Dropbox's
+ * "(Case Conflict)" and "(Selective Sync Conflict)"; Syncthing's `.sync-conflict-<date>-<time>-<device>`;
+ * and iCloud Drive's ` 2` or Google Drive's ` (1)` after a studio chapter name. A chapter that merely
+ * mentions conflict is still a chapter, and so are hand-named `Chapter 2.md` and `Part Two (The Conflict).md`.
  */
 export function isConflictCopyName(name: string): boolean {
-  return /conflicted copy|\.conflict[-.]/i.test(name);
+  if (/conflicted copy|\((?:case|selective sync) conflict\)|\.conflict[-.]|\.sync-conflict-/i.test(name)) return true;
+  const unsuffixed = name.replace(/ (?:\d+|\(\d+\))(\.md)$/, "$1");
+  return unsuffixed !== name && STUDIO_CHAPTER_NAME.test(unsuffixed);
+}
+
+/**
+ * Ranks the files that carry one chapter id: the first readable one is the chapter, the rest are
+ * copies (docs/FORMAT.md, "Copies of a chapter"). A studio chapter name comes first, then the
+ * shorter name, then character order. Only names decide, so every device picks the same file, and
+ * a save never moves the chapter to a copy, as file dates would: an atomic save makes a new file.
+ */
+export function compareChapterFileNames(left: string, right: string): number {
+  const studio = Number(STUDIO_CHAPTER_NAME.test(right)) - Number(STUDIO_CHAPTER_NAME.test(left));
+  if (studio !== 0) return studio;
+  if (left.length !== right.length) return left.length - right.length;
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function parseOrderFromFileName(fileName: string): number | null {

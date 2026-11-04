@@ -57,12 +57,12 @@ function mockStudio(platform: string): JourneyMocks {
   const publish = deferred<unknown>();
   const pickImportSource = mock(() => pick.promise);
   const importManuscript = mock((_mapping: ConfirmedImportMapping) => publish.promise);
-  const list = mock(() => Promise.resolve({ ok: true, data: [] }));
+  const list = mock(() => Promise.resolve({ ok: true, data: { books: [], bookReadIssues: [] } }));
   const onNotice = mock((_error: unknown) => {});
   const onOpenBook = mock((_bookId: string) => {});
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform,
-    books: { list, pickImportSource, importManuscript },
+    books: { listWithIssues: list, pickImportSource, importManuscript },
     library: {
       importLegacy: mock(() => Promise.resolve({ ok: true, data: null })),
       exportArchive: mock(() => Promise.resolve({ ok: true, data: null })),

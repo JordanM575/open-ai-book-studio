@@ -563,6 +563,16 @@ enforcement, and the D-124 device-identity question stands.
 | **Evidence** | `scripts/licenses.mjs` (collector and plugin), `scripts/license-gate.mjs` and `scripts/license-allow.json` (the gate in `bun run submission:check`), the generated `THIRD_PARTY_NOTICES.md`; `apps/desktop/tests/licenses.test.ts`, `license-gate.test.ts`, `licenses-dialog.test.tsx`; D-137. |
 | **Owner** | spec 009 / 013 |
 
+### D-187 · Which file is a chapter when a sync tool copies it
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-04, on the author's delegation) |
+| **Question** | A sync tool's copy of a chapter file (`0002-the-door 2.md`, `0002-the-door (1).md`) keeps the original's `id`. Which file is the chapter, and what happens to the other? (QA D1) |
+| **Decision** | A name with a sync tool's copy mark (iCloud ` N` or Google Drive ` (N)` after a studio name, Dropbox and Nextcloud "conflicted copy", Dropbox's "(Case Conflict)" and "(Selective Sync Conflict)", Syncthing `.sync-conflict-`, the studio's `.conflict-`) is never a chapter. Among the other readable files with one `id`, the chapter's file is the studio-shaped name `NNNN-slug.md`, then the shorter name, then character order. Every other file is a copy: listed with the conflict copies, never written, renamed, moved or deleted. Rejected: the oldest file by date, which the brief offered as an example, because an atomic save gives the file a new creation date (the chapter would move to its copy at the next save) and dates differ between devices; the highest `version`, because a copy's newer text would silently replace what the author opened. |
+| **Evidence** | `packages/core/src/markdown.ts` (`isConflictCopyName`, `compareChapterFileNames`), `packages/core/src/library/service.ts`; `apps/desktop/tests/sync-copies.test.ts`, `packages/core/tests/chapter-copies.test.ts`; `docs/FORMAT.md` "Copies of a chapter". |
+| **Owner** | spec 016 |
+
 ## Resolved browser decisions
 
 ### D-104 · OpenRouter OAuth redirect on desktop and web

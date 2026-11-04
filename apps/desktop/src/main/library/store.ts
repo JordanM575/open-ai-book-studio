@@ -1,5 +1,6 @@
 import type {
   BookDetail,
+  BookListing,
   BookMeta,
   BookSummary,
   Chapter,
@@ -87,6 +88,10 @@ export class Library {
 
   listBooks(): Promise<BookSummary[]> {
     return this.service.listBooks();
+  }
+
+  listBooksWithIssues(): Promise<BookListing> {
+    return this.service.listBooksWithIssues();
   }
 
   createBook(input: {

@@ -67,4 +67,18 @@ describe("reveal in file manager", () => {
     expect(escaped.ok).toBe(false);
     expect(shown).toHaveLength(1);
   });
+
+  test("book reveal opens a book folder by name, even one that cannot open, never an escaped path", async () => {
+    const { root } = await setup();
+    // A sync tool's copy of a folder does not carry a valid book id, and must still be shown.
+    for (const folder of ["book_test0001", "book_test0001 2"]) {
+      expect(await invoke(IPC.books.reveal, folder)).toEqual({ ok: true, data: null });
+    }
+    expect(shown).toEqual([join(root, "books", "book_test0001"), join(root, "books", "book_test0001 2")]);
+
+    for (const folder of ["..", "../evil", "book_test0001/chapters", "..\\evil", ".studio", "", 7]) {
+      expect((await invoke(IPC.books.reveal, folder)).ok).toBe(false);
+    }
+    expect(shown).toHaveLength(2);
+  });
 });

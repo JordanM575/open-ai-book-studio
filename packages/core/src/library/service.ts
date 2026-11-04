@@ -3,7 +3,9 @@ import {
   chapterMetaSchema,
   SCHEMA_VERSION,
   type BookDetail,
+  type BookListing,
   type BookMeta,
+  type BookReadIssue,
   type BookSummary,
   type Chapter,
   type ChapterReadIssue,
@@ -18,6 +20,7 @@ import {
 import {
   FormatError,
   chapterFileName,
+  compareChapterFileNames,
   countWords,
   isConflictCopyName,
   normalizeBody,
@@ -218,17 +221,28 @@ export class LibraryService {
   /* -------------------------------------------------------------------- books */
 
   async listBooks(): Promise<BookSummary[]> {
-    const summaries: BookSummary[] = [];
+    return (await this.listBooksWithIssues()).books;
+  }
+
+  /**
+   * Every book that opens, newest first, and every book folder that does not, with the reason. A
+   * newer, half-synced or damaged book must not hide the rest of the library, and must not vanish
+   * either: the grid says why it cannot open. Its folder is never changed or deleted automatically.
+   */
+  async listBooksWithIssues(): Promise<BookListing> {
+    const books: BookSummary[] = [];
+    const bookReadIssues: BookReadIssue[] = [];
     for (const entry of await this.env.storage.listDirectory(booksPath())) {
       if (entry.kind !== "directory" || entry.name.startsWith(".")) continue;
       try {
-        summaries.push(summarize(await this.readBook(entry.name)));
-      } catch {
-        // A half-synced or damaged book must not hide the rest of the library. It is reported
-        // by opening it, and its folder is never deleted automatically.
+        books.push(summarize(await this.readBook(entry.name)));
+      } catch (error: unknown) {
+        bookReadIssues.push(await this.bookReadIssue(entry.name, error));
       }
     }
-    return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    books.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    bookReadIssues.sort((a, b) => a.folder.localeCompare(b.folder));
+    return { books, bookReadIssues };
   }
 
   async createBook(input: {
@@ -841,9 +855,19 @@ export class LibraryService {
   /* ---------------------------------------------------------------- conflicts */
 
   async listConflicts(bookId: string): Promise<ChapterConflict[]> {
-    const chapters = await this.readChapters(bookId);
-    const byFile = new Map(chapters.map((chapter) => [chapter.path, chapter]));
-    const conflicts: ChapterConflict[] = [];
+    const { chapters, copies } = await this.readChaptersWithIssues(bookId);
+    const byId = new Map(chapters.map((chapter) => [chapter.id, chapter]));
+    // A second file with a chapter's id comes first, so the banner's "Show in folder" opens the
+    // chapters folder at the copy, beside the chapter it copies.
+    const conflicts: ChapterConflict[] = copies.map((copy) => ({
+      bookId,
+      chapterId: copy.id,
+      chapterTitle: copy.title,
+      savedAs: chapterDisplayPath(bookId, copy.path),
+      reason: "provider-conflict-copy",
+      diskVersion: byId.get(copy.id)?.version ?? 0,
+      localVersion: copy.version
+    }));
 
     const directories: Array<{ path: LibraryPath; display: (name: string) => string }> = [
       { path: chaptersPath(bookId), display: (name) => chapterDisplayPath(bookId, name) },
@@ -854,15 +878,15 @@ export class LibraryService {
       for (const entry of await this.env.storage.listDirectory(directory.path)) {
         if (entry.kind !== "file" || !entry.name.endsWith(".md")) continue;
         if (!isConflictCopyName(entry.name)) continue;
-        const known = byFile.get(entry.name);
+        // Never read: a copy named as one is a copy whatever it holds, and is never a chapter.
         conflicts.push({
           bookId,
-          chapterId: known?.id ?? "",
-          chapterTitle: known?.title ?? entry.name.replace(/\.md$/, ""),
+          chapterId: "",
+          chapterTitle: entry.name.replace(/\.md$/, ""),
           savedAs: directory.display(entry.name),
           reason: "provider-conflict-copy",
-          diskVersion: known?.version ?? 0,
-          localVersion: known?.version ?? 0
+          diskVersion: 0,
+          localVersion: 0
         });
       }
     }
@@ -899,6 +923,29 @@ export class LibraryService {
     }
   }
 
+  /**
+   * Why a book folder did not open, as a stable category with no parser or adapter text. Read only
+   * after `readBook` failed, so a healthy library pays nothing for it.
+   */
+  private async bookReadIssue(folder: string, error: unknown): Promise<BookReadIssue> {
+    let snapshot: LibraryFileSnapshot | null;
+    let names: string[];
+    try {
+      snapshot = await this.env.storage.readFile(bookFilePath(folder));
+      names = (await this.env.storage.listDirectory(bookPath(folder))).map((entry) => entry.name);
+    } catch {
+      return { folder, title: null, reason: "unreadable" };
+    }
+    if (error instanceof LibraryError && error.code === "newer-schema") {
+      return { folder, title: snapshot ? titleOf(snapshot.bytes) : null, reason: "newer-schema" };
+    }
+    // The folder has arrived but its `book.json` has not, or is still an empty or online-only stand-in.
+    if (!snapshot || snapshot.bytes.byteLength === 0 || names.includes(".book.json.icloud")) {
+      return { folder, title: null, reason: "syncing" };
+    }
+    return { folder, title: null, reason: "unreadable" };
+  }
+
   private async commitText(
     path: LibraryPath,
     text: string,
@@ -919,12 +966,15 @@ export class LibraryService {
     return result;
   }
 
+  /**
+   * Locate a chapter's own file, never a copy that carries its id. Another chapter's unreadable file
+   * does not stop the search; when no readable file has the id, the first unreadable file's error is
+   * the answer, because the chapter may be that file.
+   */
   private async locateChapter(bookId: string, chapterId: string): Promise<{ chapter: Chapter; fileName: string }> {
-    for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
-      if (entry.kind !== "file" || !entry.name.endsWith(".md") || isConflictCopyName(entry.name)) continue;
-      const chapter = await this.readChapterFile(bookId, entry.name);
-      if (chapter.id === chapterId) return { chapter, fileName: entry.name };
-    }
+    const found = await this.findChapterFile(bookId, chapterId);
+    if ("chapter" in found) return found;
+    if (found.unreadable) throw found.unreadable.error;
     throw new LibraryError("not-found", `No chapter ${chapterId} in this book.`);
   }
 
@@ -939,20 +989,44 @@ export class LibraryService {
     bookId: string,
     chapterId: string
   ): Promise<{ chapter: Chapter; fileName: string } | { unreadableFileName: string }> {
-    let unreadable: string | null = null;
-    for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
-      if (entry.kind !== "file" || !entry.name.endsWith(".md") || isConflictCopyName(entry.name)) continue;
+    const found = await this.findChapterFile(bookId, chapterId);
+    if ("chapter" in found) return found;
+    if (found.unreadable) return { unreadableFileName: found.unreadable.fileName };
+    throw new LibraryError("not-found", `No chapter ${chapterId} in this book.`);
+  }
+
+  /**
+   * The first readable file with this id in ranked order, which is the chapter's own file and never
+   * a copy (docs/FORMAT.md, "Copies of a chapter"); otherwise the first file that could not be read.
+   */
+  private async findChapterFile(
+    bookId: string,
+    chapterId: string
+  ): Promise<{ chapter: Chapter; fileName: string } | { unreadable: { fileName: string; error: unknown } | null }> {
+    let unreadable: { fileName: string; error: unknown } | null = null;
+    for (const fileName of await this.chapterFileNames(bookId)) {
       let chapter: Chapter;
       try {
-        chapter = await this.readChapterFile(bookId, entry.name);
-      } catch {
-        unreadable ??= entry.name;
+        chapter = await this.readChapterFile(bookId, fileName);
+      } catch (error) {
+        unreadable ??= { fileName, error };
         continue;
       }
-      if (chapter.id === chapterId) return { chapter, fileName: entry.name };
+      if (chapter.id === chapterId) return { chapter, fileName };
     }
-    if (unreadable) return { unreadableFileName: unreadable };
-    throw new LibraryError("not-found", `No chapter ${chapterId} in this book.`);
+    return { unreadable };
+  }
+
+  /**
+   * The book's chapter file names, ranked so that the first readable file with an id is that
+   * chapter's file. A name a sync tool gives its copies is never a candidate.
+   */
+  private async chapterFileNames(bookId: string): Promise<string[]> {
+    const names: string[] = [];
+    for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
+      if (entry.kind === "file" && entry.name.endsWith(".md") && !isConflictCopyName(entry.name)) names.push(entry.name);
+    }
+    return names.sort(compareChapterFileNames);
   }
 
   /**
@@ -1012,18 +1086,28 @@ export class LibraryService {
 
   private async readChaptersWithIssues(
     bookId: string
-  ): Promise<{ chapters: Chapter[]; chapterReadIssues: ChapterReadIssue[] }> {
+  ): Promise<{ chapters: Chapter[]; chapterReadIssues: ChapterReadIssue[]; copies: Chapter[] }> {
     const chapters: Chapter[] = [];
     const chapterReadIssues: ChapterReadIssue[] = [];
-    for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
-      if (entry.kind !== "file" || !entry.name.endsWith(".md") || isConflictCopyName(entry.name)) continue;
+    // Files whose id a higher-ranked file already holds: copies, listed as conflicts and never written.
+    const copies: Chapter[] = [];
+    const claimed = new Set<string>();
+    for (const fileName of await this.chapterFileNames(bookId)) {
+      let chapter: Chapter;
       try {
-        chapters.push(await this.readChapterFile(bookId, entry.name));
+        chapter = await this.readChapterFile(bookId, fileName);
       } catch (error: unknown) {
-        const issue = chapterReadIssue(entry.name, error);
+        const issue = chapterReadIssue(fileName, error);
         chapterReadIssues.push(issue);
         console.warn(`[library] Skipping unreadable chapter (${issue.reason}).`);
+        continue;
       }
+      if (claimed.has(chapter.id)) {
+        copies.push(chapter);
+        continue;
+      }
+      claimed.add(chapter.id);
+      chapters.push(chapter);
     }
     chapters.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
     chapterReadIssues.sort(
@@ -1031,7 +1115,7 @@ export class LibraryService {
         (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) ||
         a.fileName.localeCompare(b.fileName)
     );
-    return { chapters, chapterReadIssues };
+    return { chapters, chapterReadIssues, copies };
   }
 
   private async readChapterFile(bookId: string, fileName: string): Promise<Chapter> {
@@ -1177,6 +1261,16 @@ function chapterFrom(meta: ChapterMeta, content: string, fileName: string, hash:
     wordCount: countWords(content),
     hash
   };
+}
+
+/** The title a newer studio wrote, so its card can name the book. Nothing else is read from it. */
+function titleOf(bytes: Uint8Array): string | null {
+  try {
+    const title = (JSON.parse(textDecoder.decode(bytes)) as { title?: unknown } | null)?.title;
+    return typeof title === "string" && title.trim() ? title.trim().slice(0, 200) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseBookJson(raw: string, path: string): BookMeta {

@@ -54,7 +54,7 @@ function stubStudio(locationHealth: () => Promise<unknown>) {
   const onOpenBook = mock((_bookId: string) => {});
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
-    books: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
+    books: { listWithIssues: mock(() => Promise.resolve({ ok: true, data: { books: [], bookReadIssues: [] } })) },
     library: {
       importLegacy: mock(() => Promise.resolve({ ok: true, data: null })),
       exportArchive: mock(() => Promise.resolve({ ok: true, data: null })),

@@ -95,7 +95,8 @@ updatedAt: 2026-10-24T16:41:57.000Z
 The door had been shut when he went to bed.
 ```
 
-- `id` is stable for the life of the chapter. Renaming the file or the title never changes it.
+- `id` is stable for the life of the chapter. Renaming the file or the title never changes it. One
+  file is the chapter for an `id`; a sync tool's copy is not (see [Copies of a chapter](#copies-of-a-chapter)).
 - `order` is an integer ≥ 1; the rail sorts by it, then by file name.
 - `version` increments on every save the studio performs. It is how the app detects that another
   writer (another device, another editor, a sync provider) changed the file.
@@ -317,12 +318,48 @@ back and then opens them.
 The contract is in [`specs/010-web-target/contracts/archive-v1.md`](../specs/010-web-target/contracts/archive-v1.md)
 and [ADR 0012](adr/0012-portable-library-archive.md).
 
-## Provider conflict files
+## Copies of a chapter
 
-When two machines write the same file through a sync service, the service may leave something like
-`0002-the-lighthouse (conflicted copy from MacBook).md` or `...sync-conflict....md` in `chapters/`.
-The studio lists these under *Earlier conflicts* with a *Show in folder* action and does not treat
-them as chapters. Resolving them is a deliberate act by the author, not an automatic merge.
+When two machines write the same file through a sync service that cannot merge them, the service
+keeps both, and the copy keeps the original's front matter, `id` included. Exactly one file is a
+chapter's own file. The studio lists, opens, saves, edits the details of and trashes only that file;
+every other file is a copy.
+
+A file in `chapters/` is a copy by its name when it carries one of these marks:
+
+| Source | Example |
+| --- | --- |
+| iCloud Drive | `0002-the-lighthouse 2.md` |
+| Google Drive | `0002-the-lighthouse (1).md` |
+| Dropbox, Nextcloud | `0002-the-lighthouse (MacBook's conflicted copy 2026-11-04).md`; Dropbox's `(Case Conflict)` and `(Selective Sync Conflict)` too |
+| Syncthing | `0002-the-lighthouse.sync-conflict-20261104-093000-ABCDEF1.md` |
+| This studio | `0002-the-lighthouse.conflict-external-edit.<deviceId>.<timestamp>.md` |
+
+The iCloud and Google Drive marks count only after a name the studio writes, `NNNN-slug.md`, so a
+chapter named `Chapter 2.md` in another editor is still a chapter. Only the exact marks count, so
+`Part Two (The Conflict).md` is a chapter too. A copy by name is never read as a chapter, whatever
+its front matter says.
+
+When several readable files without such a mark carry one `id`, the chapter's own file is chosen by
+name alone:
+
+1. a name the studio writes, `NNNN-slug.md` (`0002-the-lighthouse.md`, or `0002-the-lighthouse-2.md`
+   when that name was taken);
+2. then the shorter name;
+3. then the first name in character order.
+
+The rest are copies. File dates are not used, for two reasons: every device must pick the same file,
+and an atomic save gives the chapter's file a new creation date, so "the oldest file" would hand the
+chapter to its copy at the next save. A copy that is newer, by date or by `version`, never takes the
+original's place.
+
+The studio never writes, renames, moves or deletes a copy. It stays where the sync tool put it and is
+listed beside the copies in `conflicts/`: the workspace counts them in its *saved copies from earlier
+sync conflicts* line, whose *Show in folder* action opens the folder at the first copy, and the sync
+review lists the copies named as such. Resolving a copy is a deliberate act by the author, not an automatic merge. Deleting a chapter
+trashes only its own file, and a copy named as one stays a copy. A copy that carries no mark, such as a
+Finder duplicate (`0002-the-lighthouse copy.md`), is told apart only while the original is there: once
+the original is in the trash, the copy is the only file with that `id` and opens as the chapter.
 
 ## Version compatibility
 
@@ -332,6 +369,17 @@ them as chapters. Resolving them is a deliberate act by the author, not an autom
 - Greater than the app's → refused, with "This library was written by a newer version of AI Book
   Studio. Update the app to open it."
 - Lower → accepted; the app writes the current version on the next save.
+
+A book folder that does not open is never hidden. The library shows it as a card that says why, with a
+*Show in Finder* action on desktop (*Show in folder* off macOS), and leaves its folder exactly as it is:
+
+| `book.json` | The card says |
+| --- | --- |
+| A newer `schemaVersion` | "This book was saved by a newer version of the studio", with the title it carries |
+| Missing, empty, or an iCloud `.book.json.icloud` stand-in | "This book is still syncing" |
+| Anything else that does not read: not JSON, no `schemaVersion`, the wrong shape, no permission | "This book's details could not be read" |
+
+`library.json` lists only the books that open.
 
 ## Privacy
 

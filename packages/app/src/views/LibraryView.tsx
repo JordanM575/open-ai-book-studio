@@ -6,7 +6,7 @@ import {
   type ImportPreview,
   type ImportResultReport
 } from "@ai-book-studio/core/manuscript-import";
-import type { BookSummary } from "@ai-book-studio/core/schema";
+import type { BookReadIssue, BookReadIssueReason, BookSummary } from "@ai-book-studio/core/schema";
 import type { LocationHealth } from "@ai-book-studio/core/sync/health";
 import { Button } from "@ai-book-studio/ui/button";
 import { Wordmark } from "@ai-book-studio/ui/brand";
@@ -31,8 +31,25 @@ interface Props {
   onNotice: (error: unknown) => void;
 }
 
+/** Why a book cannot open, in the studio's plain voice. Its folder is never changed (QA D9). */
+const bookIssueCopy: Record<BookReadIssueReason, { headline: string; detail: string }> = {
+  "newer-schema": {
+    headline: "This book was saved by a newer version of the studio",
+    detail: "Update the studio to open it. Nothing in its folder was changed."
+  },
+  syncing: {
+    headline: "This book is still syncing",
+    detail: "It opens once its files finish downloading. Nothing in its folder was changed."
+  },
+  unreadable: {
+    headline: "This book's details could not be read",
+    detail: "Its book.json may be damaged or incomplete. Nothing in its folder was changed."
+  }
+};
+
 export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLibraryImported, onNotice }: Props) {
   const [books, setBooks] = useState<BookSummary[] | null>(null);
+  const [issues, setIssues] = useState<BookReadIssue[]>([]);
   const [health, setHealth] = useState<LocationHealth | null>(null);
   const [creating, setCreating] = useState(false);
   const [managed, setManaged] = useState<BookSummary | null>(null);
@@ -56,10 +73,13 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
 
   const refresh = useCallback(async () => {
     try {
-      setBooks(await must(window.studio.books.list()));
+      const listing = await must(window.studio.books.listWithIssues());
+      setBooks(listing.books);
+      setIssues(listing.bookReadIssues);
     } catch (error) {
       onNotice(error);
       setBooks([]);
+      setIssues([]);
     }
   }, [onNotice]);
 
@@ -210,6 +230,14 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
     }
   };
 
+  const revealBook = async (folder: string): Promise<void> => {
+    try {
+      await must(window.studio.books.reveal(folder));
+    } catch (error) {
+      onNotice(error);
+    }
+  };
+
   return (
     <div className="window-wash flex h-full flex-col" data-testid="library-view">
       <header className={`titlebar-drag flex h-14 shrink-0 items-center justify-between pr-2 pl-3 min-[700px]:h-16 min-[700px]:pr-4 ${isMac ? "min-[700px]:pl-[92px]" : "min-[700px]:pl-5"}`}>
@@ -351,7 +379,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                 <div key={n} className="glass h-[164px] animate-pulse rounded-[var(--corner-lg)] opacity-60" />
               ))}
             </div>
-          ) : books.length === 0 ? (
+          ) : books.length === 0 && issues.length === 0 ? (
             <div className="glass mt-10 rounded-[var(--corner-xl)] px-8 py-14 text-center">
               <h2 className="text-(length:--text-title-3-size) font-semibold">No books yet</h2>
               <p className="mx-auto mt-2 max-w-[38ch] text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
@@ -397,6 +425,32 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                   >
                     <MoreHorizontal size={16} />
                   </Button>
+                </li>
+              ))}
+              {issues.map((issue) => (
+                <li key={`folder:${issue.folder}`}>
+                  <div data-testid="book-issue-card" className="glass h-full rounded-[var(--corner-lg)] p-5">
+                    <h2 className="text-(length:--text-headline-size) leading-[var(--text-headline-leading)] font-semibold">
+                      {bookIssueCopy[issue.reason].headline}
+                    </h2>
+                    {issue.title ? (
+                      <p className="mt-1 line-clamp-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] font-medium">
+                        {issue.title}
+                      </p>
+                    ) : null}
+                    <p className="mt-1.5 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
+                      {bookIssueCopy[issue.reason].detail}
+                    </p>
+                    <p className="mt-3 truncate font-mono text-(length:--text-caption-size) text-muted-foreground" title={`books/${issue.folder}`}>
+                      books/{issue.folder}
+                    </p>
+                    {isWeb ? null : (
+                      <Button variant="secondary" size="sm" className="mt-3" onClick={() => void revealBook(issue.folder)}>
+                        <FolderSearch size={14} />
+                        {isMac ? "Show in Finder" : "Show in folder"}
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
