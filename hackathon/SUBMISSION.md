@@ -38,8 +38,9 @@ loopback-only backend with a per-run token.
 
 The local-first library format, manuscript editor, atomic saves, conflict copies, Story Bible, provider
 connections, the first writing-agent loop, Word export, legacy import, browser storage, sync detector
-and the desktop/web test foundation existed on `015-web-target` at the October 26 cut
-(`meta-base-2026-10-26`, `bb9af11`).
+and the desktop/web test foundation existed at the October 26 cut (`meta-base-2026-10-26`). In the
+public repository that cut is the first commit, "Baseline: AI Book Studio as it stood at the October
+26, 2026 cut, before the event".
 
 ## What was built during the event
 
@@ -111,11 +112,12 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   ships with its license text, `THIRD_PARTY_NOTICES.md` is generated from the same data, and the
   readiness check fails on a package with no license or an unknown one (D-186).
 
-The commit history after the cut tag is the complete record of event work.
+The commit history after the cut is the complete record of event work.
 
-The event branch is `meta-hackathon`; the cut tag is `meta-base-2026-10-26`. The Gitea history is
-canonical. The GitHub clean replay is a separate publication step and must not be used to hide
-pre-event work.
+The public repository starts with one labelled baseline commit whose tree is the October 26 cut.
+Every event commit follows it in order, with its original message, author and date. Five commits
+that changed only internal planning files are left out, and nothing from before the cut is presented
+as event work.
 
 ## Meta models and partners
 
@@ -150,7 +152,7 @@ placeholder.
 | Submission check | `bun run submission:check` | `<ready · commits · tracked files>` |
 | Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | `<commit, packages, results>` |
 
-**Latest re-check (2026-11-04, code at commit `0f41eed`; this packet update came after it):**
+**Latest re-check (2026-11-04):**
 
 | Check | Result |
 | --- | --- |
@@ -164,7 +166,7 @@ placeholder.
 | Performance | Within SC-009: book open at 1.01× and the web bundle at 1.09× of their baselines, against limits of 2× and 1.2× |
 | Licenses | 98 desktop and 37 web packages pass the license gate, with one allowed exception (D-137) |
 
-An earlier clean-clone pass on 2026-10-26 (`8a42620`, 568 tests) is superseded by the event commits.
+An earlier clean-clone pass on 2026-10-26 (568 tests) is superseded by the event commits.
 
 ## Demo runbook
 

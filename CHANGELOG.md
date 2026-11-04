@@ -246,6 +246,9 @@ Update the `Unreleased` section before every commit.
   AGENTS.md no longer says specs 009 and 012 have no task list. The agent check's notes in
   `docs/TESTING.md`, spec 012 T034 and its entry above now say that a hidden run logs its
   notifications and that an approval resumes the whole conversation.
+- The submission packet describes the public history: one labelled baseline commit at the October 26
+  cut, then every event commit in order. It no longer cites commit hashes the public repository will
+  not have.
 - The docs no longer depend on anything the public repository will not have. The hackathon README
   states the decisions (Indie, solo, a labelled baseline plus the event commits, a public
   repository) instead of the planning-stage worktree and mirror plan; the four links to the removed
