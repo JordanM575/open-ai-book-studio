@@ -218,6 +218,10 @@ Update the `Unreleased` section before every commit.
   AGENTS.md no longer says specs 009 and 012 have no task list. The agent check's notes in
   `docs/TESTING.md`, spec 012 T034 and its entry above now say that a hidden run logs its
   notifications and that an approval resumes the whole conversation.
+- The film script is approved for recording. The opening motion plates now show only what existed
+  before the event (`book.json` and the chapters), so the segment labelled "Built before the event"
+  no longer shows the event's image files or a cutout. The retired SAM plate is marked as not in the
+  film.
 - The submission packet's latest re-check now shows the current numbers: 1,567 tests, smoke 34/34,
   e2e 10/10, and coverage of 90.70% of functions and 93.27% of lines, above the unchanged floor.
 - The submission packet's list of event work now includes Word import, the generated open-source

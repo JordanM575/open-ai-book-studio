@@ -1,8 +1,8 @@
 # Product film script
 
 **Version:** draft 2, 2026-11-03.
-**Status:** **Draft — awaiting the author's approval.** Do not record from this file until the author
-approves it.
+**Status:** **Approved for recording** (2026-11-04, the author delegated the approval). Lock the timings
+after the narration is recorded.
 **Target:** 2:50–3:00 master. Read the voice at 145–160 wpm; the narration is about 320 words, which
 leaves room for live actions. Timings are targets. Lock them after the narration is recorded.
 **Voice:** recorded by the author or founder. A licensed synthetic voice is allowed if the disclosure

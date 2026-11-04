@@ -24,10 +24,10 @@ Output goes to `video/renders/motion/<scene>/` and is ignored by git.
 | Scene | Purpose |
 | --- | --- |
 | `problem` | Chat vs. folder; the copy/paste problem |
-| `files` | `book.json`, chapters, `images.json`, images |
+| `files` | `book.json` and chapters, as they were before the event |
 | `trust` | Checked save and undo checkpoint |
 | `background` | Window closed → agent working → notification |
-| `visuals` | Muse Image → SAM 3.1 → transparent PNG |
+| `visuals` | Retired with SAM 3.1 (D-158); not in the film |
 | `voice` | Waveform and transcript at the caret |
 | `interop` | `bookwriter` CLI and MCP, loopback token |
 | `close` | “Your book. Your files. Your agent.” |
