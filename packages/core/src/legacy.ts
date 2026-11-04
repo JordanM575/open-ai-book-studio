@@ -117,7 +117,7 @@ function looksLikeBook(value: unknown): boolean {
  */
 export function parseLegacyExport(raw: unknown): LegacyExport {
   if (typeof raw !== "object" || raw === null) {
-    throw new LegacyImportError("This file is not a Mom's AI Book Studio backup.");
+    throw new LegacyImportError("This file is not a backup from the old app.");
   }
   const payload = raw as Record<string, unknown>;
   if (typeof payload.app === "string" && payload.app !== LEGACY_APP_ID) {
