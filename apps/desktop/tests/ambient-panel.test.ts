@@ -299,6 +299,27 @@ describe("the status line", () => {
     await testing.waitFor(() => expect(asked).toEqual(["ch_amb000001", "ch_amb000002"]));
   });
 
+  test("a turn from the chat brings the line up to date, and where-am-I speaks the fresh line", async () => {
+    let calls = 0;
+    const later = { ...status, say: "You're in Chapter One, The Light, of The Salt Road. 9 words so far." };
+    (window as unknown as { studio: { agent: { ambient: unknown } } }).studio.agent.ambient = async () => {
+      calls += 1;
+      return { ok: true, data: calls === 1 ? status : later };
+    };
+    const { view } = render();
+    await testing.waitFor(() => expect(calls).toBe(1));
+    // A turn the strip did not start, such as one from the chat panel, finishes.
+    await testing.act(async () => {
+      for (const listener of listeners) listener({ type: "done", turnId: "turn_chat000001" });
+    });
+    await testing.waitFor(() => expect(calls).toBe(2));
+    await testing.fireEvent.click(view.getByTestId("ambient-toggle"));
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("ambient-action-where_am_i"));
+    });
+    await testing.waitFor(() => expect(spoken.at(-1)).toBe(later.say));
+  });
+
   test("offers the actions the status offers, and only the ones available", async () => {
     const { view } = render();
     await testing.waitFor(() =>

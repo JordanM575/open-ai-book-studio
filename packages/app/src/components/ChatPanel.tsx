@@ -3,6 +3,7 @@ import type { FormEvent, ReactElement } from "react";
 import { Cpu, GitBranch, History, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
 import type { ThreadSummary } from "@ai-book-studio/core/agent/threads";
+import { modelDisplayName } from "@ai-book-studio/core/providers/compatibility";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-book-studio/ui/components/tooltip";
@@ -866,7 +867,7 @@ export function ChatPanel({
                 >
                   <Cpu size={13} className="shrink-0" />
                   <span className="truncate">
-                    {turnModel ? `This turn: ${turnModel.modelId.split("/").pop()}` : "Model: book default"}
+                    {turnModel ? `This turn: ${modelDisplayName(turnModel.modelId)}` : "Model: book default"}
                   </span>
                 </InputGroupButton>
               </Hint>

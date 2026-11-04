@@ -116,6 +116,22 @@ describe("provider errors", () => {
     expect(normalizeProviderError({ provider: "openai", status: 400 }).code).toBe("invalid-request");
   });
 
+  test("a connection that was refused or unreachable is offline, never a content-policy refusal", () => {
+    for (const message of [
+      "connect ECONNREFUSED 127.0.0.1:443",
+      "connect ENETUNREACH 1.2.3.4:443",
+      "connect EHOSTUNREACH 1.2.3.4:443",
+      "getaddrinfo ENOTFOUND api.example.invalid",
+      "read ECONNRESET"
+    ]) {
+      expect(normalizeProviderError({ provider: "openai", message }).code).toBe("offline");
+    }
+    // A real refusal still reads as one.
+    expect(
+      normalizeProviderError({ provider: "openai", status: 400, body: "The request was refused by the safety system." }).code
+    ).toBe("refusal");
+  });
+
   test("a rate limit names one wait: the provider's when it gave one, otherwise shortly", () => {
     expect(normalizeProviderError({ provider: "openai", status: 429 }).message).toBe(
       "The provider is rate limiting this account. Try again shortly."

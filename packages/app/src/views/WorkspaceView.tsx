@@ -797,11 +797,15 @@ export function WorkspaceView({
               variant="secondary"
               size="sm"
               onClick={() => openModelPicker("book")}
-              title="Choose the model for this book"
+              title={
+                detail?.book.defaultModelId
+                  ? `${modelDisplayName(detail.book.defaultModelId)}. Choose the model for this book`
+                  : "Choose the model for this book"
+              }
               data-testid="open-model-picker"
             >
               <Cpu size={15} />
-              <span className="max-w-[160px] truncate">{detail?.book.defaultModelId ? modelDisplayName(detail.book.defaultModelId) : "Choose a model"}</span>
+              <span className="max-w-[208px] truncate">{detail?.book.defaultModelId ? modelDisplayName(detail.book.defaultModelId) : "Choose a model"}</span>
             </Button>
           </div>
         </div>

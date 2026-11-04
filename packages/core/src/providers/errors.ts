@@ -13,7 +13,7 @@ const AUTH = /invalid.*(key|token)|unauthor|forbidden|authentication|expired/i;
 const PERMISSION = /permission|insufficient.*scope|missing.*scope|not entitled|entitlement|forbidden/i;
 const QUOTA = /quota|insufficient.*credit|billing|payment required/i;
 const CONTEXT = /context.*(length|window)|too many tokens|maximum.*tokens/i;
-const REFUSAL = /content policy|safety|refus|moderation/i;
+const REFUSAL = /content policy|safety|\brefus|moderation/i;
 const RATE = /rate limit|too many requests|slow down/i;
 
 /**
@@ -42,6 +42,11 @@ export function normalizeProviderError(input: NormalizeInput): ProviderError {
     // When the provider says how long to wait, the chat names that wait; "shortly" would be a second one.
     const wait = input.retryAfterSeconds !== undefined ? "" : " Try again shortly.";
     return new ProviderError("rate-limit", `The provider is rate limiting this account.${wait}`, options);
+  }
+  // A request that got no answer at all is a connection problem, whatever words its error carries
+  // ("ECONNREFUSED" is not a content-policy refusal).
+  if (isOffline(input)) {
+    return new ProviderError("offline", "The provider could not be reached. Check your connection.", options);
   }
   if (status === 402 || QUOTA.test(haystack)) {
     return new ProviderError("quota", "This account has no credit or has reached its quota.", options);
@@ -75,9 +80,6 @@ export function normalizeProviderError(input: NormalizeInput): ProviderError {
   if (status !== undefined && status >= 500) {
     return new ProviderError("unknown", "The provider had a problem on its side. Your text is safe; try again.", options);
   }
-  if (isOffline(input)) {
-    return new ProviderError("offline", "The provider could not be reached. Check your connection.", options);
-  }
   return new ProviderError("unknown", input.message ?? "The provider returned an unexpected response.", options);
 }
 
@@ -105,7 +107,9 @@ export function normalizeModelCheckError(input: NormalizeInput): ProviderError {
 
 function isOffline(input: NormalizeInput): boolean {
   if (input.status !== undefined) return false;
-  return /fetch failed|network|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|abort/i.test(input.message ?? "");
+  return /fetch failed|network|ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|abort/i.test(
+    input.message ?? ""
+  );
 }
 
 export function isProviderErrorCode(value: string): value is ProviderErrorCode {

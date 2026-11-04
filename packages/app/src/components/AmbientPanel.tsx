@@ -85,11 +85,14 @@ export function AmbientPanel({
     }
   });
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<AmbientStatus | null> => {
     try {
-      setStatus(await must(window.studio.agent.ambient(bookId, chapterId)));
+      const next = await must(window.studio.agent.ambient(bookId, chapterId));
+      setStatus(next);
+      return next;
     } catch (error) {
       onNotice(error);
+      return null;
     }
   }, [bookId, chapterId, onNotice]);
 
@@ -110,7 +113,11 @@ export function AmbientPanel({
   // so the answer is spoken through the voice service once that has loaded.
   useEffect(() => {
     const unsubscribe = window.studio.agent.onEvent((event: AgentEvent) => {
-      if (event.turnId !== turnRef.current) return;
+      // A turn from the chat can change the book too, so the line catches up when any turn ends.
+      if (event.turnId !== turnRef.current) {
+        if (event.type === "done") void refresh();
+        return;
+      }
       if (event.type === "text") {
         replyRef.current += event.delta;
         setReply(replyRef.current);
@@ -171,11 +178,13 @@ export function AmbientPanel({
     void speech.speak(`${chapterTitle}. ${text}`, voice ? { voice } : {});
   }, [chapterContent, chapterTitle, speech, voice]);
 
-  const whereAmI = useCallback(() => {
-    if (!status) return;
+  // Asked out loud, the answer is read fresh, so it is never a line from before the last change.
+  const whereAmI = useCallback(async () => {
     setNote("");
-    void speech.speak(status.say, voice ? { voice } : {});
-  }, [status, speech, voice]);
+    const fresh = (await refresh()) ?? status;
+    if (!fresh) return;
+    void speech.speak(fresh.say, voice ? { voice } : {});
+  }, [refresh, status, speech, voice]);
 
   const undo = useCallback(async () => {
     try {
@@ -308,7 +317,7 @@ export function AmbientPanel({
                 data-testid={`ambient-action-${action.id}`}
                 onClick={() => {
                   if (action.id === "read_aloud") readAloud();
-                  else if (action.id === "where_am_i") whereAmI();
+                  else if (action.id === "where_am_i") void whereAmI();
                   else if (action.id === "next_chapter") onNextChapter();
                   else if (action.id === "undo") void undo();
                   else if (action.id === "stop") void stop();

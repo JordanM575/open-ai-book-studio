@@ -50,11 +50,15 @@ then one short Muse Spark turn in the throwaway profile.
 
 1. Run `rm -rf video/fixture/library && bun run film:fixture`, then copy the library to a folder outside
    your home folder, so no path on screen shows your name.
+   For the 0:00 Finder shot, make a second copy and delete its book's `images/` folder and `images.json`,
+   so Finder shows only `book.json` and `chapters/`, which is what existed before the event.
 2. Start a throwaway profile: `STUDIO_TEST=1 STUDIO_VISIBLE=1 STUDIO_USER_DATA=/tmp/film-profile bun run dev`.
 3. Add the Meta connection and label it **Meta**. Add an OpenRouter connection for the strip's voice.
 4. Turn on a Focus mode that allows only AI Book Studio's notifications. Hide the menu bar clock and
    personal items.
 5. Record the app at 1440×900, at 2× and 30 fps.
+6. At 1:45, open the illustration dialog on a chapter with no illustration yet. The fixture's own picture
+   is labelled `film-fixture` and must never appear as Muse Image output.
 
 **Order and fallbacks.** Record in this order, because the Agent panel's numbers come from the turns
 recorded before it. If a live shot fails, cut the shot **and its line**. Never fake a response, a save

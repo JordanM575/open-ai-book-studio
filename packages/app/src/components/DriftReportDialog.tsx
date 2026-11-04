@@ -63,10 +63,18 @@ function entryTitle(entry: DriftEntry, bookTitles: Record<string, string>): stri
   return book ? `${book} · ${entry.path}` : entry.path;
 }
 
+/** The kinds that name a thing rather than a state take a plural in the count line. */
+const PLURAL_LABEL: Partial<Record<DriftKind, string>> = {
+  "new-remote": "new files",
+  "conflict-copy": "conflict copies"
+};
+
 function countLine(report: DriftReport): string {
   const parts: string[] = [];
   for (const [kind, count] of Object.entries(report.counts)) {
-    if (count > 0) parts.push(`${count} ${KIND_LABEL[kind as DriftKind].toLowerCase()}`);
+    if (count <= 0) continue;
+    const plural = count === 1 ? undefined : PLURAL_LABEL[kind as DriftKind];
+    parts.push(`${count} ${plural ?? KIND_LABEL[kind as DriftKind].toLowerCase()}`);
   }
   return parts.join(" · ");
 }

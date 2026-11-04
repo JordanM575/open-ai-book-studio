@@ -105,7 +105,7 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
           size
         })
       );
-      setSavedNote("Illustration saved to this book.");
+      setSavedNote("Saved to this book");
       await refresh();
       await showImage(record);
       await onChanged();
@@ -122,7 +122,7 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
     setError(null);
     try {
       await must(window.studio.images.attach(bookId, selected.id, chapter.id));
-      setSavedNote("This image is now the chapter illustration.");
+      setSavedNote("Now the chapter illustration");
       await refresh();
       await onChanged();
     } catch (failure) {
@@ -205,7 +205,8 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
               )}
             </div>
             <p className="text-(length:--text-caption-size) text-muted-foreground" aria-live="polite">
-              {savedNote ?? (selected ? `${selected.width}×${selected.height} · ${selected.model}` : "")}
+              {/* The image's size and model stay on screen; what just happened joins them. */}
+              {[selected ? `${selected.width}×${selected.height} · ${selected.model}` : null, savedNote].filter(Boolean).join(" · ")}
             </p>
             {error ? (
               <p role="alert" className="text-(length:--text-caption-size) text-[var(--destructive-text)]">

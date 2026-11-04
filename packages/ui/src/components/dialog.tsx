@@ -53,12 +53,14 @@ export function DialogContent({
   title,
   description,
   footer,
+  onOpenAutoFocus,
   onCloseAutoFocus,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content> & { title: string; description?: ReactNode; footer?: ReactNode }) {
   // The control that opened the dialog. The studio opens dialogs from plain buttons rather than a
   // DialogTrigger, so Radix has nothing to return focus to; closing goes back here instead of the page.
-  const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
+  // It is read each time the dialog opens, because a workspace keeps its dialogs mounted while closed.
+  const opener = useRef<Element | null>(null);
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -69,6 +71,11 @@ export function DialogContent({
           className
         )}
         {...props}
+        onOpenAutoFocus={(event) => {
+          // Radix calls this before it moves focus into the dialog, so the opener still has it.
+          opener.current = document.activeElement;
+          onOpenAutoFocus?.(event);
+        }}
         onCloseAutoFocus={(event) => {
           onCloseAutoFocus?.(event);
           if (event.defaultPrevented) return;

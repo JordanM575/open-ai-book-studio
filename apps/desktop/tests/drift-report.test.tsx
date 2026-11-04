@@ -112,6 +112,16 @@ describe("drift report dialog", () => {
     expect(body.getByTestId("drift-entry-1").textContent).toContain("Conflict copy");
   });
 
+  test("counts take a plural where the kind names a thing", () => {
+    const { body } = renderDialog(
+      report({
+        entries: [entry({ kind: "new-remote" }), entry({ kind: "new-remote", path: "books/book_test000001/chapters/0002-two.md" })],
+        counts: counts({ "new-remote": 2, "conflict-copy": 3, "remote-changed": 2 })
+      })
+    );
+    expect(body.getByTestId("drift-counts").textContent).toBe("2 new files · 2 changed elsewhere · 3 conflict copies");
+  });
+
   test("a both-changed entry offers review, both keeps and open both", () => {
     const both = entry({ kind: "both-changed" });
     const { body, calls } = renderDialog(report({ entries: [both] }));

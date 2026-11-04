@@ -35,7 +35,38 @@ function Opener() {
   );
 }
 
+/** The workspace's shape: the dialog stays mounted while closed, and only `open` changes. */
+function MountedOpener() {
+  const [open, setOpen] = useState(false);
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement("button", { type: "button" }, "Somewhere else"),
+    React.createElement("button", { type: "button", onClick: () => setOpen(true) }, "Open Settings"),
+    React.createElement(
+      ui.Dialog,
+      { open, onOpenChange: setOpen },
+      React.createElement(ui.DialogContent, { title: "Settings" }, React.createElement("p", null, "Appearance."))
+    )
+  );
+}
+
 describe("dialog focus", () => {
+  test("a dialog that stays mounted while closed still returns focus to the button that opened it", async () => {
+    const view = testing.within(document.body);
+    testing.render(React.createElement(MountedOpener));
+    // Focus was elsewhere when the dialog first rendered, so the opener must be read on opening.
+    view.getByRole("button", { name: "Somewhere else" }).focus();
+    const opener = view.getByRole("button", { name: "Open Settings" });
+    opener.focus();
+    testing.fireEvent.click(opener);
+    await testing.waitFor(() => expect(view.getByRole("dialog")).toBeDefined());
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Close" }));
+    await testing.waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    await testing.waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
   test("closing a dialog returns focus to the button that opened it", async () => {
     const view = testing.within(document.body);
     testing.render(React.createElement(Opener));

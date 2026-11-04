@@ -265,6 +265,8 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The film script's capture setup films 0:00 on a copy without the event's `images/` and `images.json`,
+  and opens the illustration dialog at 1:45 on a chapter with no illustration yet.
 - The SAM 3.1 cutout is removed from the build (D-158), so the app matches the submission, which
   claims no cutout. The Illustration dialog no longer offers "Cut out a character", its object search
   or its cast picker when a Meta connection exists; generating an illustration and attaching it to a
@@ -389,6 +391,18 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- A refused or unreachable connection (`ECONNREFUSED`, `ENETUNREACH`, `EHOSTUNREACH`, `ECONNRESET`)
+  now reads as offline, with the offline note, instead of "The provider's content policy declined this
+  request". The refusal pattern matched "ECONNREFUSED".
+- Dialogs that stay mounted while closed, which is how the workspace keeps them, now return focus to
+  the button that opened them; the opener is read each time a dialog opens.
+- The ambient strip catches up when a chat turn finishes, and "Say where you are" reads the status
+  fresh before speaking it, so it never repeats a line from before the last change.
+- After generating or attaching an illustration, its size and model stay in the caption beside the
+  note (`1024×1024 · muse-image-1.0 · Saved to this book`).
+- The header's model button has room for "Muse Spark 1.3 Contributor" and its tooltip names the model;
+  the composer names a one-turn model the same way instead of by its raw id.
+- The sync review counts "2 new files" and "3 conflict copies" in the plural.
 - A saved connection that has not been tested in this Settings session now reads "Saved · not checked
   yet" instead of "Unavailable", which suggested a working key was broken.
 - A rate limit names one wait. When the provider says how long, the chat gives that time without a

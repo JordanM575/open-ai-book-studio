@@ -480,7 +480,8 @@ describe("IllustrationDialog", () => {
       prompt: "A storm over the harbor",
       size: "1024x1024"
     });
-    await testing.waitFor(() => testing.within(document.body).getByText("Illustration saved to this book."));
+    // The new image's size and model stay in the caption next to the saved note.
+    await testing.waitFor(() => testing.within(document.body).getByText(/· muse-image-1\.0 · Saved to this book$/));
   });
 
   test("attaches an existing image to the chapter", async () => {
@@ -489,7 +490,7 @@ describe("IllustrationDialog", () => {
     await testing.waitFor(() => testing.within(document.body).getByAltText("Illustration: A lighthouse in a storm"));
     testing.fireEvent.click(testing.within(document.body).getByTestId("attach-illustration"));
     await testing.waitFor(() => expect(studio.attach).toHaveBeenCalledWith(BOOK, "img_ui000001", CHAPTER.id));
-    await testing.waitFor(() => testing.within(document.body).getByText("This image is now the chapter illustration."));
+    await testing.waitFor(() => testing.within(document.body).getByText(/· muse-image-1\.0 · Now the chapter illustration$/));
   });
 
   test("offers no cutout with a Meta connection, and still generates (D-158)", async () => {
@@ -531,7 +532,7 @@ describe("IllustrationDialog", () => {
       prompt: "A storm over the harbor",
       size: "1024x1024"
     });
-    await testing.waitFor(() => body.getByText("Illustration saved to this book."));
+    await testing.waitFor(() => body.getByText(/· Saved to this book$/));
     offersNoCutout();
   });
 });
