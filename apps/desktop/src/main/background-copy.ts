@@ -37,12 +37,23 @@ export function notificationFor(outcome: AgentOutcome): NotificationCopy | null 
     case "approval":
       return {
         title: `${outcome.bookTitle} — needs you`,
-        body: `The agent is waiting for approval to run ${outcome.approvalName ?? "a destructive action"}.`
+        body: `The agent is waiting for your approval to ${APPROVAL_PHRASES[outcome.approvalName ?? ""] ?? "make a change that needs it"}.`
       };
     case "stopped":
       return null;
   }
 }
+
+/** What a paused tool would do, in the words the approval card uses (`approvalLabel`). */
+const APPROVAL_PHRASES: Record<string, string> = {
+  remove_memory: "remove a saved memory",
+  overwrite_chapter: "replace a chapter's text",
+  delete_chapter: "delete a chapter",
+  delete_lines_in_chapter: "delete lines from a chapter",
+  move_chapter: "move a chapter",
+  split_chapter: "split a chapter",
+  merge_chapters: "merge two chapters"
+};
 
 /**
  * Notify when the author asked for a background turn or cannot see the window. A stopped turn was

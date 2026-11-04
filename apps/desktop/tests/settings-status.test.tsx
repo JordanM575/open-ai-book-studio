@@ -93,7 +93,7 @@ async function openTestButton(): Promise<void> {
 }
 
 describe("provider and voice status in Settings", () => {
-  test("an untested connection shows Unavailable with no check time", async () => {
+  test("an untested connection reads as saved, with no check time and no warning", async () => {
     mockStudio();
     renderSettings();
 
@@ -102,7 +102,8 @@ describe("provider and voice status in Settings", () => {
       { timeout: 2000 }
     );
     const status = testing.within(document.body).getByTestId("connection-status").textContent ?? "";
-    expect(status).toContain("Unavailable");
+    expect(status).toContain("Saved");
+    expect(status).not.toContain("Unavailable");
     expect(status).toContain("not checked yet");
   });
 

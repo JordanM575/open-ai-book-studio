@@ -38,7 +38,7 @@ describe("background notification copy", () => {
       notificationFor(outcome({ kind: "approval", approvalName: "overwrite_chapter", changed: 0 }))
     ).toEqual({
       title: "The Salt Road — needs you",
-      body: "The agent is waiting for approval to run overwrite_chapter."
+      body: "The agent is waiting for your approval to replace a chapter's text."
     });
   });
 

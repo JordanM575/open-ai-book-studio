@@ -44,13 +44,14 @@ function mockStudio(info: { ok: true; data: BuildMetadata }) {
   };
 }
 
-function renderSettings() {
+function renderSettings(libraryRoot?: string) {
   testing.render(
     React.createElement(SettingsDialog, {
       open: true,
       onOpenChange: () => {},
       onNotice: () => {},
-      theme: { choice: "light" as const, set: () => {} }
+      theme: { choice: "light" as const, set: () => {} },
+      ...(libraryRoot ? { libraryRoot } : {})
     })
   );
 }
@@ -72,6 +73,15 @@ describe("About signing status", () => {
     expect(about.textContent).toContain("0.0.0-dev");
     expect(about.textContent).toContain("Architecture");
     expect(about.textContent).toContain("arm64");
+  });
+
+  test("with a library open but no storage summary yet, About does not say no library is open", async () => {
+    mockStudio({ ok: true, data: buildMetadata("desktop", { platform: "darwin", arch: "arm64" }) });
+    renderSettings("/tmp/studio-library");
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getByTestId("about").textContent).toContain("Storage"), { timeout: 2000 });
+    expect(view.getByTestId("about").textContent).toContain("A folder on this computer");
+    expect(view.getByTestId("about").textContent).not.toContain("No library open");
   });
 
   test("an undetectable architecture is labelled Unknown, never verified", async () => {

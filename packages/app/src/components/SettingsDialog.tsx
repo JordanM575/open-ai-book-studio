@@ -65,7 +65,8 @@ function ConnectionStatusLine({ check }: { check: ProviderLastCheck | undefined 
   return (
     <>
       <p className="mt-0.5 text-(length:--text-caption-size) text-muted-foreground" data-testid="connection-status">
-        {status.label}
+        {/* No Test this session says nothing about the key, so it is not a warning (D-161). */}
+        {check ? status.label : "Saved"}
         {status.checkedAt ? ` · checked ${checkedTime(status.checkedAt)}` : " · not checked yet"}
       </p>
       {check && status.state !== "connected" ? (
@@ -834,7 +835,9 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                       ? liveStorage.tier === "browser"
                         ? "Browser storage"
                         : liveStorage.label
-                      : "No library open"}
+                      : libraryRoot
+                        ? "A folder on this computer"
+                        : "No library open"}
                   </dd>
                 </div>
               </dl>

@@ -39,7 +39,9 @@ export function normalizeProviderError(input: NormalizeInput): ProviderError {
   };
 
   if (status === 429) {
-    return new ProviderError("rate-limit", "The provider is rate limiting this account. Try again shortly.", options);
+    // When the provider says how long to wait, the chat names that wait; "shortly" would be a second one.
+    const wait = input.retryAfterSeconds !== undefined ? "" : " Try again shortly.";
+    return new ProviderError("rate-limit", `The provider is rate limiting this account.${wait}`, options);
   }
   if (status === 402 || QUOTA.test(haystack)) {
     return new ProviderError("quota", "This account has no credit or has reached its quota.", options);

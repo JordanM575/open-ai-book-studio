@@ -116,6 +116,14 @@ describe("provider errors", () => {
     expect(normalizeProviderError({ provider: "openai", status: 400 }).code).toBe("invalid-request");
   });
 
+  test("a rate limit names one wait: the provider's when it gave one, otherwise shortly", () => {
+    expect(normalizeProviderError({ provider: "openai", status: 429 }).message).toBe(
+      "The provider is rate limiting this account. Try again shortly."
+    );
+    const timed = normalizeProviderError({ provider: "openai", status: 429, retryAfterSeconds: 120 });
+    expect(timed.message).toBe("The provider is rate limiting this account.");
+  });
+
   test("separates a valid key that lacks permission from a rejected key", () => {
     expect(normalizeProviderError({ provider: "openai", status: 403 }).code).toBe("permission");
     expect(

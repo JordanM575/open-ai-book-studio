@@ -378,6 +378,13 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- A saved connection that has not been tested in this Settings session now reads "Saved · not checked
+  yet" instead of "Unavailable", which suggested a working key was broken.
+- A rate limit names one wait. When the provider says how long, the chat gives that time without a
+  second "Try again shortly".
+- The approval notification says what the agent would do ("…waiting for your approval to replace a
+  chapter's text") instead of naming the tool's internal id.
+- Settings › About no longer says "No library open" while a library is open.
 - Allowing Contributor training in the model picker now reaches the book. The book update kept the
   chosen Contributor model but dropped the consent, so every Contributor turn was refused with a
   request to allow it in the picker.
