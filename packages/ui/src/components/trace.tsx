@@ -59,16 +59,6 @@ function TraceTitle({ className, ...props }: React.ComponentProps<"span">) {
   return <span data-slot="trace-title" className={cn("min-w-0 truncate", className)} {...props} />;
 }
 
-function TraceDescription({ className, ...props }: React.ComponentProps<"span">) {
-  return (
-    <span
-      data-slot="trace-description"
-      className={cn("shrink-0 text-muted-foreground/70 tabular-nums", className)}
-      {...props}
-    />
-  );
-}
-
 function TraceCollapsible({
   className,
   ...props
@@ -132,7 +122,6 @@ export {
   TraceLine,
   TraceIcon,
   TraceTitle,
-  TraceDescription,
   TraceCollapsible,
   TraceCollapsibleTrigger,
   TraceCollapsibleContent

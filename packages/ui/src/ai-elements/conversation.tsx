@@ -38,7 +38,7 @@ export function ConversationContent({
   );
 }
 
-/** One turn. Set scrollAnchor on the author's messages so a new turn starts at the top of the view. */
+/** One turn. Set scrollAnchor on the author's messages: a new one brings the end back into view. */
 export function ConversationItem(props: ComponentProps<typeof MessageScrollerItem>) {
   return <MessageScrollerItem {...props} />;
 }

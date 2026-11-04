@@ -307,9 +307,8 @@ Update the `Unreleased` section before every commit.
   `text-xs` to `text-lg`. Button and Dialog keep their props and look and gain shadcn's parts.
   Floating surfaces (menus, tooltips, hover cards) are glass. shadcn's animations, shimmer, gradient
   fades and computed tints are removed. The AI Elements patterns live in `packages/ui/src/ai-elements`:
-  Chat, Tool, Confirmation, Context, Checkpoint, Prompt Input, Suggestion, Reasoning and Model
-  Selector. New dependencies: `radix-ui` (MIT) and `@shadcn/react` (MIT). `@radix-ui/react-dialog`
-  is no longer a direct dependency of `packages/ui`.
+  Chat, Tool, Confirmation, Context, Checkpoint, Prompt Input and Suggestion. New dependency:
+  `radix-ui` (MIT). `@radix-ui/react-dialog` is no longer a direct dependency of `packages/ui`.
 - The writing agent's chat is rebuilt on those patterns, adapted from the studio's own message parts
   rather than AI SDK types (ADR 0013). Turns are messages in a Message Scroller that follows a
   streaming reply. Tool lines are Trace steps whose raw detail opens in place, and a failed tool
@@ -326,7 +325,7 @@ Update the `Unreleased` section before every commit.
   keyboard behaviour. The Story Bible's arc sections are Collapsibles, and the browser-access note in
   Settings is a Badge. The theme picker keeps its pressed buttons: a Toggle Group would add about 16 kB
   of Radix roving-focus code and push the web bundle past the SC-009 limit of 1.2 times the perf
-  baseline. The migration leaves the bundle at 1.19 times the baseline (it was 1.07). A switch keeps its own size on touch layouts (`base.css`), and `biome.json` lists `Switch`
+  baseline. A switch keeps its own size on touch layouts (`base.css`), and `biome.json` lists `Switch`
   and `NativeSelect` as form controls. Text fields stay at body size at every width. An off switch's
   track is outlined in the secondary text colour, so its edge meets 3:1 against the dialog as the native
   checkbox did, and increased contrast strengthens the outline.
@@ -336,6 +335,16 @@ Update the `Unreleased` section before every commit.
   subheadline step. Before, the app's `text-[var(--text-*-size)]` classes compiled to `color`
   declarations under Tailwind 4, so that text inherited body size. This migration found the problem and
   fixed it only where the new components replaced those classes; elsewhere the app still has it.
+- The chat's Message Scroller keeps shadcn/ui's parts, slots and classes, but the scrolling under it is
+  the studio's own rather than `@shadcn/react`'s. That package's 19 kB took the web bundle to 1.21
+  times the perf baseline, past the SC-009 limit of 1.2. The studio's version follows a reply while
+  the author is at the end, keeps their place when they scroll up to reread, returns to the end when
+  they send, and offers a button back to the end. The copied Bubble, Badge, Marker and Input Group
+  keep only the variants and rules the studio uses. Copied code that nothing imports is deleted:
+  Model Selector, Dropdown Menu, Reasoning, Input and Separator, and the unused parts of Bubble,
+  Message, Item, Input Group, Native Select, Trace and Confirmation. The web bundle is now 913,538
+  bytes, 1.19 times the baseline; it was 934,462 with `@shadcn/react` and 842,826 (1.10) before the
+  migration. Without `@shadcn/react` the desktop app ships 130 packages and the web build 49.
 
 ### Fixed
 

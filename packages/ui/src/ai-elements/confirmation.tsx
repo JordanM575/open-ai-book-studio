@@ -56,18 +56,6 @@ export function ConfirmationRequest({ children }: { children?: ReactNode }) {
   return <Only when="pending">{children}</Only>;
 }
 
-export function ConfirmationAccepted({ children }: { children?: ReactNode }) {
-  return <Only when="approved">{children}</Only>;
-}
-
-export function ConfirmationRejected({ children }: { children?: ReactNode }) {
-  return <Only when="denied">{children}</Only>;
-}
-
-export function ConfirmationExpired({ children }: { children?: ReactNode }) {
-  return <Only when="expired">{children}</Only>;
-}
-
 export function ConfirmationActions({ className, ...props }: ComponentProps<typeof ItemActions>) {
   return <ItemActions className={cn("flex-wrap", className)} {...props} />;
 }

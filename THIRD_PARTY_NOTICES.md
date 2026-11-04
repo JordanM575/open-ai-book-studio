@@ -16,7 +16,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Desktop app
 
 <!-- licenses:desktop:start -->
-131 packages.
+130 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -93,7 +93,6 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `@radix-ui/react-use-size` | 1.1.5 | MIT |
 | `@radix-ui/react-visually-hidden` | 1.2.13 | MIT |
 | `@radix-ui/rect` | 1.1.3 | MIT |
-| `@shadcn/react` | 0.3.1 | MIT |
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/node` | 26.6.5 | MIT |
 | `@vercel/oidc` | 3.2.0 | Apache-2.0 |
@@ -156,7 +155,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Web app
 
 <!-- licenses:web:start -->
-50 packages.
+49 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -188,7 +187,6 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `@radix-ui/react-use-layout-effect` | 1.1.4 | MIT |
 | `@radix-ui/react-use-size` | 1.1.5 | MIT |
 | `@radix-ui/react-visually-hidden` | 1.2.13 | MIT |
-| `@shadcn/react` | 0.3.1 | MIT |
 | `aria-hidden` | 1.2.6 | MIT |
 | `class-variance-authority` | 0.7.1 | Apache-2.0 |
 | `clsx` | 2.1.1 | MIT |
