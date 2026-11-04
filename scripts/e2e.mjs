@@ -16,6 +16,7 @@
  *   plugins     a folder of TypeScript tools, loaded by the built app
  *   bridge      the phone's half: a separate process speaking to the app over the LAN
  *   offline     writing through export with every outbound connection denied (macOS only)
+ *   instance    a second copy on the same profile: refused, nothing written, the open copy says so
  *
  *   bun run e2e            build, then run everything
  *   bun run e2e --no-build trust the current build
@@ -51,6 +52,11 @@ const CHECKS = [
     what: "writing through export with the network denied",
     // The denial is a macOS Seatbelt profile; elsewhere the check proves nothing, so it says so.
     platforms: ["darwin"]
+  },
+  {
+    id: "instance",
+    script: "scripts/second-instance-check.mjs",
+    what: "a second copy on the same profile, refused with a notice"
   }
 ];
 

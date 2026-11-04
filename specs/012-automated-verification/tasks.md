@@ -328,10 +328,28 @@ smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
       fail. Chromium's own sandbox cannot start inside the outer profile, so the run passes
       `--no-sandbox`. Verified on macOS: `node scripts/offline-check.mjs` 9/9; `bun run e2e` 9/9 with
       every entry (smoke 30/30, web 18/18, offline 9/9); `bun run verify` PASS, 1,387 tests passing.
-- [ ] T032 Prove 002 FR-069 (a second copy on the same profile is refused, with a warning). Blocked on a
-      product change: hidden runs skip the single-instance lock in `apps/desktop/src/main/index.ts`, so
-      a check needs a test-mode path that claims the lock on the throwaway `STUDIO_USER_DATA` profile,
-      and the warning itself does not exist yet. `tests/requirement-map.md` records the evidence.
+- [x] T032 Prove 002 FR-069 (a second copy on the same profile is refused, with a warning) against the
+      built app. The product change came first. A hidden test run now claims the single-instance lock
+      when it has its own `STUDIO_USER_DATA` profile (`apps/desktop/src/main/instance.ts`), so its lock
+      lives in the throwaway folder. A refused copy quits before it reads settings, opens the library or
+      starts the control plane. The holder brings its window forward through `showStudioWindow()`,
+      creating it again if it was closed, and sends `app:second-instance` once the page has loaded. The
+      preload holds that signal until the shell listens, and the shell shows it as a dismissible notice.
+      Current evidence: `scripts/second-instance-check.mjs`, registered as `bun run e2e instance`, starts
+      a hidden copy with the control plane and a temp locator, waits until the profile has held still
+      for 12 s, then starts a second copy with the same environment. The second copy exits 0 in about
+      0.3 s (bound 10 s). Every library, profile and locator file keeps its bytes, size, mtime and
+      inode; only Chromium's GPU shader cache, which the first copy rewrites as it paints, is left out
+      and reported. The first copy shows the notice once, the notice dismisses, its window stays hidden
+      and typing still autosaves. A copy on another profile opens. With the first copy's window closed,
+      a refused copy makes it create a hidden window that shows the notice. Negative controls: against
+      the unchanged build, and with the hidden-run lock rule switched off, the second copy stays up and
+      rewrites `library.json` and `studio.json`, so the check fails. Without `showStudioWindow()` in the
+      handler, the closed-window step fails. Sending at once instead of after the page loads still
+      passed, so that wait is defensive rather than proven. Verified on macOS:
+      `node scripts/second-instance-check.mjs` 7/7; `bun run e2e` 11/11 with every entry (smoke 30/30,
+      web 18/18, offline 9/9, instance 7/7); `bun run smoke` 30/30; `bun run verify` PASS, 1,402 tests
+      passing. `tests/requirement-map.md` lists what stays unproven.
 
 ## Completion condition
 

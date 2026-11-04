@@ -72,6 +72,7 @@
     "tests/licenses-dialog.test.tsx",
     "tests/book-dialogs.test.tsx",
     "tests/review-gate-blocked.test.tsx",
+    "tests/second-instance-notice.test.tsx",
     "tests/support/dom.ts"
   ]
 }

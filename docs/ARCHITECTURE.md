@@ -103,7 +103,10 @@ prevent divergence but to make it visible and non-destructive.
 `apps/desktop/src/main/index.ts`:
 
 1. Read test flags (`STUDIO_TEST`, `STUDIO_HEADLESS`, `STUDIO_SMOKE`).
-2. Request the single-instance lock (skipped in test mode).
+2. Request the single-instance lock. A hidden test run requests it only when it has its own
+   `STUDIO_USER_DATA` profile, where the lock lives. A refused copy quits before step 3; the copy
+   that holds the lock brings its window forward, creating it again if it was closed, and tells the
+   author (002 FR-069).
 3. `whenReady` → load settings → `Studio.restore()` (reopen last library, remembering failure rather
    than crashing) → register IPC → build the menu → create the window.
 4. Window: 1440×900, min 1024×700, `hiddenInset` title bar on macOS with insets for the glass header,

@@ -23,9 +23,9 @@ Update the `Unreleased` section before every commit.
   and still creates a book and a chapter, autosaves typing, saves a Story Bible edit, imports a TXT
   manuscript and exports Word, Markdown and a library archive, each read back from disk. The check
   fails unless the app's own processes are refused when they try to connect out, before and after
-  the journey. `e2e` now reports a platform-bound check as skipped instead of passed. 002 FR-069
-  stays a gap: hidden runs never claim the single-instance lock, and a second launch shows no
-  warning; the requirement map records the evidence.
+  the journey. `e2e` now reports a platform-bound check as skipped instead of passed. 002 FR-069,
+  which this check left open, is now met: a second copy on the same profile is refused, and
+  `bun run e2e instance` proves it (see Fixed).
 - Word documents (.docx) now import on the macOS desktop app (D-183, spec 029). The importer
   first checks that the file really is a Word document and refuses, in plain words, a
   password-protected, macro-enabled, older .doc, OpenDocument or damaged file; it reads at most
@@ -247,6 +247,19 @@ Update the `Unreleased` section before every commit.
   sentence disagreed about where the author was. Its chapter heading also reads "1 word" for a
   one-word chapter. The glasses check now asserts that the passage on the display is the chapter the
   status line names.
+- A second copy of the studio on the same profile is now refused before it can write, and the open
+  copy tells the author (spec 002 FR-069). Before, only visible runs took the single-instance lock, so
+  two hidden copies on one profile both opened the library and both wrote. A visible second copy
+  closed silently: the open studio focused its window without a word, and did nothing if the author
+  had closed the window. Now the refused copy quits before it reads settings, opens the library or
+  starts the control plane. The open copy brings its window forward, creating it again if it was
+  closed, and shows "AI Book Studio is already open. The second copy closed without opening your
+  library." Hidden test runs take the lock on their own throwaway `STUDIO_USER_DATA` profile, where
+  it cannot refuse the author's studio. The new `bun run e2e instance` check
+  (`scripts/second-instance-check.mjs`) proves it on the built app: the second copy exits in about
+  0.3 s and changes nothing in the library, the profile or the control plane's locator; the notice
+  appears and can be dismissed; the open copy keeps saving and recreates a closed window with the
+  notice; and a copy on another profile still opens.
 - The film script's 0:43 line now says a switched-off tool is refused everywhere, rather than that it
   disappears everywhere. The new toolkit end-to-end check shows the CLI and MCP refuse the tool, but
   `bookwriter tools` and MCP `tools/list` still list it, because neither lists tools for one book.

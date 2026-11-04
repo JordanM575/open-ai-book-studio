@@ -96,9 +96,11 @@ STUDIO_TEST=1 STUDIO_VISIBLE=1 \
   # visible isolated profile for a manual provider/keychain test
 ```
 
-`STUDIO_TEST=1` gives the run its own settings file and skips the single-instance lock, so a hidden
-run can sit beside your real window without touching it. `STUDIO_VISIBLE=1` keeps that isolation but
-shows the window. The macOS keychain process is in [docs/KEYCHAIN.md](docs/KEYCHAIN.md).
+`STUDIO_TEST=1` gives the run its own settings file, and with `STUDIO_USER_DATA` its single-instance
+lock lives in that throwaway profile too. A hidden run can sit beside your real window without
+touching it, and a second copy on the same throwaway profile is refused, as a second copy of the real
+app is. `STUDIO_VISIBLE=1` keeps that isolation but shows the window. The macOS keychain process is
+in [docs/KEYCHAIN.md](docs/KEYCHAIN.md).
 `SMOKE_KEEP=1 bun run smoke:run` keeps the temp library for inspection.
 
 To see the real renderer at a device size, capture it without showing a window:

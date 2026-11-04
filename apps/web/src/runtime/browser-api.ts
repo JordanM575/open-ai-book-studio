@@ -63,7 +63,9 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       // The browser reports its own platform channel as "web"; CPU architecture is
       // not reliably detectable there, so it stays honestly unknown.
       info: () => safe(async () => buildMetadata("web", { platform: "web", arch: "unknown" })),
-      licenses: () => safe(() => fetchLicenses())
+      licenses: () => safe(() => fetchLicenses()),
+      // A browser build has no second copy to refuse; tabs take turns through a storage lock.
+      onSecondInstance: () => () => {}
     },
     library: {
       choose: () => safe(() => libraries.chooseFolder()),

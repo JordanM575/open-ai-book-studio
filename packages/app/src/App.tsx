@@ -103,6 +103,14 @@ function Studio() {
 
   useEffect(() => window.studio.menu.onOpenLibrary(() => void chooseLibrary()), [chooseLibrary]);
 
+  useEffect(
+    () =>
+      window.studio.app.onSecondInstance(() => {
+        setNotice("AI Book Studio is already open. The second copy closed without opening your library.");
+      }),
+    []
+  );
+
   const reviewDriftTarget = useCallback(
     (target: DriftReviewTarget, revert: boolean) => {
       setScreen({ kind: "workspace", bookId: target.bookId });

@@ -3,6 +3,7 @@ import {
   AGENT_EVENT_CHANNEL,
   IPC,
   LIBRARY_EVENT_CHANNEL,
+  SECOND_INSTANCE_EVENT_CHANNEL,
   SYNC_EVENT_CHANNEL,
   type AgentEvent,
   type AgentTurnInput,
@@ -16,15 +17,21 @@ import {
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderId } from "@ai-book-studio/core/providers/types";
 import type { AgentAnswerLength } from "@ai-book-studio/core/agent/settings";
+import { createHeldSignal } from "./held-signal";
 
 function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   return ipcRenderer.invoke(channel, ...args) as Promise<T>;
 }
 
+// A refused second copy can be reported while this page is still starting, before the shell listens.
+const secondInstance = createHeldSignal();
+ipcRenderer.on(SECOND_INSTANCE_EVENT_CHANNEL, () => secondInstance.emit());
+
 const api: StudioApi = {
   app: {
     info: () => invoke(IPC.app.info),
-    licenses: () => invoke(IPC.app.licenses)
+    licenses: () => invoke(IPC.app.licenses),
+    onSecondInstance: (callback) => secondInstance.subscribe(callback)
   },
   library: {
     choose: () => invoke(IPC.library.choose),

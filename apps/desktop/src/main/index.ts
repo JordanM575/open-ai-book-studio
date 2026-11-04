@@ -1,7 +1,12 @@
 import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AGENT_EVENT_CHANNEL, LIBRARY_EVENT_CHANNEL, SYNC_EVENT_CHANNEL } from "@ai-book-studio/core/ipc";
+import {
+  AGENT_EVENT_CHANNEL,
+  LIBRARY_EVENT_CHANNEL,
+  SECOND_INSTANCE_EVENT_CHANNEL,
+  SYNC_EVENT_CHANNEL
+} from "@ai-book-studio/core/ipc";
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
 import { DraftBuffer } from "./drafts";
 import { SyncService } from "./sync";
@@ -22,6 +27,7 @@ import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
 import { SpeechService } from "./speech";
 import { SettingsStore } from "./settings";
+import { claimsSingleInstanceLock, sendWhenLoaded } from "./instance";
 import { Studio } from "./studio";
 import { runSmoke } from "./smoke";
 import { runLiveCheckInApp, sampleLibraryPath } from "./live-check";
@@ -63,19 +69,31 @@ let notifier: BackgroundNotifier;
 let backend: LocalBackend | null = null;
 let flushed = false;
 
-// A hidden test run may sit beside the author's real window, so it does not claim the lock.
-if (!headless) {
-  const singleInstance = app.requestSingleInstanceLock();
-  if (!singleInstance) {
-    app.quit();
-  } else {
-    app.on("second-instance", () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
-      }
-    });
-  }
+/*
+ * One writer per profile (spec 002 FR-069), and the first thing a run does once its userData folder
+ * is chosen. A copy that loses the lock has handed its launch to the copy that holds the profile, so
+ * it stops here: it reads no settings, opens no library, starts no control plane and never writes
+ * the locator. Claiming the lock in a hidden test run is safe because Electron keeps it in userData:
+ * a run with its own `STUDIO_USER_DATA` holds a lock in that throwaway folder, which can neither
+ * refuse the author's open studio nor be refused by it. A hidden run on the real profile still
+ * claims nothing, because it may sit beside the author's own window.
+ */
+const claimsLock = claimsSingleInstanceLock({ headless, isTest, userData: process.env.STUDIO_USER_DATA });
+const refused = claimsLock && !app.requestSingleInstanceLock();
+if (refused) {
+  console.log("[studio] This profile is already open in another copy of the studio, so this copy is closing without opening the library.");
+  app.quit();
+} else if (claimsLock) {
+  app.on("second-instance", () => {
+    console.log("[studio] A second copy started with this profile and was refused.");
+    // Startup may still be running, and the window it creates is the one that should say so.
+    void started
+      .then(() => {
+        showStudioWindow();
+        if (mainWindow) sendWhenLoaded(mainWindow.webContents, SECOND_INSTANCE_EVENT_CHANNEL);
+      })
+      .catch((error: unknown) => console.warn("[studio] Could not report the refused second copy:", error));
+  });
 }
 
 function createWindow(): BrowserWindow {
@@ -288,9 +306,11 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-/** Bring back the existing window, or recreate it after a background notification. */
+/** Bring back the existing window, or recreate it after a background notification or a second copy. */
 function showStudioWindow(): void {
   if (mainWindow) {
+    // A hidden test window must never surface; it still hears what it is sent.
+    if (headless) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
@@ -335,7 +355,9 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-app.whenReady().then(async () => {
+const started = app.whenReady().then(async () => {
+  // A refused copy goes no further, even when `ready` arrives before its quit completes.
+  if (refused) return;
   if (headless && process.platform === "darwin") {
     app.dock?.hide();
   }
