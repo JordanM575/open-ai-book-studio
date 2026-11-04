@@ -395,7 +395,8 @@ Update the `Unreleased` section before every commit.
   now reads as offline, with the offline note, instead of "The provider's content policy declined this
   request". The refusal pattern matched "ECONNREFUSED".
 - Dialogs that stay mounted while closed, which is how the workspace keeps them, now return focus to
-  the button that opened them; the opener is read each time a dialog opens.
+  the button that opened them; the opener is read each time a dialog opens. A dialog with its own
+  trigger, such as the licenses view, keeps Radix's return to that trigger.
 - The ambient strip catches up when a chat turn finishes, and "Say where you are" reads the status
   fresh before speaking it, so it never repeats a line from before the last change.
 - After generating or attaching an illustration, its size and model stay in the caption beside the

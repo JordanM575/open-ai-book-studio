@@ -51,7 +51,35 @@ function MountedOpener() {
   );
 }
 
+/** A dialog with its own DialogTrigger, as the licenses view has, opened by a click that does not move focus. */
+function TriggerOpener() {
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement("button", { type: "button" }, "Somewhere else"),
+    React.createElement(
+      ui.Dialog,
+      null,
+      React.createElement(ui.DialogTrigger, null, "Open the licenses"),
+      React.createElement(ui.DialogContent, { title: "Licenses" }, React.createElement("p", null, "MIT."))
+    )
+  );
+}
+
 describe("dialog focus", () => {
+  test("a dialog with its own trigger returns focus to the trigger, even when the click did not focus it", async () => {
+    const view = testing.within(document.body);
+    testing.render(React.createElement(TriggerOpener));
+    view.getByRole("button", { name: "Somewhere else" }).focus();
+    const trigger = view.getByRole("button", { name: "Open the licenses" });
+    testing.fireEvent.click(trigger);
+    await testing.waitFor(() => expect(view.getByRole("dialog")).toBeDefined());
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Close" }));
+    await testing.waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    await testing.waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
   test("a dialog that stays mounted while closed still returns focus to the button that opened it", async () => {
     const view = testing.within(document.body);
     testing.render(React.createElement(MountedOpener));

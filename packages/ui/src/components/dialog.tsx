@@ -80,10 +80,13 @@ export function DialogContent({
           onCloseAutoFocus?.(event);
           if (event.defaultPrevented) return;
           const target = opener.current;
-          if (target instanceof HTMLElement && target.isConnected && target !== document.body) {
-            event.preventDefault();
-            target.focus();
-          }
+          // Radix returns focus to a DialogTrigger itself. Only when there is none does focus fall to
+          // the page, and only then does it go back to the opener.
+          window.setTimeout(() => {
+            const landed = document.activeElement;
+            if (landed !== null && landed !== document.body) return;
+            if (target instanceof HTMLElement && target.isConnected && target !== document.body) target.focus();
+          }, 0);
         }}
       >
         <div className="flex items-start justify-between gap-4">
