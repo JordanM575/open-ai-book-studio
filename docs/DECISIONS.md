@@ -573,6 +573,16 @@ enforcement, and the D-124 device-identity question stands.
 | **Evidence** | `packages/core/src/markdown.ts` (`isConflictCopyName`, `compareChapterFileNames`), `packages/core/src/library/service.ts`; `apps/desktop/tests/sync-copies.test.ts`, `packages/core/tests/chapter-copies.test.ts`; `docs/FORMAT.md` "Copies of a chapter". |
 | **Owner** | spec 016 |
 
+### D-188 · The web build replaces modules the browser never runs with refusing stubs
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-04, on the author's delegation) |
+| **Question** | The SC-009 perf gate counts every JavaScript byte the web build ships, so code splitting cannot make room under its limit (1.2 times the baseline). How does the browser build drop shared code it can never run, when the bundler cannot prove that code dead? |
+| **Decision** | A resolver in `apps/web/vite.config.ts` swaps each listed module for a stub in `apps/web/src/desktop-only/`, in the web build only. A module is listed only when the browser cannot reach it: zod's JSON Schema emitter and processors, which zod hangs on every schema it builds but only the desktop agent's tool definitions use, and the manuscript import flow (the core import module and its preview and result dialogs), which the library offers on the macOS desktop only (spec 029 T004, T016). Every stub refuses plainly if reached. The zod stubs export every name of the modules they replace, and a test fails when a zod upgrade adds one. A stubbed zod module also takes zod's check getters (`minLength`, `format` and the like), so the studio does not read them; a shared module that needs them comes off the list. Shared code, the desktop build and the gate's limit and baseline are unchanged. Rejected: a compile-time flag in shared code, which would change the desktop bundle and still keep the import handlers; loosening the limit. |
+| **Evidence** | `apps/web/src/desktop-only/` (the list and the stubs), `apps/web/tests/desktop-only.test.ts`; `bun run perf`: the web bundle went from 917,120 to 886,906 bytes (1.19 to 1.15 times the baseline), and the CSS and the desktop build are byte-identical; `bun run smoke:web`, `bun run e2e`, `bun run visual` and `bun run a11y` pass without new baselines. |
+| **Owner** | spec 012 (SC-009) |
+
 ## Resolved browser decisions
 
 ### D-104 · OpenRouter OAuth redirect on desktop and web

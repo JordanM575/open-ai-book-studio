@@ -265,6 +265,17 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The web build leaves out code the browser never runs, so the SC-009 perf gate has room again
+  (D-188). A resolver in `apps/web/vite.config.ts` swaps five modules for stubs in
+  `apps/web/src/desktop-only/`. The first two are zod's JSON Schema emitter and processors (17,483
+  bytes): zod hangs them on every schema, but only the desktop agent's tool definitions use them.
+  The other three are the manuscript import flow, which the library offers only on the macOS desktop
+  (spec 029 T004, T016): the core import module and its preview and result dialogs, with the loss
+  list they share (12,654 bytes). Each stub refuses plainly if anything reaches it.
+  `apps/web/tests/desktop-only.test.ts` checks that the zod stubs export every name of the modules
+  they replace. The web bundle goes from 917,120 to 886,906 bytes, 1.15 times the baseline instead
+  of 1.19; the limit stays at 923,592. The web build's features, its CSS and the desktop build are
+  unchanged.
 - The film script's capture setup films 0:00 on a copy without the event's `images/` and `images.json`,
   and opens the illustration dialog at 1:45 on a chapter with no illustration yet.
 - The SAM 3.1 cutout is removed from the build (D-158), so the app matches the submission, which

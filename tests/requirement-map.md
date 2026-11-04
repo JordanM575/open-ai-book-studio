@@ -16,7 +16,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | --- | --- | --- | --- |
 | Core unit | `packages/core` | `bun test` (root) | Schema, format, line model, counters, conflict policy, providers, tools, sync, archive |
 | Desktop unit | `apps/desktop/tests` | `bun test` (root) | Library adapters, vault, agent runtime, component tests in happy-dom |
-| Web unit | `apps/web/tests` | `bun test` (root) | Browser storage ports, credentials, CSP, folder recovery |
+| Web unit | `apps/web/tests` | `bun test` (root) | Browser storage ports, credentials, CSP, folder recovery, desktop-only stubs |
 | Shared UI | `packages/app/tests`, `packages/ui` | `bun test` (root) | Chat view, manuscript dialogs, voice text |
 | Toolkit | `apps/toolkit/tests` | `bun test` (root) | CLI and MCP surface over the backend |
 | Toolkit E2E | `scripts/toolkit-e2e.mjs` | `bun run e2e toolkit` | Compiled CLI and `bookwriter mcp` against the hidden app, checked on disk: withdrawn-tool refusal, checked and stale saves, the `--allow-writes` gate |
@@ -217,7 +217,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-008 | Packaged desktop smoke on isolated profile | COVER: `scripts/smoke.mjs`, `apps/desktop/src/main/smoke.ts`; the Electron journey for agent-visible edits is `scripts/agent-check.mjs`, on a throwaway profile and library |
 | FR-009 | Accessibility scans plus focus order asserts | COVER: `scripts/accessibility-check.mjs`, `apps/desktop/tests/accessibility-gate.test.ts` |
 | FR-010 | Visual baselines across widths and modes | COVER: `scripts/visual-check.mjs`, `apps/desktop/tests/visual-gate.test.ts` |
-| FR-011 | Perf checks for big book and bundle | COVER: `scripts/perf-check.ts`, `apps/desktop/tests/perf-gate.test.ts` |
+| FR-011 | Perf checks for big book and bundle | COVER: `scripts/perf-check.ts`, `apps/desktop/tests/perf-gate.test.ts`; the web build leaves out modules the browser never runs, and `apps/web/tests/desktop-only.test.ts` keeps each stub a full, refusing stand-in (D-188) |
 | FR-012 | Secret scan, CSP, Electron fuse checks | COVER: `scripts/submission-check.ts`, `apps/web/tests/csp.test.ts`, `apps/desktop/tests/fuses.test.ts` |
 | FR-013 | No time, timezone, locale, random dependence | GAP: tests call real new Date(); only fixed seeds and date literals, no suite-wide freeze |
 | FR-014 | Per-test temp libraries cleaned up always | COVER: `apps/desktop/tests/legacy-import.test.ts`, `apps/desktop/tests/atomic-write.test.ts` |
