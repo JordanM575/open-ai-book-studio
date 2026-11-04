@@ -311,6 +311,8 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The film script's 0:00 capture note also removes the copy's empty `checkpoints/`, `conflicts/` and
+  `threads/` folders, so Finder shows only what existed before the event.
 - The web build leaves out code the browser never runs, so the SC-009 perf gate has room again
   (D-188). A resolver in `apps/web/vite.config.ts` swaps five modules for stubs in
   `apps/web/src/desktop-only/`. The first two are zod's JSON Schema emitter and processors (17,483
@@ -448,6 +450,11 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- A chapter with no illustration opens the Illustration dialog empty. It used to show another chapter's
+  picture with "Use for this chapter"; it now falls back only to a picture no chapter uses yet.
+- A dialog whose first field takes focus as it opens (New book, Book settings, Search) returns focus
+  to the button that opened it when it closes; the opener is read before the field takes focus.
+- The Contributor warning in the model picker no longer repeats its own "Contributor mode" heading.
 - Words that could not be saved when the studio closed or quit are no longer lost (002 FR-013, D-189).
   When the last save cannot write a chapter (a full disk, a read-only or Finder-locked book folder, a
   chapter file that is briefly missing, a library folder renamed while open), the studio writes the

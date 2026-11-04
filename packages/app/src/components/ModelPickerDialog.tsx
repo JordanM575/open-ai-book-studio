@@ -397,7 +397,8 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
             {contributor && warning ? (
               <div className="rounded-[var(--corner-lg)] border border-[var(--warning)] bg-[var(--secondary)] p-3">
                 <p className="text-(length:--text-subheadline-size) font-medium">Contributor mode</p>
-                <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">{warning}</p>
+                {/* The heading already says Contributor mode, so the warning starts after it (QA E9). */}
+                <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">{warning.replace(/^Contributor mode:\s*/, "")}</p>
                 <label className="mt-2 flex items-start gap-2 text-(length:--text-caption-size)">
                   <input
                     type="checkbox"

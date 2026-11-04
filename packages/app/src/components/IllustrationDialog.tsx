@@ -63,8 +63,10 @@ export function IllustrationDialog({ open, bookId, chapter, onClose, onChanged, 
       const attached = chapter
         ? listed.manifest.images.find((image) => image.chapterId === chapter.id)
         : undefined;
+      // With no illustration of its own, a chapter falls back only to a picture no chapter uses yet,
+      // never another chapter's illustration (QA E1).
       const newest = listed.manifest.images
-        .filter((image) => image.kind === "chapter")
+        .filter((image) => image.kind === "chapter" && (!chapter || image.chapterId === null))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
       if (attached ?? newest) await showImage(attached ?? newest!);
       else {

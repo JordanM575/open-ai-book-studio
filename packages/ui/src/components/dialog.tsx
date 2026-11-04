@@ -1,4 +1,4 @@
-import { useRef, type ComponentProps, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { X } from "lucide-react";
 import { cn } from "#lib/utils";
@@ -47,6 +47,16 @@ export function DialogHeader({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="dialog-header" className={cn("space-y-1.5", className)} {...props} />;
 }
 
+/**
+ * Reads which element had focus during the dialog's first render. Rendering happens before React
+ * commits the dialog, so a field with `autoFocus` inside it has not taken focus yet (QA E3).
+ */
+function OpenerProbe({ onOpener }: { onOpener: (element: Element | null) => void }) {
+  const [opener] = useState(() => (typeof document === "undefined" ? null : document.activeElement));
+  useLayoutEffect(() => onOpener(opener), [opener, onOpener]);
+  return null;
+}
+
 export function DialogContent({
   className,
   children,
@@ -61,6 +71,9 @@ export function DialogContent({
   // DialogTrigger, so Radix has nothing to return focus to; closing goes back here instead of the page.
   // It is read each time the dialog opens, because a workspace keeps its dialogs mounted while closed.
   const opener = useRef<Element | null>(null);
+  const rememberOpener = useRef((element: Element | null) => {
+    opener.current = element === document.body ? null : element;
+  }).current;
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -72,8 +85,8 @@ export function DialogContent({
         )}
         {...props}
         onOpenAutoFocus={(event) => {
-          // Radix calls this before it moves focus into the dialog, so the opener still has it.
-          opener.current = document.activeElement;
+          // A fallback for an opener the probe could not see; an autoFocus field may already hold focus.
+          if (opener.current === null || opener.current === document.body) opener.current = document.activeElement;
           onOpenAutoFocus?.(event);
         }}
         onCloseAutoFocus={(event) => {
@@ -89,6 +102,7 @@ export function DialogContent({
           }, 0);
         }}
       >
+        <OpenerProbe onOpener={rememberOpener} />
         <div className="flex items-start justify-between gap-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>

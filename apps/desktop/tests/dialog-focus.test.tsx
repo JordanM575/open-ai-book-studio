@@ -66,7 +66,39 @@ function TriggerOpener() {
   );
 }
 
+/** A dialog whose first field takes focus as it mounts, as New book and Search do. */
+function AutoFocusOpener() {
+  const [open, setOpen] = useState(false);
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement("button", { type: "button", onClick: () => setOpen(true) }, "New book"),
+    React.createElement(
+      ui.Dialog,
+      { open, onOpenChange: setOpen },
+      React.createElement(
+        ui.DialogContent,
+        { title: "New book" },
+        React.createElement("input", { "aria-label": "Title", autoFocus: true })
+      )
+    )
+  );
+}
+
 describe("dialog focus", () => {
+  test("a dialog whose field takes focus as it opens still returns focus to its opener (QA E3)", async () => {
+    const view = testing.within(document.body);
+    testing.render(React.createElement(AutoFocusOpener));
+    const opener = view.getByRole("button", { name: "New book" });
+    opener.focus();
+    testing.fireEvent.click(opener);
+    await testing.waitFor(() => expect(document.activeElement).toBe(view.getByLabelText("Title")));
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Close" }));
+    await testing.waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    await testing.waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
   test("a dialog with its own trigger returns focus to the trigger, even when the click did not focus it", async () => {
     const view = testing.within(document.body);
     testing.render(React.createElement(TriggerOpener));

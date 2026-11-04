@@ -50,7 +50,8 @@ then one short Muse Spark turn in the throwaway profile.
 
 1. Run `rm -rf video/fixture/library && bun run film:fixture`, then copy the library to a folder outside
    your home folder, so no path on screen shows your name.
-   For the 0:00 Finder shot, make a second copy and delete its book's `images/` folder and `images.json`,
+   For the 0:00 Finder shot, make a second copy and delete its book's `images/` folder, `images.json`
+   and the empty `checkpoints/`, `conflicts/` and `threads/` folders (the studio does not recreate them),
    so Finder shows only `book.json` and `chapters/`, which is what existed before the event.
 2. Start a throwaway profile: `STUDIO_TEST=1 STUDIO_VISIBLE=1 STUDIO_USER_DATA=/tmp/film-profile bun run dev`.
 3. Add the Meta connection and label it **Meta**. Add an OpenRouter connection for the strip's voice.

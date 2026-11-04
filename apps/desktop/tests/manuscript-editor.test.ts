@@ -484,6 +484,14 @@ describe("IllustrationDialog", () => {
     await testing.waitFor(() => testing.within(document.body).getByText(/· muse-image-1\.0 · Saved to this book$/));
   });
 
+  test("a chapter with no illustration never opens on another chapter's picture (QA E1)", async () => {
+    mockIllustrationStudio({ initial: [illustrationImage({ chapterId: "ch_other0001", prompt: "Another chapter's lighthouse" })] });
+    renderIllustration();
+    const body = testing.within(document.body);
+    await testing.waitFor(() => expect(body.getByText(/No illustration .*yet\./)).toBeTruthy());
+    expect(body.queryByAltText("Illustration: Another chapter's lighthouse")).toBeNull();
+  });
+
   test("attaches an existing image to the chapter", async () => {
     const studio = mockIllustrationStudio({ initial: [illustrationImage()] });
     renderIllustration();
@@ -605,6 +613,9 @@ describe("ModelPickerDialog contributor consent", () => {
     await testing.waitFor(() => testing.within(document.body).getByText("Muse Spark 1.3 Contributor"));
     testing.fireEvent.click(testing.within(document.body).getByText("Muse Spark 1.3 Contributor"));
     await testing.waitFor(() => testing.within(document.body).getByText("Contributor mode"));
+    // The heading names the mode once; the warning under it does not repeat it (QA E9).
+    expect(testing.within(document.body).getByText(/^Meta may use this book/)).toBeTruthy();
+    expect(testing.within(document.body).queryByText(/Contributor mode: /)).toBeNull();
     const use = testing.within(document.body).getByText("Use this model").closest("button") as HTMLButtonElement;
     expect(use.disabled).toBe(true);
     testing.fireEvent.click(testing.within(document.body).getByTestId("allow-contributor"));
