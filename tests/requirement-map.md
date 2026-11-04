@@ -50,24 +50,24 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-011 | Paragraphs are lines; real line numbers; no 66-wrap | GAP: agent line numbers tested but editor shows no line numbers and no-wrap is unasserted |
 | FR-012 | Save state always visible | COVER: `apps/desktop/tests/manuscript-editor.test.ts`, `scripts/web-smoke/main.cjs`, `packages/app/tests/small-pieces.test.ts` |
 | FR-013 | Typing survives crash and quit via draft buffer | COVER: `apps/web/tests/storage/drafts.test.ts`, `apps/desktop/tests/manuscript-editor.test.ts`, `apps/desktop/src/main/smoke.ts` |
-| FR-014 | Undo and redo typing; undo agent turn singly | COVER: `apps/desktop/tests/editor-history.test.ts`, `apps/desktop/tests/checkpoints.test.ts`, `apps/desktop/src/main/smoke.ts` |
+| FR-014 | Undo and redo typing; undo agent turn singly | COVER: `apps/desktop/tests/editor-history.test.ts`, `apps/desktop/tests/checkpoints.test.ts`, `apps/desktop/src/main/smoke.ts`; end to end, `scripts/agent-check.mjs` undoes a real turn through the control plane and the chapter body returns byte for byte (only `version` and `updatedAt` move on) |
 | FR-015 | Verse and deliberate line breaks preserved exactly | COVER: `packages/core/tests/library-service.test.ts` round-trips verse (line breaks, stanza gap, hard break) byte-identical through save/read; `packages/core/tests/words.test.ts` counts across the breaks; `apps/desktop/tests/export.test.ts` asserts the exported stanza lines stay in order |
 | FR-016 | One shared word, character and paragraph counter | COVER: one `countWords` in `packages/core/src/words.ts` (dependency-free), re-exported by `packages/core/src/markdown.ts` and `packages/app/src/lib/utils.ts`; `packages/core/tests/words.test.ts` pins the single implementation plus behavior cases, and `apps/desktop/tests/manuscript-editor.test.ts` asserts the live header count equals the core count on `one — two ...` |
 | FR-017 | Story Bible in one place, reachable anytime | COVER: `apps/desktop/src/main/smoke.ts`, `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/library.test.ts` |
 | FR-018 | Bible fields editable while drafting, same guarantees | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/library.test.ts`, `apps/desktop/tests/atomic-write.test.ts` |
 | FR-019 | Add, edit, remove characters and memories with confirmation | COVER: `apps/desktop/tests/story-bible-dialog.test.tsx` drives the real dialog — staged character/memory edits save together, Cancel discards a staged removal without writing, blank title disables save, failed save keeps the dialog open and reports |
 | FR-020 | Agent reads same bible; instructions snapshot-checked | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/__snapshots__/agent-tools.test.ts.snap` |
-| FR-021 | Agent edits only through registered tools | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/tool-set.test.ts`, `apps/desktop/tests/backend-integration.test.ts` |
+| FR-021 | Agent edits only through registered tools | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/tool-set.test.ts`, `apps/desktop/tests/backend-integration.test.ts`; end to end, `scripts/agent-check.mjs` sees the built app's edit arrive through `append_to_chapter` as one checked save (version up by one, no conflict copy) |
 | FR-022 | Tools enforce stated limits; prompt states exactly those | COVER: `apps/desktop/tests/agent-limits-contract.test.ts` asserts every stated limit phrase resolves to an enforced input maximum or a proven execute cap, proves the two 200-match result caps truncate behaviorally with counts intact, and asserts the system prompt policy sections state no numeric limits |
 | FR-023 | Full chapter and bible read and write repertoire | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/tool-set.test.ts`, `apps/desktop/tests/tool-bridge.test.ts` |
 | FR-023a | Prose treated as data; prompt delimiters enforced | COVER: `apps/desktop/tests/agent-tools.test.ts`, `apps/desktop/tests/__snapshots__/agent-tools.test.ts.snap` |
-| FR-024 | Destructive actions need in-turn approval | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/agent-threads.test.ts`, `packages/app/tests/chat-view.test.ts` |
+| FR-024 | Destructive actions need in-turn approval | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/agent-threads.test.ts`, `packages/app/tests/chat-view.test.ts`; end to end, `scripts/agent-check.mjs` pauses a real `overwrite_chapter` call, leaves the file untouched while the stored approval is pending, and writes only after `agent.approve` |
 | FR-024a | Approval stored, reopened, expired on stop and stale run | COVER: `apps/desktop/tests/agent-runtime.test.ts` (previous run never resumes: stale approve throws no-longer-waiting, zombie persisted expired with resolvedAt, new turn runs fresh; live-turn guard in `expireStaleApprovals`) |
 | FR-025 | Stop a turn; partial work coherent and undoable | COVER: `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/chat-composer.test.tsx`, `packages/app/tests/chat-view.test.ts` |
 | FR-026 | Author edits preserved during agent turns | COVER: `apps/desktop/tests/agent-runtime.test.ts` (typing saved against a live pending turn, approved overwrite applied, one undo restores the typed text) |
-| FR-027 | Every turn checkpointed, restorable after reload | COVER: `apps/desktop/tests/checkpoints.test.ts`, `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/agent-threads.test.ts` |
+| FR-027 | Every turn checkpointed, restorable after reload | COVER: `apps/desktop/tests/checkpoints.test.ts`, `apps/desktop/tests/agent-runtime.test.ts`, `apps/desktop/tests/agent-threads.test.ts`; end to end, `scripts/agent-check.mjs` finds each real turn in its thread's `checkpointTurns` and restores it with one undo |
 | FR-028 | Friendly tool summaries; raw detail behind disclosure | COVER: `packages/app/tests/chat-view.test.ts`, `apps/desktop/src/main/smoke.ts` |
-| FR-029 | Report actual usage and cost; unknown shown unknown | COVER: `packages/core/tests/usage.test.ts`, `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/context.test.ts` |
+| FR-029 | Report actual usage and cost; unknown shown unknown | COVER: `packages/core/tests/usage.test.ts`, `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/context.test.ts`; end to end, `scripts/agent-check.mjs` records the provider-reported tokens of all three steps on the stored turn and its usage line, and Meta's missing price as `costUsd: null` with `costBasis: unknown` |
 | FR-030 | Shorten history for model, keep stored text | COVER: `apps/desktop/tests/agent-history.test.ts` |
 | FR-031 | Refuse models without tool support, name working ones | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/selection.test.ts` |
 | FR-032 | Base prompt under 4,000 tokens, budget-tested | COVER: `apps/desktop/tests/agent-tools.test.ts` |
@@ -140,7 +140,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-018 | Static assets only; no account, telemetry, background upload | GAP: no test tracks outbound requests or asserts static-only/no-telemetry; nearest is `apps/web/tests/csp.test.ts` connect-src allowlist (policy, not behavior) |
 | FR-019 | Failures stay usable with specific recovery actions | COVER: `apps/web/tests/storage/opfs.test.ts`, `apps/web/tests/storage/permission-recovery.test.ts`, `apps/web/tests/storage/fsa.test.ts` |
 
-## 011 — Model access (58 requirements: 29 covered, 29 gaps)
+## 011 — Model access (58 requirements: 40 covered, 1 partial, 17 gaps)
 
 | FR | Requirement | Coverage |
 | --- | --- | --- |
@@ -168,7 +168,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-022 | Least-cost read-only validation, short visible wait | COVER: `apps/desktop/tests/providers-service.test.ts`, `scripts/check-keys.mjs` |
 | FR-023 | Never save failures; classify four failure kinds | COVER: `permission` code for 403/permission-signal failures with a `needs-permission` status, message and action (`packages/core/tests/providers.test.ts`, `provider-status.test.ts`, `health-copy.test.ts`); refusal still wins, 401 stays auth, settings narrows the new code |
 | FR-024 | Desktop keychain; web origin storage plus disclosure | GAP: storage split and disclosure tested; web refusal of other providers untested |
-| FR-025 | Refuse cleartext storage, explain when unavailable | COVER: `apps/desktop/tests/credentials.test.ts` |
+| FR-025 | Refuse cleartext storage, explain when unavailable | COVER: `apps/desktop/tests/credentials.test.ts`; `apps/desktop/tests/memory-vault.test.ts` proves the D-184 test vault is no fallback: without protected storage, an unflagged or `STUDIO_TEST`-only run still refuses to save and writes no file |
 | FR-026 | Several labelled accounts per provider, active shown | COVER: the model picker lists every account by label and marks the book's connection `Book default`, naming a one-off turn override `This turn` when it differs (`packages/app/src/components/ModelPickerDialog.tsx`; `apps/desktop/tests/manuscript-editor.test.ts` proves the mark with two same-provider accounts, that browsing leaves it on the default, and that the override is named apart) |
 | FR-027 | Removal clears secrets/cache, keeps manuscript/history | COVER: `apps/desktop/tests/credentials.test.ts` proves a second catalogue read is cached, a re-added account fetches again (the removed cache is not reused), and removing a connection leaves the chapter, its conversation and every library file byte-identical |
 | FR-028 | Each book has changeable default connection/model | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/selection.test.ts`, `apps/desktop/tests/agent-runtime.test.ts` |
@@ -194,7 +194,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-048 | Minimum scopes shown before browser opens | GAP: no scope model or pre-browser disclosure exists |
 | FR-049 | CSP allows only registered hosts, own origin | COVER: `apps/web/tests/csp.test.ts`, `apps/desktop/tests/csp.test.ts`, `packages/core/tests/providers-contract.test.ts` |
 | FR-050 | Removal confirmed once, no later requests verified | COVER: `apps/desktop/tests/credentials.test.ts` (a removed connection's later `models()` call throws before any fetch; fetch count unchanged) |
-| FR-051 | Prose only to chosen provider, no v1 proxy | GAP: no destination-assertion or proxy-absence test |
+| FR-051 | Prose only to chosen provider, no v1 proxy | PARTIAL: the positive case is proven end to end by `scripts/agent-check.mjs` (D-184). A real turn makes seven provider requests: two catalogue reads and five streaming chat completions carrying the chapter's prose. All seven reach the Meta connection's own base URL (a fake on loopback) with the turn's key. The main process's outbound observer (Node fetch and http, from window creation on) sees those seven and nothing else, the renderer makes no network request after load, and the key is in no profile, library or log file. Open: the negative case, where a second connection or provider is configured and never receives a turn's prose (this run has one connection); Chromium-level requests from the main process are not observed |
 | FR-052 | Desktop supports every connection method | GAP: ChatGPT absent; no build-matrix test |
 | FR-053 | Web enables providers only after access test | GAP: no automated browser-access probe; static registry values only |
 | FR-054 | Web discloses origin-storage credential limits | COVER: `apps/web/tests/storage/credentials.test.ts` |
@@ -214,7 +214,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-005 | Component tests with keyboard focus behavior | COVER: `apps/desktop/tests/chat-composer.test.tsx`, `apps/desktop/tests/chapter-rail.test.tsx`, `apps/desktop/tests/connection-cards.test.tsx` |
 | FR-006 | Provider and sign-in contract tests offline | COVER: `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/openrouter-callback.test.ts`, `apps/desktop/tests/oauth-signin.test.ts` |
 | FR-007 | Browser E2E journeys and storage tiers | COVER: `scripts/web-smoke/main.cjs`, `scripts/browser-matrix.mjs`, `scripts/e2e.mjs` |
-| FR-008 | Packaged desktop smoke on isolated profile | COVER: `scripts/smoke.mjs`, `apps/desktop/src/main/smoke.ts` |
+| FR-008 | Packaged desktop smoke on isolated profile | COVER: `scripts/smoke.mjs`, `apps/desktop/src/main/smoke.ts`; the Electron journey for agent-visible edits is `scripts/agent-check.mjs`, on a throwaway profile and library |
 | FR-009 | Accessibility scans plus focus order asserts | COVER: `scripts/accessibility-check.mjs`, `apps/desktop/tests/accessibility-gate.test.ts` |
 | FR-010 | Visual baselines across widths and modes | COVER: `scripts/visual-check.mjs`, `apps/desktop/tests/visual-gate.test.ts` |
 | FR-011 | Perf checks for big book and bundle | COVER: `scripts/perf-check.ts`, `apps/desktop/tests/perf-gate.test.ts` |

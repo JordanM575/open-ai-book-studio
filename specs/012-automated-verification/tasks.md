@@ -351,6 +351,37 @@ smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
       web 18/18, offline 9/9, instance 7/7); `bun run smoke` 30/30; `bun run verify` PASS, 1,402 tests
       passing. `tests/requirement-map.md` lists what stays unproven.
 
+## Phase 9 — The agent loop, end to end
+
+- [x] T034 Prove one real agent turn through the built app without the author's keychain (D-184).
+      Current evidence: `createDesktopVault` (`apps/desktop/src/main/credentials.ts`) returns an
+      in-memory vault only for an unpackaged run started with `STUDIO_TEST=1` and
+      `STUDIO_TEST_MEMORY_VAULT=1`. A packaged build or a run without `STUDIO_TEST` refuses the flag
+      with one log line and keeps protected storage. The choice never reads safeStorage, so the
+      in-memory vault is no fallback. `apps/desktop/tests/memory-vault.test.ts` (10 tests) runs
+      through the shared Electron mock, which gains an `isPackaged` hook and a safeStorage call
+      recorder. It proves the truth table, zero safeStorage calls and an empty profile after a real
+      `ProviderService.addKey`, the unchanged refusal without protected storage, and the `index.ts`
+      wiring. `scripts/agent-check.mjs` (`bun run e2e agent`) adds a Meta connection through
+      `connections:addKey`, with its base URL pointing at a fake OpenAI-compatible server on
+      127.0.0.1. It makes `muse-spark-1.3` the book's default through `books:update` and runs a
+      turn through `POST /v1/books/:id/turn`: `read_chapter`, `append_to_chapter`, then a reply. Its
+      46 checks read the result from disk: the reply text, chapter version 1 → 2 with no conflict
+      copy, the thread's tool parts and `checkpointTurns`, the model named `Muse Spark 1.3` with its
+      account, and 690/74 tokens summed over three steps with the cost recorded as unknown. Undo
+      restores the body byte for byte; only `version` and `updatedAt` move on. An
+      `overwrite_chapter` turn started through `agent:start` leaves the file untouched until
+      `agent:approve`. The fake received exactly `GET /v1/models` ×2 and `POST /v1/chat/completions`
+      ×5, each with the run's key. The main process's observer (Node fetch and http, from window
+      creation on) saw the same seven requests and nothing else, and the renderer made no request
+      after load. No `credentials.json` exists, and the key appears in no file of the profile,
+      library or backend file (UTF-8, UTF-16 or base64) and no log line. Inside the hidden app,
+      notifications are off and safeStorage is guarded; the run asked to notify three times.
+      Observed, not changed: a hidden window counts as away, so without that guard every finished
+      turn in a hidden run would post a real desktop notification. The approved resume also sends
+      the model only the system, assistant and tool messages, not the author's prompt. (`bun run
+      verify` PASS with 1397 pass, `bun run e2e` 9/9, hidden smoke 30/30.)
+
 ## Completion condition
 
 The spec is complete when the fast command is green without network or keys, every required gate is

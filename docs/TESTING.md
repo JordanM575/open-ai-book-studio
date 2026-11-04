@@ -49,7 +49,7 @@ is not a goal in itself; it is a way of noticing that a change removed more test
 
 ## The end-to-end layer
 
-`bun run e2e` builds the desktop app, the web build and the toolkit, then runs eleven checks in
+`bun run e2e` builds the desktop app, the web build and the toolkit, then runs twelve checks in
 order:
 
 | Check | What it drives |
@@ -61,6 +61,7 @@ order:
 | `glasses` | The 600×600 page for Meta Ray-Ban Display, in a browser at that size: the book, the passage, no scrolling, the D-pad, a write that asks first, and — with a stub model context — the tools the page hands an assistant, and one of them called through the assistant's own path. |
 | `ambient` | The ambient agent over the control plane, and the toolkit saying the same thing. |
 | `toolkit` | The compiled `bookwriter` CLI and `bookwriter mcp` over stdio against the hidden app, checked on disk: a tool switched off in the Agent dialog is refused by `bookwriter call` and by MCP `tools/call`; a checked save changes the bytes, a stale one leaves a conflict copy and the newer text untouched; nothing writes without `--allow-writes`. It reports, without failing, that MCP `tools/list` and `bookwriter tools` still list a withdrawn tool, because neither names a book. |
+| `agent` | One real agent turn through the built app, against a fake OpenAI-compatible server on loopback (`scripts/agent-check.mjs`, D-184). A Meta connection points at the fake; the turn reads the chapter, appends a sentence through a checked save and replies. The check reads the chapter, its version, the stored conversation with its tool parts and the usage line from disk, undoes the turn, and pauses an overwrite until it is approved. It proves every provider request went to the fake, and that an observer inside the app saw no other outbound request. The key is in no file of the run's profile or library and in no log line. |
 | `plugins` | A folder of TypeScript tools, loaded by the built app, called, and a broken plugin that must not take the others with it. |
 | `bridge` | The phone's half: a **separate process** speaking to the running app over the local network with the per-run token. |
 | `offline` | The built app inside a macOS `sandbox-exec` profile that **denies every outbound connection, loopback included**: a new book and chapter, autosaved typing, a Story Bible edit, a TXT import, and Word, Markdown and archive exports, each read back from disk. The app's own processes must get a permission error when they try to connect out, before and after the journey, or the check fails. macOS only; elsewhere `e2e` reports it skipped. |
@@ -72,6 +73,18 @@ Run one, or a few:
 bun run e2e smoke bridge
 bun run e2e --no-build        # trust the current build
 ```
+
+### A real turn without the keychain
+
+The `agent` check starts the app with `STUDIO_TEST=1 STUDIO_TEST_MEMORY_VAULT=1`. An unpackaged run
+with both flags keeps connections in memory only (D-184): nothing calls safeStorage and nothing is
+written to disk. A packaged build, or a run without `STUDIO_TEST`, refuses the flag and logs one line.
+A computer without protected storage still refuses to save a key. `apps/desktop/tests/memory-vault.test.ts`
+proves each case with the shared Electron mock.
+
+A hidden window is never visible, so the studio treats every finished turn as one to notify about.
+The check turns desktop notifications off inside the app before the first turn, and stops if it
+cannot.
 
 ### Why these are separate from the unit tests
 

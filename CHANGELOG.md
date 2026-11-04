@@ -66,6 +66,20 @@ Update the `Unreleased` section before every commit.
   the-salt-road-images". The browser build does not offer it and explains that it is a desktop
   feature. The Word and Markdown file names now use the same naming rule, which cuts a long title
   between whole characters, within 180 bytes, and drops a hyphen left at the cut.
+- An end-to-end check runs one real agent turn through the built app without the author's
+  keychain (D-184, spec 012 T034). An unpackaged run started with `STUDIO_TEST=1` and
+  `STUDIO_TEST_MEMORY_VAULT=1` keeps connections in memory only: nothing calls safeStorage and
+  nothing is written to disk. A packaged build, or a run without `STUDIO_TEST`, refuses the flag and
+  logs one line, and a computer without protected storage still refuses to save a key
+  (`apps/desktop/tests/memory-vault.test.ts`). `bun run e2e agent` (`scripts/agent-check.mjs`)
+  points a Meta connection at a fake OpenAI-compatible server on loopback. The turn reads the
+  chapter, appends a sentence through a checked save and replies. The check then proves from disk
+  the chapter's new version, the stored conversation with its tool parts, the usage line naming the
+  model, an undo that restores the body byte for byte, and an overwrite that writes nothing until it
+  is approved. Every provider request reaches the fake, and an observer inside the app sees no
+  other outbound request. The key is in no file of the run's profile or library and in no line the
+  app printed. The check turns desktop notifications off inside the app, because a hidden window
+  would otherwise announce every finished turn.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

@@ -11,7 +11,7 @@ import type { DriftReport } from "@ai-book-studio/core/sync/types";
 import { DraftBuffer } from "./drafts";
 import { SyncService } from "./sync";
 import { registerIpc } from "./ipc";
-import { DesktopCredentialVault } from "./credentials";
+import { createDesktopVault } from "./credentials";
 import { ProviderService } from "./providers";
 import { AgentRuntime } from "./agent/runtime";
 import { ToolBridge } from "./agent/tool-bridge";
@@ -445,7 +445,7 @@ const started = app.whenReady().then(async () => {
     }
   };
 
-  const vault = new DesktopCredentialVault();
+  const vault = createDesktopVault();
   providers = new ProviderService(vault, (url) => shell.openExternal(url));
   const voice = new VoiceService(providers);
   const speech = new SpeechService(providers);

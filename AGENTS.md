@@ -200,6 +200,10 @@ Test what the author sees rather than implementation details.
 - Desktop secrets live in `userData/credentials.json`, written atomically with mode `0600` and encrypted
   with `safeStorage` (`isAsyncEncryptionAvailable`). When protected storage is unavailable the vault
   refuses to save and the interface explains why; never add a plaintext fallback.
+- The one exception is D-184's in-memory test vault. An unpackaged run started with
+  `STUDIO_TEST=1 STUDIO_TEST_MEMORY_VAULT=1` keeps connections in memory only, for
+  `scripts/agent-check.mjs`. It is not a fallback: the choice never reads safeStorage, and packaged
+  builds and unflagged runs refuse it (`apps/desktop/tests/memory-vault.test.ts`).
 
 ## Spec-driven development
 

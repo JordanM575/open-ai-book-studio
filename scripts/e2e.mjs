@@ -13,6 +13,7 @@
  *   glasses     the 600x600 page for Meta Ray-Ban Display, in a browser at that size
  *   ambient     the ambient agent over the control plane and the toolkit
  *   toolkit     the bookwriter CLI and MCP server against the running app, checked on disk
+ *   agent       one real agent turn, against a fake provider on loopback (D-184)
  *   plugins     a folder of TypeScript tools, loaded by the built app
  *   bridge      the phone's half: a separate process speaking to the app over the LAN
  *   offline     writing through export with every outbound connection denied (macOS only)
@@ -44,6 +45,7 @@ const CHECKS = [
   { id: "glasses", script: "scripts/glasses-check.mjs", what: "the 600x600 page for the glasses" },
   { id: "ambient", script: "scripts/ambient-check.mjs", what: "the ambient agent and the toolkit" },
   { id: "toolkit", script: "scripts/toolkit-e2e.mjs", what: "the CLI and MCP server, checked on disk" },
+  { id: "agent", script: "scripts/agent-check.mjs", what: "a real agent turn, against a fake provider" },
   { id: "plugins", script: "scripts/plugin-probe.mjs", what: "a plugin folder in the built app" },
   { id: "bridge", script: "scripts/bridge-probe.mjs", what: "the phone's half, from another process" },
   {

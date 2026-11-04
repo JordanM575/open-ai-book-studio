@@ -13,6 +13,10 @@ export interface ElectronHooks {
     encryptString: (value: string) => Buffer;
     decryptString: (value: Buffer) => string;
   };
+  /** Told the name of every safeStorage call, so a file can prove the keychain was never asked. */
+  safeStorageCalls?: (method: string) => void;
+  /** `app.isPackaged`. A file that does not say runs unpackaged, like a development build. */
+  isPackaged?: boolean;
   /** The native dialogs, given the options and the window they were attached to, if any. */
   showOpenDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePaths: string[] }>;
   showSaveDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
@@ -44,7 +48,10 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
   mock.module("electron", () => ({
     app: {
       getPath: (name: string) => (name === "userData" ? current.userData : tmpdir()),
-      getVersion: () => "0.0.0-checks"
+      getVersion: () => "0.0.0-checks",
+      get isPackaged() {
+        return current.hooks.isPackaged ?? false;
+      }
     },
     BrowserWindow: { getAllWindows: () => [], getFocusedWindow: () => null },
     dialog: {
@@ -59,12 +66,17 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
     nativeImage: { createFromBuffer: () => ({ isEmpty: () => true }) },
     Notification: { isSupported: () => false },
     safeStorage: {
-      isAsyncEncryptionAvailable: () => current.hooks.safeStorage?.isAsyncEncryptionAvailable() ?? false,
+      isAsyncEncryptionAvailable: () => {
+        current.hooks.safeStorageCalls?.("isAsyncEncryptionAvailable");
+        return current.hooks.safeStorage?.isAsyncEncryptionAvailable() ?? false;
+      },
       encryptString: (value: string) => {
+        current.hooks.safeStorageCalls?.("encryptString");
         if (current.hooks.safeStorage) return current.hooks.safeStorage.encryptString(value);
         throw new Error("unavailable in checks");
       },
       decryptString: (value: Buffer) => {
+        current.hooks.safeStorageCalls?.("decryptString");
         if (current.hooks.safeStorage) return current.hooks.safeStorage.decryptString(value);
         throw new Error("unavailable in checks");
       }
