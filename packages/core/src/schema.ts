@@ -126,8 +126,16 @@ export const bookSchema = z.looseObject({
      * The sample library and every book an author already has must keep working.
      */
     .prefault({}),
-  /** Front and back matter: title page, dedication, acknowledgements, author's note. */
+  /**
+   * The legacy free-form front matter record, kept verbatim. No export reads it; the Format dialog
+   * offers to convert it into `matter` (D-169).
+   */
   frontMatter: z.record(z.string(), z.string()).default({}),
+  /**
+   * Ordered front and back matter (`matter.ts`, D-169). Carried as it is and read with `readMatter`,
+   * so a hand-edited value never stops the book from opening; only `saveMatter` writes it.
+   */
+  matter: z.unknown().optional(),
   createdAt: isoDate,
   updatedAt: isoDate
 });

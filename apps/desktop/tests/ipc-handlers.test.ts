@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IPC, type Result } from "@ai-book-studio/core/ipc";
+import { MATTER_LIMITS, matterHash, newMatterSection, readMatter } from "@ai-book-studio/core/matter";
 import { agentMessageSchema } from "@ai-book-studio/core/agent/messages";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
 import { ProviderError } from "@ai-book-studio/core/providers/types";
@@ -432,6 +433,59 @@ describe("books and chapters", () => {
     expect(raw).toContain("The Salt Road, Again");
     expect(raw).not.toContain("hijacked");
     expect(raw).not.toContain("deviceSecret");
+  });
+
+  test("front and back matter saves only through its checked channel, within its limits", async () => {
+    const { root, library } = await setup();
+    const { bookId } = await book(library);
+    const file = join(root, "books", bookId, "book.json");
+    const section = newMatterSection("dedication", "mat_ipc000001", "For Ana.");
+    const valid = { bookId, matter: { titlePage: true, author: "Ana Reyes", sections: [section] }, baseVersion: 0, baseHash: await matterHash(null) };
+    const refused: unknown[] = [
+      { ...valid, bookId: "../book" },
+      { ...valid, matter: { sections: [{ ...section, id: "../../etc" }] } },
+      { ...valid, matter: { sections: [{ ...section, kind: "foreword" }] } },
+      { ...valid, matter: { sections: [{ ...section, title: "x".repeat(MATTER_LIMITS.title + 1) }] } },
+      { ...valid, matter: { sections: [{ ...section, text: "x".repeat(MATTER_LIMITS.text + 1) }] } },
+      { ...valid, matter: { author: "x".repeat(MATTER_LIMITS.name + 1) } },
+      { ...valid, matter: { sections: Array.from({ length: MATTER_LIMITS.sections + 1 }, (_, index) => ({ ...section, id: `mat_ipc${String(index).padStart(6, "0")}` })) } },
+      { ...valid, matter: { sections: [section, section] } },
+      { ...valid, matter: { ...valid.matter, padding: "x".repeat(MATTER_LIMITS.bytes) } },
+      { ...valid, baseVersion: -1 },
+      { ...valid, baseHash: "z".repeat(64) },
+      { bookId, matter: valid.matter }
+    ];
+    const before = await readFile(file, "utf8");
+    for (const payload of refused) {
+      const result = await call(IPC.books.saveMatter, payload);
+      expect(result.ok ? null : result.error.code).toBe("invalid");
+    }
+    // The general book update never carries matter.
+    await data(IPC.books.update, { bookId, patch: { matter: valid.matter } });
+    expect(JSON.parse(await readFile(file, "utf8")).matter).toBeUndefined();
+    expect(JSON.parse(before).matter).toBeUndefined();
+
+    const saved = await data<{ status: string; book: { matter?: unknown } }>(IPC.books.saveMatter, valid);
+    expect(saved.status).toBe("saved");
+    expect(JSON.parse(await readFile(file, "utf8")).matter).toMatchObject({ version: 1, author: "Ana Reyes", sections: [section] });
+
+    // The next save starts from the book as the renderer receives it, copied across the process
+    // boundary, while the main process hashes what it reads back from disk: the two must agree.
+    const received = readMatter(structuredClone(saved.book) as Parameters<typeof readMatter>[0]).matter;
+    const second = await data<{ status: string }>(IPC.books.saveMatter, {
+      bookId,
+      matter: { ...received, subtitle: "A tidewater tale" },
+      baseVersion: received?.version ?? -1,
+      baseHash: await matterHash(received)
+    });
+    expect(second.status).toBe("saved");
+    expect(JSON.parse(await readFile(file, "utf8")).matter).toMatchObject({ version: 2, subtitle: "A tidewater tale" });
+
+    const stale = await data<{ status: string; savedAs: string }>(IPC.books.saveMatter, { ...valid, matter: { ...valid.matter, author: "Someone" } });
+    expect(stale.status).toBe("conflict");
+    expect(JSON.parse(await readFile(file, "utf8")).matter).toMatchObject({ version: 2, author: "Ana Reyes" });
+    const copies = await readdir(join(root, "books", bookId, "conflicts"));
+    expect(copies).toEqual([expect.stringMatching(/^front-and-back-matter\.conflict-newer-version\..+\.json$/)]);
   });
 
   test("the model picker's Contributor consent reaches the book", async () => {

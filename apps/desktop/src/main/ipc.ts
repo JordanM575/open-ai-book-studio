@@ -13,6 +13,7 @@ import {
   type VoiceSpeakers
 } from "@ai-book-studio/core/ipc";
 import { idSchema } from "@ai-book-studio/core/schema";
+import { MATTER_LIMITS, matterSchema } from "@ai-book-studio/core/matter";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
 import { EXTERNAL_LINKS } from "@ai-book-studio/core/providers/links";
 import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
@@ -362,6 +363,20 @@ export function registerIpc(
     const allowed = ["title", "workingTitle", "description", "genres", "influences", "isErotica", "chapterRange", "outline", "storyArc", "characters", "memories", "stage", "settings", "frontMatter", "defaultProvider", "defaultConnectionId", "defaultModelId", "allowContributorTraining"];
     const patch = Object.fromEntries(Object.entries(input.patch).filter(([key]) => allowed.includes(key)));
     return studio.requireLibrary().updateBook(input.bookId, patch);
+  });
+
+  handle(IPC.books.saveMatter, async (payload) => {
+    const input = z
+      .object({
+        bookId: idSchema,
+        matter: matterSchema.refine((matter) => JSON.stringify(matter).length <= MATTER_LIMITS.bytes, "the matter is too large"),
+        baseVersion: z.number().int().nonnegative(),
+        baseHash: z.string().regex(/^[0-9a-f]{64}$/)
+      })
+      .parse(payload);
+    return studio
+      .requireLibrary()
+      .saveMatter(input.bookId, input.matter, { baseVersion: input.baseVersion, baseHash: input.baseHash });
   });
 
   handle(IPC.books.exportDocx, async (payload) => {

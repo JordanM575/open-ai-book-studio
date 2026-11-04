@@ -7,18 +7,21 @@ import {
   PageBreak,
   Packer,
   Paragraph,
-  TextRun
+  TextRun,
+  VerticalAlignSection,
+  type IParagraphOptions
 } from "docx";
 import { lstat, mkdtemp, open, realpath, rename, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ImageExportNote, ImageExportResult } from "@ai-book-studio/core/ipc";
+import { MATTER_STYLE, sectionName, type MatterSection } from "@ai-book-studio/core/matter";
 import type { BookDetail, ManuscriptSettings } from "@ai-book-studio/core/schema";
 import type { ImageList, ImageRecord, StoredImage } from "@ai-book-studio/core/images";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { LibraryError } from "./library/errors";
 import { writeFileAtomic } from "./library/atomic";
 import { buildEpub } from "./epub";
-import { buildManuscriptHtml } from "./manuscript-html";
+import { buildManuscriptHtml, exportPlan } from "./manuscript-html";
 
 const LINE_SPACING: Record<ManuscriptSettings["lineSpacing"], number> = {
   Single: 240,
@@ -43,40 +46,99 @@ export interface DocxImage {
  * Builds a Word manuscript from the book's files.
  *
  * The Markdown body is the source of truth. A paragraph is a line, so each non-empty line becomes
- * its own paragraph with the book's manuscript settings applied. Nothing is written to the library.
+ * its own paragraph with the book's manuscript settings applied. Front matter comes before the
+ * chapters and back matter after them, each section on a new page; a generated title page is its
+ * own section, centred on the page. A book without matter gets exactly the document it always got.
+ * Nothing is written to the library.
  */
-export function buildDocx(detail: BookDetail, illustrations: Map<string, DocxImage> = new Map()): Promise<Buffer> {
+export async function buildDocx(detail: BookDetail, illustrations: Map<string, DocxImage> = new Map()): Promise<Buffer> {
   const { book, chapters } = detail;
   const settings = book.settings.manuscript;
+  const plan = exportPlan(detail);
   const bodyFont = settings.bodyFont;
   const bodySize = Math.round(settings.bodyFontSize * 2);
   const alignment = settings.chapterTitleAlignment === "Center" ? AlignmentType.CENTER : AlignmentType.LEFT;
   const line = LINE_SPACING[settings.lineSpacing];
+  const titlePage: Paragraph[] = [];
   const children: Paragraph[] = [];
 
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 240 },
-      children: [new TextRun({ text: book.title, bold: true, font: bodyFont, size: 64 })]
-    })
-  );
-  if (book.description.trim()) {
-    children.push(
+  /** One paragraph per line of a chapter or a section, as the Markdown body has them. */
+  const bodyLines = (content: string, style: { indent: boolean; center?: boolean }): IParagraphOptions[] =>
+    content
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((value) => {
+        const text = value.trimEnd();
+        if (!text.trim()) return { spacing: { line, lineRule: LineRuleType.AUTO }, children: [] };
+        return {
+          spacing: { line, lineRule: LineRuleType.AUTO, after: 0 },
+          ...(style.center ? { alignment: AlignmentType.CENTER } : {}),
+          ...(style.indent && settings.firstLineIndent > 0 ? { indent: { firstLine: twips(settings.firstLineIndent) } } : {}),
+          children: [new TextRun({ text, font: bodyFont, size: bodySize })]
+        };
+      });
+
+  // Whether the next paragraph already starts a page: at the top, and after a page break.
+  let fresh = true;
+  const addSection = (section: MatterSection): void => {
+    const style = MATTER_STYLE[section.kind];
+    const title = section.title.trim();
+    const paragraphs: IParagraphOptions[] = [
+      ...(title
+        ? [
+            {
+              heading: HeadingLevel.HEADING_1,
+              alignment: style === "centered" ? AlignmentType.CENTER : alignment,
+              spacing: { after: 240 },
+              children: [new TextRun({ text: title, bold: true, font: bodyFont, size: 36 })]
+            }
+          ]
+        : []),
+      ...(section.text.trim() ? bodyLines(section.text.trimEnd(), { indent: !style, center: style === "centered" }) : [])
+    ];
+    if (paragraphs.length === 0) paragraphs.push({ children: [] });
+    for (const [index, options] of paragraphs.entries()) {
+      children.push(new Paragraph(index === 0 && !fresh ? { ...options, pageBreakBefore: true } : options));
+    }
+    fresh = false;
+  };
+
+  if (plan.titlePage) {
+    // A generated title page is a section of its own, so Word can centre it on the page.
+    (plan.present ? titlePage : children).push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: book.description.trim(), italics: true, font: bodyFont, size: 24 })]
+        spacing: { after: 240 },
+        children: [new TextRun({ text: book.title, bold: true, font: bodyFont, size: 64 })]
       })
     );
+    if (plan.subtitle) {
+      (plan.present ? titlePage : children).push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new TextRun({ text: plan.subtitle, italics: true, font: bodyFont, size: 24 })]
+        })
+      );
+    }
+    if (plan.author) {
+      titlePage.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 480 },
+          children: [new TextRun({ text: plan.author, font: bodyFont, size: 28 })]
+        })
+      );
+    }
+    if (!plan.present) children.push(new Paragraph({ children: [new PageBreak()] }));
   }
-  children.push(new Paragraph({ children: [new PageBreak()] }));
+  plan.front.forEach(addSection);
 
   const ordered = [...chapters].sort((a, b) => a.order - b.order);
   ordered.forEach((chapter, index) => {
     children.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_1,
-        pageBreakBefore: index > 0,
+        pageBreakBefore: index > 0 || !fresh,
         alignment,
         spacing: { after: 240 },
         children: [
@@ -89,22 +151,9 @@ export function buildDocx(detail: BookDetail, illustrations: Map<string, DocxIma
         ]
       })
     );
+    fresh = false;
 
-    const lines = chapter.content.replace(/\r\n/g, "\n").split("\n");
-    for (const value of lines) {
-      const text = value.trimEnd();
-      if (!text.trim()) {
-        children.push(new Paragraph({ spacing: { line, lineRule: LineRuleType.AUTO }, children: [] }));
-        continue;
-      }
-      children.push(
-        new Paragraph({
-          spacing: { line, lineRule: LineRuleType.AUTO, after: 0 },
-          ...(settings.firstLineIndent > 0 ? { indent: { firstLine: twips(settings.firstLineIndent) } } : {}),
-          children: [new TextRun({ text, font: bodyFont, size: bodySize })]
-        })
-      );
-    }
+    for (const options of bodyLines(chapter.content, { indent: true })) children.push(new Paragraph(options));
 
     const illustration = illustrations.get(chapter.id);
     if (illustration) {
@@ -150,12 +199,18 @@ export function buildDocx(detail: BookDetail, illustrations: Map<string, DocxIma
     }
   });
 
+  plan.back.forEach(addSection);
+
   return Packer.toBuffer(
     new Document({
-      creator: "AI Book Studio",
+      creator: plan.author || "AI Book Studio",
       title: book.title,
       description: book.description,
-      sections: [{ properties: {}, children }]
+      // A title page with nothing after it is the whole document, with no empty page behind it.
+      sections: [
+        ...(titlePage.length > 0 ? [{ properties: { verticalAlign: VerticalAlignSection.CENTER }, children: titlePage }] : []),
+        ...(children.length > 0 || titlePage.length === 0 ? [{ properties: {}, children }] : [])
+      ]
     })
   );
 }
@@ -256,20 +311,28 @@ export function suggestEpubName(title: string): string {
  * Builds a Markdown manuscript from the book's files.
  *
  * The Markdown body is already the source of truth, so chapters join in reading order under
- * their own headings with their text unchanged, one blank line between blocks. Nothing is
- * written to the library.
+ * their own headings with their text unchanged, one blank line between blocks. Front matter comes
+ * before them and back matter after, each section under its heading, or its kind when it has
+ * none. Nothing is written to the library.
  */
 export function buildMarkdown(detail: BookDetail): string {
   const { book, chapters } = detail;
+  const plan = exportPlan(detail);
   const blocks: string[] = [];
-  if (book.title.trim()) blocks.push(`# ${book.title.trim()}`);
-  if (book.description.trim()) blocks.push(`_${book.description.trim()}_`);
-  const ordered = [...chapters].sort((a, b) => a.order - b.order);
-  for (const chapter of ordered) {
-    blocks.push(`## ${chapter.title || `Chapter ${chapter.order}`}`);
-    const body = chapter.content.replace(/\r\n/g, "\n").replace(/^\n+/, "").trimEnd();
+  const add = (heading: string, content: string): void => {
+    blocks.push(`## ${heading}`);
+    const body = content.replace(/\r\n/g, "\n").replace(/^\n+/, "").trimEnd();
     if (body) blocks.push(body);
+  };
+  if (plan.titlePage) {
+    if (book.title.trim()) blocks.push(`# ${book.title.trim()}`);
+    if (plan.subtitle) blocks.push(`_${plan.subtitle}_`);
+    if (plan.author) blocks.push(plan.author);
   }
+  for (const section of plan.front) add(sectionName(section), section.text);
+  const ordered = [...chapters].sort((a, b) => a.order - b.order);
+  for (const chapter of ordered) add(chapter.title || `Chapter ${chapter.order}`, chapter.content);
+  for (const section of plan.back) add(sectionName(section), section.text);
   return `${blocks.join("\n\n")}\n`;
 }
 

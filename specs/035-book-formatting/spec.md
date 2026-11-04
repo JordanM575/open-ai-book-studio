@@ -1,6 +1,6 @@
 # Book formatting and export
 
-**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). Ordered matter and format profiles are not started.
+**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). D-169 and D-170 are accepted (2026-11-04): ordered front and back matter (T007–T013) is edited in the Format dialog, previewed in order and exported by all four targets, and format settings persist per book. The Markdown folder export (T014) is not started.
 **Number:** 035
 **Depends on:** [002 — AI Book Studio v1](../002-studio-v1/spec.md), [019 — Illustrations](../019-illustrations/spec.md), and the public file-format contract in [`docs/FORMAT.md`](../../docs/FORMAT.md).
 
@@ -26,8 +26,10 @@ that print measurements or publisher-ready output exist today.
 - The book schema already has `settings.manuscript`, which also contains table-of-contents and
   line-break options. This spec does not claim that every existing option is currently represented in
   the DOCX output.
-- `book.frontMatter` is currently a free-form record keyed by string IDs. It is not an ordered
-  sequence and the current DOCX builder does not use it as ordered matter.
+- `book.frontMatter` is a legacy free-form record keyed by string IDs. It is not an ordered
+  sequence and no export reads it. Ordered matter lives in the separate `book.matter` value (D-169);
+  the Format dialog lists the record's entries that no export includes and converts them into
+  `matter` only when the author asks.
 - Spec 019 owns the `images.json` manifest, image files and chapter attachments. The current DOCX
   path can read attached illustrations. This spec consumes those existing attachments for output; it
   does not add image management or generation.
@@ -200,16 +202,16 @@ unresolved with D-108; this spec makes no claim about actual pagination.
   requirement (FR-054) is not met: illustrations follow their chapter's text, as in DOCX. Do not
   claim KDP/KDP Print or Kindle Unlimited eligibility, EPUBCheck validity, PDF/UA, print
   measurement, exact pagination, or publisher readiness.
-- **Ordered matter and legacy conversion — D-169 Proposed, awaiting author acceptance**
-  (`research/matter-schema.md`). The proposal: kind as a pure function of the key, an additive
-  `matterOrder` field with a deterministic fallback, order-only conversion with explicit
-  confirmation, clear-to-rollback, and tolerant carry for unreadable records. No conversion
-  behavior is assumed until the decision is accepted.
-- **Format profiles and physical-layout options — D-170 Proposed, awaiting author acceptance**
-  (`research/format-profiles.md`). The proposal: transient per-export choices defaulting to the
-  canonical manuscript, a reserved additive top-level `formatProfiles` shape for when a renderer
-  consumes target-specific values, and zero physical-layout controls until D-108 renderer
-  acceptance. No profile persists and no measurement is modeled until the decision is accepted.
+- **Ordered matter and legacy conversion — D-169 Accepted (2026-11-04, on the author's
+  delegation).** A separate optional `matter` value in `book.json` holds the generated title page
+  (title, subtitle, author), and ordered sections each with a kind, a front or back position, a
+  heading and Markdown text. Absent or empty matter exports exactly as before. Conversion of the
+  legacy `frontMatter` record is explicit and reviewed in the Format dialog; the record is never
+  changed. The `matterOrder` proposal in `research/matter-schema.md` was rejected.
+- **Format profiles and physical-layout options — D-170 Accepted (2026-11-04, on the author's
+  delegation).** Typography and matter persist per book in `book.json`; the export target stays a
+  per-export choice; no target-specific profile persists (`formatProfiles` stays reserved at the
+  top level) and no physical-layout control is modeled.
 - **D-115 is about release signing and updates, not export.** It neither approves a renderer nor gates
   this export feature.
 

@@ -1406,6 +1406,87 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return `${chapters} chapter heading${chapters === 1 ? "" : "s"}, ${text.length} characters`;
     });
 
+    await check("front and back matter saves from the Format dialog and reaches the e-book in order", async () => {
+      const folder = process.env.STUDIO_EXPORT_PATH;
+      if (!folder) throw new Error("STUDIO_EXPORT_PATH is not set");
+      // The earlier EPUB moves aside, so this export asks no replace question.
+      for (const name of await readdir(folder)) {
+        if (name.endsWith(".epub")) await rename(join(folder, name), join(folder, name.replace(/\.epub$/, "-before-matter.epub")));
+      }
+      const book = (await studio.requireLibrary().listBooks())[0];
+      if (!book) throw new Error("the smoke book disappeared");
+      const open = async (): Promise<void> => {
+        await evaluate(win, `document.querySelector('[data-testid="format-book"]').click()`);
+        await waitUntil(() => evaluate<boolean>(win, inPage(`!!document.querySelector('[data-testid="format-matter"]')`)), "the matter section");
+      };
+      const close = async (): Promise<void> => {
+        await evaluate(win, `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))`);
+        await waitUntil(() => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="format-preview"]')`)), "the format dialog to close");
+      };
+      // Typed as React reads a field.
+      const typeAuthor = (name: string): Promise<boolean> =>
+        evaluate<boolean>(
+          win,
+          `(() => {
+            const author = [...document.querySelectorAll("label")].find((label) => label.firstChild?.textContent === "Author")?.querySelector("input");
+            if (!author) return false;
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(author, ${JSON.stringify(name)});
+            author.dispatchEvent(new Event("input", { bubbles: true }));
+            return true;
+          })()`
+        );
+      await open();
+      try {
+        // A copyright page, the first kind offered, then an author, typed as React reads a field.
+        const added = await evaluate<boolean>(
+          win,
+          `(() => { const add = [...document.querySelectorAll("button")].find((button) => button.textContent === "Add section"); add?.click(); return !!add; })()`
+        );
+        if (!added) throw new Error("the Add section action was not on screen");
+        await waitUntil(() => evaluate<boolean>(win, inPage(`!!document.querySelector('[aria-label="Move Copyright down"]')`)), "the new copyright page");
+        if (!(await typeAuthor("Smoke Author"))) throw new Error("the author field was not on screen");
+      } finally {
+        // Closing saves what is waiting, through the preload, the checked channel and the library.
+        await close();
+      }
+      await waitUntil(async () => {
+        const matter = (await studio.requireLibrary().readBook(book.id)).book.matter as { author?: string; sections?: unknown[] } | undefined;
+        return matter?.author === "Smoke Author" && matter.sections?.length === 1;
+      }, "the matter on disk");
+
+      // A second change, saved by the export itself. Its base is the matter the first save sent back
+      // across the bridge, and the main process checks it against the file: a mismatch would keep a
+      // conflict copy and refuse the export.
+      await open();
+      try {
+        if (!(await typeAuthor("Smoke Author Two"))) throw new Error("the author field was not on screen");
+        const file = await exportFromFormat("EPUB", "epub");
+        const saved = (await studio.requireLibrary().readBook(book.id)).book.matter as { version?: number; author?: string } | undefined;
+        if (saved?.version !== 2 || saved.author !== "Smoke Author Two") throw new Error(`matter on disk: ${JSON.stringify(saved)}`);
+        const kept = (await readdir(join(studio.requireLibrary().root, "books", book.id, "conflicts")).catch(() => [] as string[])).filter(
+          (name) => name.startsWith("front-and-back-matter.conflict")
+        );
+        if (kept.length > 0) throw new Error(`a conflict copy was kept: ${kept.join(", ")}`);
+        const { inflateRawSync } = await import("node:zlib");
+        const entries = unzip(await readFile(file), inflateRawSync);
+        const opf = entries.get("EPUB/package.opf")?.toString("utf8") ?? "";
+        const spine = [...opf.matchAll(/<itemref idref="([^"]+)"\/>/g)].map((match) => match[1]);
+        // The contents page joins the reading order after the front matter when the book asks for one.
+        if (spine[0] !== "title-page" || spine[1] !== "front-01" || !(spine[2] === "nav" || spine[2]?.startsWith("chapter-"))) {
+          throw new Error(`spine read: ${spine.join(", ")}`);
+        }
+        if (!(entries.get("EPUB/title.xhtml")?.toString("utf8") ?? "").includes("Smoke Author Two")) throw new Error("the title page has no author");
+        const copyright = entries.get("EPUB/front-01.xhtml")?.toString("utf8") ?? "";
+        if (!copyright.includes('epub:type="copyright-page"') || !copyright.includes("All rights reserved.")) {
+          throw new Error("the copyright page is not its own document");
+        }
+        if (!opf.includes("<dc:creator>Smoke Author Two</dc:creator>")) throw new Error("the e-book names no author");
+        return `two checked saves (version 2, no conflict copy) · ${file.split("/").pop()} · ${spine.join(" → ")}`;
+      } finally {
+        await close();
+      }
+    });
+
     await check("the whole library exports as an archive", async () => {
       const result = await evaluate<{ ok: boolean; path?: string; error?: string }>(
         win,

@@ -50,6 +50,10 @@
       "types": "./src/agent/*.ts",
       "default": "./src/agent/*.ts"
     },
+    "./matter": {
+      "types": "./src/matter.ts",
+      "default": "./src/matter.ts"
+    },
     "./legacy": {
       "types": "./src/legacy.ts",
       "default": "./src/legacy.ts"

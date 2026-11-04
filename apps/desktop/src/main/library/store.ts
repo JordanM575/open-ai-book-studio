@@ -16,6 +16,7 @@ import {
   type ChapterMetaPatch,
   type KeepConflictCopyResult
 } from "@ai-book-studio/core/library/service";
+import type { BookMatter, SaveMatterResult } from "@ai-book-studio/core/matter";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import type { LocationHealth } from "@ai-book-studio/core/sync/health";
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
@@ -115,6 +116,14 @@ export class Library {
 
   updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {
     return this.service.updateBook(bookId, patch);
+  }
+
+  saveMatter(
+    bookId: string,
+    matter: BookMatter,
+    expected: { baseVersion: number; baseHash: string }
+  ): Promise<SaveMatterResult> {
+    return this.service.saveMatter(bookId, matter, expected);
   }
 
   readChapter(bookId: string, chapterId: string): Promise<Chapter> {

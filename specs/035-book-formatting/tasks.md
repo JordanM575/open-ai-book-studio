@@ -2,7 +2,8 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 **Status:** In progress. Phase 1 (T001–T005) is done; D-108 is accepted (T006) and PDF and EPUB export
-exist, so T015–T017 are partly done. Matter work waits on T007, and profiles on T008.
+exist, so T015–T017 are partly done. D-169 and D-170 are accepted (T007, T008), and ordered matter is
+built and exported (T009–T013). The Markdown folder export (T014) is open.
 
 All tests in this plan use synthetic fixtures in isolated temporary libraries. Do not use real
 manuscripts, credentials, live providers, paid services or devices.
@@ -66,46 +67,78 @@ manuscripts, credentials, live providers, paid services or devices.
   Accepted 2026-11-03 as D-108: DOCX stays on `docx` 9.x, PDF prints the manuscript's own HTML
   through Electron's `webContents.printToPDF`, and EPUB 3 is assembled with `fflate`; determinism is
   content determinism, and no KDP, EPUBCheck, PDF/UA or pagination claim is made.
-- [ ] **T007** Decide and record the additive ordered-matter schema and explicit legacy-conversion
+- [x] **T007** Decide and record the additive ordered-matter schema and explicit legacy-conversion
   behavior. Define how populated `frontMatter` records are classified, ordered, preserved, reviewed
   and rolled back. Until accepted, do not migrate or reinterpret existing records. This task blocks
   persisted matter schema, conversion UI and matter export only.
-  Research recorded 2026-11-03 (not accepted): `research/matter-schema.md` pins the current
-  whole-record replace, ordered string survival, strict-open brick on rich values and failed-patch
-  byte preservation; D-169 proposes the key-function kind table, additive `matterOrder` with a
-  deterministic fallback, order-only confirmed conversion, clear-to-rollback and tolerant carry for
-  unreadable records. T009–T014 remain blocked.
-- [ ] **T008** Decide and record whether target-specific format profiles persist per book or per export
+  Research recorded 2026-11-03 in `research/matter-schema.md`. Accepted 2026-11-04 as D-169, on the
+  author's delegation, with a different shape from the research proposal: a separate optional
+  `matter` value (save-counter `version`, generated `titlePage`, `author`, `subtitle`, and ordered
+  `sections` with a kind, a front or back position, a heading and Markdown text). Absent or empty
+  matter exports exactly as before. The `frontMatter` record is never read as matter, never changed,
+  and keeps its strict parse; its entries are listed and converted only when the author asks. The
+  `matterOrder` proposal was rejected.
+- [x] **T008** Decide and record whether target-specific format profiles persist per book or per export
   and which physical-layout controls, if any, are modeled. Do not claim physical measurement. This task
   blocks only persistent target-specific settings and physical-size controls.
-  Research recorded 2026-11-03 (not accepted): `research/format-profiles.md` pins the
-  settings-nesting strip hazard, top-level survival across the FormatDialog merge, transient
-  target state and library-default A4/1-inch geometry; D-170 proposes transient per-export now,
-  a reserved top-level `formatProfiles` shape later, and no physical controls until D-108
-  acceptance. Persistent settings and physical-size controls remain blocked.
+  Research recorded 2026-11-03 in `research/format-profiles.md`. Accepted 2026-11-04 as D-170, on the
+  author's delegation: format settings persist per book (`settings.manuscript` and `matter` in
+  `book.json`), the target stays a per-export choice, no target-specific profile persists
+  (`formatProfiles` stays reserved at the top level) and no physical-layout control is modeled.
 
 ## Phase 3 — Matter schema and authoring
 
-- [ ] **T009** After T007 is accepted, add the approved additive versioned matter schema and
+- [x] **T009** After T007 is accepted, add the approved additive versioned matter schema and
   backward-compatible parsing. Preserve `frontMatter`, unknown fields and old-book readability; add
   round-trip tests using synthetic book files. Update `docs/FORMAT.md` in the implementation change.
-- [ ] **T010** After T007, implement author-reviewed legacy conversion exactly as decided. Show the
+  `packages/core/src/matter.ts` (schema with id and size limits, tolerant `readMatter`, export plan,
+  templates, conversion, hash); `bookSchema` carries `matter` as it is. `LibraryService.saveMatter`
+  checks the version and hash, keeps a stale save as JSON in `conflicts/`, refuses to write over an
+  unreadable value or a `book.json` replaced mid-save, and `updateBook` ignores a `matter` patch.
+  The `books:saveMatter` channel validates ids and sizes with Zod. Covered by
+  `packages/core/tests/matter.test.ts` (22) and `apps/desktop/tests/ipc-handlers.test.ts`.
+- [x] **T010** After T007, implement author-reviewed legacy conversion exactly as decided. Show the
   proposed placements before saving, require confirmation, preserve the original record as specified,
   and make cancel or failure leave the book unchanged. Test empty, populated, malformed and repeated
   conversion cases with synthetic records.
-- [ ] **T011** Implement add/edit/reorder/remove for front and back sections, including editable
+  The Format dialog lists every non-empty `frontMatter` entry no export includes, each with where it
+  would go, and adds the placeable ones only on **Add to front and back matter**; the record is never
+  changed. Covered by `packages/core/tests/matter.test.ts` (empty, populated, whitespace-only and
+  unknown keys, two keys of one kind, author already set, converting twice) and
+  `apps/desktop/tests/format-matter.test.tsx`. The strict parse of a malformed record is unchanged
+  (D-169 defers tolerant carry).
+- [x] **T011** Implement add/edit/reorder/remove for front and back sections, including editable
   templates and keyboard-only reordering. Test persistence, confirmation and cancel behavior with
   synthetic fixtures. Do not change chapter files or image records.
-- [ ] **T012** Connect the approved ordered matter to the approximate preview and its accessible
+  The Format dialog's **Front and back matter** section: title page toggle, author and subtitle,
+  sections added by kind with starting text (copyright and disclaimer templates), headings and text
+  edited in place, **Move up**/**Move down** buttons that cross the chapters at a side's end and keep
+  focus, and removal that asks first. Changes save shortly after the author stops, when the dialog
+  closes and before an export; a book opened in place gets its own dialog, and a change still waiting
+  saves to the book it was made in. Covered by `apps/desktop/tests/format-matter.test.tsx` (17, with
+  axe's structural rules over the section).
+- [x] **T012** Connect the approved ordered matter to the approximate preview and its accessible
   structure. Verify front matter, chapters and back matter appear in the selected order without
   claiming measured pages.
+  The approximate preview shows the title page, front sections, contents, chapters and back
+  sections in export order, from the matter being edited. Covered by
+  `apps/desktop/tests/format-matter.test.tsx`.
 
 ## Phase 4 — Format outputs and publication
 
-- [ ] **T013** Extend the existing DOCX export from the saved snapshot to include only matter that has
+- [x] **T013** Extend the existing DOCX export from the saved snapshot to include only matter that has
   passed the approved conversion/schema flow. Preserve the existing typography source and use the
   renderer decision from T006 before making output-conformance claims. Verify legacy values are never
   silently mapped or omitted.
+  Every target exports the matter in order: Word puts each section on its own page and the generated
+  title page in its own vertically centred section; the PDF prints the same order; the EPUB gives
+  each section its own XHTML document with `epub:type` (`titlepage`, `copyright-page`, `dedication`,
+  `epigraph`, `acknowledgments`, or the partition), listed in the spine and navigation in order;
+  Markdown lists each under its heading. A book without matter exports exactly as before:
+  `apps/desktop/tests/no-matter-identity.test.ts` compares every Word part, the EPUB bytes, the
+  Markdown text and the printed HTML with goldens rendered by the exporters at 3a234cc.
+  `apps/desktop/tests/export-matter.test.ts` covers the matter in each format, empty matter and
+  unreadable matter. Legacy values are never exported and the dialog lists them until converted.
 - [ ] **T014** Implement Markdown folder export from the saved snapshot after the matter and output
   packaging contracts are accepted. Write ordinary ordered Markdown files and copy any required
   attached image files to the export destination without changing the 019 source files. Test with
@@ -120,7 +153,7 @@ manuscripts, credentials, live providers, paid services or devices.
   `epub.test.ts` validate the structure with synthetic books holding verse-like lines, stanza gaps
   and attached images: settings, escaping, reading order, page breaks, illustrations in the Word
   export's order, stored `mimetype`, OPF, navigation, well-formed XHTML and byte-identical EPUBs.
-  Ordered matter does not exist yet (T007/T009), so no matter fixture is validated.
+  `export-matter.test.ts` validates ordered matter in the PDF HTML and the EPUB (T013).
 - [ ] **T016** Apply one safe-publication contract to every implemented target: snapshot after successful
   flush, source immutability, destination validation and recheck, replacement consent, cancellation,
   staged publication, cleanup reporting and prior-output preservation. Exercise each failure boundary
@@ -138,8 +171,8 @@ manuscripts, credentials, live providers, paid services or devices.
   Partly done under D-108: the hidden smoke exports a PDF twice in one session and an EPUB from the
   Format dialog and reads them back (`%PDF-` with the illustration embedded, the stored `mimetype`
   entry, the chapter text in the XHTML), next to its Word and Markdown checks; `format-dialog-export.test.tsx` covers the saved-file note, cancel, refusal
-  and a failed save. Open: matter order, and an author-visible warning for a skipped illustration
-  (today it is only logged, as in the Word export).
+  and a failed save. Matter order is covered by unit tests (T013). Open: an author-visible warning for a
+  skipped illustration (today it is only logged, as in the Word export).
 
 ## Phase 5 — Public format and acceptance record
 

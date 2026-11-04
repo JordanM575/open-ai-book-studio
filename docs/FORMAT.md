@@ -64,11 +64,55 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 | `defaultConnectionId` | string \| null | A connection id such as `conn_…`. The secret lives in the app's protected storage, never here. |
 | `defaultModelId` | string \| null | Model id as the provider names it. A model that disappears stays recorded and is shown as unavailable. |
 | `allowContributorTraining` | boolean | Default `false`. Explicit consent to use a training-eligible model such as Muse Spark Contributor with this book. The model picker sets it; migrations never do. |
-| `frontMatter` | record | Free-form front/back matter pages, keyed by page id. |
+| `frontMatter` | record | Legacy free-form pages, keyed by page id (an earlier studio's subtitle, author, dedication and so on). Kept exactly as written and never exported; the Format dialog lists what it holds and converts it into `matter` only when the author asks (D-169). |
+| `matter` | object, optional | Ordered front and back matter (D-169), below. Absent in older books. |
 | `createdAt`, `updatedAt` | ISO 8601 | Written by the app. |
 
 Unknown fields are preserved when a book is written, so a newer app can add fields without the
 older one silently dropping them.
+
+### Front and back matter
+
+`matter` holds the pages around the chapters, in the order the author set:
+
+```json
+"matter": {
+  "version": 3,
+  "titlePage": true,
+  "author": "Ana Reyes",
+  "subtitle": "A tidewater tale",
+  "sections": [
+    { "id": "mat_3f9c2a1b7d4e", "kind": "copyright", "position": "front", "title": "", "text": "Copyright © 2026 Ana Reyes\nAll rights reserved." },
+    { "id": "mat_8a1e0c55b2f9", "kind": "dedication", "position": "front", "title": "", "text": "For those who wait." },
+    { "id": "mat_c41d7e9a0b36", "kind": "about-the-author", "position": "back", "title": "About the author", "text": "Ana lives by the sea." }
+  ]
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `version` | Incremented on every accepted save, like a chapter's `version`. |
+| `titlePage` | Whether a generated title page (title, subtitle, author) opens every export. |
+| `author`, `subtitle` | The title page's byline and second line, at most 300 characters each. |
+| `sections[].id` | `mat_` + 6 to 40 letters, digits or hyphens; unique in the list. |
+| `sections[].kind` | `copyright`, `disclaimer`, `dedication`, `epigraph`, `acknowledgements`, `about-the-author` or `other`. |
+| `sections[].position` | `front` (before the chapters) or `back` (after them). |
+| `sections[].title` | The page's heading, at most 200 characters; empty means the page shows none. |
+| `sections[].text` | Markdown, at most 50,000 characters, set like a chapter body: a paragraph is a line. |
+
+At most 40 sections. The app writes the front sections first, then the back ones, each side in the
+author's order. Every export uses one order: the title page, the front sections, the contents page
+when the book asks for one, the chapters, then the back sections. A book whose `matter` is absent,
+`null`, or empty (title page on, no author, no subtitle, no sections) exports exactly as before
+ordered matter existed, with the title and description on its title page. Once the matter holds
+anything, the title page shows the title, subtitle and author, and the description stays out of
+it (Word and EPUB files keep it in their metadata).
+
+The app reads `matter` without stopping the book from opening: a value it cannot read is kept as it
+is, the Format dialog says so, saves never write over it, and every export stops with that reason
+rather than leaving the matter out. Fields inside `matter` that the app does not know are kept when it
+saves. Only the matter save writes `matter`; a general book update never does. The format of
+`matter` changes only with `schemaVersion`.
 
 ## Chapter files
 
@@ -248,6 +292,14 @@ hash the chapter had when the author was asked. If the chapter was saved in betw
 `overwrite_chapter` keeps the file on disk and writes its text as a conflict copy with the usual reason,
 and an approved line deletion, split or merge writes nothing. The chat says so on the step, and offers
 the overwrite's copy.
+
+The front and back matter saves the same way: the save carries the `version` and a SHA-256 of the
+matter the author started from (its JSON as the app parsed it). When either no longer matches what is
+on disk, nothing is written over it: the author's matter is kept as
+`conflicts/front-and-back-matter.conflict-<reason>.<deviceId>.<timestamp>.json`, a JSON object
+`{ "matter": … }` exactly as they had it, and the Format dialog shows the matter now on disk with the
+copy's name and a *Show the saved copy* action. A `book.json` that another writer replaces while the matter is saving is refused, and the
+author's change is saved again on their next change or when the dialog closes.
 
 Undo of an agent turn uses the same folder and naming with the reason `undo`. Before it restores a
 chapter that someone else wrote in during the turn, it keeps the chapter's file exactly as it is, and

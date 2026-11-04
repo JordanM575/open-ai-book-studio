@@ -1,6 +1,9 @@
 # Research: ordered matter schema and legacy conversion (D-169)
 
 **Task:** 035 T007 · **Status:** research recorded, decision not accepted — nothing is migrated here.
+**Outcome (2026-11-04):** D-169 was accepted with a different shape: a separate ordered `matter` value
+with front and back sections, and an explicit, reviewed conversion of this record, which stays as it
+is. The `matterOrder` proposal below was rejected; see `docs/DECISIONS.md`.
 **Evidence:** `packages/core/tests/matter-schema-premises.test.ts` (4 pass, in-memory library port);
 `packages/core/src/schema.ts` (`frontMatter: z.record(z.string(), z.string())`);
 `packages/core/src/library/service.ts` (`updateBook` spread-merge, `parseBookJson` strict parse).

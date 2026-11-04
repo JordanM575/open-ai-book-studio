@@ -27,6 +27,7 @@ import type { AgentStatus, PluginStatus } from "./agent/metrics";
 import type { AmbientStatus } from "./agent/ambient";
 import type { ImportManuscriptInput, ImportSourcePick } from "./manuscript-import";
 import type { LocationHealth } from "./sync/health";
+import type { BookMatter, SaveMatterResult } from "./matter";
 
 /** What the studio can speak with, and in which voices. */
 export interface VoiceSpeakers {
@@ -120,6 +121,7 @@ export const IPC = {
     importManuscript: "books:importManuscript",
     pickImportSource: "books:pickImportSource",
     update: "books:update",
+    saveMatter: "books:saveMatter",
     delete: "books:delete",
     open: "books:open",
     exportDocx: "books:exportDocx",
@@ -324,6 +326,15 @@ export interface SaveChapterInput {
   baseHash: string;
 }
 
+export interface SaveMatterInput {
+  bookId: string;
+  matter: BookMatter;
+  /** The `version` of the matter the author edited; 0 when the book had none. */
+  baseVersion: number;
+  /** `matterHash` of the matter the author edited. */
+  baseHash: string;
+}
+
 export interface ChapterMetaPatch {
   title?: string;
   synopsis?: string;
@@ -409,6 +420,11 @@ export interface StudioApi {
     /** Choose a manuscript file and read it in the main process. Nothing is written. */
     pickImportSource(): Promise<Result<ImportSourcePick>>;
     update(bookId: string, patch: Partial<BookMeta>): Promise<Result<BookMeta>>;
+    /**
+     * Save the front and back matter (spec 035). Carries the version and hash of the matter the
+     * author edited; a mismatch keeps their version in `conflicts/` and returns the newer one.
+     */
+    saveMatter(input: SaveMatterInput): Promise<Result<SaveMatterResult>>;
     delete(bookId: string): Promise<Result<{ trashedAt: string }>>;
     open(bookId: string): Promise<Result<BookDetail>>;
     exportDocx(bookId: string): Promise<Result<string | null>>;

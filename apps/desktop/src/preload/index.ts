@@ -73,6 +73,7 @@ const api: StudioApi = {
     reveal: (folder: string) => invoke(IPC.books.reveal, folder),
     create: (input) => invoke(IPC.books.create, input),
     update: (bookId: string, patch: Partial<BookMeta>) => invoke(IPC.books.update, { bookId, patch }),
+    saveMatter: (input) => invoke(IPC.books.saveMatter, input),
     delete: (bookId: string) => invoke(IPC.books.delete, bookId),
     open: (bookId) => invoke(IPC.books.open, bookId),
     search: (bookId: string, query: string) => invoke(IPC.books.search, { bookId, query }),

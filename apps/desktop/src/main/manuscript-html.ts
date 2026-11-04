@@ -1,11 +1,21 @@
+import {
+  MATTER_STYLE,
+  matterPlan,
+  readMatter,
+  sectionName,
+  type MatterPlan,
+  type MatterSection
+} from "@ai-book-studio/core/matter";
 import type { BookDetail, Chapter, ManuscriptSettings } from "@ai-book-studio/core/schema";
 import type { DocxImage } from "./export";
+import { LibraryError } from "./library/errors";
 
 /*
  * The manuscript as HTML, for the PDF export and for the EPUB's chapter files.
  *
- * It follows the Word export: a title page, then each chapter in reading order with the book's
- * manuscript settings, and the chapter's illustration after its text. The markup is also
+ * It follows the Word export: a title page, the front matter, then each chapter in reading order
+ * with the book's manuscript settings and the chapter's illustration after its text, then the back
+ * matter. A book without matter gets exactly the document it always got. The markup is also
  * well-formed XHTML, so the EPUB can use the same pieces. Every piece of author text is escaped,
  * and nothing depends on the clock, so the same book always gives the same document.
  */
@@ -53,6 +63,52 @@ export function chapterHeading(chapter: Chapter): string {
 
 export function bookTitle(detail: BookDetail): string {
   return detail.book.title.trim() || "Untitled book";
+}
+
+/**
+ * What goes around the chapters in every export (spec 035, D-169). Matter the studio cannot read
+ * stops the export rather than being left out of it.
+ */
+export function exportPlan(detail: BookDetail): MatterPlan {
+  const { matter, issue } = readMatter(detail.book);
+  if (issue) {
+    throw new LibraryError(
+      "format",
+      `The front and back matter in book.json could not be read, so nothing was exported. Correct the file, then export again. (${issue})`
+    );
+  }
+  return matterPlan(detail.book, matter);
+}
+
+/** The title page's lines under the title: the subtitle (or, without matter, the description) and the author. */
+export function titlePageLines(plan: MatterPlan): string[] {
+  return [
+    plan.subtitle ? `<p class="book-description">${escapeText(plan.subtitle)}</p>` : "",
+    plan.author ? `<p class="book-author">${escapeText(plan.author)}</p>` : ""
+  ];
+}
+
+/** One section of front or back matter, set like a chapter. A section without a heading shows none. */
+export function matterSection(section: MatterSection, heading: "h1" | "h2", attributes: string): string {
+  const style = MATTER_STYLE[section.kind];
+  const title = section.title.trim();
+  return [
+    `<section${attributes} class="chapter matter${style ? ` ${style}` : ""}">`,
+    title ? `<${heading} class="chapter-title">${escapeText(title)}</${heading}>` : "",
+    chapterParagraphs(section.text.trimEnd()),
+    `</section>`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** The rules matter adds to the stylesheet. A book without matter never gets them. */
+export function matterCss(): string {
+  return [
+    `.book-author { font-size: 14pt; margin: 24pt 0 0; }`,
+    `.matter.centered, .matter.centered .chapter-title { text-align: center; }`,
+    `.matter.centered p, .matter.plain p { text-indent: 0; }`
+  ].join("\n");
 }
 
 /**
@@ -134,19 +190,23 @@ function dataUri(image: DocxImage): string {
 export function buildManuscriptHtml(detail: BookDetail, illustrations: Map<string, DocxImage> = new Map()): string {
   const settings = detail.book.settings.manuscript;
   const title = bookTitle(detail);
-  const description = detail.book.description.trim();
+  const plan = exportPlan(detail);
   const chapters = readingOrder(detail);
-  const sections: string[] = [
-    [
-      `<section class="title-page">`,
-      `<h1 class="book-title">${escapeText(title)}</h1>`,
-      description ? `<p class="book-description">${escapeText(description)}</p>` : "",
-      `</section>`
-    ]
-      .filter(Boolean)
-      .join("\n")
-  ];
-  if (settings.includeTableOfContents && chapters.length > 0) {
+  const sections: string[] = [];
+  if (plan.titlePage) {
+    sections.push(
+      [
+        `<section class="title-page${plan.present ? " generated" : ""}">`,
+        `<h1 class="book-title">${escapeText(title)}</h1>`,
+        ...titlePageLines(plan),
+        `</section>`
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
+  for (const [index, section] of plan.front.entries()) sections.push(matterSection(section, "h2", ` id="front-${index + 1}"`));
+  if (settings.includeTableOfContents && chapters.length + plan.back.length > 0) {
     sections.push(
       [
         `<nav class="contents">`,
@@ -155,6 +215,7 @@ export function buildManuscriptHtml(detail: BookDetail, illustrations: Map<strin
         ...chapters.map(
           (chapter, index) => `<li><a href="#chapter-${index + 1}">${escapeText(chapterHeading(chapter))}</a></li>`
         ),
+        ...plan.back.map((section, index) => `<li><a href="#back-${index + 1}">${escapeText(sectionName(section))}</a></li>`),
         `</ol>`,
         `</nav>`
       ].join("\n")
@@ -175,6 +236,7 @@ export function buildManuscriptHtml(detail: BookDetail, illustrations: Map<strin
         .join("\n")
     );
   });
+  for (const [index, section] of plan.back.entries()) sections.push(matterSection(section, "h2", ` id="back-${index + 1}"`));
   return [
     `<!DOCTYPE html>`,
     `<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">`,
@@ -185,6 +247,9 @@ export function buildManuscriptHtml(detail: BookDetail, illustrations: Map<strin
     `<style>`,
     `@page { size: A4; margin: 1in; }`,
     manuscriptCss(settings),
+    ...(plan.present
+      ? [matterCss(), `.title-page.generated { min-height: 9in; display: flex; flex-direction: column; justify-content: center; }`]
+      : []),
     `.contents, .chapter { break-before: page; }`,
     `</style>`,
     `</head>`,

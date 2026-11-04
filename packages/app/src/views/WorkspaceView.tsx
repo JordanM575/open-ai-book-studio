@@ -1122,10 +1122,15 @@ export function WorkspaceView({
             onNotice={onNotice}
           />
           <FormatDialog
+            // One dialog per loaded book: its saved matter and waiting edits never cross to another.
+            key={detail.book.id}
             open={formatOpen}
             onClose={() => setFormatOpen(false)}
             bookId={bookId}
             bookTitle={detail.book.title}
+            book={detail.book}
+            onBookSaved={(book) => setDetail((current) => (current?.book.id === book.id ? { ...current, book } : current))}
+            onNotice={onNotice}
             settings={detail.book.settings.manuscript}
             chapters={detail.chapters}
             onSaveSettings={saveFormatSettings}

@@ -28,6 +28,14 @@ import {
   parseOrderFromFileName,
   serializeChapter
 } from "../markdown";
+import {
+  matterHash,
+  matterSchema,
+  orderSections,
+  readMatter,
+  type BookMatter,
+  type SaveMatterResult
+} from "../matter";
 import { LibraryError, LibraryPortError } from "./errors";
 import { libraryPathFromArchivePath, libraryPathToArchivePath, toLibraryFilePath } from "./path";
 import type { LibraryPath } from "./path";
@@ -271,19 +279,27 @@ export class LibraryService {
   }
 
   async readBook(bookId: string): Promise<BookDetail> {
-    const snapshot = await this.env.storage.readFile(bookFilePath(bookId));
-    if (!snapshot) throw new LibraryError("not-found", `No book called ${bookId} in this library.`);
-    const book = parseBookJson(textDecoder.decode(snapshot.bytes), libraryPathToArchivePath(bookFilePath(bookId)));
+    const { book } = await this.readBookFile(bookId);
     const { chapters, chapterReadIssues } = await this.readChaptersWithIssues(bookId);
     return { book, chapters, chapterReadIssues };
   }
 
+  /** `book.json` as stored, and the book it holds. */
+  private async readBookFile(bookId: string): Promise<{ snapshot: LibraryFileSnapshot; book: BookMeta }> {
+    const path = bookFilePath(bookId);
+    const snapshot = await this.env.storage.readFile(path);
+    if (!snapshot) throw new LibraryError("not-found", `No book called ${bookId} in this library.`);
+    return { snapshot, book: parseBookJson(textDecoder.decode(snapshot.bytes), libraryPathToArchivePath(path)) };
+  }
+
   async updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {
+    // The matter changes only through `saveMatter`, which checks what the author edited.
+    const { matter: _matter, ...fields } = patch;
     return this.serializeWrite(bookId, async () => {
       const current = await this.readBook(bookId);
       const next = bookSchema.parse({
         ...current.book,
-        ...patch,
+        ...fields,
         id: current.book.id,
         schemaVersion: current.book.schemaVersion,
         createdAt: current.book.createdAt,
@@ -293,6 +309,57 @@ export class LibraryService {
       await this.rebuildCatalog();
       return next;
     });
+  }
+
+  /**
+   * Saves the book's front and back matter (spec 035, D-169). Like a chapter save it carries the
+   * version and hash of the matter the author edited. When the saved matter has moved on since,
+   * nothing is written over it: the author's version is kept as a Markdown copy in `conflicts/`
+   * and the book is returned with the newer matter. Sections are written front first, then back.
+   */
+  async saveMatter(
+    bookId: string,
+    matter: BookMatter,
+    expected: { baseVersion: number; baseHash: string }
+  ): Promise<SaveMatterResult> {
+    return this.serializeWrite(bookId, async () => {
+      const { snapshot, book: current } = await this.readBookFile(bookId);
+      const disk = readMatter(current);
+      if (disk.issue) throw new LibraryError("format", `The book's front and back matter could not be read, so nothing was saved over it. ${disk.issue}`);
+      const version = disk.matter?.version ?? 0;
+      if (version > expected.baseVersion) return this.keepMatterCopy(bookId, matter, "newer-version", current);
+      if ((await matterHash(disk.matter)) !== expected.baseHash) {
+        return this.keepMatterCopy(bookId, matter, "external-edit", current);
+      }
+      const next = bookSchema.parse({
+        ...current,
+        matter: matterSchema.parse({ ...matter, version: version + 1, sections: orderSections(matter.sections) }),
+        updatedAt: this.env.runtime.now()
+      });
+      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, {
+        kind: "sha256",
+        value: snapshot.sha256
+      });
+      // Another writer replaced book.json between the read and the write. Their change may not touch
+      // the matter at all, so the author's edit stays in the dialog and the next save checks again.
+      if (result.status === "changed") throw new LibraryError("io", "The book changed while saving. Nothing was saved; try again.");
+      await this.rebuildCatalog();
+      return { status: "saved", book: next };
+    });
+  }
+
+  private async keepMatterCopy(
+    bookId: string,
+    matter: BookMatter,
+    reason: "newer-version" | "external-edit",
+    book: BookMeta
+  ): Promise<SaveMatterResult> {
+    await this.ensureBookLayout(bookId);
+    const stamp = this.env.runtime.now().replace(/[:.]/g, "-");
+    // JSON, as `book.json` holds it, so nothing the author wrote is reshaped on the way.
+    const savedName = `front-and-back-matter.conflict-${reason}.${this.device.id}.${stamp}.json`;
+    await this.commitText(conflictPath(bookId, savedName), `${JSON.stringify({ matter }, null, 2)}\n`, { kind: "absent" });
+    return { status: "conflict", reason, savedAs: conflictDisplayPath(bookId, savedName), book };
   }
 
   /* ----------------------------------------------------------------- chapters */

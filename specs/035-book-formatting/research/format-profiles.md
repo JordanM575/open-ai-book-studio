@@ -1,6 +1,8 @@
 # Research: format-profile persistence and physical-layout controls (D-170)
 
 **Task:** 035 T008 · **Status:** research recorded, decision not accepted — nothing is persisted here.
+**Outcome (2026-11-04):** D-170 was accepted as recommended: settings persist per book, the target
+stays a per-export choice, no profile persists and no physical control is modeled.
 **Evidence:** `packages/core/tests/format-profile-premises.test.ts` (3 pass, in-memory library
 port); `apps/desktop/tests/export-renderers-premises.test.ts` (page-geometry premise);
 `packages/app/src/components/FormatDialog.tsx` (transient target state, canonical binding);

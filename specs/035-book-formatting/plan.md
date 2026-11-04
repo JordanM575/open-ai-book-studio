@@ -1,7 +1,7 @@
 # Plan: book formatting and export
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
-**Status:** Draft / Planned. This plan records intended work only; no implementation or acceptance is claimed.
+**Status:** In progress. Phase 1, the D-108 renderers and ordered matter (T007–T013, D-169 and D-170 accepted 2026-11-04) are implemented; the Markdown folder export (T014) and the rest of Phase 4 are open.
 
 ## Constraints
 
@@ -34,7 +34,9 @@ success message identifies that it represents the saved version captured when ex
 
 ### 2. Additive matter schema — decision required first
 
-The working proposal is a new versioned `orderedMatter` value in `book.json`, separate from
+Accepted as D-169 (2026-11-04): the value is named `matter`, with a generated title page and one
+ordered list of sections, each placed `front` or `back`; see `docs/FORMAT.md`. The original working
+proposal follows. It was a new versioned `orderedMatter` value in `book.json`, separate from
 `frontMatter`, with ordered `front` and `back` arrays. A section would have a stable ID, kind, title and
 editable Markdown content. Array order is the displayed order. This is a proposal, not an accepted
 schema: field naming, section details and treatment of populated legacy records must be resolved and
@@ -114,8 +116,8 @@ renderer library or destination behavior is considered accepted by this file alo
 | Decision | Needed before | Does not block |
 | --- | --- | --- |
 | D-108: renderer choices, deterministic-output scope and per-target illustration packaging | Selecting or adding DOCX/PDF/EPUB renderers; illustration placement/sidecar packaging; any output-conformance claim | Editor design, approximate preview, synthetic UI tests, image reads through spec 019, and characterization/safety work for the existing DOCX path |
-| Ordered-matter schema and legacy conversion | Persisted schema, conversion UI, ordered-matter export | Editor shell, preview disclosure, canonical typography controls, current DOCX safety work |
-| Format-profile persistence and physical-layout options | Persisting target-specific settings or exposing physical-size controls | Existing typography controls and format-target selection |
+| Ordered-matter schema and legacy conversion (D-169, accepted 2026-11-04) | Persisted schema, conversion UI, ordered-matter export | Editor shell, preview disclosure, canonical typography controls, current DOCX safety work |
+| Format-profile persistence and physical-layout options (D-170, accepted 2026-11-04) | Persisting target-specific settings or exposing physical-size controls | Existing typography controls and format-target selection |
 
 Each decision is a scoped gate. An unresolved decision does not stop unrelated editor or safety work.
 D-115 is limited to release signing and updates and is not an export dependency.

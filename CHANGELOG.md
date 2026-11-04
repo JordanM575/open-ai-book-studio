@@ -10,6 +10,42 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Front and back matter for every export (spec 035 T007–T013, D-169 and D-170, accepted on the
+  author's delegation). The Format dialog has a **Front and back matter** section. The author turns
+  the generated title page on or off and gives it an author and a subtitle. They add copyright,
+  disclaimer, dedication, epigraph, acknowledgements, about-the-author and other pages; the
+  copyright and disclaimer pages start from editable text that claims no legal advice. Headings
+  and Markdown text are edited in place. **Move up** and **Move down** reorder the pages from the
+  keyboard, keep focus on the moved page, and cross the chapters at the end of a side. Removing a
+  page asks first. The approximate preview shows everything in export order.
+  - Every export uses one order: the title page, the front pages, the contents page when the book
+    asks for one, the chapters, then the back pages.
+    - Word gives each page its own page, and the generated title page its own section, centred
+      vertically; the document's author property names the author.
+    - The EPUB gives each page its own XHTML document with its structural semantics
+      (`titlepage`, `copyright-page`, `dedication`, `epigraph`, `acknowledgments`, or the front or
+      back partition), listed in the spine and navigation in order, with the author as
+      `dc:creator`.
+    - The PDF prints the same order, and its contents page lists the back pages.
+    - Markdown puts each page under its heading.
+  - The matter lives in a new optional `matter` value in `book.json`, documented in
+    `docs/FORMAT.md`.
+    - It saves only through the new checked `books:saveMatter` channel. The save carries the
+      version and hash it started from and is validated by Zod for ids and sizes.
+    - A stale save keeps the author's matter as JSON in `conflicts/`. The dialog shows the newer
+      matter on disk, names the copy and offers **Show the saved copy**.
+    - A save made as the dialog closes reports through the workspace if it fails.
+    - The general book update never writes the matter.
+    - A value the studio cannot read never stops the book from opening; it is never saved over,
+      and exports stop with the reason.
+  - A book without matter, or with matter that holds nothing, exports exactly as before. Once the
+    matter holds anything, the generated title page shows the title, subtitle and author instead of
+    the description, and the preview shows it.
+  - The older free-form `frontMatter` record is kept exactly as written and is never exported. The
+    dialog lists its entries that no export includes, with where each would go, and adds the ones
+    it can place only when the author asks, without adding anything twice or overwriting an author
+    or subtitle.
+  - Format settings persist per book; the export target stays a choice for each export.
 - A test pins how a book without front or back matter exports, before ordered matter is built
   (spec 035 T013). Five synthetic books were rendered by the current exporters into goldens: every
   Word part, the EPUB's exact bytes, the Markdown text, and the HTML Chromium prints to PDF with
