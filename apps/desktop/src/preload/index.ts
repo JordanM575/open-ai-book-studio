@@ -50,6 +50,7 @@ const api: StudioApi = {
     search: (bookId: string, query: string) => invoke(IPC.books.search, { bookId, query }),
     exportDocx: (bookId) => invoke(IPC.books.exportDocx, bookId),
     exportMarkdown: (bookId) => invoke(IPC.books.exportMarkdown, bookId),
+    exportImages: (bookId) => invoke(IPC.books.exportImages, bookId),
     importManuscript: (input) => invoke(IPC.books.importManuscript, input),
     pickImportSource: () => invoke(IPC.books.pickImportSource)
   },

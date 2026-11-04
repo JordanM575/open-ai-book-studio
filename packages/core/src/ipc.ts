@@ -117,6 +117,7 @@ export const IPC = {
     open: "books:open",
     exportDocx: "books:exportDocx",
     exportMarkdown: "books:exportMarkdown",
+    exportImages: "books:exportImages",
     search: "books:search"
   },
   chapters: {
@@ -310,6 +311,25 @@ export interface ArchiveImportSummary {
   bookCount: number;
 }
 
+/** An image the image export left out, and why. */
+export interface ImageExportNote {
+  /** The file name it would have had, such as `01-the-door.jpg`. */
+  name: string;
+  reason: string;
+}
+
+/**
+ * What exporting a book's images as JPEG files did.
+ *
+ * `empty`, `cancelled` and `unconverted` wrote nothing; `unconverted` means the book has images
+ * but none could become a JPEG. `saved` names the new folder and every file written into it.
+ */
+export type ImageExportResult =
+  | { status: "empty" }
+  | { status: "cancelled" }
+  | { status: "unconverted"; skipped: ImageExportNote[] }
+  | { status: "saved"; folder: string; files: string[]; skipped: ImageExportNote[] };
+
 export interface StudioApi {
   app: {
     info(): Promise<Result<BuildMetadata>>;
@@ -341,6 +361,8 @@ export interface StudioApi {
     open(bookId: string): Promise<Result<BookDetail>>;
     exportDocx(bookId: string): Promise<Result<string | null>>;
     exportMarkdown(bookId: string): Promise<Result<string | null>>;
+    /** Save every image in the book as a JPEG in a new folder the author chooses. */
+    exportImages(bookId: string): Promise<Result<ImageExportResult>>;
     search(bookId: string, query: string): Promise<Result<SearchHit[]>>;
   };
   chapters: {

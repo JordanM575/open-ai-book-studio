@@ -7,19 +7,25 @@ import {
   buildDocx,
   buildMarkdown,
   collectDocxImages,
+  exportBookImages,
   exportManuscriptDocx,
   exportManuscriptMarkdown,
   isInsideLibrary,
+  planImageFiles,
   suggestDocxName,
+  suggestImageFolderName,
   suggestMarkdownName,
   type DocxExportDeps,
   type DocxExportState,
-  type DocxImage
+  type DocxImage,
+  type ImageExportDeps
 } from "../src/main/export";
-import { manuscriptSettingsSchema } from "@ai-book-studio/core/schema";
+import { writeFileAtomic as atomicWrite } from "../src/main/library/atomic";
+import { bookSchema, chapterMetaSchema, manuscriptSettingsSchema, type BookDetail } from "@ai-book-studio/core/schema";
+import { imageRecordSchema, type ImageRecord } from "@ai-book-studio/core/images";
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
-import { chmod, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 
 const cleanups: string[] = [];
 
@@ -605,5 +611,466 @@ describe("markdown export", () => {
     });
     await expect(promise).rejects.toMatchObject({ code: "io" });
     expect(written).toEqual([]);
+  });
+});
+
+/** SOI, a baseline frame header for one pixel, EOI: enough for the image store to read its size. */
+const TINY_JPEG = new Uint8Array([
+  0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01,
+  0x03, 0x11, 0x01, 0xff, 0xd9
+]);
+
+/** A stand-in for nativeImage: a PNG becomes a small JPEG, and anything else cannot be decoded. */
+function fakeTranscoder(calls: Uint8Array[] = []): ImageExportDeps["transcode"] {
+  return (bytes) => {
+    calls.push(bytes);
+    return bytes[0] === 0x89 ? new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x02, 0xff, 0xd9]) : null;
+  };
+}
+
+function imageRecord(id: string, overrides: Partial<ImageRecord> = {}): ImageRecord {
+  return imageRecordSchema.parse({
+    id,
+    kind: "chapter",
+    fileName: `${id}.png`,
+    mimeType: "image/png",
+    width: 1,
+    height: 1,
+    bytes: 1,
+    sha256: "a".repeat(64),
+    provider: "fixture",
+    model: "fixture-small",
+    source: "generated",
+    createdAt: "2026-11-03T00:00:00.000Z",
+    ...overrides
+  });
+}
+
+function plannedBook(chapters: Array<[string, string]>, cast: Array<[string, string]> = []): BookDetail {
+  const now = "2026-11-03T00:00:00.000Z";
+  return {
+    book: bookSchema.parse({
+      id: "book_plan0001",
+      title: "The Salt Road",
+      characters: cast.map(([id, name]) => ({ id, name })),
+      createdAt: now,
+      updatedAt: now
+    }),
+    chapters: chapters.map(([id, title], index) => ({
+      ...chapterMetaSchema.parse({ id, title, order: index + 1, createdAt: now, updatedAt: now }),
+      content: "",
+      path: `${index + 1}.md`,
+      wordCount: 0,
+      hash: "b".repeat(64)
+    })),
+    chapterReadIssues: []
+  };
+}
+
+describe("planImageFiles", () => {
+  test("names chapter pictures by reading order and title, and the rest by kind", () => {
+    const detail = plannedBook(
+      [
+        ["ch_door0001", "The Door"],
+        ["ch_gate0001", "The Gate"]
+      ],
+      [["char_mara0001", "Mara"]]
+    );
+    // Reading order comes from each chapter's order, not from the order the chapters arrive in.
+    const shuffled = { ...detail, chapters: [...detail.chapters].reverse() };
+    const records = [
+      imageRecord("img_cover001", { kind: "cover" }),
+      imageRecord("img_gate0001", { chapterId: "ch_gate0001" }),
+      imageRecord("img_door0001", { chapterId: "ch_door0001" }),
+      imageRecord("img_mara0001", { kind: "character", characterId: "char_mara0001" }),
+      imageRecord("img_cut00001", {
+        kind: "character",
+        characterId: "char_mara0001",
+        source: "cutout",
+        cutoutOf: "img_mara0001"
+      }),
+      imageRecord("img_spare001"),
+      imageRecord("img_other001", { kind: "other" })
+    ];
+    expect(planImageFiles(shuffled, records).map((entry) => entry.name)).toEqual([
+      "cover.jpg",
+      "02-the-gate.jpg",
+      "01-the-door.jpg",
+      "character-mara.jpg",
+      "character-mara-cutout.jpg",
+      "illustration.jpg",
+      "image.jpg"
+    ]);
+  });
+
+  test("gives a repeated name the next free number, ignoring case and Unicode spelling", () => {
+    const detail = plannedBook(
+      [],
+      [
+        ["char_jose0001", "José"],
+        ["char_jose0002", "José"],
+        ["char_mara0001", "Mara"],
+        ["char_mara0002", "MARA"]
+      ]
+    );
+    const records = [
+      imageRecord("img_cover001", { kind: "cover" }),
+      imageRecord("img_cover002", { kind: "cover" }),
+      imageRecord("img_jose0001", { kind: "character", characterId: "char_jose0001" }),
+      imageRecord("img_jose0002", { kind: "character", characterId: "char_jose0002" }),
+      imageRecord("img_mara0001", { kind: "character", characterId: "char_mara0001" }),
+      imageRecord("img_mara0002", { kind: "character", characterId: "char_mara0002" })
+    ];
+    const names = planImageFiles(detail, records).map((entry) => entry.name);
+    expect(names).toEqual([
+      "cover.jpg",
+      "cover-2.jpg",
+      "character-josé.jpg",
+      "character-josé-2.jpg",
+      "character-mara.jpg",
+      "character-mara-2.jpg"
+    ]);
+    // The same book always produces the same names.
+    expect(planImageFiles(detail, records).map((entry) => entry.name)).toEqual(names);
+  });
+
+  test("keeps every name safe for the filesystem", () => {
+    const chapters = Array.from(
+      { length: 120 },
+      (_, index): [string, string] => [`ch_many${String(index).padStart(4, "0")}`, `Part ${index + 1}`]
+    );
+    chapters[0] = ["ch_many0000", 'What/now? <A:B> "quoted" \\ back'];
+    chapters[1] = ["ch_many0001", `${"long ".repeat(40)}end`];
+    chapters[2] = ["ch_many0002", "!!!"];
+    const names = planImageFiles(plannedBook(chapters), [
+      imageRecord("img_many0000", { chapterId: "ch_many0000" }),
+      imageRecord("img_many0001", { chapterId: "ch_many0001" }),
+      imageRecord("img_many0002", { chapterId: "ch_many0002" }),
+      imageRecord("img_many0119", { chapterId: "ch_many0119" }),
+      imageRecord("img_lost0001", { chapterId: "ch_gone0001" }),
+      imageRecord("img_nobody01", { kind: "character", characterId: "char_gone0001" })
+    ]).map((entry) => entry.name);
+    expect(names[0]).toBe("001-what-now-a-b-quoted-back.jpg");
+    expect(names[1]).toBe(`002-${Array.from({ length: 12 }, () => "long").join("-")}.jpg`);
+    expect(names[2]).toBe("003-chapter.jpg");
+    expect(names[3]).toBe("120-part-120.jpg");
+    // A picture whose chapter or cast member is gone still exports, named for its kind.
+    expect(names[4]).toBe("illustration.jpg");
+    expect(names[5]).toBe("character.jpg");
+    for (const name of names) expect(name).toMatch(/^[\p{Ll}\p{Lo}\p{N}][\p{Ll}\p{Lo}\p{N}-]*\.jpg$/u);
+  });
+
+  test("cuts a long title between whole characters and within the filesystem's byte limit", () => {
+    // Fraktur capitals are letters outside the Basic Multilingual Plane: two UTF-16 units, four bytes.
+    const fraktur = "\u{1D504}".repeat(70);
+    const snow = "雪".repeat(100);
+    const [astral, cjk] = planImageFiles(
+      plannedBook([
+        ["ch_wide0001", fraktur],
+        ["ch_wide0002", snow]
+      ]),
+      [imageRecord("img_wide0001", { chapterId: "ch_wide0001" }), imageRecord("img_wide0002", { chapterId: "ch_wide0002" })]
+    ).map((entry) => entry.name);
+    expect(astral).toBe(`01-${"\u{1D504}".repeat(45)}.jpg`);
+    expect(cjk).toBe(`02-${"雪".repeat(60)}.jpg`);
+    for (const name of [astral, cjk]) {
+      expect(name).not.toContain("�");
+      expect(Buffer.byteLength(name ?? "")).toBeLessThanOrEqual(255);
+    }
+  });
+});
+
+describe("suggestImageFolderName", () => {
+  test("names the folder for the book", () => {
+    expect(suggestImageFolderName("The Salt Road")).toBe("the-salt-road-images");
+    expect(suggestImageFolderName("   ")).toBe("untitled-book-images");
+  });
+});
+
+describe("exportBookImages", () => {
+  async function outside(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "abs-images-out-"));
+    cleanups.push(dir);
+    return dir;
+  }
+
+  function imageDeps(dir: string, overrides: Partial<ImageExportDeps> = {}): ImageExportDeps {
+    return { pickFolder: async () => dir, transcode: fakeTranscoder(), ...overrides };
+  }
+
+  async function addPicture(
+    library: Library,
+    bookId: string,
+    bytes: Uint8Array,
+    kind: ImageRecord["kind"],
+    chapterId?: string
+  ): Promise<ImageRecord> {
+    const record = await library.addImage(bookId, {
+      bytes,
+      kind,
+      prompt: "A picture",
+      provider: "fixture",
+      model: "fixture-small"
+    });
+    if (chapterId) await library.attachImage(bookId, record.id, chapterId);
+    return record;
+  }
+
+  test("saves every image as a correctly named JPEG in a new folder and leaves the book untouched", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await library.updateBook(bookId, {
+      characters: [{ id: "char_mara0001", name: "Mara", role: "", description: "", motivations: "", notes: "" }]
+    });
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[1]);
+    await addPicture(library, bookId, TINY_JPEG, "cover");
+    const portrait = await addPicture(library, bookId, TINY_PNG, "character");
+    await library.attachCharacterImage(bookId, portrait.id, "char_mara0001");
+    const detail = await library.readBook(bookId);
+    const before = await snapshotBook(library.root);
+    const dir = await outside();
+    const calls: Uint8Array[] = [];
+    const result = await exportBookImages(detail, library, library.root, imageDeps(dir, { transcode: fakeTranscoder(calls) }));
+    const folder = join(dir, "the-salt-road-images");
+    expect(result).toEqual({
+      status: "saved",
+      folder,
+      files: ["02-the-gate.jpg", "cover.jpg", "character-mara.jpg"],
+      skipped: []
+    });
+    // Only the new folder appears: no staging folder or temp file is left beside it.
+    expect(await readdir(dir)).toEqual(["the-salt-road-images"]);
+    expect((await readdir(folder)).sort()).toEqual(["02-the-gate.jpg", "character-mara.jpg", "cover.jpg"]);
+    for (const name of await readdir(folder)) {
+      expect([...(await readFile(join(folder, name))).subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+    }
+    // A JPEG is copied byte for byte; only the two PNGs went through the transcoder.
+    expect(new Uint8Array(await readFile(join(folder, "cover.jpg")))).toEqual(TINY_JPEG);
+    expect(calls).toHaveLength(2);
+    expect(await snapshotBook(library.root)).toEqual(before);
+  });
+
+  test("exporting the same book twice gives the same names", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    await addPicture(library, bookId, TINY_PNG, "cover");
+    await addPicture(library, bookId, TINY_PNG, "cover");
+    const detail = await library.readBook(bookId);
+    const first = await exportBookImages(detail, library, library.root, imageDeps(await outside()));
+    const second = await exportBookImages(detail, library, library.root, imageDeps(await outside()));
+    expect(first).toMatchObject({ status: "saved", files: ["01-the-door.jpg", "cover.jpg", "cover-2.jpg"] });
+    expect(second).toMatchObject({ status: "saved", files: ["01-the-door.jpg", "cover.jpg", "cover-2.jpg"] });
+  });
+
+  test("a book without images says so, writes nothing and never opens the picker", async () => {
+    const { library, bookId } = await fixture();
+    const dir = await outside();
+    let picked = 0;
+    const result = await exportBookImages(
+      await library.readBook(bookId),
+      library,
+      library.root,
+      imageDeps(dir, {
+        pickFolder: async () => {
+          picked += 1;
+          return dir;
+        }
+      })
+    );
+    expect(result).toEqual({ status: "empty" });
+    expect(picked).toBe(0);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  test("a cancelled picker writes nothing", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    const dir = await outside();
+    const calls: Uint8Array[] = [];
+    const result = await exportBookImages(await library.readBook(bookId), library, library.root, {
+      pickFolder: async () => null,
+      transcode: fakeTranscoder(calls)
+    });
+    expect(result).toEqual({ status: "cancelled" });
+    expect(calls).toEqual([]);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  test("a destination inside the library is refused, even through a symlink", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    const detail = await library.readBook(bookId);
+    const before = await snapshotBook(library.root);
+    const dir = await outside();
+    await symlink(join(library.root, "books"), join(dir, "shortcut"));
+    for (const picked of [library.root, join(library.root, "books", bookId), join(dir, "shortcut")]) {
+      const promise = exportBookImages(detail, library, library.root, imageDeps(dir, { pickFolder: async () => picked }));
+      await expect(promise).rejects.toMatchObject({
+        code: "invalid",
+        message: expect.stringContaining("inside the open library")
+      });
+    }
+    expect(await snapshotBook(library.root)).toEqual(before);
+    expect(await readdir(dir)).toEqual(["shortcut"]);
+  });
+
+  test("an images folder that already exists is refused and left as it was", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    const dir = await outside();
+    const existing = join(dir, "the-salt-road-images");
+    await mkdir(existing);
+    await writeFile(join(existing, "01-the-door.jpg"), "the author's own file");
+    const calls: Uint8Array[] = [];
+    const promise = exportBookImages(
+      await library.readBook(bookId),
+      library,
+      library.root,
+      imageDeps(dir, { transcode: fakeTranscoder(calls) })
+    );
+    await expect(promise).rejects.toMatchObject({ code: "invalid", message: expect.stringContaining("already exists") });
+    expect(calls).toEqual([]);
+    expect(await readdir(dir)).toEqual(["the-salt-road-images"]);
+    expect(await readdir(existing)).toEqual(["01-the-door.jpg"]);
+    expect((await readFile(join(existing, "01-the-door.jpg"))).toString()).toBe("the author's own file");
+  });
+
+  test("a folder that appears while the images convert is refused, and the staging folder is removed", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[1]);
+    const dir = await outside();
+    const appeared = join(dir, "the-salt-road-images");
+    const convert = fakeTranscoder();
+    const promise = exportBookImages(
+      await library.readBook(bookId),
+      library,
+      library.root,
+      imageDeps(dir, {
+        transcode: async (bytes) => {
+          await mkdir(appeared, { recursive: true });
+          await writeFile(join(appeared, "theirs.txt"), "made meanwhile");
+          return convert(bytes);
+        }
+      })
+    );
+    await expect(promise).rejects.toMatchObject({ code: "invalid" });
+    expect(await readdir(dir)).toEqual(["the-salt-road-images"]);
+    expect(await readdir(appeared)).toEqual(["theirs.txt"]);
+  });
+
+  test("an image that cannot be decoded is skipped with a note, and the rest still export", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    await addPicture(library, bookId, tinyWebp(), "chapter", chapterIds[1]);
+    const dir = await outside();
+    const result = await exportBookImages(await library.readBook(bookId), library, library.root, imageDeps(dir));
+    const folder = join(dir, "the-salt-road-images");
+    expect(result).toEqual({
+      status: "saved",
+      folder,
+      files: ["01-the-door.jpg"],
+      skipped: [{ name: "02-the-gate.jpg", reason: "The WebP image could not be converted to JPEG." }]
+    });
+    expect(await readdir(folder)).toEqual(["01-the-door.jpg"]);
+  });
+
+  test("when no image can be converted, nothing is written", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[1]);
+    const dir = await outside();
+    const answers: Array<() => Uint8Array | null> = [
+      () => {
+        throw new Error("the decoder crashed");
+      },
+      // A PNG is not a JPEG, so it does not count as converted.
+      () => TINY_PNG
+    ];
+    const result = await exportBookImages(
+      await library.readBook(bookId),
+      library,
+      library.root,
+      imageDeps(dir, { transcode: () => (answers.shift() ?? (() => null))() })
+    );
+    expect(result).toEqual({
+      status: "unconverted",
+      skipped: [
+        { name: "01-the-door.jpg", reason: "The PNG image could not be converted to JPEG." },
+        { name: "02-the-gate.jpg", reason: "The PNG image could not be converted to JPEG." }
+      ]
+    });
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  test("an image file changed outside the studio is skipped with the store's reason", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    const changed = await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    await addPicture(library, bookId, TINY_JPEG, "cover");
+    await writeFile(join(library.root, "books", bookId, "images", changed.fileName), "not the recorded bytes");
+    const dir = await outside();
+    const result = await exportBookImages(await library.readBook(bookId), library, library.root, imageDeps(dir));
+    expect(result).toMatchObject({
+      status: "saved",
+      files: ["cover.jpg"],
+      skipped: [{ name: "01-the-door.jpg", reason: `The image file ${changed.fileName} changed outside the studio.` }]
+    });
+  });
+
+  test("a write that fails partway leaves no folder and no staging behind", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[1]);
+    const dir = await outside();
+    let writes = 0;
+    const promise = exportBookImages(
+      await library.readBook(bookId),
+      library,
+      library.root,
+      imageDeps(dir, {
+        writeFile: async (path, data) => {
+          writes += 1;
+          if (writes === 2) throw new Error("disk is full");
+          await atomicWrite(path, data);
+        }
+      })
+    );
+    await expect(promise).rejects.toMatchObject({ code: "io", message: expect.stringContaining("Nothing was written") });
+    expect(writes).toBe(2);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  test("a folder the studio cannot write to fails plainly and stays empty", async () => {
+    const { library, bookId, chapterIds } = await fixture();
+    await addPicture(library, bookId, TINY_PNG, "chapter", chapterIds[0]);
+    const dir = await outside();
+    await chmod(dir, 0o555);
+    try {
+      const promise = exportBookImages(await library.readBook(bookId), library, library.root, imageDeps(dir));
+      await expect(promise).rejects.toMatchObject({ code: "io", message: expect.stringContaining("not allowed") });
+      expect(await readdir(dir)).toEqual([]);
+    } finally {
+      await chmod(dir, 0o755);
+    }
+  });
+
+  test("an unreadable image list fails plainly before the picker opens", async () => {
+    const { library, bookId } = await fixture();
+    await writeFile(join(library.root, "books", bookId, "images.json"), "{ not json");
+    const dir = await outside();
+    let picked = 0;
+    const promise = exportBookImages(
+      await library.readBook(bookId),
+      library,
+      library.root,
+      imageDeps(dir, {
+        pickFolder: async () => {
+          picked += 1;
+          return dir;
+        }
+      })
+    );
+    await expect(promise).rejects.toMatchObject({ code: "format", message: expect.stringContaining("images.json") });
+    expect(picked).toBe(0);
+    expect(await readdir(dir)).toEqual([]);
   });
 });

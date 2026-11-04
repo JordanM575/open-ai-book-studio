@@ -51,6 +51,21 @@ Update the `Unreleased` section before every commit.
   `scripts/license-allow.json` does not allow with a reason; its one exception is the desktop SAM
   parser under D-137. The Gitea security scan now runs after the bundles, so the gate reads them,
   and the accessibility gate scans the licenses view at all four widths.
+- The book's actions in the library now export every image as a JPEG in one action, separately
+  from the manuscript (002 FR-050). Export images asks for a folder and creates a new
+  `<book>-images` folder in it. A chapter's picture is named for its place in reading order and
+  its title (`01-the-door.jpg`), and other pictures for what they are (`cover.jpg`,
+  `character-mara.jpg`, `illustration.jpg`, `image.jpg`). A repeated name gets `-2`, compared
+  without case. JPEG pictures are copied byte for byte. PNG and WebP pictures are converted with
+  Electron's `nativeImage` at quality 90, and a picture that cannot be read or converted is skipped
+  and named with its reason. A book without images says so and opens no picker. A cancelled picker
+  writes nothing, and a destination inside the library is refused, including through a symlink. If
+  a folder with that name already exists, the export is refused rather than merged. The files are
+  staged in a hidden folder beside it, which is renamed into place only once every file is written,
+  so a failure leaves nothing behind. The dialog then says, for example, "Saved 3 images to
+  the-salt-road-images". The browser build does not offer it and explains that it is a desktop
+  feature. The Word and Markdown file names now use the same naming rule, which cuts a long title
+  between whole characters, within 180 bytes, and drops a hyphen left at the cut.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

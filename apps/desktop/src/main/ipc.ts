@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell } from "electron";
+import { app, dialog, ipcMain, nativeImage, shell } from "electron";
 import type { BrowserWindow } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -28,7 +28,7 @@ import { buildMetadata } from "@ai-book-studio/core/build";
 import { createLicenseReader } from "./licenses";
 import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
-import { collectDocxImages, exportManuscriptDocx, exportManuscriptMarkdown } from "./export";
+import { collectDocxImages, exportBookImages, exportManuscriptDocx, exportManuscriptMarkdown } from "./export";
 import { importLegacyBackup } from "./legacy-import";
 import { importLibraryArchiveToFolder, writeLibraryArchive } from "./library/archive";
 import { ArchiveError } from "@ai-book-studio/core/archive/errors";
@@ -421,6 +421,34 @@ export function registerIpc(
         stat(path)
           .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
           .catch(() => null)
+    });
+  });
+
+  handle(IPC.books.exportImages, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    const library = studio.requireLibrary();
+    const detail = await library.readBook(bookId);
+    return exportBookImages(detail, library, library.root, {
+      // As with the manuscript exports, a headless run names the folder instead of answering a dialog.
+      pickFolder: async (folderName) => {
+        const forced = process.env.STUDIO_EXPORT_PATH;
+        if (forced) return forced;
+        const options = {
+          title: "Export images",
+          buttonLabel: "Export images",
+          message: `The images go in a new folder named “${folderName}”.`,
+          properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">
+        };
+        const window = getWindow();
+        const choice = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+        const folder = choice.filePaths[0];
+        if (choice.canceled || !folder) return null;
+        return folder;
+      },
+      transcode: (bytes) => {
+        const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+        return image.isEmpty() ? null : image.toJPEG(90);
+      }
     });
   });
 

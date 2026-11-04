@@ -1197,10 +1197,81 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return `${entries.size} entries, ${book.split("/").slice(-2).join("/")}`;
     });
 
+    await check("the book's images export as JPEG files", async () => {
+      // The action lives in the book's actions in the library, not in the workspace header.
+      const back = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[aria-label="Back to library"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!back) throw new Error("the back button was not found");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="book-actions"]')`)),
+        "the library book actions"
+      );
+      try {
+        await evaluate(win, `document.querySelector('[data-testid="book-actions"]').click()`);
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="export-images"]')`)),
+          "the Export images action"
+        );
+        await evaluate(win, `document.querySelector('[data-testid="export-images"]').click()`);
+        await waitUntil(
+          () =>
+            evaluate<boolean>(
+              win,
+              inPage(`(document.querySelector('[data-testid="export-images-note"]')?.innerText ?? "").startsWith("Saved ")`)
+            ),
+          "the export note"
+        );
+        const note = await evaluate<string>(
+          win,
+          `document.querySelector('[data-testid="export-images-note"]')?.innerText ?? ""`
+        );
+        if (!note.includes("smoke-test-book-images")) throw new Error(`note read: ${JSON.stringify(note)}`);
+
+        // The hook sends the folder to STUDIO_EXPORT_PATH instead of a folder picker.
+        const exports = process.env.STUDIO_EXPORT_PATH;
+        if (!exports) throw new Error("STUDIO_EXPORT_PATH is not set");
+        const book = (await studio.requireLibrary().listBooks())[0];
+        if (!book) throw new Error("the smoke book disappeared");
+        const detail = await studio.requireLibrary().readBook(book.id);
+        // The drag check reorders the chapters, so the illustration's number comes from the current order.
+        const order = [...detail.chapters].sort((a, b) => a.order - b.order);
+        const position = order.findIndex((chapter) => chapter.id === "ch_smoke0001") + 1;
+        if (position === 0) throw new Error("the illustrated chapter is missing");
+        const expected = `${String(position).padStart(2, "0")}-the-light.jpg`;
+        const folder = join(exports, "smoke-test-book-images");
+        const names = await readdir(folder);
+        if (!names.includes(expected)) throw new Error(`expected ${expected}, found ${JSON.stringify(names)}`);
+        for (const name of names) {
+          const bytes = await readFile(join(folder, name));
+          if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new Error(`${name} is not a JPEG`);
+        }
+        return `${names.join(", ")} · ${note}`;
+      } finally {
+        // Close the dialog so the next check starts from the library.
+        await evaluate<boolean>(
+          win,
+          `(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); return true; })()`
+        );
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="export-images"]')`)),
+          "the book settings dialog to close"
+        );
+      }
+    });
+
     await check("a book can be renamed and moved to the trash", async () => {
       const back = await evaluate<boolean>(
         win,
         `(() => {
+          // The image export check above already returned to the library.
+          if (document.querySelector('[data-testid="library-view"]')) return true;
           const button = document.querySelector('[aria-label="Back to library"]');
           if (!button) return false;
           button.click();

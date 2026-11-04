@@ -45,6 +45,20 @@
   headless run through `STUDIO_EXPORT_PATH`, because an export that always opens a dialog is an
   export no check can make.
 
+## Phase 5 — Image export
+
+- [x] T011 Export every image as a JPEG in one action, separately from the manuscript (002 FR-050).
+  `exportBookImages` in `apps/desktop/src/main/export.ts` reads the manifest and bytes through the
+  image store. It names each file for its chapter and purpose (`01-the-door.jpg`, `cover.jpg`,
+  `character-mara.jpg`), copies JPEGs byte for byte, and converts the rest through an injected
+  `nativeImage` transcoder at quality 90. An image it cannot read or convert is skipped with a note.
+  The export publishes a new `<book>-images` folder through the Word export's boundary: no picker
+  for a book without images, nothing written on cancel, no destination inside the library, no
+  existing folder reused, and a staged folder renamed into place so a failure leaves nothing.
+  `books:exportImages` carries it to Export images in the library's book actions. Covered by
+  `export.test.ts`, `book-actions-images.test.tsx` and a hidden smoke check that reads the JPEG
+  back from `STUDIO_EXPORT_PATH`.
+
 ## Dependencies
 
 - T001–T005 need no live key.

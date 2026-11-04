@@ -9,9 +9,12 @@ import {
   Paragraph,
   TextRun
 } from "docx";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { lstat, mkdtemp, open, realpath, rename, rm } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import type { ImageExportNote, ImageExportResult } from "@ai-book-studio/core/ipc";
 import type { BookDetail, ManuscriptSettings } from "@ai-book-studio/core/schema";
-import type { ImageList, StoredImage } from "@ai-book-studio/core/images";
+import type { ImageList, ImageRecord, StoredImage } from "@ai-book-studio/core/images";
+import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { LibraryError } from "./library/errors";
 import { writeFileAtomic } from "./library/atomic";
 
@@ -155,7 +158,7 @@ export function buildDocx(detail: BookDetail, illustrations: Map<string, DocxIma
   );
 }
 
-/** The image-store surface the DOCX journey reads. The desktop Library satisfies this. */
+/** The image-store surface the DOCX and image exports read. The desktop Library satisfies this. */
 export interface DocxImageSource {
   listImages(bookId: string): Promise<ImageList>;
   readImage(bookId: string, imageId: string): Promise<StoredImage | null>;
@@ -199,16 +202,32 @@ export async function collectDocxImages(
   return collected;
 }
 
+/**
+ * A file-name stem from author text: lower-case letters and digits joined by hyphens. NFC keeps two
+ * spellings of one accented name from becoming two names that a normalising filesystem (APFS) would
+ * store as one file. The stem keeps at most 60 whole characters and 180 bytes, so a cut never splits
+ * a character and a name with its prefix and suffix stays under the 255-byte limit.
+ */
+function slugify(text: string, fallback: string): string {
+  const slug = text
+    .normalize("NFC")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  let kept = "";
+  let bytes = 0;
+  for (const character of Array.from(slug).slice(0, 60)) {
+    bytes += Buffer.byteLength(character);
+    if (bytes > 180) break;
+    kept += character;
+  }
+  return kept.replace(/-+$/, "") || fallback;
+}
+
 /** A safe file name for the export dialog, derived from the book title. */
 function suggestStem(title: string): string {
-  return (
-    title
-      .trim()
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "manuscript"
-  );
+  return slugify(title, "manuscript");
 }
 
 /** A safe file name for the export dialog, derived from the book title. */
@@ -339,4 +358,225 @@ export async function exportManuscriptMarkdown(
   const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, Buffer.from(bytes)));
   await write(destination, new TextEncoder().encode(data));
   return destination;
+}
+
+/** The folder the image export creates beside the manuscript, named for the book. */
+export function suggestImageFolderName(title: string): string {
+  return `${slugify(title, "untitled-book")}-images`;
+}
+
+export interface PlannedImage {
+  record: ImageRecord;
+  /** The JPEG's file name: the same for the same book, safe on every filesystem, unique in its folder. */
+  name: string;
+}
+
+/**
+ * Names every image in the manifest for where it appears and what it is.
+ *
+ * An image attached to a chapter takes the chapter's position in reading order and its title
+ * (`01-the-door.jpg`). Any other image is named for its kind: `cover.jpg`, `character-mara.jpg` for
+ * a cast member, `illustration.jpg` for a chapter picture that is not attached, and `image.jpg` for
+ * anything else. A cutout adds `-cutout`. Names are compared without case, as macOS and Windows
+ * compare them, and a repeat takes the next free `-2`, `-3` in manifest order, so the same book
+ * always produces the same names.
+ */
+export function planImageFiles(detail: BookDetail, records: readonly ImageRecord[]): PlannedImage[] {
+  const ordered = [...detail.chapters].sort((a, b) => a.order - b.order);
+  const width = Math.max(2, String(ordered.length).length);
+  const placed = new Map(ordered.map((chapter, index) => [chapter.id, { title: chapter.title, position: index + 1 }]));
+  const cast = new Map(detail.book.characters.map((character) => [character.id, character.name]));
+  const taken = new Set<string>();
+  return records.map((record) => {
+    const stem = imageStem(record, placed, cast, width);
+    let name = `${stem}.jpg`;
+    for (let copy = 2; taken.has(name.toLowerCase()); copy += 1) name = `${stem}-${copy}.jpg`;
+    taken.add(name.toLowerCase());
+    return { record, name };
+  });
+}
+
+function imageStem(
+  record: ImageRecord,
+  placed: Map<string, { title: string; position: number }>,
+  cast: Map<string, string>,
+  width: number
+): string {
+  const cutout = record.cutoutOf !== null || record.source === "cutout" ? "-cutout" : "";
+  const chapter = record.chapterId ? placed.get(record.chapterId) : undefined;
+  if (chapter) {
+    return `${String(chapter.position).padStart(width, "0")}-${slugify(chapter.title, "chapter")}${cutout}`;
+  }
+  if (record.kind === "cover") return `cover${cutout}`;
+  if (record.kind === "character") {
+    const name = slugify((record.characterId && cast.get(record.characterId)) || "", "");
+    return `${name ? `character-${name}` : "character"}${cutout}`;
+  }
+  return `${record.kind === "chapter" ? "illustration" : "image"}${cutout}`;
+}
+
+export interface ImageExportDeps {
+  /** The folder to create the images folder in, or null when the author cancels. */
+  pickFolder: (folderName: string) => Promise<string | null>;
+  /** JPEG bytes for a PNG or WebP image, or null when it cannot be decoded. */
+  transcode: (bytes: Uint8Array) => Uint8Array | null | Promise<Uint8Array | null>;
+  writeFile?: (path: string, data: Uint8Array) => Promise<void>;
+}
+
+const FORMAT_NAMES: Record<ImageRecord["mimeType"], string> = {
+  "image/png": "PNG",
+  "image/webp": "WebP",
+  "image/jpeg": "JPEG"
+};
+
+function isJpeg(bytes: Uint8Array): boolean {
+  return bytes.byteLength > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
+/**
+ * Exports every image in the book as a JPEG into one new folder, separately from the manuscript.
+ *
+ * Nothing is written to the library and nothing on disk is overwritten:
+ * - a book with no images writes nothing and never opens the picker; a cancelled picker writes
+ *   nothing;
+ * - a destination inside the open library is refused, by path and by resolved path;
+ * - the export creates `<book>-images` in the chosen folder and refuses when that already exists;
+ * - JPEG images are copied byte for byte and the others go through the transcoder. An image that
+ *   cannot be read or converted is skipped with a note, and the rest still export;
+ * - each file is written atomically into a hidden staging folder beside the destination, which is
+ *   renamed into place once every file is written. A failure removes the staging folder, so the
+ *   author never finds a half-filled folder.
+ */
+export async function exportBookImages(
+  detail: BookDetail,
+  images: DocxImageSource,
+  libraryRoot: string,
+  deps: ImageExportDeps
+): Promise<ImageExportResult> {
+  const { manifest, warning } = await images.listImages(detail.book.id);
+  if (warning) {
+    throw new LibraryError("format", `The book's image list could not be read, so nothing was exported. ${warning}`);
+  }
+  if (manifest.images.length === 0) return { status: "empty" };
+
+  const folderName = suggestImageFolderName(detail.book.title);
+  const parent = await deps.pickFolder(folderName);
+  if (!parent) return { status: "cancelled" };
+  if (await destinationInsideLibrary(libraryRoot, parent, folderName)) {
+    throw new LibraryError(
+      "invalid",
+      "That location is inside the open library. Choose another folder so the export cannot overwrite the book's own files."
+    );
+  }
+
+  const destination = join(parent, folderName);
+  const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, bytes));
+  const files: string[] = [];
+  const skipped: ImageExportNote[] = [];
+  let staging: string | null = null;
+  try {
+    if (await pathExists(destination)) throw folderExists(folderName);
+    for (const { record, name } of planImageFiles(detail, manifest.images)) {
+      const converted = await convertToJpeg(detail.book.id, record, images, deps.transcode);
+      if (typeof converted === "string") {
+        skipped.push({ name, reason: converted });
+        continue;
+      }
+      // Beside the destination, so the final rename stays on one filesystem.
+      staging ??= await mkdtemp(join(parent, `.${folderName}-`));
+      await write(join(staging, name), converted);
+      files.push(name);
+    }
+    if (!staging) return { status: "unconverted", skipped };
+    // The author may have made the folder while the images were converting.
+    if (await pathExists(destination)) throw folderExists(folderName);
+    await rename(staging, destination);
+  } catch (error) {
+    if (staging) await rm(staging, { recursive: true, force: true }).catch(() => {});
+    throw publicationFailure(error, folderName);
+  }
+  await syncDirectory(parent);
+  return { status: "saved", folder: destination, files, skipped };
+}
+
+/** The JPEG bytes for one image, or the reason it was skipped. */
+async function convertToJpeg(
+  bookId: string,
+  record: ImageRecord,
+  images: DocxImageSource,
+  transcode: ImageExportDeps["transcode"]
+): Promise<Uint8Array | string> {
+  let stored: StoredImage | null;
+  try {
+    stored = await images.readImage(bookId, record.id);
+  } catch (error) {
+    // The store's messages already name the file and say what is wrong with it.
+    if (error instanceof LibraryError || error instanceof LibraryPortError) return error.message;
+    console.warn("[export] Skipping an unreadable image:", (error as Error).message);
+    return "The image file could not be read.";
+  }
+  if (!stored) return "The image is no longer in this book's image list.";
+  if (isJpeg(stored.bytes)) return stored.bytes;
+  try {
+    const jpeg = await transcode(stored.bytes);
+    if (jpeg && isJpeg(jpeg)) return jpeg;
+  } catch (error) {
+    console.warn("[export] Could not convert an image:", (error as Error).message);
+  }
+  return `The ${FORMAT_NAMES[record.mimeType]} image could not be converted to JPEG.`;
+}
+
+/** True when the new folder would land in the library, by path or once symlinks are resolved. */
+async function destinationInsideLibrary(libraryRoot: string, parent: string, folderName: string): Promise<boolean> {
+  if (isInsideLibrary(libraryRoot, join(parent, folderName))) return true;
+  const [root, folder] = await Promise.all([
+    realpath(libraryRoot).catch(() => null),
+    realpath(parent).catch(() => null)
+  ]);
+  return root !== null && folder !== null && isInsideLibrary(root, join(folder, folderName));
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+function folderExists(folderName: string): LibraryError {
+  return new LibraryError(
+    "invalid",
+    `“${folderName}” already exists in that folder. Choose another folder, or rename the existing one first. Nothing was written.`
+  );
+}
+
+function publicationFailure(error: unknown, folderName: string): LibraryError {
+  if (error instanceof LibraryError) return error;
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "EEXIST" || code === "ENOTEMPTY") return folderExists(folderName);
+  console.warn("[export] The images could not be written:", (error as Error | undefined)?.message);
+  const reason =
+    code === "EACCES" || code === "EPERM" || code === "EROFS"
+      ? "The studio is not allowed to write in that folder."
+      : code === "ENOSPC"
+        ? "The disk is full."
+        : "The images could not be written to that folder.";
+  return new LibraryError("io", `${reason} Nothing was written.`);
+}
+
+/** Makes the final rename durable. Best effort, as in writeFileAtomic: not every filesystem allows it. */
+async function syncDirectory(path: string): Promise<void> {
+  try {
+    const handle = await open(path, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // The files themselves are already durable.
+  }
 }

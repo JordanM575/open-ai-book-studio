@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Images, Trash2 } from "lucide-react";
+import type { ImageExportNote, ImageExportResult } from "@ai-book-studio/core/ipc";
 import type { BookMeta, BookSummary } from "@ai-book-studio/core/schema";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
-import { must } from "../lib/utils";
+import { formatCount, must } from "../lib/utils";
 
 interface Props {
   book: BookSummary | null;
@@ -13,18 +14,53 @@ interface Props {
   onNotice: (error: unknown) => void;
 }
 
+interface ExportNote {
+  message: string;
+  skipped: ImageExportNote[];
+}
+
+/** What the author reads after an image export. A cancelled picker says nothing. */
+function describeImageExport(result: ImageExportResult): ExportNote | null {
+  switch (result.status) {
+    case "cancelled":
+      return null;
+    case "empty":
+      return { message: "This book has no images yet. Nothing was exported.", skipped: [] };
+    case "unconverted":
+      return { message: "None of the images could be converted to JPEG. Nothing was written.", skipped: result.skipped };
+    case "saved": {
+      const count = result.files.length;
+      const folder = result.folder.split(/[\\/]/).pop() ?? result.folder;
+      const skipped = result.skipped.length > 0 ? ` · ${formatCount(result.skipped.length)} skipped` : "";
+      return {
+        message: `Saved ${formatCount(count)} ${count === 1 ? "image" : "images"} to ${folder}${skipped}`,
+        skipped: result.skipped
+      };
+    }
+  }
+}
+
 export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNotice }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<ExportNote | null>(null);
+  // The book on screen, so an export that finishes after the dialog closed or moved on leaves its note out.
+  const shown = useRef<string | null>(null);
+  // Image export writes files through the main process, which the browser build does not have.
+  const canExportImages = window.studio.platform !== "web";
 
   useEffect(() => {
+    shown.current = book?.id ?? null;
     if (!book) return;
     setTitle(book.title);
     setDescription(book.description ?? "");
     setBusy(false);
     setConfirming(false);
+    setExporting(false);
+    setExportNote(null);
   }, [book]);
 
   const save = async (): Promise<void> => {
@@ -53,17 +89,42 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
     }
   };
 
+  const exportImages = async (): Promise<void> => {
+    if (!book || busy || exporting) return;
+    const bookId = book.id;
+    setExporting(true);
+    setExportNote(null);
+    try {
+      const result = await must(window.studio.books.exportImages(bookId));
+      if (shown.current === bookId) setExportNote(describeImageExport(result));
+    } catch (error) {
+      // The studio's notice outlives the dialog, and a refusal names the folder, so it always reports.
+      onNotice(error);
+    } finally {
+      if (shown.current === bookId) setExporting(false);
+    }
+  };
+
   return (
     <Dialog open={book !== null} onOpenChange={onOpenChange}>
       <DialogContent
         title="Book settings"
-        description="Rename this book, or move the whole folder to the library trash."
+        description={
+          canExportImages
+            ? "Rename this book, export its images, or move the whole folder to the library trash."
+            : "Rename this book, or move the whole folder to the library trash."
+        }
         footer={
           <DialogFooter className="mt-0">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={() => void save()} disabled={!title.trim() || busy} data-testid="save-book-settings">
+            <Button
+              variant="primary"
+              onClick={() => void save()}
+              disabled={!title.trim() || busy || exporting}
+              data-testid="save-book-settings"
+            >
               Save changes
             </Button>
           </DialogFooter>
@@ -96,6 +157,46 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
             />
           </label>
 
+          {canExportImages ? (
+            <section className="rounded-[var(--corner-lg)] border border-border p-4">
+              <h3 className="text-[var(--text-callout-size)] font-medium">Images</h3>
+              <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+                Save every picture in this book as a JPEG, in a new folder you choose. The manuscript is not
+                included.
+              </p>
+              <Button
+                variant="ghost"
+                className="mt-2"
+                onClick={() => void exportImages()}
+                disabled={busy || exporting}
+                data-testid="export-images"
+              >
+                <Images size={15} />
+                {exporting ? "Exporting…" : "Export images"}
+              </Button>
+              <div
+                role="status"
+                data-testid="export-images-note"
+                className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)]"
+              >
+                {exportNote ? (
+                  <>
+                    <p className="mt-2">{exportNote.message}</p>
+                    {exportNote.skipped.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                        {exportNote.skipped.map((note) => (
+                          <li key={note.name}>
+                            <span className="font-mono text-[12px]">{note.name}</span> · {note.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
           <section className="rounded-[var(--corner-lg)] border border-border p-4">
             <h3 className="text-[var(--text-callout-size)] font-medium">Delete this book</h3>
             <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
@@ -104,7 +205,7 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
             </p>
             {confirming ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="danger" onClick={() => void remove()} disabled={busy} data-testid="confirm-delete-book">
+                <Button variant="danger" onClick={() => void remove()} disabled={busy || exporting} data-testid="confirm-delete-book">
                   {busy ? "Moving…" : "Delete book"}
                 </Button>
                 <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
@@ -116,6 +217,7 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
                 variant="ghost"
                 className="mt-2 text-[var(--destructive-text)]"
                 onClick={() => setConfirming(true)}
+                disabled={exporting}
                 data-testid="delete-book"
               >
                 <Trash2 size={15} />

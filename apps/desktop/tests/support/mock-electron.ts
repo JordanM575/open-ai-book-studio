@@ -56,6 +56,7 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
       handle: (channel: string, handler: Handler) => current.hooks.handle?.(channel, handler)
     },
     Menu: {},
+    nativeImage: { createFromBuffer: () => ({ isEmpty: () => true }) },
     Notification: { isSupported: () => false },
     safeStorage: {
       isAsyncEncryptionAvailable: () => current.hooks.safeStorage?.isAsyncEncryptionAvailable() ?? false,
