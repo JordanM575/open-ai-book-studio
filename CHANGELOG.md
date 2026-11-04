@@ -246,6 +246,22 @@ Update the `Unreleased` section before every commit.
   keep-mine, open-both and export actions, and the Settings section shows the device, last scan and
   interval. Own saves, trash moves, threads and images note themselves into the sync baseline so
   they never report as someone else's edit. D-120 stays proposed.
+- Component tests for the writing agent's shadcn/ui and AI Elements parts (D-185), in
+  `apps/desktop/tests/chat-elements.test.tsx` and `chat-tools.test.tsx`. They cover what the author
+  sees:
+  - a tool step while it runs, once it is done and when it fails, and its detail opening in place;
+  - the checkpoint that undoes a turn, and its hint on keyboard focus;
+  - Allow and Deny only while a confirmation waits;
+  - the context card's share, its bar, and a tap that opens and closes it;
+  - the composer's Enter, Shift Enter, Stop and footer click;
+  - the Message Scroller following a reply, keeping the author's place, and returning to the end;
+  - the Badge, Native Select and Switch.
+
+  With the unused copied code deleted, coverage over the repository's own files (216 before, 214
+  after) rose from 91.05% to 93.59% of lines and from 87.31% to 90.91% of functions. The floor is
+  unchanged. The Story Bible's visual baselines at 1440 points now show the arc sections' chevrons;
+  the migration had re-accepted only the 744-point captures, so the wider ones still drew the old ▶
+  markers (779 to 790 pixels, under the threshold).
 
 ### Changed
 

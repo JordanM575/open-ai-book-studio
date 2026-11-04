@@ -47,6 +47,9 @@
       ambient panel use Switch, Native Select, Collapsible and Badge. The web bundle is 1.19 times the
       SC-009 perf baseline, under its 1.2 limit. Only the chat captures
       and the 744-pixel Settings and Story Bible captures were re-accepted, each after locating its diff.
+      The re-land also re-accepted the 1440-pixel Story Bible captures, whose arc markers had become
+      chevrons (790 pixels), and replaced `@shadcn/react`'s Message Scroller primitive with the studio's
+      own so the bundle stays under the limit.
 
 ## Phase 4 — Web target
 
