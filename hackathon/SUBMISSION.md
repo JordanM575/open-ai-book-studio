@@ -138,17 +138,17 @@ placeholder.
 | Submission check | `bun run submission:check` | `<ready · commits · tracked files>` |
 | Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | `<commit, packages, results>` |
 
-**Latest re-check (2026-11-03, the working tree before the event commits):**
+**Latest re-check (2026-11-04, commit `9babe12`):**
 
 | Check | Result |
 | --- | --- |
-| `bun run verify` | Pass: 1,387 tests, 0 failures; lint, typecheck, the quarantine and waiver ledgers, and both builds |
-| Smoke | 30/30 |
-| e2e | 8/8 |
+| `bun run verify` | Pass: 1,567 tests, 0 failures; lint, typecheck, the quarantine and waiver ledgers, and both builds |
+| Smoke | 34/34 |
+| e2e | 10/10 |
 | `ui:audit` | Pass |
 | Accessibility | No critical or serious findings, and focus order held |
 | Visual | 112/112 baselines |
-| Coverage | 83.63% of functions and 90.13% of lines, **below the 85/92 floor**. Whether to change the floor is an open decision, and the gate stays red until it is made. |
+| Coverage | 90.70% of functions and 93.27% of lines over the repository's own files, above the 85/92 floor, which is unchanged |
 
 An earlier clean-clone pass on 2026-10-26 (`8a42620`, 568 tests) is superseded by the event commits.
 

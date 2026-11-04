@@ -160,6 +160,8 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The submission packet's latest re-check now shows the current numbers: 1,567 tests, smoke 34/34,
+  e2e 10/10, and coverage of 90.70% of functions and 93.27% of lines, above the unchanged floor.
 - The submission packet's list of event work now includes Word import, the generated open-source
   licenses, and the end-to-end checks of the toolkit and offline writing.
 - Decisions accepted on the author's delegation (2026-11-03). D-108 chooses the export renderers: PDF
