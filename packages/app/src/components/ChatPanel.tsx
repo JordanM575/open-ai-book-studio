@@ -59,6 +59,8 @@ import {
 interface Props {
   bookId: string;
   chapterId: string | null;
+  /** Open this conversation instead of the newest, as a window reopened after a background turn does. */
+  openThreadId?: string | null | undefined;
   onClose: () => void;
   onBeforeSend: () => Promise<void>;
   onChanged: () => Promise<void> | void;
@@ -114,6 +116,7 @@ function ToolDot({ status }: { status: ReturnType<typeof toolStatus> }) {
 export function ChatPanel({
   bookId,
   chapterId,
+  openThreadId,
   onClose,
   onBeforeSend,
   onChanged,
@@ -168,8 +171,8 @@ export function ChatPanel({
     setMessages((current) => current.map((message) => (message.id === id ? patch(message) : message)));
   }, []);
 
-  // Load the newest stored conversation for this book. A send cancels this read so it cannot
-  // overwrite a turn the author already started.
+  // Load the requested conversation, or else the newest stored one for this book. A send cancels
+  // this read so it cannot overwrite a turn the author already started.
   useEffect(() => {
     const token = ++loadToken.current;
     setThreadId(null);
@@ -177,10 +180,9 @@ export function ChatPanel({
     setCheckpointTurns([]);
     void (async () => {
       try {
-        const threads = await must(window.studio.agent.threads.list(bookId));
-        const latest = threads[0];
-        if (!latest || token !== loadToken.current) return;
-        const thread = await must(window.studio.agent.threads.read(bookId, latest.id));
+        const id = openThreadId ?? (await must(window.studio.agent.threads.list(bookId)))[0]?.id;
+        if (!id || token !== loadToken.current) return;
+        const thread = await must(window.studio.agent.threads.read(bookId, id));
         if (!thread || token !== loadToken.current) return;
         const checkpointTurn = thread.checkpointTurns.at(-1);
         setThreadId(thread.id);
@@ -193,7 +195,7 @@ export function ChatPanel({
     return () => {
       loadToken.current += 1;
     };
-  }, [bookId]);
+  }, [bookId, openThreadId]);
 
   const startNew = (): void => {
     if (running) return;

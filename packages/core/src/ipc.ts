@@ -256,6 +256,18 @@ export interface DriftEvent {
 export const SECOND_INSTANCE_EVENT_CHANNEL = "app:second-instance";
 
 /**
+ * Main process to renderer: a window the studio made after a background turn ended with no window
+ * open opens on that turn's conversation (spec 017 FR-012). The main process checks the ids with
+ * `agentConversationRefSchema` before it sends them.
+ */
+export const OPEN_CONVERSATION_EVENT_CHANNEL = "app:open-conversation";
+
+export interface OpenConversationEvent {
+  bookId: string;
+  threadId: string;
+}
+
+/**
  * Main process to renderer: a close or quit is about to save the drafts, so the open editor saves
  * its newest text first. The preload bridge answers on `IPC.drafts.flushed` with the same id.
  */
@@ -359,6 +371,11 @@ export interface StudioApi {
      * the library. Returns an unsubscribe.
      */
     onSecondInstance(callback: () => void): () => void;
+    /**
+     * Notifies when this window should open a book's conversation: a background turn finished,
+     * failed or paused while no window was open. Returns an unsubscribe.
+     */
+    onOpenConversation(callback: (target: OpenConversationEvent) => void): () => void;
     /** Opens an allow-listed page in the system browser. The main process refuses any other address. */
     openLink(url: ExternalLink): Promise<Result<null>>;
   };

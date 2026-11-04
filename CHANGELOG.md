@@ -391,6 +391,22 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Reopening the studio after a background turn opens that book with the writing agent on the turn's
+  conversation, instead of on the library (017 FR-012). When a turn finishes, fails or stops for your
+  approval while no window is open, the main process remembers its book and conversation. The next
+  window it makes, from the notification's click or the dock, opens on them once, over a new
+  `app:open-conversation` event whose ids are checked with Zod before they are sent. A window opened
+  with nothing waiting still opens on the library. The dock now looks for the studio's own window
+  rather than any window, so a hidden PDF export window no longer stops it reopening. The agent
+  check (`bun run e2e agent`) now closes the window during a background turn and reopens it from the
+  dock on the built app.
+- After a turn, "Review changes" no longer lists the agent's own undo checkpoints
+  (`books/<id>/.studio/checkpoints/…`) as new files (016 FR-005). The checkpoint store wrote them beside
+  the library service and never told this device's sync baseline. Each checkpoint the studio writes or
+  removes is now noted as its own, like a chapter, a conversation or an image. The notes also take
+  turns: two at once, as when a turn's tool calls finish together, used to drop one another's paths.
+  A file another device or editor changes is still listed. Checkpoints written before this fix were
+  never noted, so a library that has them lists them once more, until you keep the disk version.
 - A refused or unreachable connection (`ECONNREFUSED`, `ENETUNREACH`, `EHOSTUNREACH`, `ECONNRESET`)
   now reads as offline, with the offline note, instead of "The provider's content policy declined this
   request". The refusal pattern matched "ECONNREFUSED".

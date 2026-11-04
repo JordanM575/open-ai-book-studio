@@ -61,8 +61,10 @@ import {
   acceptDriftPaths,
   journalForScan,
   noteMovedPrefix,
+  noteRemovedFiles,
   noteWrittenFiles,
   readSyncJournal,
+  updateSyncJournal,
   writeSyncJournal
 } from "../sync/journal";
 import { scanLibrary } from "../sync/scan";
@@ -163,17 +165,19 @@ export class LibraryService {
    * journal file exists at all: a corrupt, foreign or newer journal is left alone for the author
    * to review and rebuild through `acceptDrift`. Returns whether a baseline was written.
    */
-  async establishBaseline(): Promise<boolean> {
+  establishBaseline(): Promise<boolean> {
     const { storage } = this.env;
-    const existing = await storage.readFile(syncJournalPath(this.device.id));
-    if (existing) return false;
-    const { files } = await scanLibrary(storage);
-    const now = this.env.runtime.now();
-    await writeSyncJournal(
-      storage,
-      journalForScan({ deviceId: this.device.id, previous: null, files, now })
-    );
-    return true;
+    return updateSyncJournal(storage, async () => {
+      const existing = await storage.readFile(syncJournalPath(this.device.id));
+      if (existing) return false;
+      const { files } = await scanLibrary(storage);
+      const now = this.env.runtime.now();
+      await writeSyncJournal(
+        storage,
+        journalForScan({ deviceId: this.device.id, previous: null, files, now })
+      );
+      return true;
+    });
   }
 
   async checkDrift(dirtyChapterIds?: Iterable<string>): Promise<DriftReport> {
@@ -189,13 +193,26 @@ export class LibraryService {
    * paths change: accepting one change never reviews another. Call after the author has reviewed
    * the report, never during detection.
    */
-  async acceptDrift(paths: string[]): Promise<DriftReport> {
-    const { files } = await scanLibrary(this.env.storage);
-    const previous = await readSyncJournal(this.env.storage, this.device.id);
+  acceptDrift(paths: string[]): Promise<DriftReport> {
+    return updateSyncJournal(this.env.storage, async () => {
+      const { files } = await scanLibrary(this.env.storage);
+      const previous = await readSyncJournal(this.env.storage, this.device.id);
+      const now = this.env.runtime.now();
+      const next = acceptDriftPaths({ deviceId: this.device.id, previous, files, accept: paths, now });
+      await writeSyncJournal(this.env.storage, next);
+      return detectDrift({ journal: next, files, now });
+    });
+  }
+
+  /**
+   * Note files this device wrote or removed beside the service, such as an agent turn's undo
+   * checkpoints, in its sync baseline, so the next drift scan reads them as its own. Archive-form
+   * paths. Best-effort, like every other note: a failed note leaves a reviewable report.
+   */
+  async noteOwnFiles(files: { written?: string[]; removed?: string[] }): Promise<void> {
     const now = this.env.runtime.now();
-    const next = acceptDriftPaths({ deviceId: this.device.id, previous, files, accept: paths, now });
-    await writeSyncJournal(this.env.storage, next);
-    return detectDrift({ journal: next, files, now });
+    await noteWrittenFiles({ storage: this.env.storage, deviceId: this.device.id, paths: files.written ?? [], now });
+    await noteRemovedFiles({ storage: this.env.storage, deviceId: this.device.id, paths: files.removed ?? [], now });
   }
 
   /* -------------------------------------------------------------------- books */

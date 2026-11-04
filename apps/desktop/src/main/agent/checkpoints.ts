@@ -4,6 +4,7 @@ import { unlink } from "node:fs/promises";
 import type { ChapterMeta } from "@ai-book-studio/core/schema";
 import { writeFileAtomic } from "../library/atomic";
 import { noteOwnRemoval } from "../library/own-writes";
+import type { Library } from "../library/store";
 
 /** The chapter details a turn can change and undo puts back. Order, version and dates are not among them. */
 export type CheckpointMeta = Pick<ChapterMeta, "title" | "synopsis" | "purpose" | "notes" | "arc" | "color" | "isPrologue">;
@@ -134,24 +135,35 @@ export function recordChange(entries: CheckpointEntry[], change: CheckpointChang
 }
 
 /**
+ * Where a store writes: the open library, whose sync baseline also learns of every checkpoint the
+ * store writes or removes, or a bare library folder, which has no baseline to tell.
+ */
+export type CheckpointLibrary = string | Pick<Library, "root" | "noteOwnFiles">;
+
+/**
  * A turn's restore point. Every time the agent changes a chapter, the turn's checkpoint is written
  * again, whole and under the same file name, so it always holds the text each changed chapter had
  * before the turn first wrote it. One checkpoint per turn keeps undo predictable and bounded.
+ *
+ * A checkpoint lives under `books/`, where the drift scan looks, but is written beside the library
+ * service. So each write and removal is noted in this device's sync baseline as its own; otherwise
+ * the next scan would list the turn's checkpoint as a file someone else added.
  */
 export class CheckpointStore {
-  constructor(private readonly libraryRoot: string | (() => string | null)) {}
+  constructor(private readonly library: CheckpointLibrary | (() => CheckpointLibrary | null)) {}
 
   async save(checkpoint: TurnCheckpoint): Promise<string> {
-    const dir = this.dir(checkpoint.bookId);
+    const { dir, library } = this.folder(checkpoint.bookId);
     await mkdir(dir, { recursive: true });
     const stamp = checkpoint.at.replace(/[:.]/g, "-");
     const file = `${stamp}-${checkpoint.turnId}.json`;
     await writeFileAtomic(join(dir, file), `${JSON.stringify(checkpoint, null, 2)}\n`);
+    await noteOwn(library, { written: [archivePath(checkpoint.bookId, file)] });
     return file;
   }
 
   async latest(bookId: string): Promise<LoadedCheckpoint | null> {
-    const dir = this.dir(bookId);
+    const { dir } = this.folder(bookId);
     let names: string[];
     try {
       names = await readdir(dir);
@@ -172,17 +184,38 @@ export class CheckpointStore {
 
   async remove(bookId: string, file: string): Promise<void> {
     if (file.includes("/") || file.includes("\\")) return;
-    const path = join(this.dir(bookId), file);
-    await unlink(path).then(
-      () => noteOwnRemoval(path),
-      () => {}
+    const { dir, library } = this.folder(bookId);
+    const path = join(dir, file);
+    const removed = await unlink(path).then(
+      () => true,
+      () => false
     );
+    if (!removed) return;
+    noteOwnRemoval(path);
+    await noteOwn(library, { removed: [archivePath(bookId, file)] });
   }
 
-  private dir(bookId: string): string {
+  /** The book's checkpoint folder, and the library it belongs to. */
+  private folder(bookId: string): { dir: string; library: CheckpointLibrary } {
     if (!BOOK_ID.test(bookId)) throw new Error("Invalid book id.");
-    const root = typeof this.libraryRoot === "function" ? this.libraryRoot() : this.libraryRoot;
-    if (!root) throw new Error("No library is open.");
-    return join(root, "books", bookId, ".studio", "checkpoints");
+    const library = typeof this.library === "function" ? this.library() : this.library;
+    if (!library) throw new Error("No library is open.");
+    const root = typeof library === "string" ? library : library.root;
+    return { dir: join(root, "books", bookId, ".studio", "checkpoints"), library };
+  }
+}
+
+/** A checkpoint's path as the sync baseline keys it: library-relative, with `/` separators. */
+function archivePath(bookId: string, file: string): string {
+  return `books/${bookId}/.studio/checkpoints/${file}`;
+}
+
+/** Best-effort, like every baseline note: a failed note leaves a reviewable report, never a failed save. */
+async function noteOwn(library: CheckpointLibrary, files: { written?: string[]; removed?: string[] }): Promise<void> {
+  if (typeof library === "string") return;
+  try {
+    await library.noteOwnFiles(files);
+  } catch {
+    // The next scan lists the checkpoint, and the author can keep it.
   }
 }

@@ -23,18 +23,19 @@ export interface SignalTarget {
   isDestroyed(): boolean;
   isLoading(): boolean;
   once(event: "did-stop-loading", listener: () => void): unknown;
-  send(channel: string): void;
+  send(channel: string, ...args: unknown[]): void;
 }
 
 /**
- * Send a signal the page can hear. A window that was created a moment ago, or is reloading, gets it
- * once loading stops, when the preload is listening; a closed window gets nothing. It waits for
- * `did-stop-loading` rather than `did-finish-load` because `isLoading()` is still true for a moment
- * after `did-finish-load`, and a signal arriving then would wait for a load that has already finished.
+ * Send a signal the page can hear, with anything it carries. A window that was created a moment
+ * ago, or is reloading, gets it once loading stops, when the preload is listening; a closed window
+ * gets nothing. It waits for `did-stop-loading` rather than `did-finish-load` because `isLoading()`
+ * is still true for a moment after `did-finish-load`, and a signal arriving then would wait for a
+ * load that has already finished.
  */
-export function sendWhenLoaded(contents: SignalTarget, channel: string): void {
+export function sendWhenLoaded(contents: SignalTarget, channel: string, ...args: unknown[]): void {
   const send = (): void => {
-    if (!contents.isDestroyed()) contents.send(channel);
+    if (!contents.isDestroyed()) contents.send(channel, ...args);
   };
   if (contents.isLoading()) contents.once("did-stop-loading", send);
   else send();

@@ -176,7 +176,7 @@ export class ToolBridge {
     request: ToolRunRequest,
     changes: CheckpointEntry[]
   ): Promise<void> {
-    const store = new CheckpointStore(() => library.root);
+    const store = new CheckpointStore(library);
     // `recordChange` already folded the changes into entries and dropped what the tools only compare.
     await store.save({
       turnId: `tool_${request.name}_${Date.now()}`,

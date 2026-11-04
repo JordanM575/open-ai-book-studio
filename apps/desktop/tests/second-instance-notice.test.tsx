@@ -28,7 +28,8 @@ function mockStudio() {
         return () => {
           listeners.delete(callback);
         };
-      }
+      },
+      onOpenConversation: () => () => {}
     },
     library: { current: async () => ({ ok: true, data: null }) },
     sync: { onDrift: () => () => {} },

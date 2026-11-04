@@ -80,6 +80,11 @@ export class Library {
     return this.service.acceptDrift(paths);
   }
 
+  /** Note files the studio wrote or removed beside the service, such as turn checkpoints, as this device's own. */
+  noteOwnFiles(files: { written?: string[]; removed?: string[] }): Promise<void> {
+    return this.service.noteOwnFiles(files);
+  }
+
   listBooks(): Promise<BookSummary[]> {
     return this.service.listBooks();
   }

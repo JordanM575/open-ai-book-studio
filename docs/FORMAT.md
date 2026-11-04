@@ -162,7 +162,9 @@ writes use the library port's checked commit, so a failed write leaves the previ
 file again, whole and atomically, each time it changes a chapter and before the tool answers the
 model. A change made after an approval is covered as fully as one made before it. A turn has at most
 one file; undo restores from the newest file, then removes it and takes its turn out of every
-conversation's `checkpointTurns` (see [Conversation files](#conversation-files)).
+conversation's `checkpointTurns` (see [Conversation files](#conversation-files)). Each write and removal
+is noted in this device's sync journal (see [Sync journals](#sync-journals)), so a drift scan does not
+list the studio's own checkpoints; one written or removed by another device is still listed.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -259,7 +261,10 @@ its `book.json`, chapters, conflicts and checkpoints, so restoring is a move bac
 
 `.studio/sync/<deviceId>.json` is this device's baseline for drift detection: the last observed hash of
 each author-owned file, the hash this device last wrote, and tombstones for deletions. It is written
-after a reviewed scan, never during one. It contains no prose or credentials, is excluded from portable
+after a reviewed scan, never during one. The chapters, conversations, images and agent checkpoints
+the studio writes or removes are noted in it as this device's own, so a scan does not list them. A
+conflict copy is not, because the save that made it still needs the author's review. Notes take
+turns, so two made at once both land. It contains no prose or credentials, is excluded from portable
 archives, and is safe to delete; the next scan rebuilds it by comparing the files and warns that it had
 no baseline. A journal copied from another device is ignored by its device id.
 

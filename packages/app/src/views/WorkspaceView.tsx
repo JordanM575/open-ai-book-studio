@@ -48,6 +48,13 @@ export interface ChapterRequest {
   revert: boolean;
 }
 
+/** Open the writing agent on one conversation, as a window reopened after a background turn does. */
+export interface ConversationRequest {
+  bookId: string;
+  threadId: string;
+  nonce: number;
+}
+
 interface Props {
   bookId: string;
   theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void; cycle: () => void };
@@ -56,6 +63,8 @@ interface Props {
   deviceName?: string | null | undefined;
   chapterRequest?: ChapterRequest | null | undefined;
   onChapterRequestHandled?: (() => void) | undefined;
+  conversationRequest?: ConversationRequest | null | undefined;
+  onConversationRequestHandled?: (() => void) | undefined;
   onCheckForChanges?: (() => Promise<{ dirty: boolean }>) | undefined;
   onBack: () => void;
   onNotice: (error: unknown) => void;
@@ -104,12 +113,15 @@ export function WorkspaceView({
   deviceName,
   chapterRequest,
   onChapterRequestHandled,
+  conversationRequest,
+  onConversationRequestHandled,
   onCheckForChanges,
   onBack,
   onNotice,
   onSchemaRefusal
 }: Props) {
   const handledRequest = useRef<number | null>(null);
+  const handledConversation = useRef<number | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<SaveStatus>(EMPTY_STATUS);
@@ -128,6 +140,9 @@ export function WorkspaceView({
   const [illustrationData, setIllustrationData] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  // The conversation the agent opens on when a request asked for one; otherwise the newest.
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
+  const chatWasOpen = useRef(chatOpen);
   const [agentOpen, setAgentOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -288,6 +303,22 @@ export function WorkspaceView({
       }
     })();
   }, [chapterRequest, bookId, load, onNotice, onChapterRequestHandled]);
+
+  // A window reopened after a background turn opens the agent on that turn's conversation. Runs once
+  // per request; once the author closes the panel, opening it again shows the newest conversation.
+  useEffect(() => {
+    if (!conversationRequest || conversationRequest.bookId !== bookId) return;
+    if (handledConversation.current === conversationRequest.nonce) return;
+    handledConversation.current = conversationRequest.nonce;
+    setChatThreadId(conversationRequest.threadId);
+    setChatOpen(true);
+    onConversationRequestHandled?.();
+  }, [conversationRequest, bookId, onConversationRequestHandled]);
+
+  useEffect(() => {
+    if (chatWasOpen.current && !chatOpen) setChatThreadId(null);
+    chatWasOpen.current = chatOpen;
+  }, [chatOpen]);
 
   const addChapter = async (): Promise<void> => {
     if (busy) return;
@@ -1001,6 +1032,7 @@ export function WorkspaceView({
             className="chat-sheet"
             bookId={bookId}
             chapterId={selectedId}
+            openThreadId={chatThreadId}
             onClose={() => setChatOpen(false)}
             onBeforeSend={async () => {
               await editorRef.current?.flush();

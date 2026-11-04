@@ -4,6 +4,7 @@ import {
   DRAFT_FLUSH_CHANNEL,
   IPC,
   LIBRARY_EVENT_CHANNEL,
+  OPEN_CONVERSATION_EVENT_CHANNEL,
   SECOND_INSTANCE_EVENT_CHANNEL,
   SYNC_EVENT_CHANNEL,
   type AgentEvent,
@@ -13,6 +14,7 @@ import {
   type DraftInput,
   type DriftEvent,
   type LibraryChangeEvent,
+  type OpenConversationEvent,
   type SaveChapterInput,
   type StudioApi
 } from "@ai-book-studio/core/ipc";
@@ -30,6 +32,10 @@ function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 const secondInstance = createHeldSignal();
 ipcRenderer.on(SECOND_INSTANCE_EVENT_CHANNEL, () => secondInstance.emit());
 
+// So can the conversation a window made after a background turn opens on.
+const openConversation = createHeldSignal<OpenConversationEvent>();
+ipcRenderer.on(OPEN_CONVERSATION_EVENT_CHANNEL, (_event, target: OpenConversationEvent) => openConversation.emit(target));
+
 // A close or quit asks for the editor's newest text before it saves the drafts; always answered.
 const flushRequests = createFlushRequests((requestId) => {
   void invoke(IPC.drafts.flushed, requestId).catch(() => {});
@@ -43,6 +49,7 @@ const api: StudioApi = {
     info: () => invoke(IPC.app.info),
     licenses: () => invoke(IPC.app.licenses),
     onSecondInstance: (callback) => secondInstance.subscribe(callback),
+    onOpenConversation: (callback) => openConversation.subscribe(callback),
     openLink: (url) => invoke(IPC.app.openLink, url)
   },
   library: {

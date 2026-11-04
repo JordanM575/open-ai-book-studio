@@ -28,6 +28,7 @@ import { VoiceService } from "./voice";
 import { SpeechService } from "./speech";
 import { SettingsStore } from "./settings";
 import { claimsSingleInstanceLock, sendWhenLoaded } from "./instance";
+import { StudioWindows } from "./windows";
 import { Studio } from "./studio";
 import { runSmoke } from "./smoke";
 import { runLiveCheckInApp, sampleLibraryPath } from "./live-check";
@@ -307,17 +308,19 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
+/*
+ * The notification's click, a second copy and the dock all bring back the one window, or make it
+ * again. A window made after a background turn ended with no window open opens on its conversation.
+ */
+const windows = new StudioWindows({
+  current: () => mainWindow,
+  create: () => (mainWindow = createWindow()),
+  headless
+});
+
 /** Bring back the existing window, or recreate it after a background notification or a second copy. */
 function showStudioWindow(): void {
-  if (mainWindow) {
-    // A hidden test window must never surface; it still hears what it is sent.
-    if (headless) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-    return;
-  }
-  mainWindow = createWindow();
+  windows.show();
 }
 
 function parseWindowSize(value: string | undefined): { width: number; height: number } | null {  if (!value) return null;
@@ -472,7 +475,10 @@ const started = app.whenReady().then(async () => {
       mainWindow?.webContents.send(AGENT_EVENT_CHANNEL, event);
     },
     undefined,
-    (outcome) => notifier.handle(outcome),
+    (outcome) => {
+      windows.noteOutcome(outcome);
+      notifier.handle(outcome);
+    },
     () => settings.get().pluginFolder ?? null,
     metrics
   );
@@ -535,7 +541,8 @@ const started = app.whenReady().then(async () => {
 
   app.on("activate", () => {
     notifier?.clearBadge();
-    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
+    // The studio's own window, not any window: a hidden PDF export window is not one to come back to.
+    windows.activate();
   });
 });
 

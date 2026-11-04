@@ -8,7 +8,9 @@
  * script starts on 127.0.0.1. The server plays the model: it reads the chapter, appends a sentence
  * and replies, and later asks to overwrite the chapter, which must wait for approval. The check
  * reads what happened from the library on disk: the chapter and its version, the stored
- * conversation, the usage line and the undo. Then it proves the fake was the only place a request
+ * conversation, the usage line and the undo. A background turn then finishes after the window has
+ * closed, and the window the dock makes again opens on that conversation, with no review of the
+ * studio's own files over it (017 FR-012). Last, it proves the fake was the only place a request
  * went, and that the key is in no file and no log line.
  *
  * A hidden window is never visible, so a finished turn would post a real desktop notification. The
@@ -51,8 +53,11 @@ const SENTENCE = "At midnight the lamp turned once, as if someone below had reme
 const SHORT_VERSION = "The lamp turned once at midnight, and the keeper wrote it down.";
 const TURN_ONE = "Read the opening chapter and add one sentence about the lamp at the end.";
 const TURN_TWO = "Replace the whole opening chapter with the short version.";
+const TURN_THREE = "Keep going while I am away: add one line about the gulls.";
 const REPLY_ONE = "I read “The Light” and added one sentence about the lamp at the end.";
 const REPLY_TWO = "I replaced “The Light” with the short version you approved.";
+const GULLS = "By morning the gulls had settled, and the count finally held.";
+const REPLY_THREE = "The scene is ready. I added one line about the gulls to “The Light”.";
 
 /** What the fake reports for each scripted step; the turn's usage must be their sum. */
 const USAGE = {
@@ -60,7 +65,9 @@ const USAGE = {
   append: { prompt: 260, completion: 38 },
   reply: { prompt: 310, completion: 22 },
   overwrite: { prompt: 300, completion: 60 },
-  approved: { prompt: 360, completion: 18 }
+  approved: { prompt: 360, completion: 18 },
+  background: { prompt: 280, completion: 30 },
+  "background reply": { prompt: 330, completion: 20 }
 };
 const TURN_ONE_STEPS = ["read", "append", "reply"];
 const sum = (steps, field) => steps.reduce((total, step) => total + USAGE[step][field], 0);
@@ -161,6 +168,11 @@ function toolNameFor(messages, callId) {
 function nextStep(messages, chapterId) {
   const last = messages.at(-1);
   if (!chapterId) return { step: "before the chapter existed" };
+  const asked = textOf(messages.findLast((message) => message?.role === "user")?.content);
+  if (asked.includes(TURN_THREE)) {
+    if (last?.role === "user") return toolCall("background", "append_to_chapter", { chapterId, text: GULLS });
+    if (last?.role === "tool") return reply("background reply", REPLY_THREE);
+  }
   if (last?.role === "tool") {
     const name = toolNameFor(messages, last.tool_call_id);
     if (name === "read_chapter") return toolCall("append", "append_to_chapter", { chapterId, text: SENTENCE });
@@ -190,11 +202,12 @@ function sendJson(response, status, body) {
  */
 async function startFakeProvider() {
   const requests = [];
-  const state = { chapterId: null };
+  // `hold`, while set, keeps the background turn's first answer back, so the window can close first.
+  const state = { chapterId: null, hold: null };
   const server = createServer((request, response) => {
     const chunks = [];
     request.on("data", (part) => chunks.push(part));
-    request.on("end", () => {
+    request.on("end", async () => {
       const body = Buffer.concat(chunks);
       const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
       const authorization = request.headers.authorization;
@@ -234,6 +247,7 @@ async function startFakeProvider() {
           sendJson(response, 500, { error: { message: `The fake provider has no script ${scripted.step}.` } });
           return;
         }
+        if (scripted.step === "background" && state.hold) await state.hold;
         response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
         for (const event of scripted.events) response.write(`data: ${JSON.stringify(event)}\n\n`);
         response.end("data: [DONE]\n\n");
@@ -486,10 +500,13 @@ async function journey() {
   );
   check("the main process's outbound requests are observed", guards.observing);
 
-  page.on("request", (request) => {
+  const recordRequest = (request) => {
     const url = request.url();
     if (/^(https?|wss?):/i.test(url)) rendererRequests.push(url);
-  });
+  };
+  page.on("request", recordRequest);
+  // A window the studio makes again, after a background turn, is watched from its first request.
+  app.on("window", (opened) => opened.on("request", recordRequest));
   await page.waitForLoadState("domcontentloaded");
   await page.waitForFunction(() => Boolean(window.studio?.connections), null, { timeout: 30_000 });
 
@@ -727,7 +744,81 @@ async function journey() {
     );
   }
 
-  // 6. Where every request went.
+  // 6. A background turn that finishes with the window closed: reopening from the dock lands on its
+  // conversation, with no review of the studio's own files over it (017 FR-012, filmed at 1:29).
+  let release = () => {};
+  fake.state.hold = new Promise((resolveHold) => {
+    release = resolveHold;
+  });
+  const away = await studio("agent.start", { bookId: BOOK, chapterId: chapter.id, prompt: TURN_THREE, mode: "edit", background: true });
+  // On macOS the studio keeps running with no window. A hidden run quits when its last window closes,
+  // so a blank window that is never shown keeps it running in its place.
+  const keeper = await app.evaluate(({ BrowserWindow }) => new BrowserWindow({ show: false, x: -16_000, y: -16_000 }).id);
+  await app.evaluate(({ BrowserWindow }, keep) => {
+    for (const window of BrowserWindow.getAllWindows()) if (window.id !== keep) window.close();
+  }, keeper);
+  const closed = await waitFor(
+    () => app.evaluate(({ BrowserWindow }, keep) => BrowserWindow.getAllWindows().every((window) => window.id === keep), keeper),
+    15_000
+  );
+  check("the studio's window closed while the background turn waited on the model", closed === true);
+  release();
+  const awayReply = await waitFor(async () => {
+    try {
+      const stored = JSON.parse(await readFile(join(bookDir, "threads", `${away.threadId}.json`), "utf8"));
+      const answer = stored.messages.find((message) => message.role === "assistant" && message.turnId === away.turnId);
+      return answer?.parts?.at(-1)?.text === REPLY_THREE ? answer : null;
+    } catch {
+      return null;
+    }
+  }, 30_000);
+  check("with no window open, the background turn finishes and its conversation is saved", awayReply !== null);
+  // A hidden run logs what it would have posted; the first turn logged a "ready" line of its own.
+  const notice = `[notification] would post ${JSON.stringify({ title: "The Salt Road — ready", body: REPLY_THREE })}`;
+  const posted = await waitFor(() => appOutput.includes(notice), 15_000);
+  check("its notification names the book, says it is ready and previews the reply", posted === true);
+
+  await app.evaluate(({ app: shell }) => {
+    shell.emit("activate");
+  });
+  const reopened = await waitFor(
+    () => app.windows().find((candidate) => candidate !== page && !candidate.isClosed() && candidate.url().endsWith("/renderer/index.html")) ?? null,
+    30_000
+  );
+  check("the dock's activate makes the studio's window again", reopened !== null);
+  if (reopened) {
+    const landed = await waitFor(async () => {
+      try {
+        return await reopened.evaluate(() => {
+          const chat = document.querySelector('[data-testid="chat-panel"]');
+          if (!chat || !document.querySelector('[data-testid="workspace-view"]')) return null;
+          return {
+            conversation: chat.textContent ?? "",
+            library: document.querySelector('[data-testid="library-view"]') !== null
+          };
+        });
+      } catch {
+        // The page is still loading.
+        return null;
+      }
+    }, 30_000);
+    check("the reopened window opens the book's workspace with the agent open", landed !== null);
+    check("the agent shows the conversation the background turn finished in", landed?.conversation.includes(REPLY_THREE) === true);
+    check("the library is not what the reopened window shows", landed?.library === false);
+    const review = await reopened.evaluate(() => window.studio.sync.check());
+    const listed = (review?.data?.entries ?? []).map((entry) => `${entry.kind} ${entry.path}`);
+    check(
+      "the review lists none of the studio's own files: conversations, chapter, checkpoints",
+      review?.ok === true && review.data?.clean === true && listed.length === 0,
+      listed.slice(0, 3).join(", ")
+    );
+    check(
+      "no review dialog covers the conversation",
+      !(await reopened.evaluate(() => document.querySelector('[data-testid="drift-entries"]') !== null))
+    );
+  }
+
+  // 7. Where every request went, the background turn's included.
   const sequence = fake.requests.map((request) => `${request.method} ${request.path}${request.step ? ` ${request.step}` : ""}`);
   const expected = [
     "GET /v1/models",
@@ -736,7 +827,9 @@ async function journey() {
     "POST /v1/chat/completions append",
     "POST /v1/chat/completions reply",
     "POST /v1/chat/completions overwrite",
-    "POST /v1/chat/completions approved"
+    "POST /v1/chat/completions approved",
+    "POST /v1/chat/completions background",
+    "POST /v1/chat/completions background reply"
   ];
   check(
     "the fake provider received exactly the expected requests",

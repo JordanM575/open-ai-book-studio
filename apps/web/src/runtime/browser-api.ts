@@ -67,6 +67,8 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       licenses: () => safe(() => fetchLicenses()),
       // A browser build has no second copy to refuse; tabs take turns through a storage lock.
       onSecondInstance: () => () => {},
+      // Nor a window to reopen: a background turn is a desktop capability (spec 017 FR-015).
+      onOpenConversation: () => () => {},
       // The browser is the shell here: the same allow-list, opened in a new tab that cannot reach back.
       openLink: (url) =>
         safe(async (): Promise<null> => {

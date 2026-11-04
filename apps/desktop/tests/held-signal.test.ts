@@ -2,7 +2,10 @@
 import { describe, expect, test } from "bun:test";
 import { createHeldSignal } from "../src/preload/held-signal";
 
-/** The preload's hold for a refused second copy reported before the shell subscribes (002 FR-069). */
+/**
+ * The preload's hold for a refused second copy (002 FR-069), and for the conversation a reopened window
+ * opens on (017 FR-012), reported before the shell subscribes.
+ */
 describe("createHeldSignal", () => {
   test("a signal with no listener waits for the first subscriber", () => {
     const signal = createHeldSignal();
@@ -38,6 +41,16 @@ describe("createHeldSignal", () => {
     stopA();
     signal.emit();
     expect(heard).toEqual(["a", "b", "b"]);
+  });
+
+  test("a held signal carries what it was sent, and only the newest is kept", () => {
+    const signal = createHeldSignal<{ bookId: string; threadId: string }>();
+    signal.emit({ bookId: "book_older0001", threadId: "thread_older0001" });
+    signal.emit({ bookId: "book_newer0001", threadId: "thread_newer0001" });
+    const heard: string[] = [];
+    signal.subscribe((target) => heard.push(target.threadId));
+    signal.emit({ bookId: "book_later0001", threadId: "thread_later0001" });
+    expect(heard).toEqual(["thread_newer0001", "thread_later0001"]);
   });
 
   test("after everyone unsubscribes, the next signal is held again", () => {

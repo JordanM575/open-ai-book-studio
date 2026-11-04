@@ -547,7 +547,7 @@ export class AgentRuntime {
    */
   async undoLast(bookId: string): Promise<AgentUndoResult> {
     const library = this.studio.requireLibrary();
-    const store = new CheckpointStore(() => this.studio.library?.root ?? null);
+    const store = new CheckpointStore(() => this.studio.library);
     const checkpoint = await store.latest(bookId);
     if (!checkpoint) {
       throw new ProviderError("not-found", "There is no agent turn to undo in this book.");
@@ -587,7 +587,7 @@ export class AgentRuntime {
     const saving = progress.queue.then(async () => {
       if (progress.saved === progress.revision) return checkpointCovers(state);
       const revision = progress.revision;
-      const store = new CheckpointStore(() => this.studio.library?.root ?? null);
+      const store = new CheckpointStore(() => this.studio.library);
       try {
         if (state.changes.length === 0) {
           // The turn's changes cancelled out, such as a chapter it created and then deleted.

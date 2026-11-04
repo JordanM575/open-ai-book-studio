@@ -117,6 +117,11 @@ prevent divergence but to make it visible and non-destructive.
 5. `close` / `before-quit` send `drafts:flush-request` to the window, wait for the preload bridge's
    answer on `drafts:flushed` (at most 1.5 s; always sent, even with no editor open), flush drafts once,
    then quit.
+6. `StudioWindows` (`windows.ts`) brings the one window back or makes it again, for the notification's
+   click, a second copy and the dock's `activate`. A background turn that finishes, fails or pauses for
+   approval with no window open is remembered, and the next window made opens on its conversation once,
+   through `app:open-conversation` (017 FR-012). A window made with nothing remembered opens on the
+   library.
 
 The menu is deliberately small: File → Open library…, Close window, Quit; standard Edit, View and
 Window menus. Features arrive as interface, not as menu items, unless they are genuinely global.
@@ -215,8 +220,11 @@ safe to delete.
   offline delivery, deletion, placeholders, torn copies, corrupt journals, repeated scans, provider
   conflict copies and renames. Every one asserts the report and that author bytes survive.
 - Own writes note themselves into the journal at save time (`commitText`, trash moves, the thread
-  and image stores), so the next scan reads them as local. The first scan on a fresh library
-  records the baseline; a corrupt or newer journal is never overwritten by a scan.
+  and image stores, and the agent's checkpoint store through `Library.noteOwnFiles`), so the next scan
+  reads them as local. Notes, the first baseline and an accepted review update the journal one at a
+  time per library (`updateSyncJournal`), so two at once cannot drop each other's paths. The first
+  scan on a fresh library records the baseline; a corrupt or newer journal is never overwritten by a
+  scan.
 - The drift report dialog (`DriftReportDialog`) opens from the main-process scan on library open
   and on throttled window focus, plus an on-demand check and a Settings section with the scan
   interval. Review is required before the baseline advances; every resolution reuses the existing

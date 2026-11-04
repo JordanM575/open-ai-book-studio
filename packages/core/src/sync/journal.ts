@@ -14,6 +14,25 @@ import {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+const updating = new WeakMap<LibraryPort, Promise<unknown>>();
+
+/**
+ * Run one read-and-write of the baseline at a time per library. Chapters, conversations, images
+ * and a turn's checkpoints all note themselves in the same file, and a turn's tool calls can finish
+ * together: two updates at once would each write back a baseline missing the other's paths, and
+ * the next scan would list the studio's own file as someone else's. `work` must not wait for
+ * another update of the same library, or the two would wait for each other forever.
+ */
+export function updateSyncJournal<T>(storage: LibraryPort, work: () => Promise<T>): Promise<T> {
+  const previous = updating.get(storage) ?? Promise.resolve();
+  const next = previous.then(work, work);
+  updating.set(
+    storage,
+    next.catch(() => {})
+  );
+  return next;
+}
+
 /** Read this device's baseline. A missing, foreign or corrupt file is treated as no baseline. */
 export async function readSyncJournal(storage: LibraryPort, deviceId: string): Promise<SyncJournal | null> {
   const snapshot = await storage.readFile(syncJournalPath(deviceId));
@@ -207,6 +226,10 @@ function isJournaledPath(path: string): boolean {
 export async function noteWrittenFiles({ storage, deviceId, paths, now }: NoteFilesInput): Promise<void> {
   const wanted = [...new Set(paths)].filter(isJournaledPath);
   if (wanted.length === 0) return;
+  await updateSyncJournal(storage, () => noteWritten(storage, deviceId, wanted, now));
+}
+
+async function noteWritten(storage: LibraryPort, deviceId: string, wanted: string[], now: string): Promise<void> {
   try {
     const previous = await readSyncJournal(storage, deviceId);
     if (!previous) return;
@@ -244,6 +267,10 @@ export async function noteWrittenFiles({ storage, deviceId, paths, now }: NoteFi
 export async function noteRemovedFiles({ storage, deviceId, paths, now }: NoteFilesInput): Promise<void> {
   const wanted = [...new Set(paths)].filter(isJournaledPath);
   if (wanted.length === 0) return;
+  await updateSyncJournal(storage, () => noteRemoved(storage, deviceId, wanted, now));
+}
+
+async function noteRemoved(storage: LibraryPort, deviceId: string, wanted: string[], now: string): Promise<void> {
   try {
     const previous = await readSyncJournal(storage, deviceId);
     if (!previous) return;
@@ -277,7 +304,11 @@ export interface NoteMoveInput {
  * the rescan finds under `to`. Runs after the move succeeds. Trash moves are rare, so a full
  * rescan here is cheaper than getting the file list wrong.
  */
-export async function noteMovedPrefix({ storage, deviceId, from, to, now }: NoteMoveInput): Promise<void> {
+export function noteMovedPrefix(input: NoteMoveInput): Promise<void> {
+  return updateSyncJournal(input.storage, () => noteMoved(input));
+}
+
+async function noteMoved({ storage, deviceId, from, to, now }: NoteMoveInput): Promise<void> {
   try {
     const previous = await readSyncJournal(storage, deviceId);
     if (!previous) return;

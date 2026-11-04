@@ -4,7 +4,7 @@ import type { DriftEntry, DriftReport } from "@ai-book-studio/core/sync/types";
 import { must } from "./lib/utils";
 import { useTheme } from "./hooks/use-theme";
 import { LibraryView } from "./views/LibraryView";
-import { WorkspaceView, type ChapterRequest } from "./views/WorkspaceView";
+import { WorkspaceView, type ChapterRequest, type ConversationRequest } from "./views/WorkspaceView";
 import { WelcomeView } from "./views/WelcomeView";
 import { Notice } from "@ai-book-studio/ui/notice";
 import { DriftReportDialog, type DriftReviewTarget } from "./components/DriftReportDialog";
@@ -30,6 +30,7 @@ function Studio() {
   const [drift, setDrift] = useState<DriftReport | null>(null);
   const [driftBusy, setDriftBusy] = useState(false);
   const [chapterRequest, setChapterRequest] = useState<ChapterRequest | null>(null);
+  const [conversationRequest, setConversationRequest] = useState<ConversationRequest | null>(null);
   const [bookTitles, setBookTitles] = useState<Record<string, string>>({});
 
   const report = useCallback((error: unknown) => {
@@ -107,6 +108,16 @@ function Studio() {
     () =>
       window.studio.app.onSecondInstance(() => {
         setNotice("AI Book Studio is already open. The second copy closed without opening your library.");
+      }),
+    []
+  );
+
+  // A window made after a background turn opens on the conversation the turn ended in.
+  useEffect(
+    () =>
+      window.studio.app.onOpenConversation(({ bookId, threadId }) => {
+        setScreen({ kind: "workspace", bookId });
+        setConversationRequest({ bookId, threadId, nonce: Date.now() });
       }),
     []
   );
@@ -241,6 +252,8 @@ function Studio() {
           deviceName={library.deviceName}
           chapterRequest={chapterRequest}
           onChapterRequestHandled={() => setChapterRequest(null)}
+          conversationRequest={conversationRequest}
+          onConversationRequestHandled={() => setConversationRequest(null)}
           onCheckForChanges={checkForChanges}
           onBack={() => setScreen({ kind: "library" })}
           onNotice={report}

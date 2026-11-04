@@ -22,6 +22,36 @@ export interface ElectronHooks {
   showSaveDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
   showMessageBox?: (options: unknown, window: unknown) => Promise<{ response: number }>;
   openExternal?: (url: string) => void;
+  /**
+   * Whether the desktop takes notifications; each one shown is handed to `posted`, so a file can
+   * click it. A file that does not say has none, and nothing is ever shown.
+   */
+  notifications?: { supported: boolean; posted?: (notification: MockNotification) => void };
+}
+
+/** A notification in Electron's shape. It is never shown; a test clicks it instead. */
+export class MockNotification {
+  static isSupported(): boolean {
+    return current.hooks.notifications?.supported ?? false;
+  }
+
+  private readonly listeners = new Map<string, Array<() => void>>();
+
+  constructor(readonly options: { title?: string; body?: string } = {}) {}
+
+  on(event: string, listener: () => void): this {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
+    return this;
+  }
+
+  show(): void {
+    current.hooks.notifications?.posted?.(this);
+  }
+
+  /** What the author's click on the notification does. */
+  click(): void {
+    for (const listener of this.listeners.get("click") ?? []) listener();
+  }
 }
 
 type Answer<T> = (options: unknown, window: unknown) => Promise<T>;
@@ -65,7 +95,7 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
     },
     Menu: {},
     nativeImage: { createFromBuffer: () => ({ isEmpty: () => true }) },
-    Notification: { isSupported: () => false },
+    Notification: MockNotification,
     safeStorage: {
       isAsyncEncryptionAvailable: () => {
         current.hooks.safeStorageCalls?.("isAsyncEncryptionAvailable");

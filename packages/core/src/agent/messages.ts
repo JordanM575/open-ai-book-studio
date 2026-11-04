@@ -18,6 +18,11 @@ export const agentMessageIdSchema = z.string().regex(messageId, "invalid message
 export const agentThreadIdSchema = z.string().regex(threadId, "invalid thread id").max(200);
 export const agentBookIdSchema = z.string().regex(bookId, "invalid book id").max(200);
 
+/** One book's conversation, as the shell asks a window to open it (`OpenConversationEvent`). */
+export const agentConversationRefSchema = z
+  .object({ bookId: agentBookIdSchema, threadId: agentThreadIdSchema })
+  .strict();
+
 export const agentTextPartSchema = z.object({
   type: z.literal("text"),
   text: z.string().min(1).max(200_000)
