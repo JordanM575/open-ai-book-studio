@@ -117,6 +117,8 @@ export const IPC = {
     open: "books:open",
     exportDocx: "books:exportDocx",
     exportMarkdown: "books:exportMarkdown",
+    exportPdf: "books:exportPdf",
+    exportEpub: "books:exportEpub",
     exportImages: "books:exportImages",
     search: "books:search"
   },
@@ -372,6 +374,10 @@ export interface StudioApi {
     open(bookId: string): Promise<Result<BookDetail>>;
     exportDocx(bookId: string): Promise<Result<string | null>>;
     exportMarkdown(bookId: string): Promise<Result<string | null>>;
+    /** Save the manuscript as a PDF where the author chooses; null when they cancel. */
+    exportPdf(bookId: string): Promise<Result<string | null>>;
+    /** Save the manuscript as an EPUB 3 e-book where the author chooses; null when they cancel. */
+    exportEpub(bookId: string): Promise<Result<string | null>>;
     /** Save every image in the book as a JPEG in a new folder the author chooses. */
     exportImages(bookId: string): Promise<Result<ImageExportResult>>;
     search(bookId: string, query: string): Promise<Result<SearchHit[]>>;

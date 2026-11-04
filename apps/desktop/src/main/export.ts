@@ -17,6 +17,8 @@ import type { ImageList, ImageRecord, StoredImage } from "@ai-book-studio/core/i
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { LibraryError } from "./library/errors";
 import { writeFileAtomic } from "./library/atomic";
+import { buildEpub } from "./epub";
+import { buildManuscriptHtml } from "./manuscript-html";
 
 const LINE_SPACING: Record<ManuscriptSettings["lineSpacing"], number> = {
   Single: 240,
@@ -240,6 +242,16 @@ export function suggestMarkdownName(title: string): string {
   return `${suggestStem(title)}.md`;
 }
 
+/** A safe file name for the PDF export dialog, derived from the book title. */
+export function suggestPdfName(title: string): string {
+  return `${suggestStem(title)}.pdf`;
+}
+
+/** A safe file name for the EPUB export dialog, derived from the book title. */
+export function suggestEpubName(title: string): string {
+  return `${suggestStem(title)}.epub`;
+}
+
 /**
  * Builds a Markdown manuscript from the book's files.
  *
@@ -358,6 +370,83 @@ export async function exportManuscriptMarkdown(
   const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, Buffer.from(bytes)));
   await write(destination, new TextEncoder().encode(data));
   return destination;
+}
+
+/**
+ * The Word and Markdown exports' publication boundary, for the PDF and EPUB exports: a cancelled
+ * picker or a declined replacement returns null and writes nothing, a destination inside the open
+ * library is refused, the file is built before the author is asked to replace anything, a file
+ * that changed after the consent is refused, and the write is atomic.
+ */
+async function publishManuscript(
+  suggestedName: string,
+  libraryRoot: string,
+  deps: ExportDeps,
+  build: () => Promise<Uint8Array>
+): Promise<string | null> {
+  const destination = await deps.pickDestination(suggestedName);
+  if (!destination) return null;
+  if (isInsideLibrary(libraryRoot, destination)) {
+    throw new LibraryError(
+      "invalid",
+      "That location is inside the open library. Choose another folder so the export cannot overwrite the book's own files."
+    );
+  }
+  const data = await build();
+  const observed = await deps.statDestination(destination);
+  if (observed && !(await deps.confirmReplace(destination))) return null;
+  const reread = await deps.statDestination(destination);
+  if (!sameExportState(observed, reread)) {
+    throw new LibraryError("io", "The file changed before the export was saved. Nothing was written. Try the export again.");
+  }
+  const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, bytes));
+  await write(destination, data);
+  return destination;
+}
+
+export interface PdfExportDeps extends ExportDeps {
+  /** Turns the manuscript HTML into PDF bytes: a hidden window on the desktop, a fake in tests. */
+  renderPdf: (html: string) => Promise<Uint8Array>;
+}
+
+function isPdf(bytes: Uint8Array): boolean {
+  return bytes.byteLength > 5 && Buffer.from(bytes.subarray(0, 5)).toString("latin1") === "%PDF-";
+}
+
+/**
+ * Publishes a PDF of the manuscript. The book's HTML (`buildManuscriptHtml`) is rendered first, so
+ * a render that fails or returns something other than a PDF writes nothing and asks nothing.
+ */
+export async function exportManuscriptPdf(
+  detail: BookDetail,
+  illustrations: Map<string, DocxImage>,
+  libraryRoot: string,
+  deps: PdfExportDeps
+): Promise<string | null> {
+  return publishManuscript(suggestPdfName(detail.book.title), libraryRoot, deps, async () => {
+    let pdf: Uint8Array;
+    try {
+      pdf = await deps.renderPdf(buildManuscriptHtml(detail, illustrations));
+    } catch (error) {
+      if (error instanceof LibraryError) throw error;
+      console.warn("[export] The PDF could not be rendered:", (error as Error | undefined)?.message);
+      throw new LibraryError("io", "The PDF could not be made. Nothing was written. Try the export again.");
+    }
+    if (!isPdf(pdf)) throw new LibraryError("io", "The PDF could not be made. Nothing was written. Try the export again.");
+    return pdf;
+  });
+}
+
+/** Publishes an EPUB of the manuscript through the same boundary as the other exports. */
+export async function exportManuscriptEpub(
+  detail: BookDetail,
+  illustrations: Map<string, DocxImage>,
+  libraryRoot: string,
+  deps: ExportDeps
+): Promise<string | null> {
+  return publishManuscript(suggestEpubName(detail.book.title), libraryRoot, deps, async () =>
+    buildEpub(detail, illustrations)
+  );
 }
 
 /** The folder the image export creates beside the manuscript, named for the book. */

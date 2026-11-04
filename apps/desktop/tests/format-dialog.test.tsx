@@ -22,8 +22,10 @@ afterEach(() => testing.cleanup());
 /**
  * Spec 035 T003: Format journey contract tests with synthetic content. The
  * dialog binds the saved `settings.manuscript` values (no duplicate profile),
- * the Approximate disclosure is always visible, unavailable targets cannot be
- * chosen, and opening the dialog causes no provider request or source write.
+ * the Approximate disclosure is always visible, every target with a renderer
+ * (all four since D-108) can be chosen, and opening the dialog causes no
+ * provider request or source write. Exporting is covered in
+ * format-dialog-export.test.tsx.
  */
 
 const NOW = "2026-11-03T00:00:00.000Z";
@@ -195,16 +197,26 @@ describe("format dialog contract", () => {
     expect(view.getByTestId("format-preview").getAttribute("style") ?? "").toContain("Georgia");
   });
 
-  test("unavailable targets are disabled, labelled planned, and never chosen", async () => {
+  test("every target can be chosen, and the copy claims no publisher acceptance", async () => {
     const mocks = mockWorkspace();
     const view = await openFormat();
 
-    for (const name of ["PDF", "EPUB", "Markdown"]) {
-      const radio = view.getByRole("radio", { name: new RegExp(`^${name}`) }) as HTMLInputElement;
-      expect(radio.disabled).toBe(true);
+    for (const name of ["DOCX", "PDF", "EPUB", "Markdown"]) {
+      const radio = view.getByRole("radio", { name }) as HTMLInputElement;
+      expect(radio.disabled).toBe(false);
     }
-    expect(view.getAllByText("Planned")).toHaveLength(3);
+    expect(view.queryByText("Planned")).toBeNull();
+    expect(view.queryByText(/Only DOCX can be exported today/)).toBeNull();
     expect((view.getByRole("radio", { name: "DOCX" }) as HTMLInputElement).checked).toBe(true);
+    expect(view.getByTestId("format-export").textContent).toBe("Export Word document");
+
+    testing.fireEvent.click(view.getByRole("radio", { name: "EPUB" }));
+    expect((view.getByRole("radio", { name: "EPUB" }) as HTMLInputElement).checked).toBe(true);
+    expect(view.getByTestId("format-export").textContent).toBe("Export EPUB");
+    expect(view.getByTestId("format-target-note").textContent).toContain("E-readers may change the font and size");
+    expect(view.getByTestId("format-disclosure").textContent).toContain(
+      "nothing claims Kindle or publisher acceptance"
+    );
     expect(mocks.save).not.toHaveBeenCalled();
   });
 

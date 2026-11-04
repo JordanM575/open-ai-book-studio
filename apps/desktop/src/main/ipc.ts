@@ -28,7 +28,16 @@ import { buildMetadata } from "@ai-book-studio/core/build";
 import { createLicenseReader } from "./licenses";
 import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
-import { collectDocxImages, exportBookImages, exportManuscriptDocx, exportManuscriptMarkdown } from "./export";
+import {
+  collectDocxImages,
+  exportBookImages,
+  exportManuscriptDocx,
+  exportManuscriptEpub,
+  exportManuscriptMarkdown,
+  exportManuscriptPdf,
+  type ExportDeps
+} from "./export";
+import { renderPdfInHiddenWindow } from "./pdf";
 import { importLegacyBackup } from "./legacy-import";
 import { importLibraryArchiveToFolder, writeLibraryArchive } from "./library/archive";
 import { ArchiveError } from "@ai-book-studio/core/archive/errors";
@@ -422,6 +431,61 @@ export function registerIpc(
           .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
           .catch(() => null)
     });
+  });
+
+  /** The save dialog, replace prompt and file check behind the PDF and EPUB exports. */
+  const manuscriptExportDeps = (filter: { name: string; extensions: string[] }): ExportDeps => ({
+    // As with Word and Markdown, a headless run names the folder instead of answering a dialog.
+    pickDestination: async (suggestedName) => {
+      const forced = process.env.STUDIO_EXPORT_PATH;
+      if (forced) return join(forced, suggestedName);
+      const options = { title: "Export manuscript", defaultPath: suggestedName, filters: [filter] };
+      const window = getWindow();
+      const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+      if (choice.canceled || !choice.filePath) return null;
+      return choice.filePath;
+    },
+    confirmReplace: async (path) => {
+      const options = {
+        type: "question" as const,
+        buttons: ["Replace", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        message: `“${basename(path)}” already exists. Replace it?`,
+        detail: "The current file will be overwritten."
+      };
+      const window = getWindow();
+      const answer = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+      return answer.response === 0;
+    },
+    statDestination: async (path) =>
+      stat(path)
+        .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
+        .catch(() => null)
+  });
+
+  handle(IPC.books.exportPdf, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    const library = studio.requireLibrary();
+    const detail = await library.readBook(bookId);
+    const illustrations = await collectDocxImages(detail, library);
+    return exportManuscriptPdf(detail, illustrations, library.root, {
+      ...manuscriptExportDeps({ name: "PDF document", extensions: ["pdf"] }),
+      renderPdf: renderPdfInHiddenWindow
+    });
+  });
+
+  handle(IPC.books.exportEpub, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    const library = studio.requireLibrary();
+    const detail = await library.readBook(bookId);
+    const illustrations = await collectDocxImages(detail, library);
+    return exportManuscriptEpub(
+      detail,
+      illustrations,
+      library.root,
+      manuscriptExportDeps({ name: "EPUB e-book", extensions: ["epub"] })
+    );
   });
 
   handle(IPC.books.exportImages, async (payload) => {

@@ -81,6 +81,11 @@ those formats. Markdown output can be planned independently, but its packaging a
 still depend on the public matter decision. Until renderers exist, unsupported targets are visibly
 unavailable rather than represented as complete.
 
+D-108 was accepted on 2026-11-03 and the renderers now exist: `manuscript-html.ts` and `pdf.ts`
+(Chromium print-to-PDF in a hidden window) and `epub.ts` (`fflate`), all in `apps/desktop/src/main`,
+behind `exportManuscriptPdf` and `exportManuscriptEpub` in `export.ts`. They read the same saved
+`BookDetail` and the same collected illustrations as DOCX; no export-model package was added.
+
 ## Likely files in a future implementation
 
 These paths are planning references, not files changed by this authoring task.

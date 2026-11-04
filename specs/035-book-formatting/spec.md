@@ -1,6 +1,6 @@
 # Book formatting and export
 
-**Status:** Draft / Planned — Phase 1 (T001–T003: Format journey design, approximate-preview surface, UI contract tests) is implemented; ordered matter, renderer selection and remaining export work are not started.
+**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). Ordered matter and format profiles are not started.
 **Number:** 035
 **Depends on:** [002 — AI Book Studio v1](../002-studio-v1/spec.md), [019 — Illustrations](../019-illustrations/spec.md), and the public file-format contract in [`docs/FORMAT.md`](../../docs/FORMAT.md).
 
@@ -12,9 +12,9 @@ honestly labelled preview, arrange front and back matter, and export a copy whil
 and image files remain theirs and unchanged.
 
 Spec 002 calls for DOCX, PDF, EPUB and Markdown exports, editable ordered front and back matter, and
-formatting settings. The public runtime currently provides DOCX export and a canonical set of
-typography settings. This spec defines the separate formatting journey; it does not claim that the
-other formats, print measurements or publisher-ready output exist today.
+formatting settings. The public runtime provides DOCX, Markdown, PDF and EPUB export and a canonical
+set of typography settings. This spec defines the separate formatting journey; it does not claim
+that print measurements or publisher-ready output exist today.
 
 ## Present public behavior
 
@@ -31,7 +31,14 @@ other formats, print measurements or publisher-ready output exist today.
 - Spec 019 owns the `images.json` manifest, image files and chapter attachments. The current DOCX
   path can read attached illustrations. This spec consumes those existing attachments for output; it
   does not add image management or generation.
-- PDF, EPUB and Markdown manuscript export are not currently available.
+- Markdown, PDF and EPUB manuscript export are available (D-108). The Format dialog exports any of
+  the four targets after saving the open chapter; the workspace header keeps its Word and Markdown
+  buttons. PDF prints the manuscript's own HTML through Electron's Chromium in a hidden window with
+  the canonical typography, a title page, an optional contents page and a page break before each
+  chapter. EPUB 3 is one XHTML file per chapter with an OPF manifest, a navigation document and
+  `images/` sidecars. Both embed the illustrations the DOCX export embeds, in the same order, and
+  publish through the same boundary as DOCX. The Markdown export is one file, not yet the folder
+  FR-021 describes.
 
 ## User stories
 
@@ -185,14 +192,14 @@ unresolved with D-108; this spec makes no claim about actual pagination.
 
 ## Open decisions and limits
 
-- **D-108 — export libraries and determinism is Proposed, awaiting author acceptance**
-  (`research/export-renderers.md`). No renderer is selected and no deterministic output is claimed
-  until the decision is accepted. It must also reconcile spec 002's image-order, own-page and
-  separate-image-folder requirements with the output contract for each target. It blocks renderer
-  selection, per-target image placement/packaging and conformance tasks only; it does not block
-  editor design, the clearly approximate preview, or tests and safety work around the current DOCX
-  path. Do not claim KDP/KDP Print or Kindle Unlimited eligibility, print measurement, exact
-  pagination, or publisher readiness.
+- **D-108 — export libraries and determinism is Accepted (2026-11-03)**
+  (`research/export-renderers.md`). DOCX stays on `docx` 9.x, PDF uses Electron's built-in
+  `webContents.printToPDF`, and EPUB 3 is assembled with `fflate` with fixed entry dates and no
+  remote resources. Determinism is content determinism: the same book gives the same PDF HTML and a
+  byte-identical EPUB, but PDF bytes vary with Chromium's creation date. Spec 002's own-page image
+  requirement (FR-054) is not met: illustrations follow their chapter's text, as in DOCX. Do not
+  claim KDP/KDP Print or Kindle Unlimited eligibility, EPUBCheck validity, PDF/UA, print
+  measurement, exact pagination, or publisher readiness.
 - **Ordered matter and legacy conversion — D-169 Proposed, awaiting author acceptance**
   (`research/matter-schema.md`). The proposal: kind as a pure function of the key, an additive
   `matterOrder` field with a deterministic fallback, order-only conversion with explicit

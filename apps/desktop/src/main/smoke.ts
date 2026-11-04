@@ -1,9 +1,11 @@
 import type { BrowserWindow } from "electron";
 import { app } from "electron";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { renderPdfInHiddenWindow } from "./pdf";
 import type { Studio } from "./studio";
 
 /**
@@ -1097,15 +1099,133 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       if (!disclosure.includes("Approximate preview")) {
         throw new Error(`disclosure read: ${JSON.stringify(disclosure)}`);
       }
-      await evaluate<boolean>(
-        win,
-        `(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); return true; })()`
-      );
-      await waitUntil(
-        () => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="format-preview"]')`)),
-        "the format dialog to close"
-      );
       return "preview with disclosure";
+    });
+
+    /**
+     * Chooses a target in the open Format dialog, exports it and returns the file the note names,
+     * once that file is on disk. The hook sends the file to STUDIO_EXPORT_PATH instead of a save
+     * dialog.
+     */
+    const exportFromFormat = async (target: "PDF" | "EPUB", extension: string): Promise<string> => {
+      const folder = process.env.STUDIO_EXPORT_PATH;
+      if (!folder) throw new Error("STUDIO_EXPORT_PATH is not set");
+      const chosen = await evaluate<boolean>(
+        win,
+        `(() => { const radio = document.querySelector('input[name="format-target"][value="${target}"]'); if (!radio) return false; radio.click(); return true; })()`
+      );
+      if (!chosen) throw new Error(`the ${target} target was not on screen`);
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`document.querySelector('[data-testid="format-export"]').innerText.trim() === "Export ${target}"`)
+          ),
+        `the Export ${target} action`
+      );
+      await evaluate(win, `document.querySelector('[data-testid="format-export"]').click()`);
+      // Rendering a PDF in its own hidden window takes longer than a click. The note may still
+      // name an earlier export, so the file it names must be on disk as well.
+      let saved = "";
+      let refusal = "";
+      await waitUntil(
+        async () => {
+          const shown = await evaluate<{ note: string; error: string }>(
+            win,
+            `({ note: document.querySelector('[data-testid="format-export-note"]')?.innerText.trim() ?? "", error: document.querySelector('[data-testid="format-export-error"]')?.innerText ?? "" })`
+          );
+          refusal = shown.error;
+          if (refusal) return true;
+          const name = /^Saved (.+)$/.exec(shown.note)?.[1] ?? "";
+          if (!name.endsWith(`.${extension}`) || !(await readdir(folder)).includes(name)) return false;
+          saved = join(folder, name);
+          return true;
+        },
+        `the ${target} export note`,
+        90_000
+      );
+      if (refusal) throw new Error(`the dialog said: ${JSON.stringify(refusal)}`);
+      return saved;
+    };
+
+    await check("the format dialog exports a PDF, and again in the same session", async () => {
+      const first = await exportFromFormat("PDF", "pdf");
+      const bytes = await readFile(first);
+      if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("the file is not a PDF");
+      if (!bytes.subarray(-1024).toString("latin1").includes("%%EOF")) throw new Error("the PDF has no end marker");
+      // The fixture's chapter illustration reaches the printed page, not only the HTML.
+      if (!bytes.toString("latin1").includes("/Subtype /Image")) throw new Error("the illustration is not in the PDF");
+      // Every export prints in a new hidden window. The first file moves aside, so the second
+      // export asks no replace question, which a hidden run cannot answer.
+      await rename(first, first.replace(/\.pdf$/, "-first.pdf"));
+      const second = await exportFromFormat("PDF", "pdf");
+      const again = await readFile(second);
+      if (again.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("the second export is not a PDF");
+      return `${second.split("/").pop()} twice · ${bytes.length} and ${again.length} bytes, with the illustration`;
+    });
+
+    await check("the format dialog exports an EPUB", async () => {
+      try {
+        const file = await exportFromFormat("EPUB", "epub");
+        const bytes = await readFile(file);
+        // The first local header must be the stored `mimetype` entry with no extra field.
+        if (bytes.readUInt32LE(0) !== 0x04034b50) throw new Error("the file is not a zip");
+        const first = bytes.subarray(30, 30 + bytes.readUInt16LE(26)).toString("latin1");
+        if (first !== "mimetype") throw new Error(`the first entry is ${JSON.stringify(first)}`);
+        if (bytes.readUInt16LE(8) !== 0 || bytes.readUInt16LE(28) !== 0) {
+          throw new Error("the mimetype entry is compressed or carries an extra field");
+        }
+        const mimetype = bytes.subarray(38, 38 + bytes.readUInt32LE(18)).toString("latin1");
+        if (mimetype !== "application/epub+zip") throw new Error(`mimetype read: ${JSON.stringify(mimetype)}`);
+        const { inflateRawSync } = await import("node:zlib");
+        const entries = unzip(bytes, inflateRawSync);
+        const pages = [...entries.keys()].filter((name) => /^EPUB\/chapter-\d+\.xhtml$/.test(name));
+        const xhtml = pages.map((name) => entries.get(name)?.toString("utf8") ?? "").join("\n");
+        // The chapters' saved text, as the library reads it now, must be in the e-book.
+        const book = (await studio.requireLibrary().listBooks())[0];
+        if (!book) throw new Error("the smoke book disappeared");
+        const detail = await studio.requireLibrary().readBook(book.id);
+        const asXml = (text: string): string =>
+          text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        for (const chapter of detail.chapters) {
+          const line = chapter.content.split("\n").find((value) => value.trim())?.trimEnd();
+          if (line && !xhtml.includes(asXml(line))) throw new Error(`“${chapter.title}” is not in the e-book`);
+        }
+        const images = [...entries.keys()].filter((name) => name.startsWith("EPUB/images/"));
+        return `${file.split("/").pop()} · ${pages.length} chapter files, ${images.length} image${images.length === 1 ? "" : "s"}`;
+      } finally {
+        await evaluate<boolean>(
+          win,
+          `(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); return true; })()`
+        );
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="format-preview"]')`)),
+          "the format dialog to close"
+        );
+      }
+    });
+
+    await check("the PDF window answers every request itself", async () => {
+      // A page with no content policy asks a loopback server for a picture and a stylesheet. The
+      // export session answers both itself, so the server must see nothing.
+      let requests = 0;
+      const server = createServer((_request, response) => {
+        requests += 1;
+        response.end("x");
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address();
+        const port = typeof address === "object" && address ? address.port : 0;
+        const pdf = await renderPdfInHiddenWindow(
+          `<!DOCTYPE html><html><body><p>probe</p><img src="http://127.0.0.1:${port}/probe.png"><link rel="stylesheet" href="http://127.0.0.1:${port}/probe.css"></body></html>`
+        );
+        if (Buffer.from(pdf.subarray(0, 5)).toString("latin1") !== "%PDF-") throw new Error("the probe page did not print");
+        if (requests > 0) throw new Error(`the loopback server saw ${requests} request${requests === 1 ? "" : "s"}`);
+        return "a page with no content policy reached nothing";
+      } finally {
+        server.close();
+      }
     });
 
     await check("the manuscript exports to Word with its illustration", async () => {

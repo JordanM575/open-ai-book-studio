@@ -10,6 +10,26 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- The Format dialog now exports all four targets, with an Export action for the chosen one (002
+  FR-051, D-108). PDF prints the manuscript's own HTML through Electron's built-in Chromium in a
+  hidden window that runs no script, on a private in-memory session that answers every web request
+  itself, under a content policy that refuses anything remote: a title page, a contents page
+  when the book asks for one, each chapter on a new A4 page, the book's font, size, first-line
+  indent, line spacing, chapter title alignment and line-break setting, and the chapter
+  illustrations in the Word export's order, inlined only in the page being printed. EPUB 3 is
+  assembled with `fflate`: the `mimetype` entry first and stored, a package document with its
+  manifest and spine, a navigation document, one XHTML file per chapter, a stylesheet and the
+  unmodified images under `images/`, with fixed entry dates and an identifier from the book's id,
+  so the same book always gives the same bytes. Both go through the Word export's publication
+  boundary: a cancelled picker or a declined replacement writes nothing, a destination inside the
+  library is refused, a file that changed after consent is refused, and the write is atomic. Word
+  and Markdown export from the dialog through their existing channels; the header's buttons are
+  unchanged. The dialog saves the open chapter first, exports nothing when that save fails, names
+  the saved file the way the header does, and says why an export was refused. The browser build
+  explains that exporting is a desktop feature. Fonts are requested by name, not bundled, so a
+  font the computer lacks prints in a similar one. Nothing claims KDP or other publisher
+  acceptance, EPUBCheck validity, PDF/UA or exact pagination, and PDFs are not byte-identical,
+  because Chromium writes a creation date into each one.
 - An end-to-end check of the agent toolkit, `scripts/toolkit-e2e.mjs` (`bun run e2e toolkit`). It
   launches the built app hidden over a synthetic library, drives the compiled `bookwriter` CLI and
   `bookwriter mcp` over stdio, and checks every answer against the bytes on disk. A tool switched
@@ -86,7 +106,7 @@ Update the `Unreleased` section before every commit.
   replacement writes nothing, a destination inside the library is refused, a file that changes
   after consent is never overwritten) and the header names the saved file. The Word button now
   reads "Export Word document" so the two are told apart. The browser build explains that it
-  is a desktop feature. PDF and EPUB remain open under 002 FR-051.
+  is a desktop feature. PDF and EPUB now export from the Format dialog (002 FR-051, D-108).
 - Each model card now names its capabilities in plain words beside price and context: whether
   it uses tools and reads pictures, or that the provider did not report them.
 - A finished turn now shows its whole usage line in the conversation: tokens in and out, the

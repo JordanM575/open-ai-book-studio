@@ -1,17 +1,52 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
+import type { Result } from "@ai-book-studio/core/ipc";
 import type { Chapter, ManuscriptSettings } from "@ai-book-studio/core/schema";
-import { Dialog, DialogContent } from "@ai-book-studio/ui/dialog";
+import { Button } from "@ai-book-studio/ui/button";
+import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { must } from "../lib/utils";
+import type { SaveStatus } from "./ManuscriptEditor";
 
 /**
- * The Format journey (spec 035 T002). A local approximate preview bound to
+ * The Format journey (spec 035). A local approximate preview bound to
  * `settings.manuscript` as the single canonical source: every control reads
  * and writes the saved settings, nothing duplicates them, and the preview
- * never calls a provider or writes chapters. PDF, EPUB and Markdown stay
- * visibly unavailable; DOCX exports from the existing Export button.
+ * never calls a provider or writes chapters. Export saves the open chapter,
+ * then writes the chosen target through the main process (D-108); the
+ * workspace header keeps its own Word and Markdown buttons.
  */
 export type FormatTarget = "DOCX" | "PDF" | "EPUB" | "Markdown";
 
-const UNAVAILABLE_TARGETS: FormatTarget[] = ["PDF", "EPUB", "Markdown"];
+const TARGETS: FormatTarget[] = ["DOCX", "PDF", "EPUB", "Markdown"];
+
+/** What each target is called on its Export button, and what it does with the settings below. */
+const TARGET_COPY: Record<FormatTarget, { name: string; note: string }> = {
+  DOCX: { name: "Word document", note: "Uses the typography below. Word export does not add a table of contents yet." },
+  PDF: { name: "PDF", note: "A4 pages with a title page and each chapter on a new page, in the typography below." },
+  EPUB: { name: "EPUB", note: "An EPUB 3 e-book with one file per chapter. E-readers may change the font and size." },
+  Markdown: { name: "Markdown", note: "Plain text with chapter headings. The typography below does not apply." }
+};
+
+const EXPORTS: Record<FormatTarget, (bookId: string) => Promise<Result<string | null>>> = {
+  DOCX: (bookId) => window.studio.books.exportDocx(bookId),
+  PDF: (bookId) => window.studio.books.exportPdf(bookId),
+  EPUB: (bookId) => window.studio.books.exportEpub(bookId),
+  Markdown: (bookId) => window.studio.books.exportMarkdown(bookId)
+};
+
+/** Why an export did not start: the open chapter's save did not confirm. */
+function unsavedMessage(status: Exclude<SaveStatus, { kind: "saved" }>): string {
+  switch (status.kind) {
+    case "conflict":
+      return "The chapter could not be saved, so nothing was exported. Your text was kept as a separate copy. Resolve the conflict, then export again.";
+    case "error":
+      return `The chapter could not be saved, so nothing was exported. ${status.message}`;
+    default:
+      return "The chapter has not finished saving, so nothing was exported. Try the export again in a moment.";
+  }
+}
+
+type ExportNote = { kind: "saved"; message: string; path: string } | { kind: "error"; message: string };
 
 const LINE_HEIGHT: Record<ManuscriptSettings["lineSpacing"], number> = {
   Single: 1,
@@ -30,6 +65,7 @@ const FONT_FALLBACK: Record<string, string> = {
 interface FormatDialogProps {
   open: boolean;
   onClose: () => void;
+  bookId: string;
   bookTitle: string;
   /** Last saved settings. The dialog reverts to these when a write fails. */
   settings: ManuscriptSettings;
@@ -37,6 +73,8 @@ interface FormatDialogProps {
   chapters: Chapter[];
   /** Persists one manuscript patch; rejects when the write fails. */
   onSaveSettings: (next: ManuscriptSettings) => Promise<void>;
+  /** Saves the open chapter before an export; null when no chapter is open. */
+  onFlush: () => Promise<SaveStatus | null>;
 }
 
 export const FORMAT_LABELS: Record<string, string> = {
@@ -49,15 +87,34 @@ export const FORMAT_LABELS: Record<string, string> = {
   preserveLineBreaks: "Keep line breaks"
 };
 
-export function FormatDialog({ open, onClose, bookTitle, settings, chapters, onSaveSettings }: FormatDialogProps) {
+export function FormatDialog({
+  open,
+  onClose,
+  bookId,
+  bookTitle,
+  settings,
+  chapters,
+  onSaveSettings,
+  onFlush
+}: FormatDialogProps) {
   const [target, setTarget] = useState<FormatTarget>("DOCX");
   const [draft, setDraft] = useState<ManuscriptSettings>(settings);
+  const [exporting, setExporting] = useState(false);
+  const [note, setNote] = useState<ExportNote | null>(null);
+  // Exports write files through the main process, which the browser build does not have.
+  const canExport = window.studio.platform !== "web";
 
-  // The dialog content unmounts on close, so the target resets to DOCX on
-  // every open; only the draft follows saved settings while open.
+  // Only the draft follows saved settings while open.
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  // The target and the last export's note are this visit's alone: every open starts at DOCX.
+  useEffect(() => {
+    if (open) return;
+    setTarget("DOCX");
+    setNote(null);
+  }, [open]);
 
   const change = (patch: Partial<ManuscriptSettings>): void => {
     const next = { ...draft, ...patch };
@@ -65,40 +122,83 @@ export function FormatDialog({ open, onClose, bookTitle, settings, chapters, onS
     void onSaveSettings(next).catch(() => setDraft(settings));
   };
 
+  const runExport = async (): Promise<void> => {
+    if (exporting || !canExport) return;
+    setExporting(true);
+    setNote(null);
+    try {
+      let saved: SaveStatus | null;
+      try {
+        saved = await onFlush();
+      } catch {
+        saved = { kind: "error", message: "The chapter could not be saved." };
+      }
+      if (saved && saved.kind !== "saved") {
+        setNote({ kind: "error", message: unsavedMessage(saved) });
+        return;
+      }
+      const path = await must(EXPORTS[target](bookId));
+      // A cancelled picker or a declined replacement wrote nothing, so there is nothing to say.
+      if (path) setNote({ kind: "saved", message: `Saved ${path.split(/[\\/]/).pop() ?? path}`, path });
+    } catch (error) {
+      setNote({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    // The dialog stays open while an export runs, so its outcome is never shown to a closed dialog.
+    <Dialog open={open} onOpenChange={(next) => !next && !exporting && onClose()}>
       <DialogContent
         title="Format"
-        description={`Typography and preview for ${bookTitle}. Exporting stays on the Export button.`}
+        description={`Typography, preview and export for ${bookTitle}. An export is a copy; the book's own files do not change.`}
         className="w-[720px]"
+        footer={
+          <DialogFooter className="mt-0 justify-between gap-3">
+            <div className="min-w-0 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)]">
+              <p role="status" data-testid="format-export-note" className="truncate" title={note?.kind === "saved" ? note.path : undefined}>
+                {canExport ? (note?.kind === "saved" ? note.message : "") : "Exporting is available in the desktop app."}
+              </p>
+              {note?.kind === "error" ? (
+                <p role="alert" data-testid="format-export-error" className="text-[var(--destructive-text)]">
+                  {note.message}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              variant="primary"
+              className="shrink-0"
+              onClick={() => void runExport()}
+              disabled={!canExport || exporting}
+              data-testid="format-export"
+            >
+              <Download size={15} />
+              {exporting ? "Exporting…" : `Export ${TARGET_COPY[target].name}`}
+            </Button>
+          </DialogFooter>
+        }
       >
         <div className="space-y-6">
           <fieldset>
             <legend className="text-[var(--text-callout-size)] font-medium">Target</legend>
             <div className="mt-2 flex flex-wrap gap-4" role="radiogroup" aria-label="Output target">
-              {(["DOCX", ...UNAVAILABLE_TARGETS] as FormatTarget[]).map((option) => {
-                const unavailable = option !== "DOCX";
-                return (
-                  <label
-                    key={option}
-                    className={`flex items-center gap-1.5 text-[var(--text-body-size)] ${unavailable ? "text-muted-foreground" : ""}`}
-                  >
-                    <input
-                      type="radio"
-                      name="format-target"
-                      value={option}
-                      checked={target === option}
-                      disabled={unavailable}
-                      onChange={() => setTarget(option)}
-                    />
-                    {option}
-                    {unavailable ? <span className="text-[var(--text-caption-size)]">Planned</span> : null}
-                  </label>
-                );
-              })}
+              {TARGETS.map((option) => (
+                <label key={option} className="flex items-center gap-1.5 text-[var(--text-body-size)]">
+                  <input
+                    type="radio"
+                    name="format-target"
+                    value={option}
+                    checked={target === option}
+                    disabled={exporting}
+                    onChange={() => setTarget(option)}
+                  />
+                  {option}
+                </label>
+              ))}
             </div>
-            <p className="mt-1.5 text-[var(--text-caption-size)] text-muted-foreground">
-              Only DOCX can be exported today. Choosing a target changes the preview, not the Export button.
+            <p className="mt-1.5 text-[var(--text-caption-size)] text-muted-foreground" data-testid="format-target-note">
+              {TARGET_COPY[target].note}
             </p>
           </fieldset>
 
@@ -202,8 +302,8 @@ export function FormatDialog({ open, onClose, bookTitle, settings, chapters, onS
             <div className="rounded-[var(--corner-lg)] border border-border p-4" data-testid="format-disclosure">
               <p className="text-[var(--text-callout-size)] font-medium">Approximate preview</p>
               <p className="mt-1 text-[var(--text-subheadline-size)] text-muted-foreground">
-                Final output may differ in your word processor. Nothing here measures pages, breaks, counts or
-                trim.
+                Final output may differ in your word processor, PDF reader or e-reader. Nothing here measures
+                pages, breaks, counts or trim, and nothing claims Kindle or publisher acceptance.
               </p>
             </div>
             <article

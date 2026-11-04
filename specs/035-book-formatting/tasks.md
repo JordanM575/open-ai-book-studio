@@ -1,7 +1,8 @@
 # Tasks: book formatting and export
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
-**Status:** Draft / Planned. Every task is unchecked; no implementation, testing or acceptance is claimed.
+**Status:** In progress. Phase 1 (T001–T005) is done; D-108 is accepted (T006) and PDF and EPUB export
+exist, so T015–T017 are partly done. Matter work waits on T007, and profiles on T008.
 
 All tests in this plan use synthetic fixtures in isolated temporary libraries. Do not use real
 manuscripts, credentials, live providers, paid services or devices.
@@ -52,7 +53,7 @@ manuscripts, credentials, live providers, paid services or devices.
 
 ## Phase 2 — Resolve public decisions before dependent work
 
-- [ ] **T006** Research D-108 using public documentation and synthetic test documents; record the
+- [x] **T006** Research D-108 using public documentation and synthetic test documents; record the
   alternatives, determinism requirements, unresolved publisher-conformance limits, and per-target
   illustration placement/sidecar packaging contract in the public decision record. Do not select a
   DOCX/PDF/EPUB renderer until the decision is accepted. This task blocks renderer selection,
@@ -62,7 +63,9 @@ manuscripts, credentials, live providers, paid services or devices.
   timestamps) against a documentation survey of LibreOffice headless, `pdf-lib`, Typst and EPUB
   assemblers; D-108 proposes the determinism requirements and per-target packaging contract with
   KDP acceptance, pagination/trim, font embedding and validator tooling explicitly unresolved.
-  Renderer selection, per-target placement/packaging and conformance work remain blocked.
+  Accepted 2026-11-03 as D-108: DOCX stays on `docx` 9.x, PDF prints the manuscript's own HTML
+  through Electron's `webContents.printToPDF`, and EPUB 3 is assembled with `fflate`; determinism is
+  content determinism, and no KDP, EPUBCheck, PDF/UA or pagination claim is made.
 - [ ] **T007** Decide and record the additive ordered-matter schema and explicit legacy-conversion
   behavior. Define how populated `frontMatter` records are classified, ordered, preserved, reviewed
   and rolled back. Until accepted, do not migrate or reinterpret existing records. This task blocks
@@ -111,14 +114,32 @@ manuscripts, credentials, live providers, paid services or devices.
   output with synthetic books containing ordered matter, verse-like lines and attached synthetic
   images. Keep preview copy approximate and make no eligibility, pagination, measurement or publisher
   readiness claims not supported by the accepted decision.
+  Partly done under D-108: `buildManuscriptHtml` (`apps/desktop/src/main/manuscript-html.ts`) feeds
+  `renderPdfInHiddenWindow` (`apps/desktop/src/main/pdf.ts`), and `buildEpub`
+  (`apps/desktop/src/main/epub.ts`) assembles the container. `manuscript-html.test.ts` and
+  `epub.test.ts` validate the structure with synthetic books holding verse-like lines, stanza gaps
+  and attached images: settings, escaping, reading order, page breaks, illustrations in the Word
+  export's order, stored `mimetype`, OPF, navigation, well-formed XHTML and byte-identical EPUBs.
+  Ordered matter does not exist yet (T007/T009), so no matter fixture is validated.
 - [ ] **T016** Apply one safe-publication contract to every implemented target: snapshot after successful
   flush, source immutability, destination validation and recheck, replacement consent, cancellation,
   staged publication, cleanup reporting and prior-output preservation. Exercise each failure boundary
   against isolated temporary destinations.
+  Partly done under D-108: PDF and EPUB publish through the Word export's boundary
+  (`exportManuscriptPdf`, `exportManuscriptEpub`), and `export-pdf-epub.test.ts` exercises cancel,
+  a destination inside the library, replace consent, a file changed or created after consent,
+  render and write failures and prior-output preservation in temporary folders. The Format dialog
+  exports only after the open chapter's save confirms. Open: cleanup reporting that names a
+  leftover temporary path, and the header's buttons still export after a failed save.
 - [ ] **T017** Complete synthetic end-to-end journeys for DOCX, PDF, EPUB and Markdown as each renderer
   becomes available. Verify the author-visible destination/status, source hashes, matter order,
   optional-image warning, save conflict, cancel and failure behavior. Unsupported targets must remain
   clearly unavailable until their renderer task is complete.
+  Partly done under D-108: the hidden smoke exports a PDF twice in one session and an EPUB from the
+  Format dialog and reads them back (`%PDF-` with the illustration embedded, the stored `mimetype`
+  entry, the chapter text in the XHTML), next to its Word and Markdown checks; `format-dialog-export.test.tsx` covers the saved-file note, cancel, refusal
+  and a failed save. Open: matter order, and an author-visible warning for a skipped illustration
+  (today it is only logged, as in the Word export).
 
 ## Phase 5 — Public format and acceptance record
 

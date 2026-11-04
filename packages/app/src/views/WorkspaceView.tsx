@@ -1067,10 +1067,12 @@ export function WorkspaceView({
           <FormatDialog
             open={formatOpen}
             onClose={() => setFormatOpen(false)}
+            bookId={bookId}
             bookTitle={detail.book.title}
             settings={detail.book.settings.manuscript}
             chapters={detail.chapters}
             onSaveSettings={saveFormatSettings}
+            onFlush={() => editorRef.current?.flush() ?? Promise.resolve(null)}
           />
         </>
       ) : null}

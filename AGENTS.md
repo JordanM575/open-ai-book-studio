@@ -295,7 +295,8 @@ need a new filesystem primitive, add it to the port instead of calling `fs` from
   `docs/AGENTIC-COVERAGE.md` maps what 002 and 011 specify against what exists.
 - The agent writes each turn to `books/<bookId>/threads/` and the chat reloads the latest conversation.
   `compactHistory` summarizes old turns; stored tool parts are still not replayed to the model.
-- No PDF/EPUB export, voice or illustrations yet. DOCX export, book search and the Story Bible are in.
+- PDF and EPUB export are not checked against KDP, EPUBCheck or PDF/UA (D-108). DOCX, Markdown, PDF
+  and EPUB export, voice, illustrations, book search and the Story Bible are in.
 - Renderer component tests cover the editor history and debounce paths, the manuscript dialogs, the
   dictation hook and the ambient panel's microphone; the smoke run remains the integration net.
 - The design kit was the source of the tokens, but only the foundation screens have been drawn; the

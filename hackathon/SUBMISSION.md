@@ -78,8 +78,9 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   a staged atomic publication. Word documents get heading chapters and a report of what could not
   come across (spec 029, D-183; Word on macOS).
 - Manuscript review: an evidence-linked report on saved text (spec 034, desktop, in progress).
-- Book formatting: a target selector, typography settings, an approximate preview, and a Markdown
-  export beside the Word export (spec 035 and 002 FR-051; PDF and EPUB are not built).
+- Book formatting: a target selector, typography settings, an approximate preview, a Markdown
+  export beside the Word export, and PDF and EPUB exports from the Format dialog (spec 035, 002
+  FR-051 and D-108; no publisher acceptance, EPUBCheck or PDF/UA is claimed).
 - Agent and provider reporting:
   - the answering model named in plain words, and capabilities on each model card;
   - the whole-turn usage line;
