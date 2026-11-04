@@ -52,10 +52,10 @@
 
       /* problem */
       .problem-grid { display: grid; grid-template-columns: 1fr 90px 1fr; gap: 18px; align-items: center; margin-top: 64px; }
-      .chat { height: 300px; display: flex; flex-direction: column; gap: 14px; }
+      .chat { height: 340px; display: flex; flex-direction: column; gap: 14px; }
       .bubble { border-radius: 18px; background: #eef1f6; padding: 14px 16px; font-size: 19px; color: #4a4e57; }
       .bubble.me { align-self: flex-end; background: #dce9ff; }
-      .folder { height: 300px; display: flex; flex-direction: column; gap: 12px; }
+      .folder { height: 340px; display: flex; flex-direction: column; gap: 12px; }
       .file { display: flex; align-items: center; gap: 12px; font-size: 19px; color: #42464e; }
       .file i { width: 22px; height: 16px; border-radius: 4px; background: #c9d2e2; display: inline-block; }
       .arrow { text-align: center; color: var(--plate-muted); font-size: 16px; line-height: 1.6; }
@@ -142,7 +142,8 @@
           <div class="card folder" data-reveal="360">
             <h2>Your book</h2>
             <div class="file"><i></i>book.json</div>
-            <div class="file"><i></i>chapters/0001-the-door.md</div>
+            <div class="file"><i></i>chapters/0001-the-light-that-would-not-turn.md</div>
+            <div class="file"><i></i>chapters/0002-the-door-under-the-stairs.md</div>
             <p class="muted">A folder you can open anywhere.</p>
           </div>
         </div>
@@ -156,8 +157,8 @@
           <div class="tree-line"><span class="glyph">▸</span><b>The Salt Road/</b></div>
           <div class="tree-line child"><span class="glyph">▸</span>book.json <span class="tag">idea, cast, outline</span></div>
           <div class="tree-line child"><span class="glyph">▸</span>chapters/ <span class="tag">one Markdown file per chapter</span></div>
-          <div class="tree-line deep"><span class="glyph">·</span>0001-the-light.md</div>
-          <div class="tree-line deep"><span class="glyph">·</span>0002-the-door.md</div>
+          <div class="tree-line deep"><span class="glyph">·</span>0001-the-light-that-would-not-turn.md</div>
+          <div class="tree-line deep"><span class="glyph">·</span>0002-the-door-under-the-stairs.md</div>
         </div>
         <div class="bottom" data-reveal="520">Markdown + JSON. Open it in Finder. Keep it forever.</div>
       </section>
