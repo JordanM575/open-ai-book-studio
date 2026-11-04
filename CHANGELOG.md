@@ -378,6 +378,9 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Allowing Contributor training in the model picker now reaches the book. The book update kept the
+  chosen Contributor model but dropped the consent, so every Contributor turn was refused with a
+  request to allow it in the picker.
 - The ambient strip now says where you are in the chapter on screen. It always named the book's last
   chapter and its word count, and "Say where you are" spoke that; it now follows the open chapter, a
   chapter switch and a saved change.

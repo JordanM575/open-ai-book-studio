@@ -438,6 +438,18 @@ describe("books and chapters", () => {
     expect(raw).not.toContain("deviceSecret");
   });
 
+  test("the model picker's Contributor consent reaches the book", async () => {
+    const { root, library } = await setup();
+    const { bookId } = await book(library);
+    await data(IPC.books.update, {
+      bookId,
+      patch: { defaultModelId: "muse-spark-1.3-contributor", allowContributorTraining: true }
+    });
+    const saved = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf8"));
+    expect(saved.defaultModelId).toBe("muse-spark-1.3-contributor");
+    expect(saved.allowContributorTraining).toBe(true);
+  });
+
   test("a stale save becomes a conflict copy, and a save with a malformed hash writes nothing", async () => {
     const { root, library } = await setup();
     const { bookId, one } = await book(library);

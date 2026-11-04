@@ -346,7 +346,7 @@ export function registerIpc(
 
   handle(IPC.books.update, async (payload) => {
     const input = z.object({ bookId: idSchema, patch: z.record(z.string(), z.unknown()) }).parse(payload);
-    const allowed = ["title", "workingTitle", "description", "genres", "influences", "isErotica", "chapterRange", "outline", "storyArc", "characters", "memories", "stage", "settings", "frontMatter", "defaultProvider", "defaultConnectionId", "defaultModelId"];
+    const allowed = ["title", "workingTitle", "description", "genres", "influences", "isErotica", "chapterRange", "outline", "storyArc", "characters", "memories", "stage", "settings", "frontMatter", "defaultProvider", "defaultConnectionId", "defaultModelId", "allowContributorTraining"];
     const patch = Object.fromEntries(Object.entries(input.patch).filter(([key]) => allowed.includes(key)));
     return studio.requireLibrary().updateBook(input.bookId, patch);
   });
