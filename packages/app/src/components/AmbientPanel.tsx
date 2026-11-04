@@ -167,10 +167,14 @@ export function AmbientPanel({
   const undo = useCallback(async () => {
     try {
       const result = await must(window.studio.agent.undoLast(bookId));
+      const restored = `Restored ${result.restored} chapter${result.restored === 1 ? "" : "s"}`;
+      // A skipped chapter changed after the turn and was left alone, so it is never "nothing".
       setNote(
-        result.restored > 0
-          ? `Restored ${result.restored} chapter${result.restored === 1 ? "" : "s"}.`
-          : "There was nothing to restore."
+        result.skipped > 0
+          ? `${restored}, but skipped ${result.skipped}. Review the remaining changes.`
+          : result.restored > 0
+            ? `${restored}.`
+            : "There was nothing to restore."
       );
       await refresh();
     } catch (error) {

@@ -85,7 +85,9 @@ describe("the built-in tool set", () => {
     const { library, book, chapter } = await fixture();
     const seen: Array<{ chapterId: string; before: string }> = [];
     const tools = buildToolSet(library, book.id, {
-      onBeforeChange: (change) => seen.push({ chapterId: change.chapterId, before: change.before })
+      onBeforeChange: (change) => {
+        seen.push({ chapterId: change.chapterId, before: change.before });
+      }
     });
     await run(tools, "append_to_chapter", { chapterId: chapter.id, text: "The lamp would not turn." });
     expect(seen).toHaveLength(1);

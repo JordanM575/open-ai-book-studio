@@ -285,6 +285,29 @@ describe("the status line", () => {
     expect(view.getByTestId("ambient-action-read_aloud")).toBeDefined();
     expect(view.getByTestId("ambient-action-where_am_i")).toBeDefined();
   });
+
+  test("an undo that leaves a chapter changed since says so", async () => {
+    const agent = (window as unknown as { studio: ReturnType<typeof studio> }).studio.agent;
+    agent.ambient = async () => ({
+      ok: true,
+      data: { ...status, actions: [...status.actions, { id: "undo", label: "Undo", spoken: "undo", available: true }] }
+    });
+    agent.undoLast = async () => ({ ok: true, data: { restored: 1, skipped: 1 } });
+    const { view } = render();
+    await testing.waitFor(() =>
+      expect(view.getByTestId("ambient-line").textContent).toContain("Chapter One")
+    );
+    await testing.fireEvent.click(view.getByTestId("ambient-toggle"));
+
+    await testing.act(async () => {
+      await testing.fireEvent.click(view.getByTestId("ambient-action-undo"));
+    });
+    await testing.waitFor(() =>
+      expect(view.getByTestId("ambient-note").textContent).toBe(
+        "Restored 1 chapter, but skipped 1. Review the remaining changes."
+      )
+    );
+  });
 });
 
 describe("the hands-free loop", () => {

@@ -284,6 +284,38 @@ describe("chat composer", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  test("an undo that skips a chapter edited since says so and still withholds retry", async () => {
+    const { start, fire, undoLast } = renderComposer(
+      null,
+      null,
+      () => Promise.resolve({ ok: true, data: { restored: 1, skipped: 1 } })
+    );
+    const { view } = composer();
+    await failAfterChange(fire, start, {
+      type: "error",
+      turnId: "turn_cmp000001",
+      code: "unknown",
+      message: "The model stopped mid-reply.",
+      changed: 2,
+      undoAvailable: true
+    });
+
+    await testing.waitFor(() => expect(view.getByTestId("agent-undo-turn")).toBeDefined());
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("agent-undo-turn"));
+    });
+    expect(undoLast).toHaveBeenCalledWith(BOOK);
+    await testing.waitFor(() =>
+      expect(
+        view.getByText("Restored 1 chapter, but skipped 1. Review the remaining changes before retrying.")
+      ).toBeDefined()
+    );
+    // The skipped chapter still differs from before the turn, so a retry is not offered yet.
+    expect(view.getByText(/This attempt changed 1 chapter\. Undo it before retrying\./)).toBeDefined();
+    expect(view.queryByTestId("agent-retry-request")).toBeNull();
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
+  });
+
   test("withholds retry and undo when no checkpoint could be saved", async () => {
     const { start, fire } = renderComposer();
     const { view } = composer();

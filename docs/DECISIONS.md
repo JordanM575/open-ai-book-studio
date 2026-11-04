@@ -154,6 +154,7 @@ needed and the spec or task it blocks.
 | **Status** | Open |
 | **Question** | One JSONL file per thread, plus per-turn checkpoints as patch files? What are the retention and size limits for a 250k-word book? |
 | **Tension** | Full snapshots are simple but huge; patches are small but fragile if a later turn rewrites the same lines. |
+| **Known** | Today a turn's checkpoint is one JSON file of whole chapter texts, written again after each change the turn makes ([FORMAT.md](FORMAT.md#agent-turn-checkpoints), 2026-11-04). Undo removes the newest file; nothing prunes older ones. |
 | **Needed** | A storage spike with a realistic turn sequence, plus a pruning rule the author can see. |
 | **Blocks** | spec 002 agent history tasks |
 | **Owner** | spec 002 |

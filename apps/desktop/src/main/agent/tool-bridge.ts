@@ -4,7 +4,7 @@ import {
   isZodParameters,
   validatePluginArgs
 } from "@ai-book-studio/core/agent/plugins";
-import { CheckpointStore } from "./checkpoints";
+import { CheckpointStore, recordChange } from "./checkpoints";
 import { chapterToolCatalog, createChapterTools, toolTier, type ChapterChange } from "./tools";
 import { loadPlugins, pluginTools } from "./plugins";
 import { pluginLibrary } from "./tool-set";
@@ -110,7 +110,7 @@ export class ToolBridge {
 
     const changes: ChapterChange[] = [];
     const tools = createChapterTools(library, request.bookId, (change) => {
-      if (!changes.some((entry) => entry.chapterId === change.chapterId)) changes.push(change);
+      recordChange(changes, change);
     });
     const bound = tools[request.name as keyof typeof tools] as unknown as ToolLike | undefined;
 
@@ -188,7 +188,8 @@ export class ToolBridge {
         before: change.before,
         ...(change.created ? { created: true } : {}),
         ...(change.deleted ? { deleted: true } : {}),
-        ...(change.order !== undefined ? { order: change.order } : {})
+        ...(change.order !== undefined ? { order: change.order } : {}),
+        ...(change.afterHash !== undefined ? { afterHash: change.afterHash } : {})
       }))
     });
   }

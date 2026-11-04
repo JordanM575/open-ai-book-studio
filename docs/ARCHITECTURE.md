@@ -139,8 +139,8 @@ The writing agent runs in the main process. The boundary is:
   between turns.
 - Tool calls map onto the same `Library` methods the UI uses, so an agent edit obeys version checks,
   atomic writes, limits and conflict handling exactly like a human edit.
-- Every agent turn that changes files records a checkpoint under `books/<id>/checkpoints/` so the
-  author can compare and revert.
+- Every agent turn that changes chapters records one checkpoint under `books/<id>/.studio/checkpoints/`,
+  rewritten after each change it makes, so one undo reverts the whole turn (see `docs/FORMAT.md`).
 
 ## Multi-target: core, ports and adapters (in progress)
 

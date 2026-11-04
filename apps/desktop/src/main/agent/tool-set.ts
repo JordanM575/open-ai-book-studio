@@ -23,7 +23,7 @@ export function buildToolSet(
   options: {
     disabledTools?: string[];
     pluginTools?: PluginTool[];
-    onBeforeChange?: (change: ChapterChange) => void;
+    onBeforeChange?: (change: ChapterChange) => void | Promise<void>;
     /**
      * The provider options for the last tool definition.
      *

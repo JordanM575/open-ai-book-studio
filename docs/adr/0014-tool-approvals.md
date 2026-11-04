@@ -30,7 +30,10 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
    sent the response messages alone, so the model lost the author's request after an approval.)
 4. **Checkpoint before the pause.** If the turn already changed chapters, the runtime saves the
    checkpoint before showing the approval, so those changes remain undoable if the app quits while
-   waiting.
+   waiting. The checkpoint is also written each time the turn changes a chapter, before the tool
+   answers the model, so a chapter changed after an approval is in it as well. A turn still has one
+   checkpoint file and one undo. (Amended 2026-11-04: the checkpoint had been saved once, at the
+   first pause, so a chapter changed after that pause stayed out of it and undo could not restore it.)
 5. **The UI shows the affected action.** The chat renders an approval card with Allow and Deny and
    keeps the card after the answer, so the transcript says what happened.
 
@@ -44,11 +47,16 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
 - The pause stores only one approval. A turn with several destructive calls needs a queue; until then,
   the model should make one destructive call per step.
 - Usage totals include every leg of the paused turn; the approval itself costs nothing.
-- Memory removal is not chapter-undoable. The checkpoint covers chapter text only; a memory restore
-  path needs its own checkpoint if that guarantee is required. Chapter overwrite, line deletion, split
-  and merge are checkpointed and undoable; split records the created chapter, and merge records the
-  deleted chapter so undo recreates it. Chapter delete moves the file to the trash but is not
-  chapter-undoable, and a chapter move changes order only and is not covered by the text checkpoint.
+- Memory removal is not chapter-undoable. The checkpoint covers chapters only; a memory restore path
+  needs its own checkpoint if that guarantee is required. Chapter overwrite, line deletion, split,
+  merge, delete and move are checkpointed and undoable. Split and chapter creation record the new
+  chapter, which undo moves to the trash. Merge and delete record the removed chapter, which undo
+  writes again with the same title and text at its old position; it gets a new id, and the deleted
+  file stays in the trash. A move records where the chapter stood, and undo moves it back. One move
+  per turn is restored exactly; several moves in one turn are undone newest first, and that order is
+  not proven. A chapter's details (`set_chapter_meta`) and a plugin's writes are not checkpointed.
+- Undo never writes over a later edit. Each entry records a hash of the body text the turn left; a
+  chapter whose text changed after the turn is skipped and reported, and the rest are restored.
 
 ## Alternatives considered
 
@@ -67,4 +75,7 @@ until approval, Allow removes it, Deny keeps it, and the final assistant text is
 thread. It also records every request the model receives: a resume repeats the paused request message
 for message before the tool call and its result or denial, a second approval in the same turn runs
 each approved call once, and the next turn asks again instead of reusing an earlier approval. The
-tool itself is covered in `agent-tools.test.ts`.
+tool itself is covered in `agent-tools.test.ts`. `turn-checkpoint.test.ts` drives whole turns through
+the same mock: a change after an approval, two approvals, a denial after an earlier write, created,
+deleted, moved and split chapters, and a chapter the author edits afterwards. Undo restores every
+chapter the turn reported changed, or skips and reports the one edited since.

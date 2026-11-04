@@ -18,6 +18,8 @@ editor; nothing important lives in a database, in the app's profile, or in an op
       conflicts/               versions kept when two writers disagreed
       threads/                 agent conversations, one JSON file per thread
       checkpoints/             reserved for draft checkpoints
+      .studio/
+        checkpoints/           undo points, one JSON file per agent turn
   .studio/
     device.json                identity of this machine
     files.json                 reserved index metadata
@@ -150,6 +152,39 @@ The schema lives in `packages/core/src/agent/messages.ts`.
 
 A corrupt file is never rewritten or deleted by a list operation; opening it reports the error. Thread
 writes use the library port's checked commit, so a failed write leaves the previous file intact.
+
+## Agent turn checkpoints
+
+`.studio/checkpoints/<at>-<turnId>.json` inside a book folder is the undo point for one agent turn.
+`<at>` is the time of the turn's first change, with `:` and `.` replaced by `-`. The turn writes the
+file again, whole and atomically, each time it changes a chapter and before the tool answers the
+model. A change made after an approval is covered as fully as one made before it. A turn has at most
+one file; undo restores from the newest file and then removes it.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `turnId`, `bookId` | string | The turn and its book. |
+| `at` | ISO 8601 | When the turn first changed the book. Later saves keep it, so they rewrite the same file. |
+| `prompt` | string | The author's request. |
+| `entries` | array | One per chapter the turn changed. Undo walks them from last to first. |
+
+Each entry has `chapterId`, `title` and `before`, the body text the chapter had before the turn first
+wrote it. Optional fields:
+
+- `created: true` marks a chapter the turn created. Undo moves it to the trash.
+- `deleted: true` marks a chapter the turn deleted. Undo writes a new chapter with that title and
+  `before` as its text.
+- `order` is the 1-based position undo puts the chapter back at. For a deleted chapter it is where the
+  chapter stood. For a moved chapter it is where the chapter stood before the turn first moved it.
+- `afterHash` is the SHA-256 (hex) of the body text the turn left. Undo leaves a chapter whose body
+  no longer has this hash and reports it as skipped, so it never writes over a later edit. The front
+  matter is not hashed, because moving one chapter renumbers its neighbours without changing their
+  text.
+
+Restoring is an ordinary checked save: the body comes back exactly, and `version` and `updatedAt`
+move forward. A checkpoint written before `afterHash` existed
+restores over the current text, as it always did. A chapter the turn created and then deleted leaves
+no entry, and a turn whose changes cancel out leaves no file.
 
 ## Saving and conflicts
 

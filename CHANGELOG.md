@@ -264,6 +264,23 @@ Update the `Unreleased` section before every commit.
   product defects, which are reported rather than fixed in this test-only change:
   - the desktop vault's status read always says protected storage is available;
   - importing an old backup from the desktop dialog always refuses it as not a backup.
+- One undo now restores every chapter an agent turn changed, including changes made after an
+  approval. The turn saved its checkpoint once, at its first approval pause, and never again. When a
+  turn appended to one chapter and then overwrote a second after the author approved, it reported two
+  chapters changed and offered undo, but undo restored only the first; the second kept the overwrite.
+  Each change is now added to the checkpoint as soon as it is saved, before the tool answers the
+  model. A turn still has one checkpoint file and one undo.
+  - The changed count now matches what undo restores or skips. A save that conflicted no longer
+    counts as a change.
+  - Undo no longer writes over a chapter the author edited after the turn. It skips that chapter and
+    restores the rest. The chat and the minimal mode both say how many were skipped; the minimal mode
+    used to say there was nothing to restore.
+  - Creating, deleting and moving a chapter are now undoable. A deleted chapter returns with its
+    title and text at its old place, under a new id; its file stays in the trash. Merge undo also
+    finds the right place when chapter numbers have gaps.
+  - Undo goes back through a turn's changes from last to first. Each checkpoint entry gains an
+    optional `afterHash`. Older checkpoints still load and restore as before (`docs/FORMAT.md`
+    documents the file, ADR 0014 decision 4 is amended).
 - The browser build's `window.studio` is now tested end to end over site storage
   (`apps/web/tests/storage/browser-api.test.ts`). The test covers:
   - creating, renaming, searching and reopening a book;

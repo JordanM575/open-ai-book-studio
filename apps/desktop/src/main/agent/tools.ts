@@ -5,6 +5,7 @@ import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools"
 import { countWords } from "@ai-book-studio/core/words";
 import { newId } from "../library/paths";
 import type { Library } from "../library/store";
+import { bodyHash } from "./checkpoints";
 
 const MAX_FIND = 500;
 const MAX_FIND_QUERY = 500;
@@ -120,21 +121,43 @@ export interface ChapterChange {
   created?: boolean;
   /** True when the turn deleted the chapter; undo recreates it from `before`. */
   deleted?: boolean;
+  /** The 1-based position a deleted chapter stood at, or a moved one stood at before the move. */
   order?: number;
+  /** The SHA-256 of the body text after the change, so undo can tell a later edit apart. */
+  afterHash?: string;
 }
 
 export function createChapterTools(
   library: Library,
   bookId: string,
-  onBeforeChange?: (change: ChapterChange) => void
+  onBeforeChange?: (change: ChapterChange) => void | Promise<void>
 ) {
-  /** Record the text as it was before this save, then save with the usual version/hash guard. */
+  /**
+   * Save with the usual version/hash guard, then report the text the chapter had before. A change is
+   * reported once it is on disk, and the tool waits for the report before it answers the model, so a
+   * turn can write its checkpoint first. A save that conflicted or changed nothing reports nothing.
+   */
   const checkpoint = async (chapter: Chapter, content: string) => {
-    onBeforeChange?.({ chapterId: chapter.id, title: chapter.title, before: chapter.content });
-    return library.saveChapter(bookId, chapter.id, content, {
+    const saved = await library.saveChapter(bookId, chapter.id, content, {
       baseVersion: chapter.version,
       baseHash: chapter.hash
     });
+    if (saved.status === "saved" && saved.chapter.content !== chapter.content) {
+      await onBeforeChange?.({
+        chapterId: chapter.id,
+        title: chapter.title,
+        before: chapter.content,
+        afterHash: await bodyHash(saved.chapter.content)
+      });
+    }
+    return saved;
+  };
+
+  /** A chapter's 1-based place in the book's current order, or undefined if it is not listed. */
+  const positionOf = async (chapterId: string): Promise<number | undefined> => {
+    const { chapters } = await library.readBook(bookId);
+    const index = chapters.findIndex((entry) => entry.id === chapterId);
+    return index < 0 ? undefined : index + 1;
   };
 
   return {
@@ -410,6 +433,13 @@ export function createChapterTools(
           ...(title ? { title } : {}),
           ...(content ? { content } : {})
         });
+        await onBeforeChange?.({
+          chapterId: chapter.id,
+          title: chapter.title,
+          before: "",
+          created: true,
+          afterHash: await bodyHash(chapter.content)
+        });
         return result(true, `Created “${chapter.title}” as chapter ${chapter.order}.`, {
           chapterId: chapter.id,
           order: chapter.order
@@ -463,12 +493,18 @@ export function createChapterTools(
           return result(false, "The chapter changed on disk, so nothing was split. Read it again.");
         }
 
-        onBeforeChange?.({ chapterId: chapter.id, title: chapter.title, before: chapter.content });
-        onBeforeChange?.({
+        await onBeforeChange?.({
+          chapterId: chapter.id,
+          title: chapter.title,
+          before: chapter.content,
+          afterHash: await bodyHash(saved.chapter.content)
+        });
+        await onBeforeChange?.({
           chapterId: created.id,
           title: created.title,
           before: "",
-          created: true
+          created: true,
+          afterHash: await bodyHash(created.content)
         });
         return result(true, `Split “${chapter.title}” at line ${line}.`, {
           chapterId,
@@ -494,6 +530,7 @@ export function createChapterTools(
         const firstText = first.content.replace(/\s+$/, "");
         const secondText = second.content.replace(/^\s+/, "");
         const combined = [firstText, secondText].filter(Boolean).join("\n\n");
+        const secondPosition = (await positionOf(second.id)) ?? second.order;
 
         try {
           await library.deleteChapter(bookId, second.id);
@@ -517,13 +554,18 @@ export function createChapterTools(
           );
         }
 
-        onBeforeChange?.({ chapterId: first.id, title: first.title, before: first.content });
-        onBeforeChange?.({
+        await onBeforeChange?.({
+          chapterId: first.id,
+          title: first.title,
+          before: first.content,
+          afterHash: await bodyHash(saved.chapter.content)
+        });
+        await onBeforeChange?.({
           chapterId: second.id,
           title: second.title,
           before: second.content,
           deleted: true,
-          order: second.order
+          order: secondPosition
         });
         return result(true, `Merged “${second.title}” into “${first.title}”.`, {
           chapterId: first.id,
@@ -539,7 +581,15 @@ export function createChapterTools(
       execute: async ({ chapterId }) => {
         try {
           const chapter = await library.readChapter(bookId, chapterId);
+          const position = await positionOf(chapter.id);
           const trashed = await library.deleteChapter(bookId, chapterId);
+          await onBeforeChange?.({
+            chapterId: chapter.id,
+            title: chapter.title,
+            before: chapter.content,
+            deleted: true,
+            ...(position !== undefined ? { order: position } : {})
+          });
           return result(true, `Moved “${chapter.title}” to the trash.`, { chapterId, trashedAt: trashed.trashedAt });
         } catch (error) {
           return result(false, error instanceof Error ? error.message : "That chapter could not be deleted.");
@@ -564,6 +614,16 @@ export function createChapterTools(
         const moved = await library.moveChapterTo(bookId, chapterId, position - 1);
         if (moved.status === "conflict") {
           return result(false, "The chapter order changed on disk, so nothing moved. Read the chapter list again.");
+        }
+        const from = chapters.indexOf(chapter) + 1;
+        if (from !== position) {
+          await onBeforeChange?.({
+            chapterId: chapter.id,
+            title: chapter.title,
+            before: chapter.content,
+            order: from,
+            afterHash: await bodyHash(chapter.content)
+          });
         }
         return result(true, `Moved “${chapter.title}” to position ${position}.`, { chapterId, position });
       }

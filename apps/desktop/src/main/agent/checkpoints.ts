@@ -11,7 +11,16 @@ export interface CheckpointEntry {
   created?: boolean;
   /** A chapter this turn deleted; undo recreates it from `before` at `order`. */
   deleted?: boolean;
+  /**
+   * The 1-based position undo puts the chapter back at: where a deleted chapter stood, or where a
+   * moved chapter stood before the turn first moved it.
+   */
   order?: number;
+  /**
+   * The SHA-256 of the body text the turn left. Undo leaves a chapter whose text no longer has
+   * this hash, because someone wrote it after the turn. Older checkpoints have none.
+   */
+  afterHash?: string;
 }
 
 export interface TurnCheckpoint {
@@ -29,8 +38,48 @@ export interface LoadedCheckpoint extends TurnCheckpoint {
 const BOOK_ID = /^book_[A-Za-z0-9-]{6,}$/;
 
 /**
- * A turn's restore point. Before the agent changes a chapter for the first time in a turn, the
- * original text is written here. One checkpoint per turn keeps undo predictable and bounded.
+ * The SHA-256 of a chapter's body text, in hex. The front matter is left out on purpose: moving a
+ * chapter, or a neighbour, rewrites its order and version without touching its text.
+ */
+export async function bodyHash(text: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Fold one change into a turn's entries, which hold one entry per chapter.
+ *
+ * The first change to a chapter fixes its `before` and title: the text it had before the turn first
+ * wrote it. A later change only moves `afterHash` on. When a chapter the turn already changed is then
+ * moved or deleted, its entry takes that position and goes to the end of the list, because undo walks
+ * the list backwards and must meet it in the order the change was made. A chapter the turn created
+ * and then deleted leaves nothing to undo.
+ */
+export function recordChange(entries: CheckpointEntry[], change: CheckpointEntry): void {
+  const index = entries.findIndex((entry) => entry.chapterId === change.chapterId);
+  const existing = entries[index];
+  if (!existing) {
+    entries.push({ ...change });
+    return;
+  }
+  if (existing.created && change.deleted) {
+    entries.splice(index, 1);
+    return;
+  }
+  if (change.afterHash !== undefined) existing.afterHash = change.afterHash;
+  if (existing.created) return;
+  if (change.deleted) existing.deleted = true;
+  if (change.order !== undefined && existing.order === undefined) {
+    existing.order = change.order;
+    entries.splice(index, 1);
+    entries.push(existing);
+  }
+}
+
+/**
+ * A turn's restore point. Every time the agent changes a chapter, the turn's checkpoint is written
+ * again, whole and under the same file name, so it always holds the text each changed chapter had
+ * before the turn first wrote it. One checkpoint per turn keeps undo predictable and bounded.
  */
 export class CheckpointStore {
   constructor(private readonly libraryRoot: string | (() => string | null)) {}

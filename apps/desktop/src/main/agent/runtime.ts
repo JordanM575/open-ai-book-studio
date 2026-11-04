@@ -33,8 +33,9 @@ import type { Studio } from "../studio";
 import type { ProviderService } from "../providers";
 import { UsageStore } from "../usage";
 import { newId } from "../library/paths";
+import type { Library } from "../library/store";
 import { modelFor } from "./transport";
-import { CheckpointStore } from "./checkpoints";
+import { CheckpointStore, bodyHash, recordChange, type CheckpointEntry } from "./checkpoints";
 import { DESTRUCTIVE_TOOL_NAMES, type ChapterChange } from "./tools";
 import { buildToolSet } from "./tool-set";
 import { buildPrompt } from "./prompt";
@@ -96,11 +97,27 @@ interface TurnState {
   /** Stable for the whole turn so the paused and finished messages share one id. */
   createdAt: string;
   persisted: boolean;
-  checkpointAttempted: boolean;
-  checkpointSaved: boolean;
+  checkpoint: CheckpointProgress;
+  /** Tool calls still running. A stop or a failure waits for them before it reports. */
+  running: Set<Promise<void>>;
+}
+
+/** How far the turn's one checkpoint file has caught up with the chapters the turn changed. */
+interface CheckpointProgress {
+  /** Moves on each time the turn records a change. */
+  revision: number;
+  /** The revision the file on disk holds. */
+  saved: number;
+  /** Set by the first save and kept, so every later save rewrites the same file. */
+  at: string | null;
+  file: string | null;
+  /** Saves run one at a time, because the tool calls of one step can finish together. */
+  queue: Promise<unknown>;
 }
 
 const MAX_STEPS = 20;
+/** How long a stop or a failure waits for a tool call that is still running. */
+const RUNNING_CALL_WAIT_MS = 5_000;
 
 /** Replaceable at the edge so tests and future provider adapters do not need a network. */
 export type AgentModelFactory = (credential: StoredCredential, modelId: string) => LanguageModel;
@@ -351,9 +368,10 @@ export class AgentRuntime {
       steps: 0,
       createdAt: new Date().toISOString(),
       persisted: false,
-      checkpointAttempted: false,
-      checkpointSaved: false
+      checkpoint: { revision: 0, saved: 0, at: null, file: null, queue: Promise.resolve() },
+      running: new Set()
     };
+    const turnId = newId("turn");
     const cache = cachePrefixFor(
       credential.provider,
       book.settings?.cache?.prefixMode !== "off"
@@ -362,10 +380,15 @@ export class AgentRuntime {
       disabledTools: book.settings?.agent?.disabledTools ?? [],
       pluginTools: await this.pluginToolsFor(),
       ...(cache.toolProviderOptions ? { toolProviderOptions: cache.toolProviderOptions } : {}),
-      onBeforeChange: (change) => {
-        if (!state.changes.some((existing) => existing.chapterId === change.chapterId)) state.changes.push(change);
+      // Every change goes into the checkpoint as it is made, before the tool answers the model, so
+      // a change after a pause or a resume is as undoable as one before it.
+      onBeforeChange: async (change) => {
+        recordChange(state.changes, change);
+        state.checkpoint.revision += 1;
+        await this.saveCheckpoint(turnId, input, state);
       }
     });
+    trackRunningCalls(tools, state.running);
     const agent = new ToolLoopAgent({
       id: "chapter-writer",
       model,
@@ -384,7 +407,6 @@ export class AgentRuntime {
       stopWhen: isStepCount(MAX_STEPS)
     });
 
-    const turnId = newId("turn");
     const controller = new AbortController();
     this.active.set(turnId, {
       controller,
@@ -425,7 +447,7 @@ export class AgentRuntime {
         type: "stopped",
         turnId,
         changed: turn.state.changes.length,
-        undoAvailable: turn.state.changes.length === 0 || turn.state.checkpointSaved
+        undoAvailable: checkpointCovers(turn.state)
       });
     }
     turn.controller.abort();
@@ -479,7 +501,13 @@ export class AgentRuntime {
     }
   }
 
-  /** Put every chapter this turn changed back the way it was, newest turn first. */
+  /**
+   * Put every chapter the newest turn changed back the way the turn found it.
+   *
+   * The entries are undone newest first, so the turn's structural changes come apart in the reverse
+   * of the order they were made. A chapter whose text changed after the turn is left as it is and
+   * counted as skipped: undo never writes over someone else's words.
+   */
   async undoLast(bookId: string): Promise<{ restored: number; skipped: number }> {
     const library = this.studio.requireLibrary();
     const store = new CheckpointStore(() => this.studio.library?.root ?? null);
@@ -489,42 +517,52 @@ export class AgentRuntime {
     }
     let restored = 0;
     let skipped = 0;
-    for (const entry of checkpoint.entries) {
-      if (entry.created) {
-        try {
-          await library.deleteChapter(bookId, entry.chapterId);
-          restored += 1;
-        } catch {
-          skipped += 1;
-        }
-        continue;
-      }
-      if (entry.deleted) {
-        try {
-          const recreated = await library.createChapter(bookId, {
-            title: entry.title,
-            content: entry.before
-          });
-          if (entry.order) await library.moveChapterTo(bookId, recreated.id, entry.order - 1);
-          restored += 1;
-        } catch {
-          skipped += 1;
-        }
-        continue;
-      }
-      try {
-        const current = await library.readChapter(bookId, entry.chapterId);
-        await library.saveChapter(bookId, entry.chapterId, entry.before, {
-          baseVersion: current.version,
-          baseHash: current.hash
-        });
-        restored += 1;
-      } catch {
-        skipped += 1;
-      }
+    for (const entry of [...checkpoint.entries].reverse()) {
+      if (await undoEntry(library, bookId, entry)) restored += 1;
+      else skipped += 1;
     }
     await store.remove(bookId, checkpoint.file);
     return { restored, skipped };
+  }
+
+  /**
+   * Write the turn's checkpoint with every chapter the turn has changed so far.
+   *
+   * A turn has one checkpoint file. Each save rewrites it whole and atomically, so the file always
+   * holds what every changed chapter was before the turn first wrote it, however many pauses and
+   * approvals came between. A failed save is logged and tried again by the next one; it never fails
+   * the tool that made the change. Resolves true when the file holds every change.
+   */
+  private saveCheckpoint(turnId: string, input: AgentTurnInput, state: TurnState): Promise<boolean> {
+    const progress = state.checkpoint;
+    const saving = progress.queue.then(async () => {
+      if (progress.saved === progress.revision) return checkpointCovers(state);
+      const revision = progress.revision;
+      const store = new CheckpointStore(() => this.studio.library?.root ?? null);
+      try {
+        if (state.changes.length === 0) {
+          // The turn's changes cancelled out, such as a chapter it created and then deleted.
+          if (progress.file) await store.remove(input.bookId, progress.file);
+          progress.at = null;
+          progress.file = null;
+        } else {
+          progress.at ??= new Date().toISOString();
+          progress.file = await store.save({
+            turnId,
+            bookId: input.bookId,
+            at: progress.at,
+            prompt: input.prompt,
+            entries: state.changes
+          });
+        }
+        progress.saved = revision;
+      } catch (error) {
+        console.warn("[agent] Could not save the turn checkpoint:", redact((error as Error).message));
+      }
+      return checkpointCovers(state);
+    });
+    progress.queue = saving.catch(() => {});
+    return saving;
   }
 
   private async run<TOOLS extends ToolSet>(
@@ -545,24 +583,8 @@ export class AgentRuntime {
     let waiting = false;
     let approval: { approvalId: string; name: string; input: unknown } | null = null;
 
-    const saveCheckpoint = async (): Promise<boolean> => {
-      if (state.changes.length === 0) return true;
-      if (state.checkpointAttempted) return state.checkpointSaved;
-      state.checkpointAttempted = true;
-      try {
-        await new CheckpointStore(() => this.studio.library?.root ?? null).save({
-          turnId,
-          bookId: input.bookId,
-          at: new Date().toISOString(),
-          prompt: input.prompt,
-          entries: state.changes
-        });
-        state.checkpointSaved = true;
-      } catch (error) {
-        console.warn("[agent] Could not save the turn checkpoint:", redact((error as Error).message));
-      }
-      return state.checkpointSaved;
-    };
+    // Each change saved the checkpoint as it was made. This catches up after a save that failed.
+    const saveCheckpoint = (): Promise<boolean> => this.saveCheckpoint(turnId, input, state);
 
     const writeMessage = async (
       parts: AgentPart[],
@@ -798,6 +820,9 @@ export class AgentRuntime {
         console.warn("[agent] Could not record usage:", redact((error as Error).message));
       }
     } catch (error) {
+      // A tool call that was still writing finishes first, so the changes this reports, and the
+      // checkpoint it leaves, include that write.
+      await settleRunningCalls(state.running);
       if (controller.signal.aborted) {
         const undoAvailable = await saveCheckpoint();
         expirePendingApprovals(state);
@@ -937,6 +962,74 @@ function expirePendingApprovals(state: TurnState): void {
     if (part.status !== "pending") continue;
     part.status = "expired";
     part.resolvedAt = at;
+  }
+}
+
+/** Whether one undo can put back everything the turn has changed so far. */
+function checkpointCovers(state: TurnState): boolean {
+  return state.changes.length === 0 || state.checkpoint.saved === state.checkpoint.revision;
+}
+
+/** Note each tool call while it runs, without changing what it returns. */
+function trackRunningCalls(tools: ToolSet, running: Set<Promise<void>>): void {
+  for (const definition of Object.values(tools)) {
+    const execute = definition.execute;
+    if (!execute) continue;
+    definition.execute = (toolInput, options) => {
+      const result = execute(toolInput, options);
+      if (result instanceof Promise) {
+        const settled = result.then(
+          () => undefined,
+          () => undefined
+        );
+        running.add(settled);
+        void settled.then(() => running.delete(settled));
+      }
+      return result;
+    };
+  }
+}
+
+/** Wait for the tool calls still running, but never longer than a stop should take to show. */
+async function settleRunningCalls(running: Set<Promise<void>>): Promise<void> {
+  if (running.size === 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    Promise.all(running),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, RUNNING_CALL_WAIT_MS);
+    })
+  ]);
+  clearTimeout(timer);
+}
+
+/** Undo one checkpoint entry. False when it could not be put back, or someone changed it since. */
+async function undoEntry(library: Library, bookId: string, entry: CheckpointEntry): Promise<boolean> {
+  try {
+    if (entry.deleted) {
+      const recreated = await library.createChapter(bookId, { title: entry.title, content: entry.before });
+      if (entry.order) await library.moveChapterTo(bookId, recreated.id, entry.order - 1);
+      return true;
+    }
+    const current = await library.readChapter(bookId, entry.chapterId);
+    // Text that is no longer what the turn left belongs to whoever wrote it since.
+    if (entry.afterHash !== undefined && (await bodyHash(current.content)) !== entry.afterHash) return false;
+    if (entry.created) {
+      await library.deleteChapter(bookId, entry.chapterId);
+      return true;
+    }
+    const saved = await library.saveChapter(bookId, entry.chapterId, entry.before, {
+      baseVersion: current.version,
+      baseHash: current.hash
+    });
+    if (saved.status !== "saved") return false;
+    if (entry.order) {
+      const moved = await library.moveChapterTo(bookId, entry.chapterId, entry.order - 1);
+      if (moved.status !== "saved") return false;
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
