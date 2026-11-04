@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import type { BookDetail, BookSummary, Chapter } from "@ai-book-studio/core/schema";
 import { bookSchema } from "@ai-book-studio/core/schema";
 import type { ToolDescriptor } from "@ai-book-studio/core/agent/tools";
+import { ProviderError } from "@ai-book-studio/core/providers/types";
 import { LocalBackend, type BackendLibrary, type BackendSource, type BackendToolRunner } from "../src/main/backend";
 
 const ROOT = "/tmp/ai-book-studio-glasses-test";
@@ -247,6 +248,10 @@ describe("the ambient agent on the control plane", () => {
   };
 
   const asked: string[] = [];
+  /** The arguments of every undo the control plane passed on, as given. */
+  const undone: unknown[][] = [];
+  const STALE =
+    "The book changed since that turn, so nothing was undone. The newest change is “Make the lamp smoke.” in “The Lamp”.";
   let agentUrl = "";
   let agentToken = "";
 
@@ -266,7 +271,12 @@ describe("the ambient agent on the control plane", () => {
             changed: 1
           };
         },
-        undo: async () => ({ restored: 1, skipped: 0 }),
+        undo: async (...args: [bookId: string, turnId?: string]) => {
+          undone.push(args);
+          // The runtime's refusal when the named turn no longer owns the newest checkpoint.
+          if (args[1] === "turn_stale0001") throw new ProviderError("not-found", STALE);
+          return { restored: 1, skipped: 0 };
+        },
         stop: async () => ({ stopped: 1 })
       }
     });
@@ -313,6 +323,40 @@ describe("the ambient agent on the control plane", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { restored: number } };
     expect(body.result.restored).toBe(1);
+    // The CLI and MCP name no turn: they undo the newest on purpose.
+    expect(undone.at(-1)).toEqual([BOOK_ID]);
+  });
+
+  test("undoes the newest turn when the request has no body at all", async () => {
+    const response = await fetch(`${agentUrl}/v1/books/${BOOK_ID}/undo`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${agentToken}` }
+    });
+    expect(response.status).toBe(200);
+    expect(undone.at(-1)).toEqual([BOOK_ID]);
+  });
+
+  test("undoes a named turn only while it is the newest, and refuses a stale one as a conflict", async () => {
+    const undo = (body: unknown) =>
+      fetch(`${agentUrl}/v1/books/${BOOK_ID}/undo`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${agentToken}`, "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+    const named = await undo({ turnId: "turn_test0001" });
+    expect(named.status).toBe(200);
+    expect(undone.at(-1)).toEqual([BOOK_ID, "turn_test0001"]);
+
+    const stale = await undo({ turnId: "turn_stale0001" });
+    expect(stale.status).toBe(409);
+    expect(((await stale.json()) as { error: { message: string } }).error.message).toBe(STALE);
+
+    const calls = undone.length;
+    for (const turnId of ["", "t".repeat(81), 7]) {
+      expect((await undo({ turnId })).status).toBe(400);
+    }
+    expect(undone).toHaveLength(calls);
   });
 
   test("stops the agent when it is working", async () => {

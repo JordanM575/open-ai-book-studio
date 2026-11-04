@@ -18,6 +18,7 @@ import type {
   SaveChapterResult
 } from "@ai-book-studio/core/schema";
 import { idSchema } from "@ai-book-studio/core/schema";
+import { ProviderError } from "@ai-book-studio/core/providers/types";
 import { asOtherWriter } from "./library/own-writes";
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024 + 1024;
@@ -89,8 +90,11 @@ export interface BackendAgent {
     chapterId?: string | null;
     threadId?: string | null;
   }): Promise<AgentTurnResult>;
-  /** Undo the agent's last turn, because the ambient status offers it. */
-  undo(bookId: string): Promise<{ restored: number; skipped: number }>;
+  /**
+   * Undo the agent's last turn, because the ambient status offers it. With `turnId`, only while that
+   * turn owns the newest checkpoint; the CLI and MCP name none and take the newest.
+   */
+  undo(bookId: string, turnId?: string): Promise<{ restored: number; skipped: number }>;
   /** Stop the agent if it is working on this book, because the status reports that it is. */
   stop(bookId: string): Promise<{ stopped: number }>;
 }
@@ -347,7 +351,20 @@ export class LocalBackend {
     }
     if (request.method === "POST" && parts.length === 4 && parts[3] === "undo") {
       if (!this.agent) throw new HttpError(404, "not-found", "This studio build has no writing agent.");
-      this.send(response, 200, { result: await this.agent.undo(bookId) });
+      // The body is optional: no body, or no turn, undoes the newest turn.
+      const { turnId } = undoBody.parse(await readJson(request, { optional: true }));
+      if (!turnId) {
+        this.send(response, 200, { result: await this.agent.undo(bookId) });
+        return;
+      }
+      const result = await this.agent.undo(bookId, turnId).catch((error: unknown) => {
+        // The named turn no longer owns the newest checkpoint. Nothing changed; the book moved on.
+        if (error instanceof ProviderError && error.code === "not-found") {
+          throw new HttpError(409, "conflict", error.message);
+        }
+        throw error;
+      });
+      this.send(response, 200, { result });
       return;
     }
     if (request.method === "POST" && parts.length === 4 && parts[3] === "turn") {
@@ -550,6 +567,10 @@ const chapterBody = z.object({
   content: z.string().max(20_000_000).optional()
 });
 
+const undoBody = z.object({
+  turnId: z.string().min(1).max(80).optional()
+});
+
 function limitFrom(value: string | null): number | undefined {
   if (!value) return undefined;
   const numeric = Number(value);
@@ -557,7 +578,8 @@ function limitFrom(value: string | null): number | undefined {
   return Math.min(Math.floor(numeric), 500);
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+/** The request's JSON body. An empty body is refused, or read as `{}` where the body is `optional`. */
+async function readJson(request: IncomingMessage, { optional = false } = {}): Promise<unknown> {
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -566,7 +588,10 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     if (size > MAX_BODY_BYTES) throw new HttpError(413, "too-large", "The request body is too large.");
     chunks.push(buffer);
   }
-  if (size === 0) throw new HttpError(400, "invalid", "A JSON body is required.");
+  if (size === 0) {
+    if (optional) return {};
+    throw new HttpError(400, "invalid", "A JSON body is required.");
+  }
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {

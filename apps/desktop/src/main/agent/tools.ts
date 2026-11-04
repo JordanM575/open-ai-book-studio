@@ -385,7 +385,8 @@ export function createChapterTools(
           return result(
             false,
             `“${chapter.title}” changed since you read it, so nothing was overwritten. The replacement text is kept as a conflict copy at ${saved.conflict.savedAs}. Read the chapter again before you change it.`,
-            { chapterId, savedAs: saved.conflict.savedAs }
+            // The chat reads these two to say what happened on the step and to offer the copy.
+            { chapterId, savedAs: saved.conflict.savedAs, changedSinceRead: true }
           );
         }
         const checked =
@@ -438,7 +439,7 @@ export function createChapterTools(
           return result(
             false,
             `“${chapter.title}” changed since you read it, so nothing was deleted. Read it again for the current line numbers.`,
-            { chapterId }
+            { chapterId, changedSinceRead: true }
           );
         }
         const lines = chapter.content.split("\n");
@@ -518,7 +519,7 @@ export function createChapterTools(
           return result(
             false,
             `“${chapter.title}” changed since you read it, so nothing was split. Read it again for the current line numbers.`,
-            { chapterId }
+            { chapterId, changedSinceRead: true }
           );
         }
         const lines = chapter.content.split("\n");
@@ -596,7 +597,7 @@ export function createChapterTools(
           return result(
             false,
             `${names} changed since you read ${changed.length === 1 ? "it" : "them"}, so nothing was merged. Read both chapters again.`,
-            { chapterId: first.id }
+            { chapterId: first.id, changedSinceRead: true }
           );
         }
         if (second.order !== first.order + 1) {

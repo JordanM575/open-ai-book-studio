@@ -256,6 +256,7 @@ describe("what the browser build cannot do yet says so plainly", () => {
     const refusals = [
       await agent.start({ bookId: "book_any", prompt: "Draft the next scene." } as never),
       await agent.undoLast("book_any"),
+      await agent.undoLast("book_any", "turn_any"),
       await agent.approve("book_any", "approval", true),
       await agent.status("book_any"),
       await agent.setSettings("book_any", {} as never),

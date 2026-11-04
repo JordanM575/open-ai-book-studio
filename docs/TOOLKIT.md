@@ -175,7 +175,7 @@ The same two things are available over the backend, for anything that is not a c
 | --- | --- |
 | `GET /v1/books/:bookId/ambient` | The ambient status: where the author is, what changed, what can be said or done. |
 | `POST /v1/books/:bookId/turn` | Run a turn and wait for the answer. The body is `{ "prompt": "…" }`. |
-| `POST /v1/books/:bookId/undo` | Undo the agent's last turn. The status offers this action, so the route that serves the status must also honour it. |
+| `POST /v1/books/:bookId/undo` | Undo the agent's last turn. The status offers this action, so the route that serves the status must also honour it. The body is optional. `{ "turnId": "…" }` undoes that turn only while it owns the book's newest checkpoint; otherwise nothing changes and the answer is `409` with the reason. The CLI and `studio_undo` name no turn and undo the newest. |
 | `POST /v1/books/:bookId/stop` | Stop the agent if it is working on this book, and report how many turns were stopped. |
 
 A turn that needs the author's approval for a destructive tool is refused with a sentence saying

@@ -1055,6 +1055,7 @@ export function WorkspaceView({
             turnModel={turnModel}
             onTurnModelUsed={() => setTurnModel(null)}
             onChanged={reloadAfterAgent}
+            onConflictCopy={refreshConflicts}
             onNotice={onNotice}
           />
         ) : null}

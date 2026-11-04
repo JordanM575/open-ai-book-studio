@@ -35,9 +35,13 @@ interface PanelOptions {
   turns?: string[];
   /** A stored conversation the panel opens with. */
   seed?: AgentThread;
+  /** The stored conversation every later read finds, after something outside the chat changed it. */
+  reread?: AgentThread;
+  /** How the main process answers each undo, in order; the last answer repeats. */
+  undos?: unknown[];
 }
 
-function renderPanel({ turns = [TURN], seed }: PanelOptions = {}) {
+function renderPanel({ turns = [TURN], seed, reread, undos = [] }: PanelOptions = {}) {
   let starts = 0;
   const start = mock((_request: unknown) =>
     Promise.resolve({
@@ -45,18 +49,26 @@ function renderPanel({ turns = [TURN], seed }: PanelOptions = {}) {
       data: { turnId: turns[Math.min(starts++, turns.length - 1)], threadId: "thread_tls000001" }
     })
   );
-  const undoLast = mock(() => Promise.resolve({ ok: true, data: { restored: 1, skipped: 0 } }));
+  let undone = 0;
+  const undoLast = mock((_bookId: string, _turnId?: string) =>
+    Promise.resolve(undos[Math.min(undone++, undos.length - 1)] ?? { ok: true, data: { restored: 1, skipped: 0 } })
+  );
   const onChanged = mock(() => {});
+  const onNotice = mock((_error: unknown) => {});
+  const onConflictCopy = mock(() => {});
+  const reveal = mock((_bookId: string, _savedAs: string) => Promise.resolve({ ok: true, data: null }));
   let emit: ((event: AgentEvent) => void) | null = null;
+  let reads = 0;
   const listed = seed
     ? [{ id: seed.id, title: seed.title, createdAt: AT, updatedAt: AT, messageCount: seed.messages.length, preview: "" }]
     : [];
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
+    conflicts: { reveal },
     agent: {
       threads: {
         list: mock(() => Promise.resolve({ ok: true, data: listed })),
-        read: mock(() => Promise.resolve({ ok: true, data: seed ?? null })),
+        read: mock(() => Promise.resolve({ ok: true, data: (reads++ > 0 && reread) || seed || null })),
         fork: mock(() => Promise.resolve({ ok: true, data: null })),
         remove: mock(() => Promise.resolve({ ok: true, data: null })),
         rename: mock(() => Promise.resolve({ ok: true, data: null }))
@@ -85,7 +97,8 @@ function renderPanel({ turns = [TURN], seed }: PanelOptions = {}) {
       onChooseTurnModel: () => {},
       turnModel: null,
       onTurnModelUsed: () => {},
-      onNotice: () => {}
+      onNotice,
+      onConflictCopy
     })
   );
   const fire = async (event: AgentEvent): Promise<void> => {
@@ -93,7 +106,7 @@ function renderPanel({ turns = [TURN], seed }: PanelOptions = {}) {
       emit?.(event);
     });
   };
-  return { start, undoLast, onChanged, fire };
+  return { start, undoLast, onChanged, onNotice, onConflictCopy, reveal, fire };
 }
 
 async function send(
@@ -186,10 +199,132 @@ describe("chat tool steps", () => {
     await testing.act(async () => {
       testing.fireEvent.click(undo);
     });
-    expect(undoLast).toHaveBeenCalledWith(BOOK);
+    // The chat names the turn it offers, so the main process can refuse when another turn is newest.
+    expect(undoLast).toHaveBeenCalledWith(BOOK, TURN);
     await testing.waitFor(() => expect(view.getByText("Restored 1 chapter.")).toBeDefined());
     expect(view.queryByTestId("agent-undo-turn")).toBeNull();
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  /*
+   * QA Q13: an approved overwrite, line deletion, split or merge that found the chapter saved during
+   * its pause writes over nothing. The chat says so on the step itself, in the studio's words, instead
+   * of behind the step's closed detail, and offers the overwrite's copy.
+   */
+  test("a refused overwrite says so on its step, offers its copy, and the workspace recounts its copies", async () => {
+    const { start, fire, reveal, onConflictCopy } = renderPanel();
+    const view = await send("Replace the lamp chapter.", start);
+    const savedAs = `books/${BOOK}/conflicts/0002-the-lamp.conflict-newer-version.device_a.2026-01-01T00-00-00-000Z.md`;
+
+    await fire({ type: "tool", turnId: TURN, id: "call_1", name: "overwrite_chapter", status: "start", input: { chapterId: CHAPTER } });
+    await fire({
+      type: "tool",
+      turnId: TURN,
+      id: "call_1",
+      name: "overwrite_chapter",
+      status: "end",
+      output: {
+        ok: false,
+        message: `“The Lamp” changed since you read it, so nothing was overwritten. The replacement text is kept as a conflict copy at ${savedAs}. Read the chapter again before you change it.`,
+        chapterId: CHAPTER,
+        savedAs,
+        changedSinceRead: true
+      },
+      detail: "“The Lamp” changed since you read it, so nothing was overwritten."
+    });
+
+    const outcome = await testing.waitFor(() =>
+      view.getByText("Left the chapter as you wrote it. The replacement is kept as a conflict copy.")
+    );
+    // On the step, not inside its closed detail.
+    expect(view.getByRole("button", { name: "Asked to replace a chapter" }).getAttribute("aria-expanded")).toBe("false");
+    expect(outcome.closest('[data-slot="tool-output"]')).toBeNull();
+    expect(onConflictCopy).toHaveBeenCalledTimes(1);
+
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByRole("button", { name: "Show the saved copy" }));
+    });
+    expect(reveal).toHaveBeenCalledWith(BOOK, savedAs);
+  });
+
+  test("a refused line deletion, split or merge says the chapter was left as the author wrote it", async () => {
+    const { start, fire, onConflictCopy } = renderPanel();
+    const view = await send("Trim the door chapter.", start);
+    const refusals: Array<[name: string, said: string]> = [
+      ["delete_lines_in_chapter", "Left the chapter as you wrote it. No lines were deleted."],
+      ["split_chapter", "Left the chapter as you wrote it. Nothing was split."],
+      ["merge_chapters", "Left the chapters as you wrote them. Nothing was merged."]
+    ];
+    for (const [index, [name]] of refusals.entries()) {
+      await fire({
+        type: "tool",
+        turnId: TURN,
+        id: `call_${index + 1}`,
+        name,
+        status: "end",
+        output: { ok: false, message: "“The Door” changed since you read it.", chapterId: CHAPTER, changedSinceRead: true }
+      });
+    }
+    for (const [, said] of refusals) {
+      await testing.waitFor(() => expect(view.getByText(said)).toBeDefined());
+    }
+    // Nothing was kept, so there is no copy to show or count.
+    expect(view.queryByRole("button", { name: "Show the saved copy" })).toBeNull();
+    expect(onConflictCopy).not.toHaveBeenCalled();
+    // Any other failure keeps its plain error line.
+    await fire({
+      type: "tool",
+      turnId: TURN,
+      id: "call_9",
+      name: "delete_lines_in_chapter",
+      status: "end",
+      output: { ok: false, message: "That chapter has 3 lines, so that range is out of range." }
+    });
+    await testing.waitFor(() => expect(view.getAllByRole("button", { name: "Asked to delete lines" })).toHaveLength(2));
+    expect(view.getAllByText("Left the chapter as you wrote it. No lines were deleted.")).toHaveLength(1);
+  });
+
+  test("a reopened conversation still says what a refused overwrite kept, and offers the copy", async () => {
+    const savedAs = `books/${BOOK}/conflicts/0002-the-lamp.conflict-newer-version.device_a.2026-01-01T00-00-00-000Z.md`;
+    const seed = agentThreadSchema.parse({
+      schemaVersion: 1,
+      id: "thread_tls000001",
+      bookId: BOOK,
+      title: "The lamp",
+      createdAt: AT,
+      updatedAt: AT,
+      messages: [
+        { id: "msg_tls000001", role: "user", parts: [{ type: "text", text: "Replace the lamp chapter." }], createdAt: AT },
+        {
+          id: "msg_tls000002",
+          role: "assistant",
+          turnId: TURN,
+          createdAt: AT,
+          parts: [
+            { type: "tool-call", id: "call_1", name: "overwrite_chapter", input: { chapterId: CHAPTER } },
+            {
+              type: "tool-result",
+              id: "call_1",
+              name: "overwrite_chapter",
+              output: { ok: false, message: "“The Lamp” changed since you read it.", chapterId: CHAPTER, savedAs, changedSinceRead: true },
+              isError: true
+            },
+            { type: "text", text: "The lamp changed while I waited, so I left it." }
+          ]
+        }
+      ],
+      checkpointTurns: []
+    });
+    const { reveal } = renderPanel({ seed });
+    const view = testing.within(document.body);
+
+    await testing.waitFor(() =>
+      expect(view.getByText("Left the chapter as you wrote it. The replacement is kept as a conflict copy.")).toBeDefined()
+    );
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByRole("button", { name: "Show the saved copy" }));
+    });
+    expect(reveal).toHaveBeenCalledWith(BOOK, savedAs);
   });
 });
 
@@ -369,5 +504,62 @@ describe("undo this turn", () => {
     await fire(finished(TURN_B, "I replaced the lamp."));
     const lamp = await onlyUndo(view);
     expect(itemOf(lamp).textContent).toContain("I replaced the lamp.");
+  });
+
+  // The offer can be stale: the strip, the CLI, the phone, the toolkit or another conversation can move
+  // the book's newest checkpoint while this chat is open. The main process then refuses the named turn.
+  const REFUSED = {
+    ok: false,
+    error: {
+      code: "not-found",
+      message: "The book changed since that turn, so nothing was undone. The newest change is “Changed with save_chapter.” in “The Lamp”."
+    }
+  };
+
+  test("undo names the turn it was offered on, and a refusal reads on that turn, which keeps its place", async () => {
+    const { start, fire, undoLast, onChanged, onNotice } = renderPanel({ turns: [TURN, TURN_B], undos: [REFUSED] });
+    const view = await send("Tighten the door.", start);
+    await fire(finished(TURN, "I tightened the door."));
+    await send("Now the lamp.", start, 2);
+    await fire(finished(TURN_B, "I tightened the lamp."));
+    onChanged.mockClear();
+
+    const lamp = await onlyUndo(view);
+    await testing.act(async () => {
+      testing.fireEvent.click(lamp);
+    });
+    expect(undoLast).toHaveBeenCalledWith(BOOK, TURN_B);
+    const refusal = await testing.waitFor(() => view.getByText(REFUSED.error.message));
+    expect(itemOf(refusal).textContent).toContain("I tightened the lamp.");
+    expect(onNotice).not.toHaveBeenCalled();
+    // Nothing changed, so the editor is not reloaded, and the turn still owns its place in the stack.
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(itemOf(await onlyUndo(view)).textContent).toContain("I tightened the lamp.");
+  });
+
+  test("after a refusal the offer follows the conversation's file, so an undo made elsewhere moves it back a turn", async () => {
+    // The CLI undid the lamp's turn while the chat was open, and the conversation's file says so.
+    const { undoLast } = renderPanel({
+      seed: storedConversation([TURN, TURN_B]),
+      reread: storedConversation([TURN]),
+      undos: [REFUSED, { ok: true, data: { restored: 1, skipped: 0 } }]
+    });
+    const view = testing.within(document.body);
+    const lamp = await onlyUndo(view);
+    expect(itemOf(lamp).textContent).toContain("I tightened the lamp.");
+    await testing.act(async () => {
+      testing.fireEvent.click(lamp);
+    });
+    expect(undoLast).toHaveBeenLastCalledWith(BOOK, TURN_B);
+    await testing.waitFor(() => expect(view.getByText(REFUSED.error.message)).toBeDefined());
+
+    const door = await onlyUndo(view);
+    expect(itemOf(door).textContent).toContain("I tightened the door.");
+    await testing.act(async () => {
+      testing.fireEvent.click(door);
+    });
+    expect(undoLast).toHaveBeenLastCalledWith(BOOK, TURN);
+    await testing.waitFor(() => expect(view.getByText("Restored 1 chapter.")).toBeDefined());
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
   });
 });

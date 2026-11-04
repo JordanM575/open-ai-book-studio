@@ -407,6 +407,27 @@ Update the `Unreleased` section before every commit.
   turns: two at once, as when a turn's tool calls finish together, used to drop one another's paths.
   A file another device or editor changes is still listed. Checkpoints written before this fix were
   never noted, so a library that has them lists them once more, until you keep the disk version.
+- "Undo this turn" takes back only the turn it was offered on. Undo restores the book's newest
+  checkpoint, and the chat can be behind: reopened while a turn runs, answering a stale approval after
+  a relaunch, after an undo from the strip, the CLI or the phone, or with a newer change from the
+  toolkit or another conversation. Each of these could revert another turn's writes. The chat now names
+  its turn (`agent.undoLast(bookId, turnId)`, checked by Zod), and the main process refuses unless that
+  turn owns the newest checkpoint. The refusal changes nothing and says so on the turn: "The book
+  changed since that turn, so nothing was undone. The newest change is “…” in “…”." The chat then
+  rereads the conversation's undo turns, so a turn undone elsewhere hands the offer to the turn before
+  it. The control plane's `POST /v1/books/:bookId/undo` takes the same optional `turnId` in an optional
+  body and answers a refusal with `409`. The strip, the CLI, MCP and the phone still undo the newest
+  change on purpose and name no turn. Undo stays a stack.
+- A refused destructive call says what happened on its step (QA Q13). An approved overwrite, line
+  deletion, split or merge that found the chapter saved during its pause showed only an error line,
+  "Asked to replace a chapter", with the reason behind its closed detail. The step now reads "Left the
+  chapter as you wrote it. The replacement is kept as a conflict copy." (or "No lines were deleted.",
+  "Nothing was split.", "Nothing was merged."), with *Show the saved copy* for the overwrite's copy,
+  live and in a reopened conversation. The results carry `changedSinceRead`, and the workspace counts
+  the overwrite's copy as soon as its result arrives instead of when the turn ends.
+- Undo's note for a chapter it left alone says "changed during or after the turn". It said "after the
+  turn" even for words the author saved while the turn waited for approval; the checkpoint cannot tell
+  the two apart.
 - One conflicted edit keeps one conflict copy (QA C4). The editor kept the author's draft after a
   conflict, so "Load the version on disk" saved the same words again within milliseconds, and the main
   process saved the leftover draft once more at quit: three identical copies, while the banner counted

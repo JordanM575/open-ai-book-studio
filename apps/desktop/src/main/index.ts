@@ -395,7 +395,7 @@ const started = app.whenReady().then(async () => {
       ambient: new AmbientService(() => studio.library, (bookId) => agentRuntime.isWorking(bookId)),
       agent: {
         run: (input) => agentRuntime.runToCompletion(input),
-        undo: (bookId) => agentRuntime.undoLast(bookId),
+        undo: (bookId, turnId) => agentRuntime.undoLast(bookId, turnId),
         stop: async (bookId) => ({ stopped: await agentRuntime.stopBook(bookId) })
       },
       glassesPage,

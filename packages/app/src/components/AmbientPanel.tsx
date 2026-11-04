@@ -200,10 +200,11 @@ export function AmbientPanel({
 
   const undo = useCallback(async () => {
     try {
+      // The strip names no turn: it undoes the book's newest change on purpose, whoever made it.
       const result = await must(window.studio.agent.undoLast(bookId));
       const restored = `Restored ${result.restored} chapter${result.restored === 1 ? "" : "s"}`;
       const notes = result.notes?.length ? ` ${result.notes.join(" ")}` : "";
-      // A skipped chapter changed after the turn and was left alone, so it is never "nothing".
+      // A skipped chapter changed during or after the turn and was left alone, so it is never "nothing".
       setNote(
         (result.skipped > 0
           ? `${restored}, but skipped ${result.skipped}. Review the remaining changes.`

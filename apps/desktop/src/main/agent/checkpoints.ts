@@ -24,7 +24,7 @@ export interface CheckpointEntry {
   order?: number;
   /**
    * The SHA-256 of the body text the turn left. Undo leaves a chapter whose text no longer has
-   * this hash, because someone wrote it after the turn. Older checkpoints have none.
+   * this hash, because someone wrote it during or after the turn. Older checkpoints have none.
    */
   afterHash?: string;
   /** The chapter's details before the turn first changed them. Undo puts them back. */

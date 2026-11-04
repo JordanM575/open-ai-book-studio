@@ -151,7 +151,8 @@ const api: StudioApi = {
   agent: {
     start: (input: AgentTurnInput) => invoke(IPC.agent.start, input),
     stop: (turnId: string) => invoke(IPC.agent.stop, turnId),
-    undoLast: (bookId: string) => invoke(IPC.agent.undoLast, bookId),
+    undoLast: (bookId: string, turnId?: string) =>
+      invoke(IPC.agent.undoLast, turnId ? { bookId, turnId } : { bookId }),
     approve: (turnId: string, approvalId: string, approved: boolean) =>
       invoke(IPC.agent.approve, { turnId, approvalId, approved }),
     status: (bookId: string) => invoke(IPC.agent.status, bookId),

@@ -49,7 +49,8 @@ import {
   checkpointMeta,
   metaHash,
   recordChange,
-  type CheckpointEntry
+  type CheckpointEntry,
+  type TurnCheckpoint
 } from "./checkpoints";
 import { DESTRUCTIVE_TOOL_NAMES, ProposedBases } from "./tools";
 import { buildToolSet } from "./tool-set";
@@ -540,15 +541,22 @@ export class AgentRuntime {
    * Put every chapter the newest turn changed back the way the turn found it.
    *
    * The entries are undone newest first, so the turn's structural changes come apart in the reverse
-   * of the order they were made. A chapter whose text or details changed after the turn is left as it
-   * is and counted as skipped: undo never writes over someone else's words. A chapter someone else
-   * wrote in while the turn was running is restored too, but its file is kept as a conflict copy
-   * first, and the result names the chapter and the copy.
+   * of the order they were made. A chapter whose text or details changed during or after the turn is
+   * left as it is and counted as skipped: undo never writes over someone else's words. A chapter someone
+   * else wrote in between two of the turn's own changes is restored too, but its file is kept as a
+   * conflict copy first, and the result names the chapter and the copy.
+   *
+   * With `turnId`, as the chat sends for the turn it offered, undo goes ahead only while that turn owns
+   * the book's newest checkpoint. Otherwise it changes nothing and says what is newest. The strip, the
+   * CLI and the phone name no turn and take the newest on purpose.
    */
-  async undoLast(bookId: string): Promise<AgentUndoResult> {
+  async undoLast(bookId: string, turnId?: string): Promise<AgentUndoResult> {
     const library = this.studio.requireLibrary();
     const store = new CheckpointStore(() => this.studio.library);
     const checkpoint = await store.latest(bookId);
+    if (turnId !== undefined && checkpoint?.turnId !== turnId) {
+      throw new ProviderError("not-found", staleUndoMessage(checkpoint));
+    }
     if (!checkpoint) {
       throw new ProviderError("not-found", "There is no agent turn to undo in this book.");
     }
@@ -1084,9 +1092,9 @@ interface UndoneEntry {
 }
 
 /**
- * Undo one checkpoint entry. A chapter that changed after the turn, or that could not be put back,
- * is left as it is. A chapter someone else wrote in during the turn is kept as a conflict copy before
- * anything replaces it, and is left as it is when the copy cannot be made.
+ * Undo one checkpoint entry. A chapter that changed during or after the turn, or that could not be put
+ * back, is left as it is. A chapter someone else wrote in between two of the turn's own changes is kept
+ * as a conflict copy before anything replaces it, and is left as it is when the copy cannot be made.
  */
 async function undoEntry(library: Library, bookId: string, entry: CheckpointEntry): Promise<UndoneEntry> {
   const name = `“${entry.title}”`;
@@ -1114,12 +1122,13 @@ async function undoEntry(library: Library, bookId: string, entry: CheckpointEntr
       current = back;
     } else {
       current = await library.readChapter(bookId, entry.chapterId);
-      // Text or details that are no longer what the turn left belong to whoever wrote them since.
+      // Text or details that are no longer what the turn left belong to whoever wrote them since. The
+      // checkpoint cannot tell an edit during an approval pause from one after the turn, so it says both.
       if (entry.afterHash !== undefined && (await bodyHash(current.content)) !== entry.afterHash) {
-        return left("changed after the turn");
+        return left("changed during or after the turn");
       }
       if (entry.afterMetaHash !== undefined && (await metaHash(checkpointMeta(current))) !== entry.afterMetaHash) {
-        return left("changed after the turn");
+        return left("changed during or after the turn");
       }
       if (entry.created) {
         await library.deleteChapter(bookId, entry.chapterId);
@@ -1175,6 +1184,23 @@ async function fromTrash(library: Library, bookId: string, chapterId: string, tr
     if (error instanceof LibraryError && (error.code === "not-found" || error.code === "invalid")) return null;
     throw error;
   }
+}
+
+/**
+ * Why an undo that named its turn did nothing: another change owns the book's newest checkpoint, or
+ * none is left. The newest is named by its request and the chapters it changed, never by a path.
+ */
+function staleUndoMessage(newest: TurnCheckpoint | null): string {
+  const lead = "The book changed since that turn, so nothing was undone.";
+  if (!newest) return `${lead} No agent turn is left to undo.`;
+  const titles = [...new Set(newest.entries.map((entry) => `“${entry.title}”`))];
+  const where =
+    titles.length === 0
+      ? ""
+      : titles.length <= 2
+        ? ` in ${titles.join(" and ")}`
+        : ` in ${titles[0]} and ${titles.length - 1} more chapters`;
+  return `${lead} The newest change is “${titleFromPrompt(newest.prompt)}”${where}.`;
 }
 
 /**

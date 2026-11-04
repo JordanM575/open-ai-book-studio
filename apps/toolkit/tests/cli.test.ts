@@ -417,11 +417,13 @@ describe("the tools and the session", () => {
         undoLast: async () => ({
           restored: 1,
           skipped: 1,
-          notes: ["“The Gate” changed after the turn, so undo left it as it is."]
+          notes: ["“The Gate” changed during or after the turn, so undo left it as it is."]
         })
       }
     });
-    expect(noted.out).toBe("Restored 1 chapter, skipped 1.\n“The Gate” changed after the turn, so undo left it as it is.\n");
+    expect(noted.out).toBe(
+      "Restored 1 chapter, skipped 1.\n“The Gate” changed during or after the turn, so undo left it as it is.\n"
+    );
   });
 
   test("calls a tool with the arguments it was given, and only asks for destructive permission when told", async () => {

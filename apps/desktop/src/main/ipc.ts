@@ -992,7 +992,11 @@ export function registerIpc(
 
   handle(IPC.agent.stop, async (payload) => agent.stop(z.string().min(1).max(80).parse(payload)));
 
-  handle(IPC.agent.undoLast, async (payload) => agent.undoLast(idSchema.parse(payload)));
+  handle(IPC.agent.undoLast, async (payload) => {
+    const input = z.object({ bookId: idSchema, turnId: z.string().min(1).max(80).optional() }).parse(payload);
+    // A named turn is undone only while it owns the newest checkpoint; no name takes the newest.
+    return input.turnId ? agent.undoLast(input.bookId, input.turnId) : agent.undoLast(input.bookId);
+  });
 
   handle(IPC.agent.approve, async (payload) => {
     const input = z

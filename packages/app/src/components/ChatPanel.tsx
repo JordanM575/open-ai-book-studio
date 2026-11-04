@@ -46,6 +46,7 @@ import { Tool, ToolContent, ToolHeader, ToolLine, ToolOutput, Tools } from "@ai-
 import { cn, must } from "../lib/utils";
 import {
   approvalLabel,
+  keptNote,
   toChatMessage,
   toolDetailText,
   toolLabel,
@@ -70,6 +71,8 @@ interface Props {
   /** A one-off model for the next message. The book default stays unchanged. */
   turnModel?: { connectionId: string; modelId: string } | null;
   onTurnModelUsed: () => void;
+  /** A tool kept a conflict copy, so the workspace can count it. */
+  onConflictCopy?: () => void;
   onNotice: (error: unknown) => void;
   className?: string;
 }
@@ -125,6 +128,7 @@ export function ChatPanel({
   onChooseTurnModel,
   turnModel,
   onTurnModelUsed,
+  onConflictCopy,
   onNotice,
   className
 }: Props) {
@@ -375,6 +379,9 @@ export function ChatPanel({
           }
           return { ...message, tools };
         });
+        // A refused overwrite kept its text in `conflicts/`; the workspace counts it now, not at the turn's end.
+        const output = event.output as { savedAs?: unknown } | null | undefined;
+        if (event.status === "end" && typeof output?.savedAs === "string") onConflictCopy?.();
       } else if (event.type === "approval") {
         patchAssistant(event.turnId, (message) => ({
           ...message,
@@ -459,7 +466,7 @@ export function ChatPanel({
       }
     });
     return unsubscribe;
-  }, [onChanged, patchAssistant]);
+  }, [onChanged, onConflictCopy, patchAssistant]);
 
   const send = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault();
@@ -547,7 +554,17 @@ export function ChatPanel({
   // turn-scoped patch no longer matches once the turn is gone.
   const undo = async (messageId: string, turnId: string | undefined): Promise<void> => {
     try {
-      const result = await must(window.studio.agent.undoLast(bookId));
+      // Named, so the main process refuses when another turn owns the book's newest checkpoint.
+      const answer = await window.studio.agent.undoLast(bookId, turnId);
+      if (!answer.ok) {
+        // Nothing was undone. Say why on this turn, and read the conversation's undo turns again: an
+        // undo from the strip, the CLI or the phone has already taken its turn out of the file.
+        patchMessage(messageId, (message) => ({ ...message, note: answer.error.message }));
+        const thread = threadId ? await must(window.studio.agent.threads.read(bookId, threadId)) : null;
+        if (thread) setCheckpointTurns(thread.checkpointTurns);
+        return;
+      }
+      const result = answer.data;
       // The turn is used up. The turn before it, if any, owns the newest checkpoint now.
       setCheckpointTurns((current) => current.filter((turn) => turn !== turnId));
       // Each note names a chapter that did not simply go back, and where a kept copy is.
@@ -695,6 +712,7 @@ export function ChatPanel({
                             {message.tools.map((tool, toolIndex) => {
                               const detail = toolDetailText(tool);
                               const status = toolStatus(tool);
+                              const kept = keptNote(tool);
                               const line = {
                                 title: toolLabel(tool.name),
                                 status,
@@ -714,6 +732,27 @@ export function ChatPanel({
                                   ) : (
                                     <ToolLine {...line} />
                                   )}
+                                  {/* Outside the closed detail: the author's words were kept, and where its own text went. */}
+                                  {kept ? (
+                                    <div
+                                      className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground"
+                                      data-testid="agent-kept"
+                                    >
+                                      <span>{kept.text}</span>
+                                      {kept.savedAs ? (
+                                        <Button
+                                          variant="secondary"
+                                          size="xs"
+                                          onClick={() =>
+                                            void must(window.studio.conflicts.reveal(bookId, kept.savedAs ?? "")).catch(onNotice)
+                                          }
+                                          data-testid="agent-show-copy"
+                                        >
+                                          Show the saved copy
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                 </div>
                               );
                             })}

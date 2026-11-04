@@ -518,7 +518,12 @@ export interface StudioApi {
   agent: {
     start(input: AgentTurnInput): Promise<Result<AgentTurnStarted>>;
     stop(turnId: string): Promise<Result<null>>;
-    undoLast(bookId: string): Promise<Result<AgentUndoResult>>;
+    /**
+     * Undo the book's newest agent turn. With `turnId`, only while that turn owns the newest checkpoint:
+     * otherwise nothing changes and the error says what is newest. The chat names the turn it offers;
+     * the strip names none.
+     */
+    undoLast(bookId: string, turnId?: string): Promise<Result<AgentUndoResult>>;
     approve(turnId: string, approvalId: string, approved: boolean): Promise<Result<null>>;
     /** Everything the app shows about a book's agent: tools, skills, cache and plugins. */
     status(bookId: string): Promise<Result<AgentStatus>>;

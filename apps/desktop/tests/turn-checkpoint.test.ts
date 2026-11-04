@@ -377,7 +377,7 @@ describe("a turn's checkpoint", () => {
     expect(undone).toEqual({
       restored: 1,
       skipped: 1,
-      notes: ["“The Lamp” changed after the turn, so undo left it as it is."]
+      notes: ["“The Lamp” changed during or after the turn, so undo left it as it is."]
     });
     expect(finished.changed).toBe(undone.restored + undone.skipped);
     expect(await text(door.id)).toBe(door.content);
@@ -686,7 +686,8 @@ describe("undo and the conversation's checkpoint turns", () => {
    */
   async function turnIn(
     threadId: string | undefined,
-    steps: StreamResult[]
+    steps: StreamResult[],
+    prompt = "Work on the book."
   ): Promise<{ runtime: AgentRuntime; turnId: string; threadId: string; ended: Done | Failed }> {
     const script = [...steps];
     const model = new MockLanguageModelV4({
@@ -712,7 +713,7 @@ describe("undo and the conversation's checkpoint turns", () => {
     const started = await runtime.start({
       mode: "edit",
       bookId: book.id,
-      prompt: "Work on the book.",
+      prompt,
       ...(threadId ? { threadId } : {})
     });
     return { runtime, turnId: started.turnId, threadId: started.threadId, ended: await ended };
@@ -769,6 +770,90 @@ describe("undo and the conversation's checkpoint turns", () => {
     expect(await second.runtime.undoLast(book.id)).toEqual({ restored: 1, skipped: 0 });
     expect(await text(lamp.id)).toBe(lamp.content);
     expect(await listed(first.threadId)).toEqual([first.turnId]);
+  });
+
+  /*
+   * The chat names the turn it offers to undo, because undo takes the book's newest checkpoint and the
+   * chat can be behind: reopened while a turn runs, answering a stale approval after a relaunch, after an
+   * undo from the strip, the CLI or the phone, or with a newer change from the toolkit or another
+   * conversation. A named turn that does not own the newest checkpoint undoes nothing.
+   */
+  test("an undo that names an older turn is refused, names the newest change, and changes nothing", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+    const first = await turnIn(
+      undefined,
+      [step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]), step([], "I added wind.")],
+      "Add wind to the door."
+    );
+    const second = await turnIn(
+      first.threadId,
+      [step([["append_to_chapter", { chapterId: lamp.id, text: "It smoked a little." }]]), step([], "I added smoke.")],
+      "Make the lamp smoke."
+    );
+    const files = await checkpointFiles();
+    expect(files).toHaveLength(2);
+
+    const refused = second.runtime.undoLast(book.id, first.turnId);
+    await expect(refused).rejects.toMatchObject({
+      code: "not-found",
+      message: "The book changed since that turn, so nothing was undone. The newest change is “Make the lamp smoke.” in “The Lamp”."
+    });
+    expect(await text(door.id)).toBe("The door was shut.\n\nWind came under it.\n");
+    expect(await text(lamp.id)).toBe("The lamp was lit.\n\nIt smoked a little.\n");
+    expect(await checkpointFiles()).toEqual(files);
+    expect(await listed(first.threadId)).toEqual([first.turnId, second.turnId]);
+
+    // Undo is still a stack: the newest turn undoes by name, and then the turn before it does.
+    expect(await second.runtime.undoLast(book.id, second.turnId)).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(lamp.id)).toBe(lamp.content);
+    expect(await second.runtime.undoLast(book.id, first.turnId)).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(door.id)).toBe(door.content);
+    expect(await checkpointFiles()).toEqual([]);
+  });
+
+  test("an undo that names a turn already undone elsewhere is refused and says nothing is left to undo", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const first = await turnIn(
+      undefined,
+      [step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]), step([], "I added wind.")],
+      "Add wind to the door."
+    );
+    // The strip, the CLI and the phone name no turn: they take the newest, on purpose.
+    expect(await first.runtime.undoLast(book.id)).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(door.id)).toBe(door.content);
+
+    await expect(first.runtime.undoLast(book.id, first.turnId)).rejects.toMatchObject({
+      code: "not-found",
+      message: "The book changed since that turn, so nothing was undone. No agent turn is left to undo."
+    });
+    expect(await text(door.id)).toBe(door.content);
+  });
+
+  test("a refusal names a toolkit change by its tool and every chapter it changed", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const first = await turnIn(
+      undefined,
+      [step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]), step([], "I added wind.")],
+      "Add wind to the door."
+    );
+    // A newer restore point, as the toolkit writes one for `bookwriter` or an MCP client.
+    await new CheckpointStore(library.root).save({
+      turnId: "tool_save_chapter_1",
+      bookId: book.id,
+      at: new Date(Date.now() + 60_000).toISOString(),
+      prompt: "Changed with save_chapter.",
+      entries: [
+        { chapterId: door.id, title: "The Door", before: "x" },
+        { chapterId: "ch_other0001", title: "The Lamp", before: "y" },
+        { chapterId: "ch_other0002", title: "The Gate", before: "z" }
+      ]
+    });
+
+    await expect(first.runtime.undoLast(book.id, first.turnId)).rejects.toThrow(
+      "The newest change is “Changed with save_chapter.” in “The Door” and 2 more chapters."
+    );
+    expect(await text(door.id)).toBe("The door was shut.\n\nWind came under it.\n");
   });
 });
 
@@ -892,7 +977,13 @@ describe("an approved write and words saved while it waited", () => {
     expect(await conflictText(copies[0] ?? "")).toContain("The lamp was out.");
     // The model is told plainly, before it answers, and the copy is named.
     const overwrite = resultOf(results, "overwrite_chapter");
-    expect(overwrite.output).toMatchObject({ ok: false, chapterId: lamp.id });
+    // The chat reads these two fields to say what happened inline and to offer the copy.
+    expect(overwrite.output).toMatchObject({
+      ok: false,
+      chapterId: lamp.id,
+      changedSinceRead: true,
+      savedAs: `books/${book.id}/conflicts/${copies[0]}`
+    });
     expect(overwrite.detail).toBe(
       `“The Lamp” changed since you read it, so nothing was overwritten. The replacement text is kept as a conflict copy at books/${book.id}/conflicts/${copies[0]}. Read the chapter again before you change it.`
     );
@@ -947,7 +1038,7 @@ describe("an approved write and words saved while it waited", () => {
 
     expect(await text(door.id)).toBe("Mara knocked.\nThe door was shut.\nIt creaked.\nWind came under it.\n");
     const deleted = resultOf(results, "delete_lines_in_chapter");
-    expect(deleted.output).toMatchObject({ ok: false, chapterId: door.id });
+    expect(deleted.output).toMatchObject({ ok: false, chapterId: door.id, changedSinceRead: true });
     expect(deleted.detail).toBe(
       "“The Door” changed since you read it, so nothing was deleted. Read it again for the current line numbers."
     );
@@ -968,7 +1059,7 @@ describe("an approved write and words saved while it waited", () => {
       [door.id, "Zero.\nOne.\nTwo.\nThree.\n"]
     ]);
     const split = resultOf(results, "split_chapter");
-    expect(split.output).toMatchObject({ ok: false, chapterId: door.id });
+    expect(split.output).toMatchObject({ ok: false, chapterId: door.id, changedSinceRead: true });
     expect(split.detail).toBe(
       "“The Door” changed since you read it, so nothing was split. Read it again for the current line numbers."
     );
@@ -998,7 +1089,7 @@ describe("an approved write and words saved while it waited", () => {
       ]);
       expect(await trashFiles()).toEqual([]);
       const merge = resultOf(results, "merge_chapters");
-      expect(merge.output).toMatchObject({ ok: false, chapterId: one.id });
+      expect(merge.output).toMatchObject({ ok: false, chapterId: one.id, changedSinceRead: true });
       expect(merge.detail).toBe(
         `“${target.title}” changed since you read it, so nothing was merged. Read both chapters again.`
       );
@@ -1030,7 +1121,8 @@ describe("an approved write and words saved while it waited", () => {
     expect(undone).toEqual({
       restored: 0,
       skipped: 1,
-      notes: ["“The Lamp” changed after the turn, so undo left it as it is."]
+      // The author's line went in while the turn waited for approval, so "after the turn" would be wrong.
+      notes: ["“The Lamp” changed during or after the turn, so undo left it as it is."]
     });
     expect(finished.changed).toBe(undone.restored + undone.skipped);
     expect(await text(lamp.id)).toBe(kept);

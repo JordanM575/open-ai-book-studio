@@ -336,7 +336,11 @@ describe("the status line", () => {
       ok: true,
       data: { ...status, actions: [...status.actions, { id: "undo", label: "Undo", spoken: "undo", available: true }] }
     });
-    agent.undoLast = async () => ({ ok: true, data: { restored: 1, skipped: 1 } });
+    const asked: unknown[][] = [];
+    agent.undoLast = async (...args: unknown[]) => {
+      asked.push(args);
+      return { ok: true, data: { restored: 1, skipped: 1 } };
+    };
     const { view } = render();
     await testing.waitFor(() =>
       expect(view.getByTestId("ambient-line").textContent).toContain("Chapter One")
@@ -351,6 +355,8 @@ describe("the status line", () => {
         "Restored 1 chapter, but skipped 1. Review the remaining changes."
       )
     );
+    // The strip undoes the book's newest turn on purpose, so it names none.
+    expect(asked).toEqual([[BOOK]]);
   });
 });
 

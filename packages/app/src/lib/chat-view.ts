@@ -84,6 +84,26 @@ export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? "Worked on the book";
 }
 
+const KEPT_NOTES: Record<string, string> = {
+  overwrite_chapter: "Left the chapter as you wrote it. The replacement is kept as a conflict copy.",
+  delete_lines_in_chapter: "Left the chapter as you wrote it. No lines were deleted.",
+  split_chapter: "Left the chapter as you wrote it. Nothing was split.",
+  merge_chapters: "Left the chapters as you wrote them. Nothing was merged."
+};
+
+/**
+ * What a destructive call did when the chapter changed after it was proposed, such as words saved
+ * during its approval pause (ADR 0014 decision 6): it wrote over nothing, and an overwrite kept its text
+ * as a conflict copy. Said in the studio's words on the step itself. Null for any other result.
+ */
+export function keptNote(tool: ToolNote): { text: string; savedAs?: string } | null {
+  if (tool.status !== "end" || !tool.output || typeof tool.output !== "object") return null;
+  const { ok, changedSinceRead, savedAs } = tool.output as Record<string, unknown>;
+  const text = KEPT_NOTES[tool.name];
+  if (ok !== false || changedSinceRead !== true || !text) return null;
+  return typeof savedAs === "string" ? { text, savedAs } : { text };
+}
+
 /** A tool is running until its result arrives, and failed when the result says it did not work. */
 export function toolStatus(tool: ToolNote): "running" | "done" | "error" {
   if (tool.status === "start") return "running";

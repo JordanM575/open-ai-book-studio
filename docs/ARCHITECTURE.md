@@ -397,7 +397,8 @@ do something.
 
 - `GET /v1/books/:bookId/ambient` — the status, on the control plane and on the bridge.
 - `POST /v1/books/:bookId/turn` — run a turn and wait for the answer.
-- `POST /v1/books/:bookId/undo` — undo the agent's last turn.
+- `POST /v1/books/:bookId/undo` — undo the agent's last turn, or, with `{ "turnId" }`, that turn only
+  while it is the newest (`409` otherwise).
 - `POST /v1/books/:bookId/stop` — stop it if it is working.
 
 The MCP server exposes the same four as `studio_status`, `studio_ask`, `studio_undo` and

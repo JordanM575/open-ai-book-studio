@@ -62,7 +62,7 @@ export interface AgentTurnResult {
 export interface AgentUndoResult {
   /** Chapters put back the way the turn found them. */
   restored: number;
-  /** Chapters left as they are, because they changed after the turn or could not be put back. */
+  /** Chapters left as they are, because they changed during or after the turn or could not be put back. */
   skipped: number;
   /**
    * Conflict copies undo kept before restoring a chapter someone else wrote in during the turn.

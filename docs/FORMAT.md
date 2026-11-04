@@ -143,12 +143,15 @@ as a chapter and is not part of `library.json`; a missing or stale catalog never
 | `title` | string | Author-facing label; defaults to "New conversation". |
 | `createdAt`, `updatedAt` | ISO 8601 | `updatedAt` changes on every save. |
 | `messages` | array | Each has `id`, `role`, `parts`, optional `model`, `mode` and `usage`, and `createdAt`. `mode` (`discuss` or `edit`) records the permission level of the turn that produced an assistant message; older messages have none and are shown as unrecorded. |
-| `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation, newest last: each turn that changed the book and saved its checkpoint, including one stopped while it waited for approval and one that failed before it stored a reply. Undo takes the book's newest checkpoint, so the chat offers it only on the last of these. An undo removes its turn from every conversation that lists it. A branch copies its source's list when it keeps the newest of these turns, and starts with none otherwise. |
+| `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation, newest last: each turn that changed the book and saved its checkpoint, including one stopped while it waited for approval and one that failed before it stored a reply. Undo takes the book's newest checkpoint, so the chat offers it only on the last of these, and names that turn: if another change now owns the newest checkpoint, nothing is undone (see [Agent turn checkpoints](#agent-turn-checkpoints)). An undo removes its turn from every conversation that lists it. A branch copies its source's list when it keeps the newest of these turns, and starts with none otherwise. |
 
 Message parts are `text`, `reasoning`, `tool-call`, `tool-result`, `source`, `file`, `error` and
 `guidance`. Tool calls and results keep their ids, so a resumed conversation can be inspected
 without replaying prose. A call that failed, including one whose tool threw, ends in a `tool-result`
-with `isError: true` and an output of `{ "ok": false, "message": … }`. A `guidance` part carries one turn of author instructions (1–2,000
+with `isError: true` and an output of `{ "ok": false, "message": … }`. An approved overwrite, line
+deletion, split or merge that found its chapter changed since it was proposed also carries
+`"changedSinceRead": true` and the `chapterId`, and an overwrite carries `savedAs`, the library-relative
+path of the conflict copy that holds its text (see [Saving and conflicts](#saving-and-conflicts)). A `guidance` part carries one turn of author instructions (1–2,000
 characters, never truncated) with the submitted user message; it applies to that turn only.
 The schema lives in `packages/core/src/agent/messages.ts`.
 
@@ -164,7 +167,11 @@ model. A change made after an approval is covered as fully as one made before it
 one file; undo restores from the newest file, then removes it and takes its turn out of every
 conversation's `checkpointTurns` (see [Conversation files](#conversation-files)). Each write and removal
 is noted in this device's sync journal (see [Sync journals](#sync-journals)), so a drift scan does not
-list the studio's own checkpoints; one written or removed by another device is still listed.
+list the studio's own checkpoints; one written or removed by another device is still listed. The newest
+file is the one whose name sorts last. An undo that names its turn, as the chat's does, goes ahead only
+while the newest file is that turn's; otherwise it restores nothing, removes nothing, and says which
+request and chapters the newest file holds. The control plane's undo route accepts the same turn id. The
+ambient strip, the CLI, MCP and the phone name no turn and take the newest file.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -238,7 +245,8 @@ quitting write no second copy. Words typed after the conflict are new, so they g
 An agent edit that waits for the author's approval is checked the same way, against the version and
 hash the chapter had when the author was asked. If the chapter was saved in between, an approved
 `overwrite_chapter` keeps the file on disk and writes its text as a conflict copy with the usual reason,
-and an approved line deletion, split or merge writes nothing.
+and an approved line deletion, split or merge writes nothing. The chat says so on the step, and offers
+the overwrite's copy.
 
 Undo of an agent turn uses the same folder and naming with the reason `undo`. Before it restores a
 chapter that someone else wrote in during the turn, it keeps the chapter's file exactly as it is, and

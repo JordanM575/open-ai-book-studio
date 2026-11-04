@@ -281,7 +281,7 @@ describe("chat composer", () => {
     await testing.act(async () => {
       testing.fireEvent.click(view.getByTestId("agent-undo-turn"));
     });
-    expect(undoLast).toHaveBeenCalledWith(BOOK);
+    expect(undoLast).toHaveBeenCalledWith(BOOK, "turn_cmp000001");
     await testing.waitFor(() => expect(view.getByText("Restored 1 chapter.")).toBeDefined());
     expect(view.getByTestId("agent-retry-request")).toBeDefined();
     expect(onChanged).toHaveBeenCalled();
@@ -337,7 +337,7 @@ describe("chat composer", () => {
     await testing.act(async () => {
       testing.fireEvent.click(view.getByTestId("agent-undo-turn"));
     });
-    expect(undoLast).toHaveBeenCalledWith(BOOK);
+    expect(undoLast).toHaveBeenCalledWith(BOOK, "turn_cmp000001");
     await testing.waitFor(() =>
       expect(
         view.getByText("Restored 1 chapter, but skipped 1. Review the remaining changes before retrying.")

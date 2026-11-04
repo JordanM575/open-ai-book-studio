@@ -49,7 +49,11 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
    count leave it out. `delete_chapter` and `move_chapter` rewrite no text and are unchanged: a deleted
    chapter's file goes to the trash with the author's words in it. (Amended 2026-11-04: the approved
    call re-read the chapter when it ran, so the checked save saw no mismatch and wrote over words the
-   author saved during the pause.)
+   author saved during the pause.) The result also carries `changedSinceRead: true`, and the
+   overwrite's `savedAs`, so the chat says what happened on the step itself, in the studio's words
+   ("Left the chapter as you wrote it. The replacement is kept as a conflict copy."), offers *Show the
+   saved copy*, and the workspace counts the new copy at once. (Amended 2026-11-04: the explanation sat
+   behind the step's closed detail, under an error line.)
 
 ## Consequences
 
@@ -76,8 +80,17 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
   (`update_book_details`, `update_character`, `add_memory`, `update_memory`, `remove_memory`) and a
   plugin's writes are not checkpointed.
 - Undo never writes over a later edit. Each entry records a hash of the body text and of the details
-  the turn left; a chapter whose text or details changed after the turn is skipped and named, and the
-  rest are restored.
+  the turn left; a chapter whose text or details changed during or after the turn is skipped and named,
+  and the rest are restored. The checkpoint cannot tell an edit made during an approval pause from one
+  made after the turn, so the note says "changed during or after the turn" (amended 2026-11-04).
+- Undo takes back only the turn the author chose. Undo restores the book's newest checkpoint, and the
+  chat can be behind: reopened while a turn runs, answering a stale approval after a relaunch, after an
+  undo from the strip, the CLI or the phone, or with a newer change from the toolkit or another
+  conversation. So the chat names the turn it offers, and the runtime refuses unless that turn owns the
+  newest checkpoint; the refusal changes nothing and names the newest change by its request and
+  chapters. The control plane's undo route takes the same optional turn id and answers a refusal with
+  `409`. The strip, the CLI, MCP and the phone name no turn and take the newest on purpose. Undo is still
+  a stack: after the newest turn is undone, the turn before it can be (amended 2026-11-04).
 - Undo never silently discards words the turn did not write. When a tool finds text or details the
   turn had not left, because the author or another writer changed the chapter between two of the
   turn's writes, for example during an approval pause, the entry is marked. Undo keeps that chapter's
@@ -116,4 +129,7 @@ id, and an edit made during the turn is kept as a conflict copy first. For decis
 overwrite, line deletion, split or merge after the author saved the chapter during the pause writes
 over nothing and says so, and the overwrite's text is kept as a conflict copy. An approval with nothing
 saved to the chapter in between writes with no conflict. Undo after a refused overwrite leaves the
-author's words in place and names the chapter.
+author's words in place and names the chapter as changed during or after the turn. An undo that names
+an older turn, or one already undone elsewhere, is refused and changes nothing, and undo stays a stack.
+`chat-tools.test.tsx` shows a refused call's outcome on its step, live and reopened, with the copy it
+offers, and an undo that names its turn, whose refusal reads on that turn.

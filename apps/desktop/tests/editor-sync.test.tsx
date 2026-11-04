@@ -685,3 +685,47 @@ describe("a conflicted edit keeps one copy (C4)", () => {
     expect(await conflictFiles(workspace)).toEqual(copies);
   }, 15_000);
 });
+
+/*
+ * QA Q13: an approved overwrite that found the chapter saved during its pause keeps its text as a
+ * conflict copy. The chat says so on the step, and the workspace counts the copy before the turn ends.
+ */
+describe("a refused overwrite's copy is counted at once (Q13)", () => {
+  test("the banner counts the copy while the turn is still running, and the chapter keeps the author's words", async () => {
+    const workspace = await mountWorkspace();
+    const { library, bookId, first } = workspace;
+
+    await runTurn(workspace, async () => {
+      // What the overwrite's checked save does when the chapter moved on during the pause.
+      const kept = await library.saveChapter(bookId, first.id, "The lamp was out.\n", {
+        baseVersion: first.version - 1,
+        baseHash: first.hash
+      });
+      if (kept.status !== "conflict") throw new Error("The overwrite should have kept a conflict copy.");
+      await testing.act(async () => {
+        workspace.emitAgent({
+          type: "tool",
+          turnId: TURN,
+          id: "call_1",
+          name: "overwrite_chapter",
+          status: "end",
+          output: {
+            ok: false,
+            message: "“One” changed since you read it, so nothing was overwritten.",
+            chapterId: first.id,
+            savedAs: kept.conflict.savedAs,
+            changedSinceRead: true
+          }
+        });
+      });
+      await testing.waitFor(() => expect(view().getByText("1 saved copy from earlier sync conflicts.")).toBeTruthy(), {
+        timeout: 2000
+      });
+      expect(view().getByText("Left the chapter as you wrote it. The replacement is kept as a conflict copy.")).toBeTruthy();
+    });
+
+    expect(editorText()).toBe("The tide was out.\n");
+    expect(await conflictFiles(workspace)).toHaveLength(1);
+    expect(workspace.notices).toEqual([]);
+  }, 15_000);
+});
