@@ -108,27 +108,35 @@ export async function runLiveChecks(
           );
         }
 
+        // Every way out — done, error, timeout or a start that throws — clears the timer and the
+        // listener, so a turn that never started cannot keep the check alive or reject unheard.
+        let stop = (): void => {};
         const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("The turn did not finish in time.")), 240_000);
-          runtime.onEvent((event) => {
-            if (event.type === "done") {
-              clearTimeout(timer);
-              resolve(event);
-            } else if (event.type === "error") {
-              clearTimeout(timer);
-              reject(new Error(event.message));
-            }
+          const unsubscribe = runtime.onEvent((event) => {
+            if (event.type === "done") resolve(event);
+            else if (event.type === "error") reject(new Error(event.message));
           });
+          stop = () => {
+            clearTimeout(timer);
+            unsubscribe();
+          };
         });
+        done.catch(() => {});
 
-        await runtime.start({
-          bookId: book.id,
-          chapterId: chapters[0]?.id ?? null,
-          mode: "edit",
-          prompt:
-            "Read the first chapter, then add one short paragraph at the end of it in the same voice. Do not change anything else."
-        });
-        const result = await done;
+        let result: Extract<AgentEvent, { type: "done" }>;
+        try {
+          await runtime.start({
+            bookId: book.id,
+            chapterId: chapters[0]?.id ?? null,
+            mode: "edit",
+            prompt:
+              "Read the first chapter, then add one short paragraph at the end of it in the same voice. Do not change anything else."
+          });
+          result = await done;
+        } finally {
+          stop();
+        }
         const after = (await library.readChapter(book.id, chapters[0]!.id)).content;
         const changed = after !== before;
         record(

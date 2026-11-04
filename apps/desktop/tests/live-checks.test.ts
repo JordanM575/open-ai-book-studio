@@ -2,8 +2,10 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentEvent } from "@ai-book-studio/core/agent";
 import { wrapPcmAsWav } from "@ai-book-studio/core/providers/tts";
 import { ProviderError } from "@ai-book-studio/core/providers/types";
+import { AgentRuntime } from "../src/main/agent/runtime";
 import { Library } from "../src/main/library/store";
 import { runLiveChecks, type LiveResult } from "../src/main/live-checks";
 
@@ -150,6 +152,37 @@ function detail(results: LiveResult[], name: string): string {
 async function leftovers(): Promise<string[]> {
   return (await readdir(tmpdir())).filter((name) => /^studio-live-(agent|voice|sam)-/.test(name));
 }
+
+type Listener = (event: AgentEvent) => void;
+
+/**
+ * The runtime with `start` replaced, and who is still listening to it. A rejection nobody handles
+ * fails the running bun test, so `start` and the tests wait briefly to let one surface in time.
+ */
+function failingStart(start: (listening: Set<Listener>) => Promise<never>) {
+  const listening = new Set<Listener>();
+  const subscribe = AgentRuntime.prototype.onEvent;
+  const spies = [
+    spyOn(AgentRuntime.prototype, "onEvent").mockImplementation(function (this: AgentRuntime, listener: Listener) {
+      const unsubscribe = subscribe.call(this, listener);
+      listening.add(listener);
+      return () => {
+        listening.delete(listener);
+        unsubscribe();
+      };
+    }),
+    spyOn(AgentRuntime.prototype, "start").mockImplementation(() => start(listening)),
+    spyOn(console, "error").mockImplementation(() => {})
+  ];
+  return {
+    listening,
+    restore: () => {
+      for (const spy of spies) spy.mockRestore();
+    }
+  };
+}
+
+const LATE_ERROR: AgentEvent = { type: "error", turnId: "turn_late0001", code: "unknown", message: "The turn ended late." };
 
 describe("live checks", () => {
   test(
@@ -318,5 +351,74 @@ describe("live checks", () => {
       "[offline] The studio could not list its connections. — cause: ECONNRESET"
     );
     expect(results.every((result) => result.outcome === "failed")).toBe(true);
+  });
+
+  test("a turn that fails to start is a failed turn with its reason, and leaves no timer or listener behind", async () => {
+    const { sampleRoot } = await bench();
+    network({});
+    // The turn's four-minute timer, armed through the real clock so a leak would show.
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const armed: unknown[] = [];
+    const cleared = new Set<unknown>();
+    const timers = spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: (...args: unknown[]) => void,
+      delay?: number,
+      ...rest: unknown[]
+    ) => {
+      const timer = realSetTimeout(handler, delay, ...rest);
+      if (delay === 240_000) armed.push(timer);
+      return timer;
+    }) as unknown as typeof setTimeout);
+    const clears = spyOn(globalThis, "clearTimeout").mockImplementation(((timer?: unknown) => {
+      cleared.add(timer);
+      realClearTimeout(timer as Parameters<typeof clearTimeout>[0]);
+    }) as unknown as typeof clearTimeout);
+    // A start that throws, as it does when the connection's key cannot be read.
+    const runtime = failingStart(async () => {
+      throw new Error("This connection could not be read. Remove it and connect again.");
+    });
+
+    let results: LiveResult[];
+    let left: { pending: number; listening: number };
+    try {
+      results = await runLiveChecks(providers({ models: ["muse-spark-1.3-contributor"] }) as never, { sampleRoot });
+      left = { pending: armed.filter((timer) => !cleared.has(timer)).length, listening: runtime.listening.size };
+      // An error the runtime reports after the failed start reaches nothing that can reject unheard.
+      for (const listener of [...runtime.listening]) listener(LATE_ERROR);
+      await new Promise((resolve) => realSetTimeout(resolve, 20));
+    } finally {
+      runtime.restore();
+      timers.mockRestore();
+      clears.mockRestore();
+      for (const timer of armed) realClearTimeout(timer as Parameters<typeof clearTimeout>[0]);
+    }
+
+    expect(verdicts(results)["a real writing turn"]).toBe("failed");
+    expect(detail(results, "a real writing turn")).toBe(
+      "[Error] This connection could not be read. Remove it and connect again."
+    );
+    expect(armed).toHaveLength(1);
+    expect(left).toEqual({ pending: 0, listening: 0 });
+  });
+
+  test("an error reported while the turn is still starting is not left to reject unheard", async () => {
+    const { sampleRoot } = await bench();
+    network({});
+    const runtime = failingStart(async (listening) => {
+      for (const listener of [...listening]) listener(LATE_ERROR);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      throw new Error("The turn could not start.");
+    });
+
+    let results: LiveResult[];
+    try {
+      results = await runLiveChecks(providers({ models: ["muse-spark-1.3-contributor"] }) as never, { sampleRoot });
+    } finally {
+      runtime.restore();
+    }
+
+    expect(detail(results, "a real writing turn")).toBe("[Error] The turn could not start.");
+    expect(runtime.listening.size).toBe(0);
   });
 });

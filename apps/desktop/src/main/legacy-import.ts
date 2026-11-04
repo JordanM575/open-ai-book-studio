@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
+  LegacyImportError,
   legacyImageSchema,
   parseLegacyExport,
   type LegacyBook,
@@ -219,8 +220,24 @@ async function writeMigrationRecord(library: Library, entries: MigrationEntries)
   await writeFileAtomic(path, `${JSON.stringify({ version: 1, books: entries }, null, 2)}\n`);
 }
 
+/**
+ * The export as the old app wrote it. The import dialog hands over the file's text; a caller that
+ * already holds the parsed export passes it as it is. Text that does not parse is refused in plain
+ * words, never with the parser's own message.
+ */
+function exportFrom(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new LegacyImportError(
+      "This file could not be read as a backup, so nothing was imported. It may be damaged or incomplete; export it again from Mom's AI Book Studio, then choose the new file."
+    );
+  }
+}
+
 export async function importLegacyBackup(library: Library, raw: unknown): Promise<LegacyImportReport> {
-  const parsed = parseLegacyExport(raw);
+  const parsed = parseLegacyExport(exportFrom(raw));
   const books: LegacyImportReport["books"] = [];
   const recognised: LegacyImportReport["recognised"] = [];
   const warnings: string[] = [];

@@ -898,10 +898,29 @@ describe("library folders and archives", () => {
   });
 
   /*
-   * Only the paths that hold today are pinned here. Importing a real backup through this channel
-   * is refused as "not a backup": the handler passes the file's text, and the parser expects the
-   * parsed object. That is reported as a product defect, not encoded as expected behaviour.
+   * The old-backup import as the author reaches it: the dialog names a file, the handler reads its
+   * text and the importer parses it. `legacy-import.test.ts` passes parsed objects to the importer,
+   * so only these prove that a backup on disk imports at all.
    */
+  const legacyBackup = {
+    app: "moms-ai-book-studio",
+    version: 1,
+    exportedAt: "2026-01-02T03:04:05.000Z",
+    books: [
+      {
+        title: "The Salt Road",
+        description: "A crossing at low tide.",
+        stage: "drafting",
+        characters: [{ name: "Mara", role: "Keeper" }],
+        memories: [{ text: "The sea is grey.", importance: "high" }],
+        scenes: [
+          { title: "The Door", draftContent: "The hall was cold.", arc: "beginning" },
+          { title: "The Gate", draftContent: "Morning came slowly." }
+        ]
+      }
+    ]
+  };
+
   test("choosing no backup changes nothing, and a backup that vanished is reported as not found", async () => {
     const { library } = await setup();
     expect(await data(IPC.library.importLegacy)).toBeNull();
@@ -911,6 +930,49 @@ describe("library folders and archives", () => {
     answers.open.push({ canceled: false, filePaths: [join(backups, "gone.json")] });
     const { result } = await logged(IPC.library.importLegacy);
     expect(result.ok ? null : result.error.code).toBe("not-found");
+    expect(await library.listBooks()).toEqual([]);
+  });
+
+  test("a backup file on disk imports as a book with its chapters, and the file is left as it was", async () => {
+    const { library } = await setup();
+    const file = join(await temp("studio-ipc-legacy-"), "backup.json");
+    await writeFile(file, `${JSON.stringify(legacyBackup, null, 2)}\n`);
+    const bytes = await readFile(file);
+
+    answers.open.push({ canceled: false, filePaths: [file] });
+    const report = await data<{ imported: number; books: Array<{ title: string; chapters: number }> }>(
+      IPC.library.importLegacy
+    );
+    expect(report.imported).toBe(1);
+    expect(report.books).toEqual([expect.objectContaining({ title: "The Salt Road", chapters: 2, characters: 1, memories: 1 })]);
+
+    const [summary] = await library.listBooks();
+    expect(summary?.title).toBe("The Salt Road");
+    const { chapters } = await library.readBook(summary?.id ?? "");
+    expect(chapters.map((chapter) => [chapter.title, chapter.content.trim()])).toEqual([
+      ["The Door", "The hall was cold."],
+      ["The Gate", "Morning came slowly."]
+    ]);
+    expect(await readFile(file)).toEqual(bytes);
+  });
+
+  test("a damaged backup is refused in plain words and nothing in the library changes", async () => {
+    const { root, library } = await setup();
+    const file = join(await temp("studio-ipc-legacy-"), "backup.json");
+    // The same export cut off partway, as an interrupted copy leaves it.
+    await writeFile(file, JSON.stringify(legacyBackup).slice(0, 120));
+    const snapshot = async () =>
+      Promise.all((await filesUnder(root)).sort().map(async (path) => [path, await readFile(path, "utf8")]));
+    const before = await snapshot();
+
+    answers.open.push({ canceled: false, filePaths: [file] });
+    const { result } = await logged(IPC.library.importLegacy);
+    const message = result.ok ? "" : result.error.message;
+    expect(message).toBe(
+      "This file could not be read as a backup, so nothing was imported. It may be damaged or incomplete; export it again from Mom's AI Book Studio, then choose the new file."
+    );
+    expect(message).not.toMatch(/SyntaxError|JSON|Unexpected|token/);
+    expect(await snapshot()).toEqual(before);
     expect(await library.listBooks()).toEqual([]);
   });
 });

@@ -104,6 +104,44 @@ describe("desktop credential vault", () => {
     expect(storage.calls).toEqual({ encrypt: 0, decrypt: 0 });
   });
 
+  test("the status read reports storage that is unavailable or refuses to answer, with the advice for the system", async () => {
+    const macOS = {
+      available: false,
+      backend: "macOS Keychain",
+      detail: "The login keychain is locked or unavailable. Unlock it in Keychain Access, then check again."
+    };
+    expect(await (await vaultWith(unavailable, "darwin")).vault.status()).toEqual(macOS);
+    expect(await (await vaultWith(unavailable, "linux")).vault.status()).toEqual({
+      available: false,
+      backend: "OS protected storage",
+      detail: "The system keyring is locked or unavailable. Unlock it, then check again."
+    });
+
+    const refusing: Storage = {
+      ...locked,
+      isAsyncEncryptionAvailable: async () => {
+        throw new Error("The keychain could not be reached.");
+      }
+    };
+    expect(await (await vaultWith(refusing, "darwin")).vault.status()).toEqual(macOS);
+  });
+
+  test("storage that never answers is reported as not available after a short wait, not as available", async () => {
+    const calls = { encrypt: 0, decrypt: 0 };
+    const silent: Storage = { ...sealing(calls), isAsyncEncryptionAvailable: () => new Promise<boolean>(() => {}) };
+    const started = performance.now();
+    expect(await (await vaultWith(silent, "darwin")).vault.status(10)).toEqual({
+      available: false,
+      backend: "macOS Keychain",
+      detail: "The login keychain did not answer in time. Choose Check keychain to try again."
+    });
+    expect((await (await vaultWith(silent, "linux")).vault.status(10)).detail).toBe(
+      "The system keyring did not answer in time. Choose Check keychain to try again."
+    );
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(calls).toEqual({ encrypt: 0, decrypt: 0 });
+  });
+
   test("the explicit check proves a round trip through protected storage", async () => {
     const storage = sealing();
     const { vault } = await vaultWith(storage, "darwin");

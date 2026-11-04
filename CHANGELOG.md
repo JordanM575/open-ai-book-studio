@@ -250,6 +250,25 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Settings now says when this computer's protected storage is unavailable. Electron 45 answers
+  that question with a promise, and the status read took the promise itself for a yes, so Settings
+  always showed the keychain as unlocked. It now waits for the answer, at most two seconds. If the
+  system has not answered by then, Settings says so and points you to Check keychain. An answer
+  that fails reads as unavailable, so storage is never shown as available without a yes. Opening
+  Settings still makes no keychain round trip (D-161).
+  `apps/desktop/tests/credentials-desktop.test.ts` covers available, unavailable, failing and
+  silent storage.
+- Importing an old backup now works with the file you choose. The import passed the file's text to
+  a reader that expected the backup already parsed, so every real backup was refused as not a Mom's
+  AI Book Studio backup. The importer now reads the backup from the text first. A damaged or
+  cut-off file is refused in plain words, and nothing in the library changes.
+  `apps/desktop/tests/ipc-handlers.test.ts` now imports a backup from a file on disk through the
+  real dialog handler, and refuses a damaged one.
+- The live check of a real Meta key now finishes promptly when a writing turn cannot start, and
+  records the turn as failed with the reason. Before, the turn's four-minute timer stayed armed and
+  kept the check running, and a later error from the turn became an unhandled rejection.
+  `apps/desktop/tests/live-checks.test.ts` covers a start that fails and an error reported while
+  the turn is still starting.
 - The header's Word and Markdown export buttons no longer export when the open chapter's latest text
   failed to save. An export reads the saved files, so it would have left the newest words out
   without saying so. Now a save that failed or hit a conflict stops the export with a plain notice

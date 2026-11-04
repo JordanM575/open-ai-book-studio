@@ -19,6 +19,29 @@ const osCipher: Cipher = {
   decrypt: (value) => safeStorage.decryptString(Buffer.from(value, "base64"))
 };
 
+/**
+ * How long opening Settings waits for protected storage to say whether it is there. Electron starts
+ * its encryptor on the first availability call and answers once that is done, which can wait on the
+ * operating system.
+ */
+const STATUS_WAIT_MS = 2_000;
+
+/**
+ * The availability answer, or "late" when protected storage has not answered within `ms`. An answer
+ * that fails counts as no, so a refusal reads as unavailable instead of breaking Settings.
+ */
+async function answerWithin(answer: Promise<boolean>, ms: number): Promise<boolean | "late"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((resolve) => {
+    timer = setTimeout(() => resolve("late"), ms);
+  });
+  try {
+    return await Promise.race([Promise.resolve(answer).catch(() => false), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class DesktopCredentialVault extends FileCredentialVault {
   constructor() {
     super(join(app.getPath("userData"), "credentials.json"), osCipher);
@@ -34,10 +57,22 @@ export class DesktopCredentialVault extends FileCredentialVault {
    * Fast availability read for view opens (D-161: opening Settings never probes). The keychain
    * round-trip lives in `check()` behind the explicit control: when the operating system wants
    * the author's confirmation, that call waits for them instead of wedging the open path.
+   * Availability is a promise in Electron 45: only an answer of `true` within `waitMs` counts.
    */
-  override async status(): Promise<{ available: boolean; backend: string; detail: string }> {
+  override async status(waitMs = STATUS_WAIT_MS): Promise<{ available: boolean; backend: string; detail: string }> {
     const backend = DesktopCredentialVault.backend();
-    if (!safeStorage.isAsyncEncryptionAvailable()) {
+    const answer = await answerWithin(safeStorage.isAsyncEncryptionAvailable(), waitMs);
+    if (answer === "late") {
+      return {
+        available: false,
+        backend,
+        detail:
+          process.platform === "darwin"
+            ? "The login keychain did not answer in time. Choose Check keychain to try again."
+            : "The system keyring did not answer in time. Choose Check keychain to try again."
+      };
+    }
+    if (answer !== true) {
       return {
         available: false,
         backend,
