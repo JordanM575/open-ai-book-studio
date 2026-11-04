@@ -379,8 +379,11 @@ smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
       notifications are off and safeStorage is guarded; the run asked to notify three times.
       Observed, not changed: a hidden window counts as away, so without that guard every finished
       turn in a hidden run would post a real desktop notification. The approved resume also sends
-      the model only the system, assistant and tool messages, not the author's prompt. (`bun run
-      verify` PASS with 1397 pass, `bun run e2e` 9/9, hidden smoke 30/30.)
+      the model only the system, assistant and tool messages, not the author's prompt. Both were
+      fixed afterwards: a hidden run now logs its notifications instead of posting them
+      (`launch-mode.ts`), so the run asks to notify 0 times, and the resume sends the whole
+      conversation (ADR 0014 decision 3). (`bun run verify` PASS with 1397 pass, `bun run e2e` 9/9,
+      hidden smoke 30/30.)
 
 ## Completion condition
 

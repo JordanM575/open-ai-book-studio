@@ -33,7 +33,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | CI | `.gitea/workflows/verify.yml` | unregistered runner | Committed but unenforced; local `verify` is truth |
 | Live providers | `scripts/check-keys.mjs`, `bun scripts/live-check.mjs` | `bun run keys:check` | Status without secrets; opt-in live calls |
 
-## 002 — Studio v1 (78 requirements: 62 covered, 3 partial, 13 gaps)
+## 002 — Studio v1 (78 requirements: 65 covered, 3 partial, 10 gaps)
 
 | FR | Requirement | Coverage |
 | --- | --- | --- |
@@ -203,7 +203,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-057 | Non-secret vault status with round-trip probe | COVER: `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/providers-service.test.ts`, `apps/desktop/tests/settings-status.test.tsx` |
 | FR-058 | KEYCHAIN.md runbook; copy points to status | COVER: `docs/KEYCHAIN.md` (the document is the deliverable) |
 
-## 012 — Automated verification (42 requirements: 25 covered, 17 gaps)
+## 012 — Automated verification (42 requirements: 26 covered, 16 gaps)
 
 | FR | Requirement | Coverage |
 | --- | --- | --- |
@@ -342,10 +342,9 @@ can perform and why. **GAP** names what covers nothing yet and why.
 
 ## Totals
 
-272 requirements: 150 covered, 14 manual, 108 gaps. The gaps cluster: the
+272 requirements: 182 covered, 4 partial, 14 manual, 72 gaps. The gaps cluster: the
 unbuilt ChatGPT plan flow (011 FR-014–FR-020 and dependents), unbuilt device lock
 (016 FR-013–FR-018), unregistered CI (012 FR-028–FR-034), unenforced workspace
-hygiene (013 FR-001–FR-006; T002 lint would cover these), export-format scope
-(002 FR-051 image/PDF/EPUB), and timing budgets (012 FR-024/FR-025;
-T029). The next mapping pass should re-check every GAP row against the tree,
+hygiene (013 FR-001–FR-006; T002 lint would cover these), and timing budgets (012
+FR-024/FR-025; T029). The next mapping pass should re-check every GAP row against the tree,
 because a gap closes the moment its test lands.

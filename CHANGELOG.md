@@ -99,7 +99,7 @@ Update the `Unreleased` section before every commit.
   is approved. Every provider request reaches the fake, and an observer inside the app sees no
   other outbound request. The key is in no file of the run's profile or library and in no line the
   app printed. The check turns desktop notifications off inside the app, because a hidden window
-  would otherwise announce every finished turn.
+  would otherwise announce every finished turn; a hidden run now logs them instead (see Fixed).
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined
@@ -209,6 +209,15 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The requirement map's tallies are recounted from its rows: 002 reads 65 covered, 3 partial and 10
+  gaps, 012 reads 26 covered and 16 gaps, and the totals read 182 covered, 4 partial, 14 manual and
+  72 gaps of 272. Export formats leave its list of gap clusters. The submission packet's list of
+  event work adds image export, the refusal of a second copy, the end-to-end agent check, approvals
+  that resume the whole conversation and one undo for a whole turn, and its latest re-check shows
+  1,701 tests, smoke 38/38, e2e 12/12 and coverage of 89.69% of functions and 92.63% of lines.
+  AGENTS.md no longer says specs 009 and 012 have no task list. The agent check's notes in
+  `docs/TESTING.md`, spec 012 T034 and its entry above now say that a hidden run logs its
+  notifications and that an approval resumes the whole conversation.
 - The submission packet's latest re-check now shows the current numbers: 1,567 tests, smoke 34/34,
   e2e 10/10, and coverage of 90.70% of functions and 93.27% of lines, above the unchanged floor.
 - The submission packet's list of event work now includes Word import, the generated open-source

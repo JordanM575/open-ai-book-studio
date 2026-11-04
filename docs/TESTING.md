@@ -83,8 +83,9 @@ A computer without protected storage still refuses to save a key. `apps/desktop/
 proves each case with the shared Electron mock.
 
 A hidden window is never visible, so the studio treats every finished turn as one to notify about.
-The check turns desktop notifications off inside the app before the first turn, and stops if it
-cannot.
+A hidden run now logs those notifications instead of posting them
+(`apps/desktop/src/main/launch-mode.ts`). The check still turns desktop notifications off inside the
+app before the first turn, and stops if it cannot.
 
 ### Why these are separate from the unit tests
 

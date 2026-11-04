@@ -301,5 +301,6 @@ need a new filesystem primitive, add it to the port instead of calling `fs` from
   dictation hook and the ambient panel's microphone; the smoke run remains the integration net.
 - The design kit was the source of the tokens, but only the foundation screens have been drawn; the
   rest of the surfaces in spec 002 still need design work before they are built.
-- Spec 009 (packaging and release) is planned but unwritten; 012 (automated verification) is a draft
-  with no `tasks.md`.
+- Spec 009 (packaging and release) is a draft: signing and online updates wait on D-115. Spec 012
+  (automated verification) is in progress; its Gitea runner (T021) and opt-in live checks (T024–T026)
+  are still open.

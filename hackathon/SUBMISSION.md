@@ -46,7 +46,8 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
 - Muse Voice Transcribe dictation with WAV conversion and caret insertion (spec 017).
 - Background agent turns, native notifications, dock badge and approval-pause handling (spec 017).
 - `bookwriter` CLI, MCP server and the loopback backend with per-run token (spec 018).
-- Image storage (`images.json`), Muse Image generation, illustration UI and DOCX embedding (spec 019).
+- Image storage (`images.json`), Muse Image generation, illustration UI and DOCX embedding (spec 019),
+  and an export of every image in a book as a JPEG from its actions (002 FR-050).
 - ~~SAM 3.1 cutouts~~ — built, then retired (D-158). The request reaches Meta and is accepted, but
   returns no records and no usage on real and synthetic images alike, so nothing is built on it and
   this packet does not claim a cutout.
@@ -60,6 +61,9 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   metrics, a per-book switch that withdraws a tool from the model, the backend and the MCP server
   alike, an optional `SKILLS.md` that gives the agent the author's own house rules, and a folder of
   TypeScript plugins the author points the app at (spec 025).
+- Approvals and undo for the agent: after the author approves or denies a destructive tool, the model
+  hears the whole conversation again, and one undo restores every chapter a turn changed, including
+  changes made after an approval (ADR 0014).
 - The ambient agent and the minimal mode: a status the studio keeps whether or not anyone is looking
   — where the author is, what changed, what it would do next — spoken through the voice pipeline and
   rendered on three surfaces from one pure contract: the desktop strip, the 600×600 glasses page, and
@@ -95,7 +99,12 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   - the coverage ratchet;
   - the accessibility and visual gates;
   - end-to-end checks of the `bookwriter` CLI and MCP server against the running app, and of
-    writing, importing and exporting with every outbound connection denied by the operating system.
+    writing, importing and exporting with every outbound connection denied by the operating system;
+  - one real agent turn through the built app against a fake provider on loopback, with connections
+    held in memory rather than in the keychain (D-184);
+  - a second copy of the built app on the same profile, refused before it can write (002 FR-069).
+- One studio per profile: a second copy started on the same profile quits before it reads settings or
+  opens the library, and the open copy tells the author.
 - Open-source licenses generated from the build: Settings → About lists every package each build
   ships with its license text, `THIRD_PARTY_NOTICES.md` is generated from the same data, and the
   readiness check fails on a package with no license or an unknown one (D-186).
@@ -139,17 +148,19 @@ placeholder.
 | Submission check | `bun run submission:check` | `<ready · commits · tracked files>` |
 | Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | `<commit, packages, results>` |
 
-**Latest re-check (2026-11-04, commit `9babe12`):**
+**Latest re-check (2026-11-04, code at commit `0f41eed`; this packet update came after it):**
 
 | Check | Result |
 | --- | --- |
-| `bun run verify` | Pass: 1,567 tests, 0 failures; lint, typecheck, the quarantine and waiver ledgers, and both builds |
-| Smoke | 34/34 |
-| e2e | 10/10 |
+| `bun run verify` | Pass: 1,701 tests, 0 failures; lint, typecheck, the quarantine and waiver ledgers, and both builds |
+| Smoke | 38/38 |
+| e2e | 12/12 |
 | `ui:audit` | Pass |
 | Accessibility | No critical or serious findings, and focus order held |
 | Visual | 112/112 baselines |
-| Coverage | 90.70% of functions and 93.27% of lines over the repository's own files, above the 85/92 floor, which is unchanged |
+| Coverage | 89.69% of functions and 92.63% of lines over the repository's own 190 files, above the 85/92 floor, which is unchanged |
+| Performance | Within SC-009: book open at 1.01× and the web bundle at 1.09× of their baselines, against limits of 2× and 1.2× |
+| Licenses | 98 desktop and 37 web packages pass the license gate, with one allowed exception (D-137) |
 
 An earlier clean-clone pass on 2026-10-26 (`8a42620`, 568 tests) is superseded by the event commits.
 
