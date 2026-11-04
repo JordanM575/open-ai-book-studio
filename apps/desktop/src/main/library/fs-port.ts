@@ -16,6 +16,7 @@ import type {
   LibraryPort
 } from "@ai-book-studio/core/library/port";
 import { writeFileAtomic } from "./atomic";
+import { noteOwnFile, noteOwnRemoval } from "./own-writes";
 import { isoNow, safeJoin } from "./paths";
 
 /**
@@ -115,12 +116,15 @@ export class FileSystemLibraryPort implements LibraryPort {
     if (await this.readFile(to)) {
       throw new LibraryPortError("already-exists", "The destination already exists.");
     }
+    const moving = await this.readFile(from);
     try {
       await mkdir(dirname(destination), { recursive: true });
       await renameAcrossDevices(source, destination);
     } catch (error) {
       throw toPortError(error);
     }
+    if (moving) noteOwnFile(destination, moving.sha256);
+    noteOwnRemoval(source);
   }
 
   async moveDirectory(from: LibraryPath, to: LibraryPath): Promise<void> {
@@ -147,6 +151,8 @@ export class FileSystemLibraryPort implements LibraryPort {
       }
       throw toPortError(error);
     }
+    // Noted only once it happened: a failed move must not cover a later outside deletion in the folder.
+    noteOwnRemoval(source, true);
   }
 
   async removeDirectory(path: LibraryPath): Promise<void> {
@@ -155,6 +161,7 @@ export class FileSystemLibraryPort implements LibraryPort {
     } catch (error) {
       throw toPortError(error);
     }
+    noteOwnRemoval(this.absolute(path), true);
   }
 
   async removeFile(path: LibraryPath): Promise<void> {
@@ -163,6 +170,7 @@ export class FileSystemLibraryPort implements LibraryPort {
     } catch (error) {
       throw toPortError(error);
     }
+    noteOwnRemoval(this.absolute(path));
   }
 
   /** Advisory: the caller still checks versions and hashes before every write. */

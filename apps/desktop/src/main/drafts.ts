@@ -1,15 +1,31 @@
-import type { DraftInput } from "@ai-book-studio/core/ipc";
+import { DRAFT_FLUSH_CHANNEL, type DraftFlushRequest, type DraftInput } from "@ai-book-studio/core/ipc";
 import type { SaveChapterResult } from "@ai-book-studio/core/schema";
 import type { Library } from "./library/store";
 import { normalizeBody } from "@ai-book-studio/core/markdown";
+
+/** How long a close or quit waits for the window's newest text before it saves the drafts it holds. */
+export const FLUSH_REQUEST_TIMEOUT_MS = 1500;
+
+/** The part of a window's web contents a flush request needs. */
+export interface FlushTarget {
+  isDestroyed(): boolean;
+  isCrashed(): boolean;
+  send(channel: string, request: DraftFlushRequest): void;
+}
 
 /**
  * Keeps the newest text of an open chapter in memory so closing the window, quitting, or a crash
  * in the renderer cannot lose the last few seconds of typing. The renderer still saves on its own;
  * this is the safety net, and it is flushed before the app exits.
+ *
+ * The editor sends a draft only after a 300 ms pause, so the buffer alone trails the last keystrokes.
+ * Before a close or quit the window is asked for its newest text first (`requestNewest`); the drafts
+ * already held are the fallback when it does not answer.
  */
 export class DraftBuffer {
   private readonly drafts = new Map<string, DraftInput>();
+  private readonly requests = new Map<string, () => void>();
+  private nextRequest = 0;
 
   private key(bookId: string, chapterId: string): string {
     return `${bookId}:${chapterId}`;
@@ -60,6 +76,41 @@ export class DraftBuffer {
     });
     this.drafts.delete(this.key(bookId, chapterId));
     return result;
+  }
+
+  /**
+   * Ask the window to save its newest text, and wait until it answers or `timeoutMs` passes. A window
+   * that is gone or crashed is not asked.
+   */
+  requestNewest(target: FlushTarget | null, timeoutMs = FLUSH_REQUEST_TIMEOUT_MS): Promise<"answered" | "timed-out" | "no-window"> {
+    if (!target || target.isDestroyed() || target.isCrashed()) return Promise.resolve("no-window");
+    this.nextRequest += 1;
+    const requestId = `flush-${this.nextRequest}`;
+    return new Promise((resolve) => {
+      const settle = (outcome: "answered" | "timed-out" | "no-window"): void => {
+        clearTimeout(timer);
+        this.requests.delete(requestId);
+        resolve(outcome);
+      };
+      const timer = setTimeout(() => settle("timed-out"), timeoutMs);
+      this.requests.set(requestId, () => settle("answered"));
+      try {
+        target.send(DRAFT_FLUSH_CHANNEL, { requestId });
+      } catch {
+        settle("no-window");
+      }
+    });
+  }
+
+  /** The window answered a flush request: its newest text is saved, or held here. */
+  answered(requestId: string): void {
+    this.requests.get(requestId)?.();
+  }
+
+  /** Before a close or quit: ask the window for its newest text, then save every draft held. */
+  async flushBeforeExit(library: Library, target: FlushTarget | null, timeoutMs = FLUSH_REQUEST_TIMEOUT_MS): Promise<void> {
+    await this.requestNewest(target, timeoutMs);
+    await this.flush(library);
   }
 
   /** Best effort: a conflict here preserves the draft next to the chapter instead of overwriting it. */

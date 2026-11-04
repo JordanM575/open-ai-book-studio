@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   AGENT_EVENT_CHANNEL,
+  DRAFT_FLUSH_CHANNEL,
   IPC,
   LIBRARY_EVENT_CHANNEL,
   SECOND_INSTANCE_EVENT_CHANNEL,
@@ -8,6 +9,7 @@ import {
   type AgentEvent,
   type AgentTurnInput,
   type ChapterMetaPatch,
+  type DraftFlushRequest,
   type DraftInput,
   type DriftEvent,
   type LibraryChangeEvent,
@@ -17,6 +19,7 @@ import {
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderId } from "@ai-book-studio/core/providers/types";
 import type { AgentAnswerLength } from "@ai-book-studio/core/agent/settings";
+import { createFlushRequests } from "./flush-requests";
 import { createHeldSignal } from "./held-signal";
 
 function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
@@ -26,6 +29,14 @@ function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 // A refused second copy can be reported while this page is still starting, before the shell listens.
 const secondInstance = createHeldSignal();
 ipcRenderer.on(SECOND_INSTANCE_EVENT_CHANNEL, () => secondInstance.emit());
+
+// A close or quit asks for the editor's newest text before it saves the drafts; always answered.
+const flushRequests = createFlushRequests((requestId) => {
+  void invoke(IPC.drafts.flushed, requestId).catch(() => {});
+});
+ipcRenderer.on(DRAFT_FLUSH_CHANNEL, (_event, request: DraftFlushRequest) => {
+  void flushRequests.handle(request.requestId);
+});
 
 const api: StudioApi = {
   app: {
@@ -81,7 +92,8 @@ const api: StudioApi = {
   },
   drafts: {
     set: (input: DraftInput) => invoke(IPC.drafts.set, input),
-    clear: (bookId, chapterId) => invoke(IPC.drafts.clear, { bookId, chapterId })
+    clear: (bookId, chapterId) => invoke(IPC.drafts.clear, { bookId, chapterId }),
+    onFlushRequest: (handler) => flushRequests.subscribe(handler)
   },
   sync: {
     check: () => invoke(IPC.sync.check),

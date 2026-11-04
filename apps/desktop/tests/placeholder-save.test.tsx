@@ -78,7 +78,8 @@ function mockWorkspace() {
     conflicts: { list: mock(() => Promise.resolve({ ok: true, data: [] })), reveal },
     drafts: {
       set: mock(() => Promise.resolve({ ok: true, data: null })),
-      clear: mock(() => Promise.resolve({ ok: true, data: null }))
+      clear: mock(() => Promise.resolve({ ok: true, data: null })),
+      onFlushRequest: mock(() => () => {})
     },
     images: { list: mock(() => Promise.resolve({ ok: true, data: { manifest: { images: [] } } })) },
     library: { onChange: mock(() => () => {}) },

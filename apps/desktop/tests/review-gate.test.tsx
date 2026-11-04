@@ -48,7 +48,7 @@ function mockStudio(result: unknown) {
   const setDraft = mock(() => Promise.resolve({ ok: true, data: null }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     chapters: { save, updateMeta },
-    drafts: { set: setDraft, clear }
+    drafts: { set: setDraft, clear, onFlushRequest: () => () => {} }
   };
   return { save, clear, setDraft };
 }

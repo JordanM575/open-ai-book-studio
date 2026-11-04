@@ -206,7 +206,9 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
         safe(async () => {
           drafts.clear(bookId, chapterId);
           return null;
-        })
+        }),
+      // A browser tab is never asked before it closes; `flushDraftsOnHide` is its safety net.
+      onFlushRequest: () => () => {}
     },
     sync: {
       check: () =>

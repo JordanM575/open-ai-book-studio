@@ -18,6 +18,8 @@ interface Props {
   chapterContent: string;
   /** The next chapter, when there is one. */
   onNextChapter: () => void;
+  /** One of this strip's turns, or its undo, may have changed chapters, so the workspace reloads them. */
+  onChanged?: (() => Promise<void> | void) | undefined;
   /** Something went wrong. */
   onNotice: (error: unknown) => void;
 }
@@ -42,6 +44,7 @@ export function AmbientPanel({
   chapterTitle,
   chapterContent,
   onNextChapter,
+  onChanged,
   onNotice
 }: Props) {
   const [status, setStatus] = useState<AmbientStatus | null>(null);
@@ -64,6 +67,9 @@ export function AmbientPanel({
    */
   const voiceRef = useRef("");
   voiceRef.current = voice;
+  // Read through a ref for the same reason: the event handler is not reinstalled for it.
+  const changedRef = useRef(onChanged);
+  changedRef.current = onChanged;
   const speech = useSpeech();
   const [heard, setHeard] = useState<string | null>(null);
 
@@ -125,6 +131,7 @@ export function AmbientPanel({
         setRunning(false);
         setStatus((current) => (current ? { ...current, working: false } : current));
         void refresh();
+        void changedRef.current?.();
         /*
          * In the hands-free loop the answer is spoken as well as shown, because the author is not
          * looking at the screen — that is what makes it hands-free. The text stays on screen for
@@ -135,9 +142,14 @@ export function AmbientPanel({
           const chosen = voiceRef.current;
           void speech.speak(replyRef.current.trim() || "Done.", chosen ? { voice: chosen } : {});
         }
+      } else if (event.type === "stopped") {
+        setRunning(false);
+        void changedRef.current?.();
       } else if (event.type === "error") {
         setRunning(false);
         setNote(event.message);
+        // A turn can fail after it changed a chapter; that change is real and undoable.
+        if (event.changed) void changedRef.current?.();
       }
     });
     return unsubscribe;
@@ -199,6 +211,7 @@ export function AmbientPanel({
             ? `${restored}.`
             : "There was nothing to restore.") + notes
       );
+      await changedRef.current?.();
       await refresh();
     } catch (error) {
       onNotice(error);

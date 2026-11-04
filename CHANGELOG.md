@@ -445,6 +445,32 @@ Update the `Unreleased` section before every commit.
   next Tab continues where you were. This covers every dialog the workspace opens.
 - `docs/FORMAT.md` now says that moving a chapter never renames its file, so the numeric prefixes stop
   following reading order after a reorder, and gives the trash's real base-36 stamp.
+- Words typed just before quitting or closing the window are no longer lost. The editor sends its
+  draft copy only after a 300 ms pause, and quitting saved only that copy, so a sentence finished
+  less than 300 ms before the quit never reached the file. A close or quit now asks the window for
+  its newest text first: the open editor saves it through the normal checked path, and the preload
+  bridge always answers, so the quit waits at most 1.5 s and the drafts already held stay the
+  fallback. Saves from one editor now run one at a time, so a quit while an autosave is still on its
+  way saves the newest words instead of a conflict copy.
+- After an agent turn or its undo, the open editor shows the chapter as it now is. Before, the
+  workspace remounted the editor before it reloaded the book, so it kept the old text, and the
+  author's next words were refused and went to `conflicts/` as a `newer-version` copy. The editor
+  now keeps any unsaved words, reloads, and then remounts on the new text. The same reload follows a
+  turn or an undo from the ambient strip, which never reloaded the editor, and a turn that failed
+  after it changed a chapter. A turn that left the open chapter alone, such as a question, no longer
+  remounts the editor, so the caret and the undo history stay.
+- An outside edit that lands soon after a local save is announced. The workspace used to drop every
+  library change within 2 s of a local action, and every autosave restarted that window, so another
+  writer's paragraph could go unannounced and the author's next typing became a conflict copy. The
+  window is gone: the main process now tells the studio's own writes from another writer's by their
+  bytes, so nothing is dropped by time.
+- The studio's own saves are no longer announced as changes made outside the studio. The library
+  watcher now ignores the studio's atomic temp files, matched by their exact name, and recognises a
+  Story Bible, settings, image, conversation, checkpoint, trash or agent write as the studio's own
+  because the file still holds the bytes the studio wrote. A genuine outside edit or deletion is still
+  announced, and so is a change the studio makes for the toolkit or the phone bridge, which the
+  window did not see.
+
 - After an undo, the chat, the ambient strip and `bookwriter undo` now say which chapters did not simply
   go back and why, and where a copy of words written during the turn was kept. The notes were
   returned by undo but never shown.

@@ -177,13 +177,14 @@ function createWindow(): BrowserWindow {
   window.on("resized", rememberBounds);
   window.on("moved", rememberBounds);
 
-  // Give the draft buffer one chance to reach the disk before the window goes away.
+  // Give the draft buffer one chance to reach the disk before the window goes away. The window is
+  // asked for its newest text first: the draft it last sent can trail the last keystrokes.
   let allowClose = false;
   window.on("close", (event) => {
     if (allowClose) return;
     event.preventDefault();
     void studio
-      .flushDrafts()
+      .flushDrafts(window.webContents)
       .catch((error: unknown) => console.warn("[studio] Flush before close failed:", error))
       .finally(() => {
         allowClose = true;
@@ -542,7 +543,7 @@ app.on("before-quit", (event) => {
   if (flushed || !studio) return;
   event.preventDefault();
   void Promise.allSettled([
-    studio.flushDrafts(),
+    studio.flushDrafts(mainWindow?.webContents ?? null),
     backend?.stop() ?? Promise.resolve()
   ])
     .catch((error: unknown) => console.warn("[studio] Flush before quit failed:", error))

@@ -5,6 +5,7 @@ import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import type { AgentTurnResult } from "@ai-book-studio/core/agent";
 import type { ToolCallResult } from "@ai-book-studio/core/agent/tools";
 import { z } from "zod";
+import { asOtherWriter } from "./library/own-writes";
 
 /**
  * The bridge to the phone.
@@ -95,7 +96,8 @@ export class LocalBridge {
       throw new Error("The bridge binds to one named local address, never to every interface.");
     }
     const server = createServer((request, response) => {
-      void this.handle(request, response).catch((error: unknown) => {
+      // The window did not make these writes, so the library watcher announces them to it.
+      void asOtherWriter(() => this.handle(request, response)).catch((error: unknown) => {
         const failure = asHttpError(error);
         const payload = JSON.stringify({ error: { code: failure.code, message: failure.message } });
         response.writeHead(failure.status, {

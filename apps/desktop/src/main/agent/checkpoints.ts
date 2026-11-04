@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { unlink } from "node:fs/promises";
 import type { ChapterMeta } from "@ai-book-studio/core/schema";
 import { writeFileAtomic } from "../library/atomic";
+import { noteOwnRemoval } from "../library/own-writes";
 
 /** The chapter details a turn can change and undo puts back. Order, version and dates are not among them. */
 export type CheckpointMeta = Pick<ChapterMeta, "title" | "synopsis" | "purpose" | "notes" | "arc" | "color" | "isPrologue">;
@@ -171,7 +172,11 @@ export class CheckpointStore {
 
   async remove(bookId: string, file: string): Promise<void> {
     if (file.includes("/") || file.includes("\\")) return;
-    await unlink(join(this.dir(bookId), file)).catch(() => {});
+    const path = join(this.dir(bookId), file);
+    await unlink(path).then(
+      () => noteOwnRemoval(path),
+      () => {}
+    );
   }
 
   private dir(bookId: string): string {

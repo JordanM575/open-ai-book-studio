@@ -20,7 +20,7 @@ trusted file owner. The split is the architecture; everything else is detail.
 │   studio.ts     session: settings, current library, draft buffer             │
 │   library/      format (markdown), atomic writes, paths, Library store       │
 │   settings.ts   userData/studio.json (library root, window bounds)           │
-│   drafts.ts     in-memory keystroke buffer, flushed on quit                  │
+│   drafts.ts     in-memory keystroke buffer, flushed on close and quit        │
 └───────────────────────────────────┬──────────────────────────────────────────┘
                                     │ fs (atomic)
                           the author's chosen folder
@@ -81,8 +81,11 @@ enough, and it keeps the format explainable. The index exists for queries, not f
   filename, then healed on the next save. Prose is never rejected for lacking metadata.
 - `schemaVersion` newer than the app → refuse with "This library was written by a newer version of
   AI Book Studio. Update the app to open it." Refusing loudly beats corrupting silently.
-- Quitting flushes the draft buffer through the normal save path (and therefore through the conflict
-  protocol), once, before the window closes.
+- Closing the window or quitting first asks the window for its newest text, which the open editor
+  saves through the normal path, then flushes the draft buffer through the normal save path (and
+  therefore through the conflict protocol), once, before the window closes. The editor sends its
+  draft copy only after a 300 ms pause, so without the ask the last keystrokes would be lost; a window
+  that does not answer within 1.5 s leaves the drafts already held as the fallback.
 
 ## Sync without a server
 
@@ -111,7 +114,9 @@ prevent divergence but to make it visible and non-destructive.
    than crashing) → register IPC → build the menu → create the window.
 4. Window: 1440×900, min 1024×700, `hiddenInset` title bar on macOS with insets for the glass header,
    restored bounds, denied window opens, external links to the system browser.
-5. `close` / `before-quit` flush drafts once, then quit.
+5. `close` / `before-quit` send `drafts:flush-request` to the window, wait for the preload bridge's
+   answer on `drafts:flushed` (at most 1.5 s; always sent, even with no editor open), flush drafts once,
+   then quit.
 
 The menu is deliberately small: File → Open library…, Close window, Quit; standard Edit, View and
 Window menus. Features arrive as interface, not as menu items, unless they are genuinely global.
@@ -163,10 +168,20 @@ archive have landed; the real-browser folder-picker matrix and the shared UI ext
 - `packages/core/src/library/port.ts` defines the target-neutral storage contract; `packages/core/tests/library-service.test.ts`
   is the conformance suite for compare-before-write, byte isolation, safe paths, conflicts, trash and injected failures.
 - `apps/desktop/src/main/library/fs-port.ts` — Node filesystem adapter: atomic rename, directory `fsync`,
-  device identity, and a recursive watch on `books/` and `.studio/trash/`. `Studio` debounces watch
-  events into one `library:event`; the workspace offers a refresh that flushes unsaved text before
-  remounting the editor. The save-time hash check remains the final guard. The main process keeps the
-  draft buffer, keychain and single-instance lock.
+  device identity, and a recursive watch on `books/` and `.studio/trash/`. `ChangeBatcher`
+  (`library/changes.ts`) debounces watch events into one `library:event` and keeps only another
+  writer's changes: it never reports the studio's own atomic temp files, matched by the exact name
+  `writeFileAtomic` gives them, and drops a path whose bytes are still what the studio last wrote there.
+  `library/own-writes.ts` holds that record, noted by `writeFileAtomic`, the port's moves and removals
+  and the checkpoint store, so a save, a Story Bible, settings or image change and an agent turn are
+  all recognised by their bytes rather than by a time window. What remains is announced however soon
+  it follows a local save, and the workspace offers a refresh that flushes unsaved text before
+  remounting the editor. The studio's own changes reach the open editor from the surface that made
+  them: the workspace reloads after a turn or an undo from the chat or the ambient strip, and after a
+  turn that failed once it had changed a chapter, and remounts the editor only when the open chapter's
+  file no longer holds what the editor last loaded or saved. Writes the studio makes for the toolkit's control plane or the phone bridge
+  run outside that record, so the window hears about them too. The save-time hash check remains the
+  final guard. The main process keeps the draft buffer, keychain and single-instance lock.
 - `apps/desktop/src/main/library/store.ts` is now a thin desktop facade over the shared service; the
   renderer contract and IPC envelope are unchanged.
 - `apps/desktop/src/renderer/` — interface through the isolated preload bridge; no Node/filesystem access.
@@ -217,8 +232,14 @@ so the authoritative device id should move to the host profile.
   `apps/desktop/tests/library.test.ts` with temporary directories.
 - `packages/core/tests/library-port.test.ts` tests the new port contract and in-memory implementation.
 - `smoke.ts` drives the built app in a hidden window: preload surface, fixture library, opening a
-  book, typing and autosave to disk, chapter reorder and build metadata. `scripts/smoke.mjs` builds a
-  throwaway profile so it never touches the author's library.
+  book, typing and autosave to disk, the close-and-quit flush of words typed a moment earlier, own
+  writes staying quiet and an outside edit right after a save being announced, chapter reorder and
+  build metadata. `scripts/smoke.mjs` builds a throwaway profile so it never touches the author's
+  library.
+- `apps/desktop/tests/editor-sync.test.tsx` mounts the real workspace, editor, chat and ambient strip
+  over a real library in a temporary folder: turns and undo from either reach the open editor, an
+  outside edit right after a save is announced, and a quit 50 ms after the last key saves it. `apps/desktop/tests/own-writes.test.ts`
+  runs the real recursive watch over a temporary folder.
 - `apps/desktop/tests/manuscript-editor.test.ts` renders the real editor under happy-dom and Testing
   Library for the debounce and conflict states. `apps/desktop/tsconfig.json` declares the `@renderer`
   path so Bun resolves the renderer modules outside Vite.
@@ -236,8 +257,8 @@ so the authoritative device id should move to the host profile.
   T013/T027); the shared shell and stylesheet now live in `packages/app`/`packages/ui`.
 - No component tests; UI is covered by the smoke run only.
 - Single window, no tabs, no multi-library switching without reopening.
-- Autosave debounce is 700 ms with a draft buffer behind it. The editor keeps a per-chapter in-memory
-  undo/redo history; it is not persisted across relaunch.
+- Autosave debounce is 700 ms with a draft buffer behind it, and one save runs at a time. The editor
+  keeps a per-chapter in-memory undo/redo history; it is not persisted across relaunch.
 
 ## Voice dictation
 

@@ -435,6 +435,8 @@ export function ChatPanel({
         turnRef.current = null;
         setRunning(false);
         setWaiting(false);
+        // A turn can fail after it changed a chapter; that change is real, so the editor reloads.
+        if (event.changed) void onChanged();
       }
     });
     return unsubscribe;

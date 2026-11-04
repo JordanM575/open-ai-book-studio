@@ -138,7 +138,9 @@ export const IPC = {
   },
   drafts: {
     set: "drafts:set",
-    clear: "drafts:clear"
+    clear: "drafts:clear",
+    /** The window's answer to a flush request. Sent by the preload bridge itself, never by the page. */
+    flushed: "drafts:flushed"
   },
   sync: {
     /** Run a read-only drift scan now and remember when it ran. */
@@ -252,6 +254,16 @@ export interface DriftEvent {
  * before it opened the library (spec 002 FR-069). It carries nothing.
  */
 export const SECOND_INSTANCE_EVENT_CHANNEL = "app:second-instance";
+
+/**
+ * Main process to renderer: a close or quit is about to save the drafts, so the open editor saves
+ * its newest text first. The preload bridge answers on `IPC.drafts.flushed` with the same id.
+ */
+export const DRAFT_FLUSH_CHANNEL = "drafts:flush-request";
+
+export interface DraftFlushRequest {
+  requestId: string;
+}
 
 /** The sync reminder settings the Settings section shows. */
 export interface SyncSettings {
@@ -399,6 +411,11 @@ export interface StudioApi {
   drafts: {
     set(input: DraftInput): Promise<Result<null>>;
     clear(bookId: string, chapterId: string): Promise<Result<null>>;
+    /**
+     * Runs `handler` when a close or quit asks for the newest text, and answers once it settles.
+     * Returns an unsubscribe.
+     */
+    onFlushRequest(handler: () => Promise<unknown>): () => void;
   };
   sync: {
     check(): Promise<Result<DriftReport | null>>;

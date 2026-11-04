@@ -19,6 +19,8 @@ export interface EditorHandle {
   flush: () => Promise<SaveStatus>;
   /** The live buffer status, without waiting for the mirrored React state to land. */
   getStatus: () => SaveStatus;
+  /** The hash of the chapter file this editor last loaded or saved. */
+  getBaseHash: () => string;
 }
 
 export interface EditorSelection {
@@ -85,12 +87,8 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     element.scrollIntoView({ block: "center" });
   }, [selectionNonce]);
 
-  const save = useCallback(
+  const saveNow = useCallback(
     async (text: string): Promise<SaveStatus> => {
-      if (timer.current) {
-        clearTimeout(timer.current);
-        timer.current = null;
-      }
       if (text === base.current.content) {
         if (statusRef.current.kind !== "dirty") return statusRef.current;
         // Typing and then undoing back to the saved text leaves nothing to write. The chapter on
@@ -132,10 +130,38 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     [bookId, chapter.id, onSaved, updateStatus]
   );
 
+  // One save at a time. A save that started while another was on its way would carry the old base
+  // and land as a conflict copy; queued, it compares against the base the first save left.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const save = useCallback(
+    (text: string): Promise<SaveStatus> => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      const run = queue.current.then(() => saveNow(text));
+      queue.current = run.catch(() => {});
+      return run;
+    },
+    [saveNow]
+  );
+
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  useImperativeHandle(ref, () => ({ flush: () => saveRef.current(latest.current), getStatus: () => statusRef.current }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      flush: () => saveRef.current(latest.current),
+      getStatus: () => statusRef.current,
+      getBaseHash: () => base.current.hash
+    }),
+    []
+  );
+
+  // A close or quit asks for the newest text before the main process saves its drafts: the draft
+  // copy below trails typing by 300 ms, so on its own it would lose the last keystrokes.
+  useEffect(() => window.studio.drafts.onFlushRequest(() => saveRef.current(latest.current)), []);
 
   // Last line of defence: leaving the chapter must not drop the last keystrokes. The main process
   // also holds a draft copy and flushes it before the window closes.

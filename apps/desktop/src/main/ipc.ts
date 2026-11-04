@@ -597,6 +597,11 @@ export function registerIpc(
     return null;
   });
 
+  handle(IPC.drafts.flushed, async (payload) => {
+    studio.drafts.answered(z.string().min(1).max(80).parse(payload));
+    return null;
+  });
+
   /* --------------------------------------------------------------------- sync */
 
   const sync = new SyncService(studio, settings);

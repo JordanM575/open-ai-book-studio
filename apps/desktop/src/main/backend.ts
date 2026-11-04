@@ -18,6 +18,7 @@ import type {
   SaveChapterResult
 } from "@ai-book-studio/core/schema";
 import { idSchema } from "@ai-book-studio/core/schema";
+import { asOtherWriter } from "./library/own-writes";
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024 + 1024;
 const LOCATOR_VERSION = 1;
@@ -171,7 +172,8 @@ export class LocalBackend {
   async start(): Promise<BackendLocator> {
     if (this.server) throw new Error("The local backend is already running.");
     const server = createServer((request, response) => {
-      void this.handle(request, response).catch((error: unknown) => {
+      // The window did not make these writes, so the library watcher announces them to it.
+      void asOtherWriter(() => this.handle(request, response)).catch((error: unknown) => {
         const failure = asHttpError(error);
         this.send(response, failure.status, { error: { code: failure.code, message: failure.message } });
       });

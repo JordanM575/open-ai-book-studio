@@ -143,7 +143,6 @@ export function WorkspaceView({
   const [evidenceSelection, setEvidenceSelection] = useState<(EditorSelection & { chapterId: string }) | null>(null);
   const runController = useRef<AbortController | null>(null);
   const editorRef = useRef<EditorHandle>(null);
-  const lastLocalActionAt = useRef(0);
   const isMac = window.studio.platform === "darwin";
 
   const openSettings = useCallback((next?: SettingsSection) => {
@@ -178,7 +177,7 @@ export function WorkspaceView({
   }, [status]);
 
   const load = useCallback(
-    async (preferId?: string) => {
+    async (preferId?: string): Promise<BookDetail | null> => {
       try {
         const next = await mustCompatible(window.studio.books.open(bookId));
         setDetail(next);
@@ -187,14 +186,16 @@ export function WorkspaceView({
           const wanted = preferId ?? current;
           return next.chapters.some((chapter) => chapter.id === wanted) ? (wanted ?? null) : (next.chapters[0]?.id ?? null);
         });
+        return next;
       } catch (error) {
         // A newer-schema refusal opens the recovery journey instead of a toast: the
         // library stays open, the book stays unread, and nothing is written.
         if (error instanceof SchemaRefusalError) {
           onSchemaRefusal({ detectedSchema: error.detectedSchema });
-          return;
+          return null;
         }
         onNotice(error);
+        return null;
       }
     },
     [bookId, onNotice, onSchemaRefusal]
@@ -205,12 +206,10 @@ export function WorkspaceView({
   }, [load]);
 
   useEffect(() => {
-    return window.studio.library.onChange((change) => {
-      // A local save, create, delete or reorder also reaches the watcher. Give it a short grace
-      // period so the author is not asked to refresh their own work.
-      if (Date.now() - lastLocalActionAt.current < 2000) return;
-      setExternalChange(change);
-    });
+    // The main process reports only another writer's changes: it recognises the studio's own saves,
+    // Story Bible, image and agent writes by their bytes, so every change that arrives is announced,
+    // however soon it follows a local save.
+    return window.studio.library.onChange((change) => setExternalChange(change));
   }, []);
 
   const selected = detail?.chapters.find((chapter) => chapter.id === selectedId) ?? null;
@@ -296,7 +295,6 @@ export function WorkspaceView({
     try {
       await editorRef.current?.flush();
       const chapter = await must(window.studio.chapters.create(bookId, {}));
-      lastLocalActionAt.current = Date.now();
       setDetail((current) =>
         current ? { ...current, chapters: [...current.chapters, chapter].sort((a, b) => a.order - b.order) } : current
       );
@@ -316,7 +314,6 @@ export function WorkspaceView({
       try {
         await editorRef.current?.flush();
         const result = await must(window.studio.chapters.reorder(bookId, chapter.id, direction));
-        lastLocalActionAt.current = Date.now();
         if (result.status === "conflict") {
           onNotice(
             new Error(
@@ -343,7 +340,6 @@ export function WorkspaceView({
     try {
       await editorRef.current?.flush();
       const result = await must(window.studio.chapters.move(bookId, chapter.id, targetIndex));
-      lastLocalActionAt.current = Date.now();
       if (result.status === "conflict") {
         onNotice(
           new Error(
@@ -376,6 +372,23 @@ export function WorkspaceView({
       onNotice(error);
     }
   };
+
+  /**
+   * After an agent turn or its undo, from the chat or the ambient strip. The turn may have rewritten
+   * the open chapter, and the library watcher stays quiet for the studio's own writes, so the
+   * workspace reloads itself. The author's unsaved words are kept first. The editor remounts only when
+   * the file no longer holds what it last loaded or saved, and only once the new text is in state, as
+   * refreshFromDisk does: remounting first would seed it with the old chapter and its old hash. A turn
+   * that left the chapter alone keeps the caret and the undo history.
+   */
+  const reloadAfterAgent = useCallback(async () => {
+    await editorRef.current?.flush();
+    const next = await load(selectedId ?? undefined);
+    const open = next?.chapters.find((chapter) => chapter.id === selectedId);
+    if (!open || open.hash === editorRef.current?.getBaseHash()) return;
+    clearEditorHistory(open.id);
+    setReloadKey((key) => key + 1);
+  }, [load, selectedId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -446,7 +459,6 @@ export function WorkspaceView({
       await editorRef.current?.flush();
       await must(window.studio.chapters.delete(bookId, pendingDelete.id));
       clearEditorHistory(pendingDelete.id);
-      lastLocalActionAt.current = Date.now();
       const remaining = detail?.chapters.filter((chapter) => chapter.id !== pendingDelete.id) ?? [];
       setDetail((current) => (current ? { ...current, chapters: remaining } : current));
       if (selectedId === pendingDelete.id) setSelectedId(remaining[0]?.id ?? null);
@@ -495,7 +507,6 @@ export function WorkspaceView({
         setReviewView({ kind: "stopped" });
         return;
       }
-      lastLocalActionAt.current = Date.now();
       setDetail(snapshotDetail);
       const snapshot = reviewSourceSnapshotFromBookDetail(snapshotDetail, requestedAt);
       // Sliced analysis yields between chunks, so Cancel stays clickable on long books and
@@ -567,7 +578,6 @@ export function WorkspaceView({
       void (async () => {
         try {
           const fresh = await must(window.studio.books.open(bookId));
-          lastLocalActionAt.current = Date.now();
           setDetail(fresh);
           const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
           setReviewView({ kind: "report", report: reviewView.report, freshness: reviewReportFreshness(reviewView.report, snapshot) });
@@ -603,7 +613,6 @@ export function WorkspaceView({
       const current = reviewView.report;
       try {
         const fresh = await must(window.studio.books.open(bookId));
-        lastLocalActionAt.current = Date.now();
         setDetail(fresh);
         const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
         const navigation = revalidateReviewEvidence(current, snapshot, findingId, evidenceIndex);
@@ -631,7 +640,6 @@ export function WorkspaceView({
   );
 
   const onSaved = useCallback((saved: Chapter) => {
-    lastLocalActionAt.current = Date.now();
     setDetail((current) =>
       current
         ? {
@@ -1002,10 +1010,7 @@ export function WorkspaceView({
             onChooseTurnModel={() => openModelPicker("turn")}
             turnModel={turnModel}
             onTurnModelUsed={() => setTurnModel(null)}
-            onChanged={async () => {
-              setReloadKey((key) => key + 1);
-              await load(selectedId ?? undefined);
-            }}
+            onChanged={reloadAfterAgent}
             onNotice={onNotice}
           />
         ) : null}
@@ -1017,6 +1022,7 @@ export function WorkspaceView({
         chapterTitle={selected?.title ?? ""}
         chapterContent={selected?.content ?? ""}
         onNextChapter={nextChapter}
+        onChanged={reloadAfterAgent}
         onNotice={onNotice}
       />
 

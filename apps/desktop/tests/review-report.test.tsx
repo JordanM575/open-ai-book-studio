@@ -306,7 +306,8 @@ describe("ManuscriptEditor evidence selection", () => {
       chapters: { save: mock(() => Promise.resolve({ ok: true })), updateMeta: mock(() => Promise.resolve({ ok: true })) },
       drafts: {
         set: mock(() => Promise.resolve({ ok: true, data: null })),
-        clear: mock(() => Promise.resolve({ ok: true, data: null }))
+        clear: mock(() => Promise.resolve({ ok: true, data: null })),
+        onFlushRequest: mock(() => () => {})
       }
     };
 
@@ -393,7 +394,8 @@ describe("workspace review entry to report", () => {
       },
       drafts: {
         set: mock(() => Promise.resolve({ ok: true, data: null })),
-        clear: mock(() => Promise.resolve({ ok: true, data: null }))
+        clear: mock(() => Promise.resolve({ ok: true, data: null })),
+        onFlushRequest: mock(() => () => {})
       },
       chapters: {
         save: mock((input: unknown) => {
@@ -492,7 +494,8 @@ describe("workspace review entry to report", () => {
       },
       drafts: {
         set: mock(() => Promise.resolve({ ok: true, data: null })),
-        clear: mock(() => Promise.resolve({ ok: true, data: null }))
+        clear: mock(() => Promise.resolve({ ok: true, data: null })),
+        onFlushRequest: mock(() => () => {})
       },
       chapters: {
         save: mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } })),

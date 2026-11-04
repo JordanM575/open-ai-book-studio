@@ -1,6 +1,7 @@
 import type { LibraryChangeEvent, LibraryInfo } from "@ai-book-studio/core/ipc";
+import { ChangeBatcher } from "./library/changes";
 import { Library } from "./library/store";
-import type { DraftBuffer } from "./drafts";
+import type { DraftBuffer, FlushTarget } from "./drafts";
 import type { SettingsStore } from "./settings";
 
 export class Studio {
@@ -32,23 +33,16 @@ export class Studio {
     const library = await Library.open(root);
     this.stopWatch?.();
     this.stopWatch = null;
-    this.watchedPaths.clear();
-    if (this.watchTimer) {
-      clearTimeout(this.watchTimer);
-      this.watchTimer = null;
-    }
     this.library = library;
     this.restoreError = null;
-    this.stopWatch = library.watch((path) => {
-      this.watchedPaths.add(path);
-      if (this.watchTimer) clearTimeout(this.watchTimer);
-      this.watchTimer = setTimeout(() => {
-        this.watchTimer = null;
-        const paths = [...this.watchedPaths];
-        this.watchedPaths.clear();
-        this.onExternalChange?.({ paths, at: new Date().toISOString() });
-      }, 500);
+    const changes = new ChangeBatcher(library.root, (event) => {
+      if (this.library === library) this.onExternalChange?.(event);
     });
+    const stop = library.watch((path) => changes.add(path));
+    this.stopWatch = () => {
+      stop();
+      changes.stop();
+    };
     await this.settings.update({ libraryRoot: library.root });
     const opened = info(library);
     this.onLibraryOpened?.(opened);
@@ -66,8 +60,9 @@ export class Studio {
     return this.library;
   }
 
-  async flushDrafts(): Promise<void> {
-    if (this.library) await this.drafts.flush(this.library);
+  /** Save every held draft, asking `window` for its newest text first when there is one. */
+  async flushDrafts(window: FlushTarget | null = null): Promise<void> {
+    if (this.library) await this.drafts.flushBeforeExit(this.library, window);
   }
 
   settingsWindowBounds(): { width: number; height: number; x?: number; y?: number } | undefined {
@@ -85,8 +80,6 @@ export class Studio {
 
   private boundsTimer: ReturnType<typeof setTimeout> | null = null;
   private stopWatch: (() => void) | null = null;
-  private watchTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly watchedPaths = new Set<string>();
 }
 
 function info(library: Library): LibraryInfo {

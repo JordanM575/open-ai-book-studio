@@ -1000,24 +1000,95 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "the typed marker was undone after returning to the chapter";
     });
 
-    await check("an external edit can be refreshed without losing the session", async () => {
+    await check("words typed just before a quit reach the file", async () => {
       const library = studio.requireLibrary();
       const book = (await library.listBooks())[0];
       if (!book) throw new Error("the smoke book disappeared");
-      const detail = await library.readBook(book.id);
-      const chapter = detail.chapters[0];
+      const chapter = (await library.readBook(book.id)).chapters[0];
+      if (!chapter) throw new Error("the smoke chapter disappeared");
+      const before = await library.readChapter(book.id, chapter.id);
+      const sentence = `The keeper wrote it down at ${Date.now()}.`;
+
+      // A key every 60 ms at the end of the chapter: neither the 300 ms draft copy nor the 700 ms
+      // autosave has run when the close and quit handlers' flush asks the window for its text.
+      const lastKeyAt = await evaluate<number>(
+        win,
+        `(async () => {
+          const el = document.querySelector('[data-testid="manuscript-text"]');
+          if (!el) return 0;
+          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+          const keys = [..."\\n" + ${JSON.stringify(sentence)}];
+          for (let index = 0; index < keys.length; index += 1) {
+            if (index > 0) await new Promise((resolve) => setTimeout(resolve, 60));
+            setter.call(el, el.value + keys[index]);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          return Date.now();
+        })()`
+      );
+      if (!lastKeyAt) throw new Error("the editor was not found");
+      const sinceLastKey = Date.now() - lastKeyAt;
+      await studio.flushDrafts(win.webContents);
+      // Past 250 ms the draft copy could have carried the words, and the check would prove nothing.
+      if (sinceLastKey >= 250) throw new Error(`the flush began ${sinceLastKey} ms after the last key`);
+
+      const after = await library.readChapter(book.id, chapter.id);
+      if (!after.content.includes(sentence)) throw new Error("the sentence typed before the quit is not in the file");
+      if (after.version <= before.version) throw new Error(`version did not move (${before.version} → ${after.version})`);
+      if ((await library.listConflicts(book.id)).length > 0) throw new Error("the flush left a conflict copy");
+      return `flushed ${sinceLastKey} ms after the last key, version ${before.version} → ${after.version}`;
+    });
+
+    await check("the studio's own writes stay quiet, and an outside edit right after a save is announced", async () => {
+      const library = studio.requireLibrary();
+      const book = (await library.listBooks())[0];
+      if (!book) throw new Error("the smoke book disappeared");
+      const chapter = (await library.readBook(book.id)).chapters[0];
       if (!chapter) throw new Error("the smoke chapter disappeared");
       const path = join(library.root, "books", book.id, "chapters", chapter.path);
+      const banner = (): Promise<boolean> =>
+        evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="external-change"]')`));
+      const typeLine = async (line: string): Promise<void> => {
+        const typed = await evaluate<boolean>(
+          win,
+          `(() => {
+            const el = document.querySelector('[data-testid="manuscript-text"]');
+            if (!el) return false;
+            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+            setter.call(el, el.value + ${JSON.stringify(line)});
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            return true;
+          })()`
+        );
+        if (!typed) throw new Error("the editor was not found");
+        await waitUntil(
+          async () => (await library.readChapter(book.id, chapter.id)).content.includes(line.trim()),
+          "the autosave to reach the disk"
+        );
+      };
 
-      // Let the local-save grace period pass, then write as another editor would.
-      await delay(2200);
+      // The studio's own writes: a Story Bible change through the bridge, then a typed line it autosaves.
+      const updated = await evaluate<string>(
+        win,
+        `(async () => {
+          const first = await window.studio.books.update(${JSON.stringify(book.id)}, { genres: ["Smoke"] });
+          if (!first.ok) return first.error.message;
+          const second = await window.studio.books.update(${JSON.stringify(book.id)}, { genres: [] });
+          return second.ok ? "ok" : second.error.message;
+        })()`
+      );
+      if (updated !== "ok") throw new Error(`the Story Bible change failed: ${updated}`);
+      await typeLine("\nThe gulls settled on the rail.\n");
+      await delay(1500);
+      if (await banner()) throw new Error("the studio's own Story Bible change and save were announced as outside changes");
+
+      // Another editor writes 0.3 s after the next local save, well inside the old 2 s grace period.
+      await typeLine("The light turned twice.\n");
+      await delay(300);
       const raw = await readFile(path, "utf8");
       await writeFile(path, `${raw}\n\nAn external editor added this line.\n`, "utf8");
 
-      await waitUntil(
-        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="external-change"]')`)),
-        "the external-change banner"
-      );
+      await waitUntil(banner, "the external-change banner");
       const refreshed = await evaluate<boolean>(
         win,
         `(() => {
@@ -1037,7 +1108,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
           ),
         "the refreshed manuscript"
       );
-      return "banner, refresh and the external line";
+      return "own writes quiet for 1.5 s; banner 0.3 s after a save, refresh and the external line";
     });
 
     await check("a chapter can move with the keyboard", async () => {

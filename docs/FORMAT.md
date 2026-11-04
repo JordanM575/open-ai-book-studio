@@ -237,7 +237,10 @@ chapter that someone else wrote in during the turn, it keeps the chapter's file 
 keeps nothing if the file changed since undo read it.
 
 Writes go through a sibling temp file, `fsync`, and `rename`, with one retry for Windows sharing
-violations. Writes for a single book are serialised, so two IPC calls cannot interleave.
+violations. Writes for a single book are serialised, so two IPC calls cannot interleave. The temp
+file is named `.<file name>.<process id>.<milliseconds in base 36>.tmp`, for example
+`.book.json.4242.mhl7x2ps.tmp`. It exists only for the moment of the write; the studio's watcher never
+reports a file of that shape, and nothing should sync, edit or keep one.
 
 ## Trash
 
