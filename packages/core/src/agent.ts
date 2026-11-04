@@ -58,6 +58,21 @@ export interface AgentTurnResult {
   stopped?: boolean;
 }
 
+/** What one undo of an agent turn did. */
+export interface AgentUndoResult {
+  /** Chapters put back the way the turn found them. */
+  restored: number;
+  /** Chapters left as they are, because they changed after the turn or could not be put back. */
+  skipped: number;
+  /**
+   * Conflict copies undo kept before restoring a chapter someone else wrote in during the turn.
+   * Present only when there is one.
+   */
+  kept?: Array<{ chapterId: string; title: string; savedAs: string }>;
+  /** One sentence for each chapter that did not simply go back, naming it. Present only when there is one. */
+  notes?: string[];
+}
+
 /** The model a turn actually ran with, independent of what is selected now. */
 export interface AgentTurnModel {
   provider: string;

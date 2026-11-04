@@ -114,6 +114,19 @@ describe("tool bridge", () => {
     expect(checkpoint?.entries[0]?.before).toBe(before);
   });
 
+  test("a delete leaves a checkpoint that can bring back the chapter itself", async () => {
+    const { bridge, book, chapter, library } = await fixture();
+    await bridge.run({ bookId: book.id, name: "delete_chapter", args: { chapterId: chapter.id }, allowDestructive: true });
+
+    const { CheckpointStore } = await import("../src/main/agent/checkpoints");
+    const entry = (await new CheckpointStore(library.root).latest(book.id))?.entries[0];
+    expect(entry).toMatchObject({ chapterId: chapter.id, deleted: true, order: 1 });
+    expect(entry?.trashedAt).toMatch(new RegExp(`^\\.studio/trash/${book.id}/[a-z0-9]+-0001-the-door\\.md$`));
+
+    const back = await library.restoreChapter(book.id, chapter.id, entry?.trashedAt ?? "");
+    expect([back.id, back.content]).toEqual([chapter.id, chapter.content]);
+  });
+
   test("explains that no library is open", async () => {
     const bridge = new ToolBridge(() => null);
     await expect(

@@ -7,7 +7,13 @@ import {
   type ToolApprovalResponse,
   type ToolSet
 } from "ai";
-import type { AgentEvent, AgentTurnInput, AgentTurnResult, AgentTurnStarted } from "@ai-book-studio/core/agent";
+import type {
+  AgentEvent,
+  AgentTurnInput,
+  AgentTurnResult,
+  AgentTurnStarted,
+  AgentUndoResult
+} from "@ai-book-studio/core/agent";
 import {
   agentMessageSchema,
   messageText,
@@ -28,6 +34,8 @@ import { reportedCost } from "@ai-book-studio/core/providers/openrouter";
 import { normalizeProviderError, parseRetryAfter } from "@ai-book-studio/core/providers/errors";
 import { redact } from "@ai-book-studio/core/providers/redact";
 import type { ProviderId, StoredCredential } from "@ai-book-studio/core/providers/types";
+import type { Chapter } from "@ai-book-studio/core/schema";
+import { LibraryError } from "@ai-book-studio/core/library/errors";
 import { ProviderError } from "@ai-book-studio/core/providers/types";
 import type { Studio } from "../studio";
 import type { ProviderService } from "../providers";
@@ -35,8 +43,15 @@ import { UsageStore } from "../usage";
 import { newId } from "../library/paths";
 import type { Library } from "../library/store";
 import { modelFor } from "./transport";
-import { CheckpointStore, bodyHash, recordChange, type CheckpointEntry } from "./checkpoints";
-import { DESTRUCTIVE_TOOL_NAMES, type ChapterChange } from "./tools";
+import {
+  CheckpointStore,
+  bodyHash,
+  checkpointMeta,
+  metaHash,
+  recordChange,
+  type CheckpointEntry
+} from "./checkpoints";
+import { DESTRUCTIVE_TOOL_NAMES } from "./tools";
 import { buildToolSet } from "./tool-set";
 import { buildPrompt } from "./prompt";
 import { readBookSkills } from "./skills";
@@ -82,7 +97,7 @@ interface TurnState {
   reasoning: string;
   toolParts: AgentPart[];
   approvals: AgentApprovalPart[];
-  changes: ChapterChange[];
+  changes: CheckpointEntry[];
   /** The catalogue's display name for the turn's model, when the catalogue named one. */
   modelName: string | null;
   inputTokens: number;
@@ -505,10 +520,12 @@ export class AgentRuntime {
    * Put every chapter the newest turn changed back the way the turn found it.
    *
    * The entries are undone newest first, so the turn's structural changes come apart in the reverse
-   * of the order they were made. A chapter whose text changed after the turn is left as it is and
-   * counted as skipped: undo never writes over someone else's words.
+   * of the order they were made. A chapter whose text or details changed after the turn is left as it
+   * is and counted as skipped: undo never writes over someone else's words. A chapter someone else
+   * wrote in while the turn was running is restored too, but its file is kept as a conflict copy
+   * first, and the result names the chapter and the copy.
    */
-  async undoLast(bookId: string): Promise<{ restored: number; skipped: number }> {
+  async undoLast(bookId: string): Promise<AgentUndoResult> {
     const library = this.studio.requireLibrary();
     const store = new CheckpointStore(() => this.studio.library?.root ?? null);
     const checkpoint = await store.latest(bookId);
@@ -517,12 +534,17 @@ export class AgentRuntime {
     }
     let restored = 0;
     let skipped = 0;
+    const kept: NonNullable<AgentUndoResult["kept"]> = [];
+    const notes: string[] = [];
     for (const entry of [...checkpoint.entries].reverse()) {
-      if (await undoEntry(library, bookId, entry)) restored += 1;
+      const undone = await undoEntry(library, bookId, entry);
+      if (undone.restored) restored += 1;
       else skipped += 1;
+      if (undone.kept) kept.push(undone.kept);
+      if (undone.note) notes.push(undone.note);
     }
     await store.remove(bookId, checkpoint.file);
-    return { restored, skipped };
+    return { restored, skipped, ...(kept.length > 0 ? { kept } : {}), ...(notes.length > 0 ? { notes } : {}) };
   }
 
   /**
@@ -1003,33 +1025,106 @@ async function settleRunningCalls(running: Set<Promise<void>>): Promise<void> {
   clearTimeout(timer);
 }
 
-/** Undo one checkpoint entry. False when it could not be put back, or someone changed it since. */
-async function undoEntry(library: Library, bookId: string, entry: CheckpointEntry): Promise<boolean> {
+/** What undoing one checkpoint entry did. */
+interface UndoneEntry {
+  restored: boolean;
+  /** The conflict copy kept before the chapter was restored. */
+  kept?: { chapterId: string; title: string; savedAs: string };
+  /** One sentence for the author when the chapter did not simply go back. */
+  note?: string;
+}
+
+/**
+ * Undo one checkpoint entry. A chapter that changed after the turn, or that could not be put back,
+ * is left as it is. A chapter someone else wrote in during the turn is kept as a conflict copy before
+ * anything replaces it, and is left as it is when the copy cannot be made.
+ */
+async function undoEntry(library: Library, bookId: string, entry: CheckpointEntry): Promise<UndoneEntry> {
+  const name = `“${entry.title}”`;
+  let kept: UndoneEntry["kept"];
+  const left = (why: string): UndoneEntry => ({
+    restored: false,
+    ...(kept ? { kept } : {}),
+    note: `${name} ${why}, so undo left it as it is.${kept ? ` Its text from before the undo is kept at ${kept.savedAs}.` : ""}`
+  });
   try {
+    let current: Chapter;
     if (entry.deleted) {
-      const recreated = await library.createChapter(bookId, { title: entry.title, content: entry.before });
-      if (entry.order) await library.moveChapterTo(bookId, recreated.id, entry.order - 1);
-      return true;
+      const { chapters } = await library.readBook(bookId);
+      if (chapters.some((chapter) => chapter.id === entry.chapterId)) return left("is already back in the book");
+      const back = entry.trashedAt ? await fromTrash(library, bookId, entry.chapterId, entry.trashedAt) : null;
+      if (!back) {
+        // The file has left the trash, or an older checkpoint did not say where it went.
+        const recreated = await library.createChapter(bookId, { title: entry.title, content: entry.before });
+        if (entry.order) await library.moveChapterTo(bookId, recreated.id, entry.order - 1);
+        return {
+          restored: true,
+          note: `${name} was no longer in the trash, so undo wrote it again as a new chapter with its title and text only.`
+        };
+      }
+      current = back;
+    } else {
+      current = await library.readChapter(bookId, entry.chapterId);
+      // Text or details that are no longer what the turn left belong to whoever wrote them since.
+      if (entry.afterHash !== undefined && (await bodyHash(current.content)) !== entry.afterHash) {
+        return left("changed after the turn");
+      }
+      if (entry.afterMetaHash !== undefined && (await metaHash(checkpointMeta(current))) !== entry.afterMetaHash) {
+        return left("changed after the turn");
+      }
+      if (entry.created) {
+        await library.deleteChapter(bookId, entry.chapterId);
+        return { restored: true };
+      }
     }
-    const current = await library.readChapter(bookId, entry.chapterId);
-    // Text that is no longer what the turn left belongs to whoever wrote it since.
-    if (entry.afterHash !== undefined && (await bodyHash(current.content)) !== entry.afterHash) return false;
-    if (entry.created) {
-      await library.deleteChapter(bookId, entry.chapterId);
-      return true;
+    if (entry.outsideEdit) {
+      // Words the turn did not write are in this chapter's history. Keep what is there now first.
+      const copy = await library.keepConflictCopy(bookId, entry.chapterId, {
+        baseVersion: current.version,
+        baseHash: current.hash
+      });
+      if (copy.status !== "kept") return left("changed while undo was reading it");
+      kept = { chapterId: entry.chapterId, title: entry.title, savedAs: copy.savedAs };
     }
     const saved = await library.saveChapter(bookId, entry.chapterId, entry.before, {
       baseVersion: current.version,
       baseHash: current.hash
     });
-    if (saved.status !== "saved") return false;
+    if (saved.status !== "saved") return left("changed while undo was restoring it");
+    current = saved.chapter;
+    if (entry.meta && (await metaHash(entry.meta)) !== (await metaHash(checkpointMeta(current)))) {
+      // Only the seven details: the entry was read back from a file, and order or id are not undo's.
+      const restored = await library.updateChapterMeta(bookId, entry.chapterId, checkpointMeta(entry.meta), {
+        baseVersion: current.version,
+        baseHash: current.hash
+      });
+      if (restored.status !== "saved") return left("changed while undo was restoring it");
+    }
     if (entry.order) {
       const moved = await library.moveChapterTo(bookId, entry.chapterId, entry.order - 1);
-      if (moved.status !== "saved") return false;
+      if (moved.status !== "saved") return left("changed while undo was restoring it");
     }
-    return true;
+    if (!kept) return { restored: true };
+    return {
+      restored: true,
+      kept,
+      note: `${name} was edited during the turn, so undo kept its text from before the undo at ${kept.savedAs}.`
+    };
   } catch {
-    return false;
+    return left("could not be put back");
+  }
+}
+
+/**
+ * Bring a deleted chapter's own file back from the trash. Null when the trash no longer holds it,
+ * so the caller can write the chapter again instead.
+ */
+async function fromTrash(library: Library, bookId: string, chapterId: string, trashedAt: string): Promise<Chapter | null> {
+  try {
+    return await library.restoreChapter(bookId, chapterId, trashedAt);
+  } catch (error) {
+    if (error instanceof LibraryError && (error.code === "not-found" || error.code === "invalid")) return null;
+    throw error;
   }
 }
 

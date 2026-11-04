@@ -50,13 +50,27 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
 - Memory removal is not chapter-undoable. The checkpoint covers chapters only; a memory restore path
   needs its own checkpoint if that guarantee is required. Chapter overwrite, line deletion, split,
   merge, delete and move are checkpointed and undoable. Split and chapter creation record the new
-  chapter, which undo moves to the trash. Merge and delete record the removed chapter, which undo
-  writes again with the same title and text at its old position; it gets a new id, and the deleted
-  file stays in the trash. A move records where the chapter stood, and undo moves it back. One move
-  per turn is restored exactly; several moves in one turn are undone newest first, and that order is
-  not proven. A chapter's details (`set_chapter_meta`) and a plugin's writes are not checkpointed.
-- Undo never writes over a later edit. Each entry records a hash of the body text the turn left; a
-  chapter whose text changed after the turn is skipped and reported, and the rest are restored.
+  chapter, which undo moves to the trash. Merge and delete record the removed chapter and where its
+  file went in the trash; undo moves that file back to its old position, so the chapter keeps its id,
+  synopsis, purpose and notes. Only when the file has left the trash, or the recorded path is refused,
+  does undo write the title and text again as a new chapter, and it says so. (Amended 2026-11-04: undo had always written a new chapter
+  with a new id, and left the original file in the trash.) A move records where the chapter stood, and
+  undo moves it back. One move per turn is restored exactly; several moves in one turn are undone
+  newest first, and that order is not proven. A chapter's details (`set_chapter_meta`: title,
+  synopsis and purpose, with notes, arc, colour and the prologue flag held too) are checkpointed with
+  its text and restored by the same undo (amended 2026-11-04). The book's details, cast and memories
+  (`update_book_details`, `update_character`, `add_memory`, `update_memory`, `remove_memory`) and a
+  plugin's writes are not checkpointed.
+- Undo never writes over a later edit. Each entry records a hash of the body text and of the details
+  the turn left; a chapter whose text or details changed after the turn is skipped and named, and the
+  rest are restored.
+- Undo never silently discards words the turn did not write. When a tool finds text or details the
+  turn had not left, because the author or another writer changed the chapter between two of the
+  turn's writes, for example during an approval pause, the entry is marked. Undo keeps that chapter's
+  file as a `conflict-undo` copy in `conflicts/` before restoring it, names the chapter and the copy in
+  its result, and leaves the chapter alone if the copy cannot be made (amended 2026-11-04). The copy
+  holds the text as it was when undo ran. A mid-turn edit that a later approved `overwrite_chapter`
+  replaced in the same turn was already gone before undo ran, so no copy can hold it.
 
 ## Alternatives considered
 
@@ -77,5 +91,7 @@ for message before the tool call and its result or denial, a second approval in 
 each approved call once, and the next turn asks again instead of reusing an earlier approval. The
 tool itself is covered in `agent-tools.test.ts`. `turn-checkpoint.test.ts` drives whole turns through
 the same mock: a change after an approval, two approvals, a denial after an earlier write, created,
-deleted, moved and split chapters, and a chapter the author edits afterwards. Undo restores every
-chapter the turn reported changed, or skips and reports the one edited since.
+deleted, moved and split chapters, a chapter's details, a chapter the author edits during an approval
+pause, and a chapter the author edits afterwards. Undo restores every chapter the turn reported
+changed, or skips and names the one edited since; a deleted chapter comes back from the trash with its
+id, and an edit made during the turn is kept as a conflict copy first.

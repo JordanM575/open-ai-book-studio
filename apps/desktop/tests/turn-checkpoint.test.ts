@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { simulateReadableStream } from "ai";
@@ -122,11 +122,13 @@ function step(tools: Array<[name: string, input: Record<string, unknown>]>, text
 type Step = StreamResult | (() => Promise<StreamResult>);
 
 /**
- * Run one turn of these steps, answering its approvals in order, and wait for it to finish.
+ * Run one turn of these steps, answering its approvals in order, and wait for it to finish. The
+ * author can act while each approval waits, before it is answered.
  */
 async function runTurn(
   steps: Step[],
-  answers: boolean[] = []
+  answers: boolean[] = [],
+  duringPause: (index: number) => Promise<void> = async () => {}
 ): Promise<{ runtime: AgentRuntime; finished: Done }> {
   const script = [...steps];
   const model = new MockLanguageModelV4({
@@ -169,8 +171,9 @@ async function runTurn(
   };
 
   const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Work on the book." });
-  for (const approved of answers) {
+  for (const [index, approved] of answers.entries()) {
     const request = await nextApproval();
+    await duringPause(index);
     await runtime.approve(started.turnId, request.approvalId, approved);
   }
   return { runtime, finished: await done };
@@ -187,6 +190,40 @@ async function checkpointFiles(): Promise<string[]> {
 
 async function text(chapterId: string): Promise<string> {
   return (await library.readChapter(book.id, chapterId)).content;
+}
+
+/** The author saves a chapter from the editor, against the version on disk. */
+async function authorSaves(chapterId: string, write: (content: string) => string): Promise<void> {
+  const current = await library.readChapter(book.id, chapterId);
+  const saved = await library.saveChapter(book.id, chapterId, write(current.content), {
+    baseVersion: current.version,
+    baseHash: current.hash
+  });
+  expect(saved.status).toBe("saved");
+}
+
+/** The author changes a chapter's details, against the version on disk. */
+async function authorSetsDetails(chapterId: string, patch: Parameters<Library["updateChapterMeta"]>[2]): Promise<void> {
+  const current = await library.readChapter(book.id, chapterId);
+  const saved = await library.updateChapterMeta(book.id, chapterId, patch, {
+    baseVersion: current.version,
+    baseHash: current.hash
+  });
+  expect(saved.status).toBe("saved");
+}
+
+/** The raw bytes of a chapter's file, front matter and all. */
+async function chapterFile(chapterId: string): Promise<string> {
+  const current = await library.readChapter(book.id, chapterId);
+  return readFile(join(root, "books", book.id, "chapters", current.path), "utf8");
+}
+
+async function trashFiles(): Promise<string[]> {
+  return readdir(join(root, ".studio", "trash", book.id)).catch(() => []);
+}
+
+async function conflictFiles(): Promise<string[]> {
+  return readdir(join(root, "books", book.id, "conflicts")).catch(() => []);
 }
 
 describe("a turn's checkpoint", () => {
@@ -324,8 +361,13 @@ describe("a turn's checkpoint", () => {
     expect(typed.status).toBe("saved");
 
     const undone = await runtime.undoLast(book.id);
-    // The result says one chapter was skipped; the chat turns that into its "skipped 1" note.
-    expect(undone).toEqual({ restored: 1, skipped: 1 });
+    // The result says one chapter was skipped, and which; the chat turns the count into its
+    // "skipped 1" note.
+    expect(undone).toEqual({
+      restored: 1,
+      skipped: 1,
+      notes: ["“The Lamp” changed after the turn, so undo left it as it is."]
+    });
     expect(finished.changed).toBe(undone.restored + undone.skipped);
     expect(await text(door.id)).toBe(door.content);
     expect(await text(lamp.id)).toBe("The lamp was out. Mara relit it.\n");
@@ -387,10 +429,11 @@ describe("a turn's checkpoint", () => {
     expect(await text(lamp.id)).toBe(lamp.content);
   });
 
-  test("undo brings back a chapter the turn deleted, where it stood", async () => {
-    await chapter("One", "One.\n");
+  test("undo brings back the chapter the turn deleted, with its id, details and place", async () => {
+    const one = await chapter("One", "One.\n");
     const two = await chapter("Two", "Two.\n");
-    await chapter("Three", "Three.\n");
+    const three = await chapter("Three", "Three.\n");
+    await authorSetsDetails(two.id, { synopsis: "The crossing.", purpose: "Raise the stakes.", notes: "Keep it short." });
 
     const { runtime, finished } = await runTurn(
       [step([["delete_chapter", { chapterId: two.id }]]), step([], "I moved Two to the trash.")],
@@ -399,23 +442,105 @@ describe("a turn's checkpoint", () => {
 
     expect(finished.changed).toBe(1);
     expect((await library.readBook(book.id)).chapters.map((entry) => entry.title)).toEqual(["One", "Three"]);
+    expect(await trashFiles()).toHaveLength(1);
 
     const undone = await runtime.undoLast(book.id);
     expect(undone).toEqual({ restored: 1, skipped: 0 });
-    // The chapter comes back as a new file with the same title and text, in its old place.
-    expect((await library.readBook(book.id)).chapters.map((entry) => [entry.title, entry.content])).toEqual([
+    // The file itself comes back out of the trash: the same chapter, not a copy of its text.
+    const after = (await library.readBook(book.id)).chapters;
+    expect(after.map((entry) => entry.id)).toEqual([one.id, two.id, three.id]);
+    const back = after[1];
+    expect([back?.title, back?.synopsis, back?.purpose, back?.notes, back?.content]).toEqual([
+      "Two",
+      "The crossing.",
+      "Raise the stakes.",
+      "Keep it short.",
+      "Two.\n"
+    ]);
+    expect(await trashFiles()).toEqual([]);
+  });
+
+  test("undo writes a deleted chapter again when its file has left the trash, and says so", async () => {
+    const one = await chapter("One", "One.\n");
+    const two = await chapter("Two", "Two.\n");
+    const three = await chapter("Three", "Three.\n");
+
+    const { runtime } = await runTurn(
+      [step([["delete_chapter", { chapterId: two.id }]]), step([], "I moved Two to the trash.")],
+      [true]
+    );
+    // The author empties the trash before undoing.
+    for (const name of await trashFiles()) await rm(join(root, ".studio", "trash", book.id, name));
+
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([1, 0]);
+    expect(undone.notes).toEqual([expect.stringContaining("“Two”")]);
+    // As before the trash was searched: the title and text return under a new id, in the old place.
+    const after = (await library.readBook(book.id)).chapters;
+    expect(after.map((entry) => [entry.title, entry.content])).toEqual([
       ["One", "One.\n"],
       ["Two", "Two.\n"],
       ["Three", "Three.\n"]
     ]);
+    expect([after[0]?.id, after[2]?.id]).toEqual([one.id, three.id]);
+    expect(after[1]?.id).not.toBe(two.id);
+  });
+
+  test("a checkpoint from before the trash was recorded still brings a deleted chapter back, and says how", async () => {
+    const one = await chapter("One", "One.\n");
+    const two = await chapter("Two", "Two.\n");
+    await library.deleteChapter(book.id, two.id);
+    // Written the way a checkpoint was before `trashedAt` existed.
+    await new CheckpointStore(root).save({
+      turnId: "turn_older",
+      bookId: book.id,
+      at: "2026-11-01T00:00:00.000Z",
+      prompt: "Delete Two.",
+      entries: [{ chapterId: two.id, title: "Two", before: "Two.\n", deleted: true, order: 2 }]
+    });
+    const runtime = new AgentRuntime(
+      { library, requireLibrary: () => library } as unknown as Studio,
+      providers(),
+      () => {},
+      () => new MockLanguageModelV4()
+    );
+
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([1, 0]);
+    expect(undone.notes).toEqual([expect.stringContaining("“Two”")]);
+    const after = (await library.readBook(book.id)).chapters;
+    expect(after.map((entry) => [entry.title, entry.content])).toEqual([
+      ["One", "One.\n"],
+      ["Two", "Two.\n"]
+    ]);
+    expect(after[0]?.id).toBe(one.id);
+  });
+
+  test("undo leaves a deleted chapter the author already brought back, instead of writing it twice", async () => {
+    const one = await chapter("One", "One.\n");
+    const two = await chapter("Two", "Two.\n");
+    const three = await chapter("Three", "Three.\n");
+
+    const { runtime } = await runTurn(
+      [step([["delete_chapter", { chapterId: two.id }]]), step([], "I moved Two to the trash.")],
+      [true]
+    );
+    // The author moves the file back out of the trash by hand.
+    const [trashed] = await trashFiles();
+    await rename(join(root, ".studio", "trash", book.id, trashed ?? ""), join(root, "books", book.id, "chapters", two.path));
+
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([0, 1]);
+    expect(undone.notes).toEqual([expect.stringContaining("“Two”")]);
+    expect((await library.readBook(book.id)).chapters.map((entry) => entry.id)).toEqual([one.id, two.id, three.id]);
   });
 
   test("undo puts a merged chapter back in its place when the chapter numbers have a gap", async () => {
-    await chapter("One", "One.\n");
+    const one = await chapter("One", "One.\n");
     const two = await chapter("Two", "Two.\n");
     const three = await chapter("Three", "Three.\n");
     const four = await chapter("Four", "Four.\n");
-    await chapter("Five", "Five.\n");
+    const five = await chapter("Five", "Five.\n");
     // An earlier deletion leaves the order numbers 1, 3, 4, 5: Four is number 4 but stands third.
     await library.deleteChapter(book.id, two.id);
 
@@ -438,6 +563,14 @@ describe("a turn's checkpoint", () => {
       ["Four", "Four.\n"],
       ["Five", "Five.\n"]
     ]);
+    // The merged-away chapter is the same chapter again, back from the trash.
+    expect((await library.readBook(book.id)).chapters.map((entry) => entry.id)).toEqual([
+      one.id,
+      three.id,
+      four.id,
+      five.id
+    ]);
+    expect(await trashFiles()).toHaveLength(1);
   });
 
   test("undo puts a chapter the turn moved back in its place", async () => {
@@ -522,7 +655,210 @@ describe("a turn's checkpoint", () => {
   });
 });
 
+describe("undo and words the turn did not write", () => {
+  test("keeps the author's words from an approval pause as a conflict copy before restoring", async () => {
+    const door = await chapter("The Door", "The door was shut.\nIt creaked.\n");
+
+    const { runtime, finished } = await runTurn(
+      [
+        step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]),
+        step([["delete_lines_in_chapter", { chapterId: door.id, startLine: 2, endLine: 2 }]]),
+        step([], "I added the wind and cut the creak.")
+      ],
+      [true],
+      // While the approval waits, the author adds a line of their own.
+      () => authorSaves(door.id, (content) => `${content}Mara bolted it.\n`)
+    );
+
+    expect(finished.changed).toBe(1);
+    expect(await text(door.id)).toBe("The door was shut.\n\nWind came under it.\nMara bolted it.\n");
+    const replaced = await chapterFile(door.id);
+
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([1, 0]);
+    expect(finished.changed).toBe(undone.restored + undone.skipped);
+    expect(await text(door.id)).toBe(door.content);
+    // The text undo replaced, with the author's line in it, is kept first, named like any conflict copy.
+    expect(undone.kept).toHaveLength(1);
+    const kept = undone.kept?.[0];
+    expect([kept?.chapterId, kept?.title]).toEqual([door.id, "The Door"]);
+    expect(kept?.savedAs).toMatch(
+      new RegExp(`^books/${book.id}/conflicts/0001-the-door\\.conflict-undo\\.device_[a-f0-9]+\\.[0-9TZ-]+\\.md$`)
+    );
+    expect(await conflictFiles()).toHaveLength(1);
+    expect(await readFile(join(root, kept?.savedAs ?? ""), "utf8")).toBe(replaced);
+    expect(replaced).toContain("Mara bolted it.");
+    // The result names the chapter and the copy.
+    expect(undone.notes).toEqual([expect.stringContaining("“The Door”")]);
+    expect(undone.notes?.[0]).toContain(kept?.savedAs ?? "missing");
+  });
+
+  test("keeps the author's words in a chapter the turn changed and then deleted", async () => {
+    const one = await chapter("One", "One.\n");
+    const two = await chapter("Two", "Two.\n");
+
+    const { runtime, finished } = await runTurn(
+      [
+        step([["append_to_chapter", { chapterId: two.id, text: "The agent's line." }]]),
+        step([["delete_chapter", { chapterId: two.id }]]),
+        step([], "I added a line and then removed the chapter.")
+      ],
+      [true],
+      () => authorSaves(two.id, (content) => `${content}The author's line.\n`)
+    );
+
+    expect(finished.changed).toBe(1);
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([1, 0]);
+    // The chapter is back with its id and the text it had before the turn...
+    expect((await library.readBook(book.id)).chapters.map((entry) => [entry.id, entry.content])).toEqual([
+      [one.id, "One.\n"],
+      [two.id, "Two.\n"]
+    ]);
+    // ...and the text it was deleted with, the author's line included, is kept as a conflict copy.
+    const kept = undone.kept?.[0];
+    expect(kept?.chapterId).toBe(two.id);
+    expect(await readFile(join(root, kept?.savedAs ?? ""), "utf8")).toContain(
+      "Two.\n\nThe agent's line.\nThe author's line.\n"
+    );
+  });
+
+  test("keeps no copy when nothing came between the turn's own writes", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+
+    const { runtime, finished } = await runTurn([
+      step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]),
+      step([["replace_in_chapter", { chapterId: door.id, find: "Wind", replace: "Rain" }]]),
+      step([], "I added the rain.")
+    ]);
+
+    expect(finished.changed).toBe(1);
+    const undone = await runtime.undoLast(book.id);
+    expect(undone).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(door.id)).toBe(door.content);
+    expect(await conflictFiles()).toEqual([]);
+  });
+});
+
+describe("undo and a chapter's details", () => {
+  test("puts back the details the turn changed, with the text", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    await authorSetsDetails(door.id, { synopsis: "The keeper wakes.", purpose: "Open the book." });
+
+    const { runtime, finished } = await runTurn([
+      step([
+        [
+          "set_chapter_meta",
+          { chapterId: door.id, title: "The Gate", synopsis: "The keeper sleeps.", purpose: "Close the book." }
+        ]
+      ]),
+      step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]),
+      step([], "I renamed the door and added the wind.")
+    ]);
+
+    expect(finished.changed).toBe(1);
+    const changed = await library.readChapter(book.id, door.id);
+    expect([changed.title, changed.synopsis, changed.purpose]).toEqual(["The Gate", "The keeper sleeps.", "Close the book."]);
+
+    const undone = await runtime.undoLast(book.id);
+    expect(undone).toEqual({ restored: 1, skipped: 0 });
+    const back = await library.readChapter(book.id, door.id);
+    expect([back.title, back.synopsis, back.purpose, back.content]).toEqual([
+      "The Door",
+      "The keeper wakes.",
+      "Open the book.",
+      door.content
+    ]);
+  });
+
+  test("skips a chapter whose details changed after the turn, names it, and restores the rest", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+
+    const { runtime, finished } = await runTurn([
+      step([
+        ["set_chapter_meta", { chapterId: door.id, synopsis: "The keeper sleeps." }],
+        ["append_to_chapter", { chapterId: lamp.id, text: "It smoked." }]
+      ]),
+      step([], "I wrote a synopsis and added smoke.")
+    ]);
+    expect(finished.changed).toBe(2);
+
+    // After the turn, the author writes a synopsis of their own.
+    await authorSetsDetails(door.id, { synopsis: "Mara's synopsis." });
+
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([1, 1]);
+    expect(undone.notes).toEqual([expect.stringContaining("“The Door”")]);
+    expect((await library.readChapter(book.id, door.id)).synopsis).toBe("Mara's synopsis.");
+    expect(await text(lamp.id)).toBe(lamp.content);
+  });
+
+  test("restores every detail a checkpoint holds: notes, arc, colour and the prologue flag too", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    await authorSetsDetails(door.id, {
+      title: "The Gate",
+      synopsis: "S.",
+      purpose: "P.",
+      notes: "N.",
+      arc: "end",
+      color: "blue",
+      isPrologue: true
+    });
+    // A checkpoint written by hand, because no tool changes the last four details yet.
+    await new CheckpointStore(root).save({
+      turnId: "turn_synthetic",
+      bookId: book.id,
+      at: "2026-11-04T00:00:00.000Z",
+      prompt: "Change the details.",
+      entries: [
+        {
+          chapterId: door.id,
+          title: "The Door",
+          before: door.content,
+          meta: { title: "The Door", synopsis: "", purpose: "", notes: "", arc: "middle", color: null, isPrologue: false }
+        } as CheckpointEntry
+      ]
+    });
+    const runtime = new AgentRuntime(
+      { library, requireLibrary: () => library } as unknown as Studio,
+      providers(),
+      () => {},
+      () => new MockLanguageModelV4()
+    );
+
+    const undone = await runtime.undoLast(book.id);
+    expect(undone).toEqual({ restored: 1, skipped: 0 });
+    const back = await library.readChapter(book.id, door.id);
+    expect([back.title, back.synopsis, back.purpose, back.notes, back.arc, back.color, back.isPrologue]).toEqual([
+      "The Door",
+      "",
+      "",
+      "",
+      "middle",
+      null,
+      false
+    ]);
+  });
+});
+
 describe("recording a turn's changes", () => {
+  test("a change that finds text the turn did not leave marks the chapter as edited outside it", () => {
+    const entries: CheckpointEntry[] = [];
+    recordChange(entries, { chapterId: "ch_door", title: "The Door", before: "First.\n", beforeHash: "zero", afterHash: "one" });
+    recordChange(entries, { chapterId: "ch_door", title: "The Door", before: "Typed.\n", beforeHash: "typed", afterHash: "two" });
+    expect(entries).toEqual([
+      { chapterId: "ch_door", title: "The Door", before: "First.\n", afterHash: "two", outsideEdit: true }
+    ]);
+  });
+
+  test("a change that finds the text the turn left marks nothing, and keeps no hash of it", () => {
+    const entries: CheckpointEntry[] = [];
+    recordChange(entries, { chapterId: "ch_door", title: "The Door", before: "First.\n", beforeHash: "zero", afterHash: "one" });
+    recordChange(entries, { chapterId: "ch_door", title: "The Door", before: "Second.\n", beforeHash: "one", afterHash: "two" });
+    expect(entries).toEqual([{ chapterId: "ch_door", title: "The Door", before: "First.\n", afterHash: "two" }]);
+  });
+
   test("keeps the text a chapter had before the turn first wrote it", () => {
     const entries: CheckpointEntry[] = [];
     recordChange(entries, { chapterId: "ch_door", title: "The Door", before: "First.\n", afterHash: "one" });

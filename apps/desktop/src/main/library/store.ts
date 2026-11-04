@@ -9,7 +9,12 @@ import type {
   SearchHit,
   SaveChapterResult
 } from "@ai-book-studio/core/schema";
-import { LibraryService, type BookPatch, type ChapterMetaPatch } from "@ai-book-studio/core/library/service";
+import {
+  LibraryService,
+  type BookPatch,
+  type ChapterMetaPatch,
+  type KeepConflictCopyResult
+} from "@ai-book-studio/core/library/service";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import type { LocationHealth } from "@ai-book-studio/core/sync/health";
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
@@ -141,6 +146,20 @@ export class Library {
 
   deleteChapter(bookId: string, chapterId: string): Promise<{ trashedAt: string }> {
     return this.service.deleteChapter(bookId, chapterId);
+  }
+
+  /** Move a deleted chapter's own file back from the trash, with its id and front matter. */
+  restoreChapter(bookId: string, chapterId: string, trashedAt: string): Promise<Chapter> {
+    return this.service.restoreChapter(bookId, chapterId, trashedAt);
+  }
+
+  /** Keep a chapter's file as it is now in `conflicts/`, before something replaces it. */
+  keepConflictCopy(
+    bookId: string,
+    chapterId: string,
+    expected: { baseVersion: number; baseHash: string }
+  ): Promise<KeepConflictCopyResult> {
+    return this.service.keepConflictCopy(bookId, chapterId, expected);
   }
 
   deleteBook(bookId: string): Promise<{ trashedAt: string }> {

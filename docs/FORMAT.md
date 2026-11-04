@@ -172,19 +172,43 @@ Each entry has `chapterId`, `title` and `before`, the body text the chapter had 
 wrote it. Optional fields:
 
 - `created: true` marks a chapter the turn created. Undo moves it to the trash.
-- `deleted: true` marks a chapter the turn deleted. Undo writes a new chapter with that title and
-  `before` as its text.
+- `deleted: true` marks a chapter the turn deleted. Undo moves the chapter's own file back out of the
+  trash (see `trashedAt`), so it keeps its id and front matter, then restores its text and details if
+  the turn changed them too. When the file is no longer in the trash, `trashedAt` is refused, or the
+  entry has no `trashedAt`, undo writes a new chapter with that title and `before` as its text, and
+  says so. A
+  deleted chapter that is already back in the book is left as it is and reported.
+- `trashedAt` is where a deleted chapter's file went, the library-relative path
+  `.studio/trash/<bookId>/<file>.md` that the delete returned. Undo accepts no other path, and only a
+  file that holds this chapter's id.
 - `order` is the 1-based position undo puts the chapter back at. For a deleted chapter it is where the
   chapter stood. For a moved chapter it is where the chapter stood before the turn first moved it.
 - `afterHash` is the SHA-256 (hex) of the body text the turn left. Undo leaves a chapter whose body
   no longer has this hash and reports it as skipped, so it never writes over a later edit. The front
   matter is not hashed, because moving one chapter renumbers its neighbours without changing their
   text.
+- `meta` holds the chapter's details before the turn first changed them: `title`, `synopsis`,
+  `purpose`, `notes`, `arc`, `color` and `isPrologue`. Undo puts them back with a checked write.
+- `afterMetaHash` is the SHA-256 (hex) of those seven details as the turn left them, hashed as a JSON
+  array in that order. Undo leaves a chapter whose details no longer have this hash and reports it,
+  as it does for text. `order`, `version` and the dates are not hashed, for the same reason.
+- `outsideEdit: true` marks a chapter someone else wrote in between two of the turn's own changes,
+  for example while an approval was waiting: the text or details a tool found were not the ones the
+  turn had left. Undo first keeps the chapter's file, byte for byte, as a conflict copy with the
+  reason `undo` (see [Saving and conflicts](#saving-and-conflicts)), then restores the chapter. If the
+  copy cannot be written, undo leaves the chapter as it is. A chapter the turn created goes to the
+  trash whole, so it needs no copy.
 
 Restoring is an ordinary checked save: the body comes back exactly, and `version` and `updatedAt`
 move forward. A checkpoint written before `afterHash` existed
-restores over the current text, as it always did. A chapter the turn created and then deleted leaves
+restores over the current text, as it always did. One written before `meta`, `afterMetaHash`,
+`outsideEdit` and `trashedAt` existed is read as before: it restores no details, keeps no copy, and
+brings a deleted chapter back as a new one. A chapter the turn created and then deleted leaves
 no entry, and a turn whose changes cancel out leaves no file.
+
+Undo reports how many chapters it restored and how many it skipped, the conflict copies it kept, each
+with the chapter's id and title and the copy's library-relative path, and one sentence for each chapter
+that did not simply go back.
 
 ## Saving and conflicts
 
@@ -202,13 +226,19 @@ A conflict never overwrites the other writer. The local text is written to
 `conflicts/<name>.conflict-<reason>.<deviceId>.<timestamp>.md`, the UI shows both versions, and the
 author chooses: *Show the saved copy* or *Load the version on disk*.
 
+Undo of an agent turn uses the same folder and naming with the reason `undo`. Before it restores a
+chapter that someone else wrote in during the turn, it keeps the chapter's file exactly as it is, and
+keeps nothing if the file changed since undo read it.
+
 Writes go through a sibling temp file, `fsync`, and `rename`, with one retry for Windows sharing
 violations. Writes for a single book are serialised, so two IPC calls cannot interleave.
 
 ## Trash
 
 Deleting a chapter moves its file to `.studio/trash/<bookId>/<timestamp>-<original name>.md`. Nothing
-is unlinked. Restoring is a file move back into `chapters/`.
+is unlinked. Restoring is a file move back into `chapters/`. Undo of an agent turn makes that move for
+a chapter the turn deleted: the file goes back under its original name, or the next free one, with its
+id and front matter, and only when no chapter with that id is in the book.
 
 Deleting a book moves its whole folder to `.studio/trash/books/<timestamp>-<bookId>/`. The folder keeps
 its `book.json`, chapters, conflicts and checkpoints, so restoring is a move back into `books/`.

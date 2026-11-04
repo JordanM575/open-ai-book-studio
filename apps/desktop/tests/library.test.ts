@@ -187,6 +187,141 @@ describe("saving a chapter", () => {
   });
 });
 
+describe("bringing a chapter back from the trash", () => {
+  async function trashedFixture() {
+    const library = await Library.open(root);
+    const book = await library.createBook({ title: "Book" });
+    const one = await library.createChapter(book.id, { title: "One", content: "One.\n" });
+    const two = await library.createChapter(book.id, { title: "Two", content: "Keep me.\n" });
+    const detailed = await library.updateChapterMeta(
+      book.id,
+      two.id,
+      { synopsis: "The crossing.", notes: "Short." },
+      { baseVersion: two.version, baseHash: two.hash }
+    );
+    if (detailed.status !== "saved") throw new Error("The fixture's details were not saved.");
+    const raw = await readFile(join(chaptersDir(root, book.id), two.path), "utf8");
+    const { trashedAt } = await library.deleteChapter(book.id, two.id);
+    return { library, book, one, two: detailed.chapter, raw, trashedAt };
+  }
+
+  const trashDir = (bookId: string) => join(root, ".studio", "trash", bookId);
+
+  it("moves the file back with its id, front matter and text", async () => {
+    const { library, book, two, raw, trashedAt } = await trashedFixture();
+
+    const restored = await library.restoreChapter(book.id, two.id, trashedAt);
+
+    expect([restored.id, restored.synopsis, restored.notes, restored.content, restored.path]).toEqual([
+      two.id,
+      "The crossing.",
+      "Short.",
+      "Keep me.\n",
+      two.path
+    ]);
+    // A move, not a rewrite: the chapter is the very bytes that went into the trash.
+    expect(await readFile(join(chaptersDir(root, book.id), restored.path), "utf8")).toBe(raw);
+    expect(await readdir(trashDir(book.id))).toEqual([]);
+    const reread = await library.readChapter(book.id, two.id);
+    expect([reread.version, reread.hash]).toEqual([restored.version, restored.hash]);
+  });
+
+  it("gives the file a free name when another chapter took its old one", async () => {
+    const { library, book, two, trashedAt } = await trashedFixture();
+    const taken = await library.createChapter(book.id, { title: "Two", content: "A new two.\n" });
+    expect(taken.path).toBe(two.path);
+
+    const restored = await library.restoreChapter(book.id, two.id, trashedAt);
+
+    expect(restored.path).not.toBe(two.path);
+    expect(restored.content).toBe("Keep me.\n");
+    expect((await library.readChapter(book.id, taken.id)).content).toBe("A new two.\n");
+  });
+
+  it("refuses a path outside the book's trash and moves nothing", async () => {
+    const { library, book, one, two, trashedAt } = await trashedFixture();
+    const name = trashedAt.split("/").at(-1) ?? "";
+
+    for (const path of [
+      `books/${book.id}/chapters/${one.path}`,
+      `.studio/trash/book_someoneelse/${name}`,
+      `.studio/trash/${book.id}/../${name}`,
+      `../${name}`,
+      `/${trashedAt}`
+    ]) {
+      await expect(library.restoreChapter(book.id, two.id, path)).rejects.toMatchObject({ code: "invalid" });
+    }
+    expect(await readdir(trashDir(book.id))).toEqual([name]);
+    expect((await library.readBook(book.id)).chapters.map((chapter) => chapter.id)).toEqual([one.id]);
+  });
+
+  it("refuses a trashed file that belongs to another chapter", async () => {
+    const { library, book, one, trashedAt } = await trashedFixture();
+
+    await expect(library.restoreChapter(book.id, one.id, trashedAt)).rejects.toMatchObject({ code: "invalid" });
+    expect(await readdir(trashDir(book.id))).toHaveLength(1);
+  });
+
+  it("refuses to bring back a chapter that is already in the book", async () => {
+    const { library, book, two, raw, trashedAt } = await trashedFixture();
+    await writeFile(join(chaptersDir(root, book.id), "0009-two-by-hand.md"), raw, "utf8");
+
+    await expect(library.restoreChapter(book.id, two.id, trashedAt)).rejects.toMatchObject({ code: "invalid" });
+    expect(await readdir(trashDir(book.id))).toHaveLength(1);
+    expect((await library.readBook(book.id)).chapters.filter((chapter) => chapter.id === two.id)).toHaveLength(1);
+  });
+
+  it("says a trashed file that is gone was not found", async () => {
+    const { library, book, two, trashedAt } = await trashedFixture();
+    await rm(join(root, trashedAt));
+
+    await expect(library.restoreChapter(book.id, two.id, trashedAt)).rejects.toMatchObject({ code: "not-found" });
+  });
+});
+
+describe("keeping a conflict copy", () => {
+  it("copies the chapter's file into conflicts/ and leaves the chapter as it is", async () => {
+    const library = await Library.open(root);
+    const book = await library.createBook({ title: "Book" });
+    const chapter = await library.createChapter(book.id, { title: "The Door", content: "The door was shut.\n" });
+    const raw = await readFile(join(chaptersDir(root, book.id), chapter.path), "utf8");
+
+    const kept = await library.keepConflictCopy(book.id, chapter.id, {
+      baseVersion: chapter.version,
+      baseHash: chapter.hash
+    });
+
+    expect(kept.status).toBe("kept");
+    if (kept.status !== "kept") return;
+    expect(kept.savedAs).toMatch(
+      /^books\/book_[^/]+\/conflicts\/0001-the-door\.conflict-undo\.device_[a-f0-9]{16}\.[0-9TZ-]+\.md$/
+    );
+    expect(await readFile(join(root, kept.savedAs), "utf8")).toBe(raw);
+    const after = await library.readChapter(book.id, chapter.id);
+    expect([after.version, after.hash, after.content]).toEqual([chapter.version, chapter.hash, chapter.content]);
+    expect((await library.listConflicts(book.id)).map((conflict) => conflict.savedAs)).toContain(kept.savedAs);
+  });
+
+  it("keeps nothing when the chapter changed since it was read", async () => {
+    const library = await Library.open(root);
+    const book = await library.createBook({ title: "Book" });
+    const chapter = await library.createChapter(book.id, { title: "The Door", content: "The door was shut.\n" });
+    const saved = await library.saveChapter(book.id, chapter.id, "The door stood open.\n", {
+      baseVersion: chapter.version,
+      baseHash: chapter.hash
+    });
+    expect(saved.status).toBe("saved");
+
+    const kept = await library.keepConflictCopy(book.id, chapter.id, {
+      baseVersion: chapter.version,
+      baseHash: chapter.hash
+    });
+
+    expect(kept).toEqual({ status: "changed" });
+    expect(await readdir(join(root, "books", book.id, "conflicts"))).toEqual([]);
+  });
+});
+
 describe("robustness", () => {
   it("skips a damaged book instead of failing the whole library", async () => {
     const library = await Library.open(root);

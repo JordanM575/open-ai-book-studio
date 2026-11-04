@@ -18,7 +18,7 @@ import type { ConnectionSummary, CredentialStatus, ModelInfo, ProviderDescriptio
 import type { ExternalLink } from "./providers/links";
 import type { UsageSummary } from "./providers/usage";
 import type { VoiceTranscript } from "./providers/speech";
-import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
+import type { AgentEvent, AgentTurnInput, AgentTurnStarted, AgentUndoResult } from "./agent";
 import type { AgentThread } from "./agent/messages";
 import type { AgentAnswerLength } from "./agent/settings";
 import type { DriftReport } from "./sync/types";
@@ -507,7 +507,7 @@ export interface StudioApi {
   agent: {
     start(input: AgentTurnInput): Promise<Result<AgentTurnStarted>>;
     stop(turnId: string): Promise<Result<null>>;
-    undoLast(bookId: string): Promise<Result<{ restored: number; skipped: number }>>;
+    undoLast(bookId: string): Promise<Result<AgentUndoResult>>;
     approve(turnId: string, approvalId: string, approved: boolean): Promise<Result<null>>;
     /** Everything the app shows about a book's agent: tools, skills, cache and plugins. */
     status(bookId: string): Promise<Result<AgentStatus>>;

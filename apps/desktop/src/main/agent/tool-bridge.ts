@@ -4,8 +4,8 @@ import {
   isZodParameters,
   validatePluginArgs
 } from "@ai-book-studio/core/agent/plugins";
-import { CheckpointStore, recordChange } from "./checkpoints";
-import { chapterToolCatalog, createChapterTools, toolTier, type ChapterChange } from "./tools";
+import { CheckpointStore, recordChange, type CheckpointEntry } from "./checkpoints";
+import { chapterToolCatalog, createChapterTools, toolTier } from "./tools";
 import { loadPlugins, pluginTools } from "./plugins";
 import { pluginLibrary } from "./tool-set";
 import type { Library } from "../library/store";
@@ -108,7 +108,7 @@ export class ToolBridge {
       );
     }
 
-    const changes: ChapterChange[] = [];
+    const changes: CheckpointEntry[] = [];
     const tools = createChapterTools(library, request.bookId, (change) => {
       recordChange(changes, change);
     });
@@ -174,23 +174,16 @@ export class ToolBridge {
   private async recordCheckpoint(
     library: Library,
     request: ToolRunRequest,
-    changes: ChapterChange[]
+    changes: CheckpointEntry[]
   ): Promise<void> {
     const store = new CheckpointStore(() => library.root);
+    // `recordChange` already folded the changes into entries and dropped what the tools only compare.
     await store.save({
       turnId: `tool_${request.name}_${Date.now()}`,
       bookId: request.bookId,
       at: new Date().toISOString(),
       prompt: `Changed with ${request.name}.`,
-      entries: changes.map((change) => ({
-        chapterId: change.chapterId,
-        title: change.title,
-        before: change.before,
-        ...(change.created ? { created: true } : {}),
-        ...(change.deleted ? { deleted: true } : {}),
-        ...(change.order !== undefined ? { order: change.order } : {}),
-        ...(change.afterHash !== undefined ? { afterHash: change.afterHash } : {})
-      }))
+      entries: changes
     });
   }
 }

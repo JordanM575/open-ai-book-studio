@@ -26,7 +26,7 @@ import {
   serializeChapter
 } from "../markdown";
 import { LibraryError, LibraryPortError } from "./errors";
-import { libraryPathToArchivePath, toLibraryFilePath } from "./path";
+import { libraryPathFromArchivePath, libraryPathToArchivePath, toLibraryFilePath } from "./path";
 import type { LibraryPath } from "./path";
 import {
   bookFilePath,
@@ -93,6 +93,9 @@ export type ChapterMetaPatch = {
 
 /** A book field change where a key may be missing *or* present and undefined. */
 export type BookPatch = { [K in keyof BookMeta]?: BookMeta[K] | undefined };
+
+/** Where a kept conflict copy went, or that the chapter was no longer the version read. */
+export type KeepConflictCopyResult = { status: "kept"; savedAs: string } | { status: "changed" };
 
 export class LibraryService {
   private readonly writes = new Map<string, Promise<unknown>>();
@@ -530,6 +533,88 @@ export class LibraryService {
         }
       }
       throw new LibraryError("io", "Could not move the chapter to the trash folder. Nothing was deleted.");
+    });
+  }
+
+  /**
+   * Move a chapter back out of the trash: the very file `deleteChapter` moved there, so the chapter
+   * keeps its id, front matter and text. `trashedAt` is the path `deleteChapter` returned. It must
+   * name a file in this book's trash that holds this chapter, and the chapter must not be in the book
+   * already. The file goes back under the name it had, or the next free one.
+   */
+  async restoreChapter(bookId: string, chapterId: string, trashedAt: string): Promise<Chapter> {
+    return this.serializeWrite(bookId, async () => {
+      const source = trashedChapterPath(bookId, trashedAt);
+      const trashName = source[source.length - 1] ?? "";
+      const snapshot = await this.env.storage.readFile(source);
+      if (!snapshot) throw new LibraryError("not-found", "That chapter is no longer in the trash.");
+      const trashed = await this.chapterFromSnapshot(bookId, trashName, snapshot);
+      if (trashed.id !== chapterId) {
+        throw new LibraryError("invalid", "That file in the trash is another chapter. Nothing was moved.");
+      }
+      if ((await this.readChapters(bookId)).some((chapter) => chapter.id === chapterId)) {
+        throw new LibraryError("invalid", "That chapter is already in the book. Nothing was moved.");
+      }
+      await this.ensureBookLayout(bookId);
+
+      // The trash name is `<stamp>-<original name>`; a name that is not a plain chapter file is rebuilt.
+      const original = trashName.replace(/^[a-z0-9]+-/, "");
+      const base = (
+        original.endsWith(".md") && original !== ".md" && !isConflictCopyName(original)
+          ? original
+          : chapterFileName(trashed.order, trashed.title)
+      ).replace(/\.md$/, "");
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const fileName = attempt === 0 ? `${base}.md` : `${base}-${attempt + 1}.md`;
+        const destination = chapterPath(bookId, fileName);
+        try {
+          await this.env.storage.moveFile(source, destination);
+        } catch (error) {
+          if (error instanceof LibraryPortError && error.code === "already-exists") continue;
+          throw error;
+        }
+        await noteMovedPrefix({
+          storage: this.env.storage,
+          deviceId: this.device.id,
+          from: libraryPathToArchivePath(source),
+          to: libraryPathToArchivePath(destination),
+          now: this.env.runtime.now()
+        });
+        await this.rebuildCatalog();
+        return this.readChapterFile(bookId, fileName);
+      }
+      throw new LibraryError("io", "Could not find a free chapter file name. Nothing was moved.");
+    });
+  }
+
+  /**
+   * Keep a chapter's file, exactly as it is now, in `conflicts/`, named like every other conflict
+   * copy with the reason `undo`, so its text survives what replaces it next. Nothing is kept when the
+   * file is no longer the version the caller read, because the caller has not seen that text.
+   */
+  async keepConflictCopy(
+    bookId: string,
+    chapterId: string,
+    expected: { baseVersion: number; baseHash: string }
+  ): Promise<KeepConflictCopyResult> {
+    return this.serializeWrite(bookId, async () => {
+      const { fileName } = await this.locateChapter(bookId, chapterId);
+      const snapshot = await this.env.storage.readFile(chapterPath(bookId, fileName));
+      const disk = await this.chapterFromSnapshot(bookId, fileName, snapshot);
+      if (!snapshot || disk.version !== expected.baseVersion || disk.hash !== expected.baseHash) {
+        return { status: "changed" };
+      }
+      await this.ensureBookLayout(bookId);
+      const stamp = this.env.runtime.now().replace(/[:.]/g, "-");
+      const base = `${fileName.replace(/\.md$/, "")}.conflict-undo.${this.device.id}.${stamp}`;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const savedName = attempt === 0 ? `${base}.md` : `${base}-${attempt + 1}.md`;
+        const result = await this.commitText(conflictPath(bookId, savedName), textDecoder.decode(snapshot.bytes), {
+          kind: "absent"
+        });
+        if (result.status === "written") return { status: "kept", savedAs: conflictDisplayPath(bookId, savedName) };
+      }
+      throw new LibraryError("io", "Could not find a free name for the conflict copy. Nothing was kept.");
     });
   }
 
@@ -1047,6 +1132,24 @@ function chapterReadIssue(fileName: string, error: unknown): ChapterReadIssue {
   }
 
   return { fileName, order: parseOrderFromFileName(fileName), reason };
+}
+
+/**
+ * The trash file `deleteChapter` moved a chapter to, from the path it returned. The path comes back
+ * from a checkpoint on disk, so anything but a Markdown file directly in this book's trash is refused.
+ */
+function trashedChapterPath(bookId: string, trashedAt: string): LibraryPath {
+  const refused = () => new LibraryError("invalid", "That is not a chapter in this book's trash. Nothing was moved.");
+  let path: LibraryPath;
+  try {
+    path = libraryPathFromArchivePath(trashedAt);
+  } catch {
+    throw refused();
+  }
+  const trash = trashPath(bookId);
+  const inTrash = path.length === trash.length + 1 && trash.every((segment, index) => path[index] === segment);
+  if (!inTrash || !path[trash.length]?.endsWith(".md")) throw refused();
+  return path;
 }
 
 function chapterFrom(meta: ChapterMeta, content: string, fileName: string, hash: string): Chapter {

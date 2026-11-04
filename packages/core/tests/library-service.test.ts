@@ -342,6 +342,25 @@ describe("LibraryService over the in-memory port", () => {
     expect(restored.chapters[0]?.content).toBe("Keep me.\n");
   });
 
+  test("restoring from the trash moves the same file back, with its identity, through the port", async () => {
+    const { port, service } = await openLibrary();
+    const book = await service.createBook({ title: "Book" });
+    const chapter = await service.createChapter(book.id, { title: "One", content: "Keep me.\n" });
+    const before = await port.readFile(chapterPath(book.id, chapter.path));
+
+    const { trashedAt } = await service.deleteChapter(book.id, chapter.id);
+    const restored = await service.restoreChapter(book.id, chapter.id, trashedAt);
+
+    expect([restored.id, restored.path, restored.content, restored.hash]).toEqual([
+      chapter.id,
+      chapter.path,
+      "Keep me.\n",
+      before?.sha256
+    ]);
+    expect(await port.readFile(libraryPathFromArchivePath(trashedAt))).toBeNull();
+    await expect(service.restoreChapter(book.id, chapter.id, trashedAt)).rejects.toMatchObject({ code: "not-found" });
+  });
+
   test("a newer schema is refused instead of silently dropped", async () => {
     const { port, service } = await openLibrary();
     const book = await service.createBook({ title: "Book" });

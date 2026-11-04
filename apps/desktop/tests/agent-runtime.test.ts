@@ -1186,6 +1186,9 @@ describe("agent runtime contract", () => {
     expect((await library.readChapter(book.id, chapter.id)).content).toBe(
       "The old opening. Author typing.\n"
     );
+    // The typing came before the turn's only write, so it is the text undo restores, not a conflict.
+    expect(undone.kept).toBeUndefined();
+    expect(await library.listConflicts(book.id)).toEqual([]);
   });
 
   test("waits for approval before deleting a chapter", async () => {

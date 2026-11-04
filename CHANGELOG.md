@@ -364,6 +364,30 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Undoing an agent turn no longer throws away your words, a deleted chapter's identity or a chapter's
+  details. A turn's checkpoint still has one file and one undo.
+  - Text you wrote during a turn is no longer silently discarded. Before, if the agent wrote a
+    chapter, you edited it while an approval waited, and the agent wrote it again, undo restored the
+    pre-turn text and your words were gone. Each change now records when a tool finds text or
+    details the turn did not leave. Undo keeps that chapter's file byte for byte as a conflict copy,
+    `conflicts/<name>.conflict-undo.<deviceId>.<timestamp>.md`, before restoring it. If the copy
+    cannot be written, the chapter is left alone. The undo result names the chapter and the copy.
+  - Undoing `delete_chapter` or a merge now brings back the chapter itself. Before, it came back
+    under a new id without its synopsis, purpose or notes, and the original file stayed in the trash.
+    The checkpoint now records where the file went, and the new `Library.restoreChapter` moves it
+    back atomically. It refuses a path outside the book's trash, a file that holds another chapter,
+    and a chapter that is already in the book. If the file has left the trash, or the recorded path
+    is refused, undo writes the chapter again as before and says so.
+  - `set_chapter_meta` is now checkpointed. The checkpoint holds a chapter's title, synopsis,
+    purpose, notes, arc, colour and prologue flag from before the turn, and undo restores them. It
+    skips a chapter whose details changed after the turn, and names it, as it already did for text.
+  - Checkpoint entries gain four optional fields: `meta`, `afterMetaHash`, `outsideEdit` and
+    `trashedAt` (`docs/FORMAT.md`). Older checkpoints restore as before.
+  - The undo result gains optional `kept` and `notes`. A skipped chapter is now named in `notes`.
+    The chat and the minimal mode still show only the counts.
+  - The book's details, cast and memories are still not checkpointed (ADR 0014 and D-113 amended).
+  - `apps/desktop/tests/turn-checkpoint.test.ts` and `apps/desktop/tests/library.test.ts` cover each
+    case and fail without the fix.
 - Typing in a chapter and then undoing back to the saved text no longer leaves it marked unsaved. The
   Format dialog refused every export ("The chapter has not finished saving") until you typed again;
   the chapter now reads as saved, with nothing written, because the file already matches.

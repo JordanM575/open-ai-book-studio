@@ -1,7 +1,11 @@
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { unlink } from "node:fs/promises";
+import type { ChapterMeta } from "@ai-book-studio/core/schema";
 import { writeFileAtomic } from "../library/atomic";
+
+/** The chapter details a turn can change and undo puts back. Order, version and dates are not among them. */
+export type CheckpointMeta = Pick<ChapterMeta, "title" | "synopsis" | "purpose" | "notes" | "arc" | "color" | "isPrologue">;
 
 export interface CheckpointEntry {
   chapterId: string;
@@ -21,6 +25,25 @@ export interface CheckpointEntry {
    * this hash, because someone wrote it after the turn. Older checkpoints have none.
    */
   afterHash?: string;
+  /** The chapter's details before the turn first changed them. Undo puts them back. */
+  meta?: CheckpointMeta;
+  /** The SHA-256 of the details the turn left. Undo leaves a chapter whose details changed since. */
+  afterMetaHash?: string;
+  /**
+   * Someone else wrote in the chapter between two of the turn's own changes, so its history holds
+   * words the turn did not write. Undo keeps the chapter's file as a conflict copy before restoring it.
+   */
+  outsideEdit?: boolean;
+  /** Where a deleted chapter's file went in the trash, so undo can bring back the chapter itself. */
+  trashedAt?: string;
+}
+
+/** One change as a tool reports it: an entry, and what the tool found before it wrote. */
+export interface CheckpointChange extends CheckpointEntry {
+  /** The SHA-256 of the body text the tool found. Compared with the turn's last write, never stored. */
+  beforeHash?: string;
+  /** The SHA-256 of the details the tool found. Compared with the turn's last write, never stored. */
+  beforeMetaHash?: string;
 }
 
 export interface TurnCheckpoint {
@@ -46,28 +69,61 @@ export async function bodyHash(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** The details a checkpoint keeps, picked from a chapter or from details read back from a file. */
+export function checkpointMeta(chapter: CheckpointMeta): CheckpointMeta {
+  return {
+    title: chapter.title,
+    synopsis: chapter.synopsis,
+    purpose: chapter.purpose,
+    notes: chapter.notes,
+    arc: chapter.arc,
+    color: chapter.color,
+    isPrologue: chapter.isPrologue
+  };
+}
+
+/**
+ * The SHA-256 of a chapter's details, in a fixed order. Like the body hash it leaves out order,
+ * version and dates, so renumbering a chapter does not look like a change to its details.
+ */
+export function metaHash(meta: CheckpointMeta): Promise<string> {
+  return bodyHash(
+    JSON.stringify([meta.title, meta.synopsis, meta.purpose, meta.notes, meta.arc, meta.color, meta.isPrologue])
+  );
+}
+
 /**
  * Fold one change into a turn's entries, which hold one entry per chapter.
  *
  * The first change to a chapter fixes its `before` and title: the text it had before the turn first
- * wrote it. A later change only moves `afterHash` on. When a chapter the turn already changed is then
+ * wrote it. Its first change to the details fixes `meta` the same way. A later change only moves the
+ * after-hashes on, and marks the entry `outsideEdit` when the tool found text or details the turn had
+ * not left, because someone else wrote in between. When a chapter the turn already changed is then
  * moved or deleted, its entry takes that position and goes to the end of the list, because undo walks
  * the list backwards and must meet it in the order the change was made. A chapter the turn created
  * and then deleted leaves nothing to undo.
  */
-export function recordChange(entries: CheckpointEntry[], change: CheckpointEntry): void {
+export function recordChange(entries: CheckpointEntry[], change: CheckpointChange): void {
+  const { beforeHash, beforeMetaHash, ...recorded } = change;
   const index = entries.findIndex((entry) => entry.chapterId === change.chapterId);
   const existing = entries[index];
   if (!existing) {
-    entries.push({ ...change });
+    entries.push(recorded);
     return;
   }
   if (existing.created && change.deleted) {
     entries.splice(index, 1);
     return;
   }
+  const textMoved = beforeHash !== undefined && existing.afterHash !== undefined && beforeHash !== existing.afterHash;
+  const metaMoved =
+    beforeMetaHash !== undefined && existing.afterMetaHash !== undefined && beforeMetaHash !== existing.afterMetaHash;
+  if (textMoved || metaMoved) existing.outsideEdit = true;
   if (change.afterHash !== undefined) existing.afterHash = change.afterHash;
+  if (change.afterMetaHash !== undefined) existing.afterMetaHash = change.afterMetaHash;
   if (existing.created) return;
+  if (change.meta !== undefined && existing.meta === undefined) existing.meta = change.meta;
+  if (change.trashedAt !== undefined) existing.trashedAt = change.trashedAt;
   if (change.deleted) existing.deleted = true;
   if (change.order !== undefined && existing.order === undefined) {
     existing.order = change.order;

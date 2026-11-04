@@ -5,7 +5,7 @@ import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools"
 import { countWords } from "@ai-book-studio/core/words";
 import { newId } from "../library/paths";
 import type { Library } from "../library/store";
-import { bodyHash } from "./checkpoints";
+import { bodyHash, checkpointMeta, metaHash, type CheckpointChange } from "./checkpoints";
 
 const MAX_FIND = 500;
 const MAX_FIND_QUERY = 500;
@@ -108,25 +108,14 @@ interface ToolLike {
   inputSchema: unknown;
 }
 
+/** What a tool reports about a change it made: the checkpoint entry and what it found first. */
+export type ChapterChange = CheckpointChange;
+
 /**
  * The writing tools, bound to one book. Every manuscript change goes through `Library.saveChapter`,
  * so it keeps the same atomic write and version/hash guard as typing in the editor. Tool inputs are
  * deliberately small; a model that needs to change more must make several calls.
  */
-export interface ChapterChange {
-  chapterId: string;
-  title: string;
-  before: string;
-  /** True when the turn created the chapter; undo removes it. */
-  created?: boolean;
-  /** True when the turn deleted the chapter; undo recreates it from `before`. */
-  deleted?: boolean;
-  /** The 1-based position a deleted chapter stood at, or a moved one stood at before the move. */
-  order?: number;
-  /** The SHA-256 of the body text after the change, so undo can tell a later edit apart. */
-  afterHash?: string;
-}
-
 export function createChapterTools(
   library: Library,
   bookId: string,
@@ -147,6 +136,7 @@ export function createChapterTools(
         chapterId: chapter.id,
         title: chapter.title,
         before: chapter.content,
+        beforeHash: await bodyHash(chapter.content),
         afterHash: await bodyHash(saved.chapter.content)
       });
     }
@@ -497,6 +487,7 @@ export function createChapterTools(
           chapterId: chapter.id,
           title: chapter.title,
           before: chapter.content,
+          beforeHash: await bodyHash(chapter.content),
           afterHash: await bodyHash(saved.chapter.content)
         });
         await onBeforeChange?.({
@@ -532,8 +523,9 @@ export function createChapterTools(
         const combined = [firstText, secondText].filter(Boolean).join("\n\n");
         const secondPosition = (await positionOf(second.id)) ?? second.order;
 
+        let trashed: { trashedAt: string };
         try {
-          await library.deleteChapter(bookId, second.id);
+          trashed = await library.deleteChapter(bookId, second.id);
         } catch (error) {
           return result(false, error instanceof Error ? error.message : "The second chapter could not be removed.");
         }
@@ -558,14 +550,17 @@ export function createChapterTools(
           chapterId: first.id,
           title: first.title,
           before: first.content,
+          beforeHash: await bodyHash(first.content),
           afterHash: await bodyHash(saved.chapter.content)
         });
         await onBeforeChange?.({
           chapterId: second.id,
           title: second.title,
           before: second.content,
+          beforeHash: await bodyHash(second.content),
           deleted: true,
-          order: secondPosition
+          order: secondPosition,
+          trashedAt: trashed.trashedAt
         });
         return result(true, `Merged “${second.title}” into “${first.title}”.`, {
           chapterId: first.id,
@@ -587,8 +582,10 @@ export function createChapterTools(
             chapterId: chapter.id,
             title: chapter.title,
             before: chapter.content,
+            beforeHash: await bodyHash(chapter.content),
             deleted: true,
-            ...(position !== undefined ? { order: position } : {})
+            ...(position !== undefined ? { order: position } : {}),
+            trashedAt: trashed.trashedAt
           });
           return result(true, `Moved “${chapter.title}” to the trash.`, { chapterId, trashedAt: trashed.trashedAt });
         } catch (error) {
@@ -617,12 +614,14 @@ export function createChapterTools(
         }
         const from = chapters.indexOf(chapter) + 1;
         if (from !== position) {
+          const hash = await bodyHash(chapter.content);
           await onBeforeChange?.({
             chapterId: chapter.id,
             title: chapter.title,
             before: chapter.content,
             order: from,
-            afterHash: await bodyHash(chapter.content)
+            beforeHash: hash,
+            afterHash: hash
           });
         }
         return result(true, `Moved “${chapter.title}” to position ${position}.`, { chapterId, position });
@@ -651,6 +650,23 @@ export function createChapterTools(
         });
         if (saved.status === "conflict") {
           return result(false, "The chapter changed on disk, so its details were not changed. Read it again.");
+        }
+        // The details go into the checkpoint with the text, so undo can put both back and can tell
+        // a later edit to either apart.
+        const beforeMetaHash = await metaHash(checkpointMeta(chapter));
+        const afterMetaHash = await metaHash(checkpointMeta(saved.chapter));
+        if (afterMetaHash !== beforeMetaHash) {
+          const hash = await bodyHash(chapter.content);
+          await onBeforeChange?.({
+            chapterId: chapter.id,
+            title: chapter.title,
+            before: chapter.content,
+            beforeHash: hash,
+            afterHash: hash,
+            meta: checkpointMeta(chapter),
+            beforeMetaHash,
+            afterMetaHash
+          });
         }
         return result(true, `Updated “${saved.chapter.title}”.`, { chapterId });
       }
