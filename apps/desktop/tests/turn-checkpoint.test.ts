@@ -28,6 +28,7 @@ type StreamPart = StreamResult["stream"] extends ReadableStream<infer Part> ? Pa
 type Done = Extract<AgentEvent, { type: "done" }>;
 type Approval = Extract<AgentEvent, { type: "approval" }>;
 type Stopped = Extract<AgentEvent, { type: "stopped" }>;
+type ToolEnd = Extract<AgentEvent, { type: "tool" }>;
 
 const USAGE = {
   inputTokens: { total: 120, noCache: 120, cacheRead: undefined, cacheWrite: undefined },
@@ -123,13 +124,14 @@ type Step = StreamResult | (() => Promise<StreamResult>);
 
 /**
  * Run one turn of these steps, answering its approvals in order, and wait for it to finish. The
- * author can act while each approval waits, before it is answered.
+ * author can act while each approval waits, before it is answered. The result carries every tool
+ * result the turn reported and the model, so a test can read what the model was sent.
  */
 async function runTurn(
   steps: Step[],
   answers: boolean[] = [],
   duringPause: (index: number) => Promise<void> = async () => {}
-): Promise<{ runtime: AgentRuntime; finished: Done }> {
+): Promise<{ runtime: AgentRuntime; finished: Done; results: ToolEnd[]; model: MockLanguageModelV4 }> {
   const script = [...steps];
   const model = new MockLanguageModelV4({
     doStream: (async () => {
@@ -140,6 +142,7 @@ async function runTurn(
   });
   const arrived: Approval[] = [];
   const waiting: Array<(event: Approval) => void> = [];
+  const results: ToolEnd[] = [];
   let resolveDone!: (event: Done) => void;
   let rejectDone!: (error: Error) => void;
   const done = new Promise<Done>((resolve, reject) => {
@@ -156,6 +159,7 @@ async function runTurn(
         if (next) next(event);
         else arrived.push(event);
       }
+      if (event.type === "tool" && event.status === "end") results.push(event);
       if (event.type === "done") resolveDone(event);
       if (event.type === "error") rejectDone(new Error(event.message));
     },
@@ -176,7 +180,14 @@ async function runTurn(
     await duringPause(index);
     await runtime.approve(started.turnId, request.approvalId, approved);
   }
-  return { runtime, finished: await done };
+  return { runtime, finished: await done, results, model };
+}
+
+/** What one tool answered the model, as the chat saw it. */
+function resultOf(results: ToolEnd[], name: string): ToolEnd {
+  const found = results.find((entry) => entry.name === name);
+  if (!found) throw new Error(`${name} reported no result.`);
+  return found;
 }
 
 function chapter(title: string, content: string): Promise<Chapter> {
@@ -658,26 +669,31 @@ describe("a turn's checkpoint", () => {
 describe("undo and words the turn did not write", () => {
   test("keeps the author's words from an approval pause as a conflict copy before restoring", async () => {
     const door = await chapter("The Door", "The door was shut.\nIt creaked.\n");
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
 
     const { runtime, finished } = await runTurn(
       [
         step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]),
-        step([["delete_lines_in_chapter", { chapterId: door.id, startLine: 2, endLine: 2 }]]),
-        step([], "I added the wind and cut the creak.")
+        step([["overwrite_chapter", { chapterId: lamp.id, content: "The lamp was out.\n" }]]),
+        // After the approval, an ordinary edit writes the door again, over the author's line.
+        step([["replace_in_chapter", { chapterId: door.id, find: "It creaked.\n", replace: "" }]]),
+        step([], "I added the wind, put out the lamp and cut the creak.")
       ],
       [true],
-      // While the approval waits, the author adds a line of their own.
+      // While the approval waits, the author adds a line of their own to the door.
       () => authorSaves(door.id, (content) => `${content}Mara bolted it.\n`)
     );
 
-    expect(finished.changed).toBe(1);
+    expect(finished.changed).toBe(2);
     expect(await text(door.id)).toBe("The door was shut.\n\nWind came under it.\nMara bolted it.\n");
+    expect(await text(lamp.id)).toBe("The lamp was out.\n");
     const replaced = await chapterFile(door.id);
 
     const undone = await runtime.undoLast(book.id);
-    expect([undone.restored, undone.skipped]).toEqual([1, 0]);
+    expect([undone.restored, undone.skipped]).toEqual([2, 0]);
     expect(finished.changed).toBe(undone.restored + undone.skipped);
     expect(await text(door.id)).toBe(door.content);
+    expect(await text(lamp.id)).toBe(lamp.content);
     // The text undo replaced, with the author's line in it, is kept first, named like any conflict copy.
     expect(undone.kept).toHaveLength(1);
     const kept = undone.kept?.[0];
@@ -737,6 +753,186 @@ describe("undo and words the turn did not write", () => {
     expect(undone).toEqual({ restored: 1, skipped: 0 });
     expect(await text(door.id)).toBe(door.content);
     expect(await conflictFiles()).toEqual([]);
+  });
+});
+
+/*
+ * An approved call writes against the chapter as it stood when the author was asked. Words the author
+ * saves while the approval waits are never written over: the call changes nothing, says so, and an
+ * overwrite keeps its own text as a conflict copy.
+ */
+describe("an approved write and words saved while it waited", () => {
+  const conflictText = async (name: string) => readFile(join(root, "books", book.id, "conflicts", name), "utf8");
+
+  test("an approved overwrite leaves the author's words in place and keeps its own text as a copy", async () => {
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+
+    const { runtime, finished, results, model } = await runTurn(
+      [
+        step([["overwrite_chapter", { chapterId: lamp.id, content: "The lamp was out.\n" }]]),
+        step([], "The lamp changed while I waited, so I left it.")
+      ],
+      [true],
+      // While the approval waits, the author adds a line of their own and it saves.
+      () => authorSaves(lamp.id, (content) => `${content}Mara trimmed the wick.\n`)
+    );
+
+    expect(await text(lamp.id)).toBe("The lamp was lit.\nMara trimmed the wick.\n");
+    // The replacement the author approved is not lost either: the checked save kept it as a conflict copy.
+    const copies = await conflictFiles();
+    expect(copies).toEqual([
+      expect.stringMatching(/^0001-the-lamp\.conflict-newer-version\.device_[a-f0-9]+\.[0-9TZ-]+\.md$/)
+    ]);
+    expect(await conflictText(copies[0] ?? "")).toContain("The lamp was out.");
+    // The model is told plainly, before it answers, and the copy is named.
+    const overwrite = resultOf(results, "overwrite_chapter");
+    expect(overwrite.output).toMatchObject({ ok: false, chapterId: lamp.id });
+    expect(overwrite.detail).toBe(
+      `“The Lamp” changed since you read it, so nothing was overwritten. The replacement text is kept as a conflict copy at books/${book.id}/conflicts/${copies[0]}. Read the chapter again before you change it.`
+    );
+    expect(JSON.stringify(model.doStreamCalls.at(-1)?.prompt)).toContain("so nothing was overwritten");
+    // The turn changed nothing, so it leaves no checkpoint and undo has nothing of it to take back.
+    expect(finished.changed).toBe(0);
+    expect(await checkpointFiles()).toHaveLength(0);
+    await expect(runtime.undoLast(book.id)).rejects.toThrow("no agent turn to undo");
+    expect(await text(lamp.id)).toBe("The lamp was lit.\nMara trimmed the wick.\n");
+  });
+
+  test("an approved overwrite with nothing saved to it during the pause writes, with no conflict", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+
+    const { runtime, finished, results } = await runTurn(
+      [
+        // The turn's own write before the pause is part of what the author is asked about.
+        step([["append_to_chapter", { chapterId: lamp.id, text: "It smoked." }]]),
+        step([["overwrite_chapter", { chapterId: lamp.id, content: "The lamp was out.\n" }]]),
+        step([], "I put the lamp out.")
+      ],
+      [true],
+      // The author writes in another chapter while the approval waits.
+      () => authorSaves(door.id, (content) => `${content}Mara bolted it.\n`)
+    );
+
+    expect(resultOf(results, "overwrite_chapter").output).toMatchObject({ ok: true, chapterId: lamp.id });
+    expect(await text(lamp.id)).toBe("The lamp was out.\n");
+    expect(await text(door.id)).toBe("The door was shut.\nMara bolted it.\n");
+    expect(await conflictFiles()).toEqual([]);
+    expect(finished.changed).toBe(1);
+
+    const undone = await runtime.undoLast(book.id);
+    expect(undone).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(lamp.id)).toBe(lamp.content);
+    expect(await text(door.id)).toBe("The door was shut.\nMara bolted it.\n");
+  });
+
+  test("an approved line deletion changes nothing when the author saved the chapter during the pause", async () => {
+    const door = await chapter("The Door", "The door was shut.\nIt creaked.\nWind came under it.\n");
+
+    const { finished, results } = await runTurn(
+      [
+        step([["delete_lines_in_chapter", { chapterId: door.id, startLine: 2, endLine: 2 }]]),
+        step([], "The door changed while I waited, so I left it.")
+      ],
+      [true],
+      // A line at the top moves every line down, so line 2 is no longer the line the agent chose.
+      () => authorSaves(door.id, (content) => `Mara knocked.\n${content}`)
+    );
+
+    expect(await text(door.id)).toBe("Mara knocked.\nThe door was shut.\nIt creaked.\nWind came under it.\n");
+    const deleted = resultOf(results, "delete_lines_in_chapter");
+    expect(deleted.output).toMatchObject({ ok: false, chapterId: door.id });
+    expect(deleted.detail).toBe(
+      "“The Door” changed since you read it, so nothing was deleted. Read it again for the current line numbers."
+    );
+    expect(finished.changed).toBe(0);
+    expect(await conflictFiles()).toEqual([]);
+  });
+
+  test("an approved split changes nothing when the author saved the chapter during the pause", async () => {
+    const door = await chapter("The Door", "One.\nTwo.\nThree.\n");
+
+    const { finished, results } = await runTurn(
+      [step([["split_chapter", { chapterId: door.id, line: 2 }]]), step([], "I left the door whole.")],
+      [true],
+      () => authorSaves(door.id, (content) => `Zero.\n${content}`)
+    );
+
+    expect((await library.readBook(book.id)).chapters.map((entry) => [entry.id, entry.content])).toEqual([
+      [door.id, "Zero.\nOne.\nTwo.\nThree.\n"]
+    ]);
+    const split = resultOf(results, "split_chapter");
+    expect(split.output).toMatchObject({ ok: false, chapterId: door.id });
+    expect(split.detail).toBe(
+      "“The Door” changed since you read it, so nothing was split. Read it again for the current line numbers."
+    );
+    expect(finished.changed).toBe(0);
+    expect(await trashFiles()).toEqual([]);
+  });
+
+  for (const edited of ["first", "second"] as const) {
+    test(`an approved merge changes nothing when the author saved the ${edited} chapter during the pause`, async () => {
+      const one = await chapter("One", "One.\n");
+      const two = await chapter("Two", "Two.\n");
+      const target = edited === "first" ? one : two;
+
+      const { finished, results } = await runTurn(
+        [
+          step([["merge_chapters", { firstChapterId: one.id, secondChapterId: two.id }]]),
+          step([], "I left both chapters.")
+        ],
+        [true],
+        () => authorSaves(target.id, (content) => `${content}Mara wrote on.\n`)
+      );
+
+      // Both chapters stay, with their ids, and the author's line stays where they wrote it.
+      expect((await library.readBook(book.id)).chapters.map((entry) => [entry.id, entry.content])).toEqual([
+        [one.id, edited === "first" ? "One.\nMara wrote on.\n" : "One.\n"],
+        [two.id, edited === "second" ? "Two.\nMara wrote on.\n" : "Two.\n"]
+      ]);
+      expect(await trashFiles()).toEqual([]);
+      const merge = resultOf(results, "merge_chapters");
+      expect(merge.output).toMatchObject({ ok: false, chapterId: one.id });
+      expect(merge.detail).toBe(
+        `“${target.title}” changed since you read it, so nothing was merged. Read both chapters again.`
+      );
+      expect(finished.changed).toBe(0);
+    });
+  }
+
+  test("undo after a refused overwrite leaves the author's words where they are and says so", async () => {
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+
+    const { runtime, finished, results } = await runTurn(
+      [
+        step([["append_to_chapter", { chapterId: lamp.id, text: "It smoked." }]]),
+        step([["overwrite_chapter", { chapterId: lamp.id, content: "The lamp was out.\n" }]]),
+        step([], "The lamp changed while I waited, so I left it.")
+      ],
+      [true],
+      () => authorSaves(lamp.id, (content) => `${content}Mara trimmed the wick.\n`)
+    );
+
+    // Only the append changed the book; the overwrite wrote over nothing.
+    expect(resultOf(results, "overwrite_chapter").output).toMatchObject({ ok: false });
+    expect(finished.changed).toBe(1);
+    const kept = "The lamp was lit.\n\nIt smoked.\nMara trimmed the wick.\n";
+    expect(await text(lamp.id)).toBe(kept);
+
+    // The append cannot come out without the author's line, so undo leaves the chapter and names it.
+    const undone = await runtime.undoLast(book.id);
+    expect(undone).toEqual({
+      restored: 0,
+      skipped: 1,
+      notes: ["“The Lamp” changed after the turn, so undo left it as it is."]
+    });
+    expect(finished.changed).toBe(undone.restored + undone.skipped);
+    expect(await text(lamp.id)).toBe(kept);
+    // Undo made no copy of its own; the one copy is the replacement the author approved.
+    const copies = await conflictFiles();
+    expect(copies).toEqual([expect.stringMatching(/^0001-the-lamp\.conflict-newer-version\./)]);
+    expect(await conflictText(copies[0] ?? "")).toContain("The lamp was out.");
+    expect(await checkpointFiles()).toHaveLength(0);
   });
 });
 

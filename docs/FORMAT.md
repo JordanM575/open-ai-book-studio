@@ -227,6 +227,11 @@ A conflict never overwrites the other writer. The local text is written to
 `conflicts/<name>.conflict-<reason>.<deviceId>.<timestamp>.md`, the UI shows both versions, and the
 author chooses: *Show the saved copy* or *Load the version on disk*.
 
+An agent edit that waits for the author's approval is checked the same way, against the version and
+hash the chapter had when the author was asked. If the chapter was saved in between, an approved
+`overwrite_chapter` keeps the file on disk and writes its text as a conflict copy with the usual reason,
+and an approved line deletion, split or merge writes nothing.
+
 Undo of an agent turn uses the same folder and naming with the reason `undo`. Before it restores a
 chapter that someone else wrote in during the turn, it keeps the chapter's file exactly as it is, and
 keeps nothing if the file changed since undo read it.

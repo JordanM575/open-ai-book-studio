@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encode } from "gpt-tokenizer";
 import { Library } from "../src/main/library/store";
-import { createChapterTools } from "../src/main/agent/tools";
+import { ProposedBases, createChapterTools } from "../src/main/agent/tools";
 import { buildInstructions } from "../src/main/agent/prompt";
 import { newId } from "../src/main/library/paths";
 import { AgentRuntime } from "../src/main/agent/runtime";
@@ -209,6 +209,33 @@ describe("chapter tools", () => {
     const detail = await library.readBook(book.id);
     expect(detail.chapters).toHaveLength(1);
     expect(detail.chapters[0]?.content).toBe("One.\n\nTwo.\n");
+  });
+
+  test("notes what a paused call rewrites, and nothing for a chapter that is gone or a call that rewrites none", async () => {
+    const { library, book, chapter } = await fixture("One.\n");
+    const second = await library.createChapter(book.id, { title: "Two", content: "Two.\n" });
+    const proposed = new ProposedBases(library, book.id);
+
+    await proposed.note({ toolCallId: "call-overwrite", name: "overwrite_chapter", input: { chapterId: chapter.id } });
+    await proposed.note({
+      toolCallId: "call-merge",
+      name: "merge_chapters",
+      input: { firstChapterId: chapter.id, secondChapterId: second.id }
+    });
+    await proposed.note({ toolCallId: "call-gone", name: "split_chapter", input: { chapterId: "ch_gone00000000", line: 2 } });
+    await proposed.note({ toolCallId: "call-memory", name: "remove_memory", input: { memoryId: "mem_test0001" } });
+
+    expect(proposed.get("call-overwrite", chapter.id)).toEqual({ version: chapter.version, hash: chapter.hash });
+    expect(proposed.get("call-merge", chapter.id)).toEqual({ version: chapter.version, hash: chapter.hash });
+    expect(proposed.get("call-merge", second.id)).toEqual({ version: second.version, hash: second.hash });
+    // The missing chapter is left for the call to report when it runs.
+    expect(proposed.get("call-gone", "ch_gone00000000")).toBeUndefined();
+    expect(proposed.get("call-memory", chapter.id)).toBeUndefined();
+    // A call nobody paused for writes against what it reads, as before.
+    const tools = createChapterTools(library, book.id, undefined, proposed);
+    const result = await run(tools, "overwrite_chapter", { chapterId: chapter.id, content: "New.\n" });
+    expect(result.ok).toBe(true);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("New.\n");
   });
 
   test("appends text at the end with a blank line", async () => {

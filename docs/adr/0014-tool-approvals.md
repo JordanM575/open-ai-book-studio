@@ -36,6 +36,20 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
    first pause, so a chapter changed after that pause stayed out of it and undo could not restore it.)
 5. **The UI shows the affected action.** The chat renders an approval card with Allow and Deny and
    keeps the card after the answer, so the transcript says what happened.
+6. **An approved call writes against what the author was asked about.** Before the runtime shows the
+   approval for a call that rewrites chapter text (`overwrite_chapter`, `delete_lines_in_chapter`,
+   `split_chapter` or `merge_chapters`), it notes the version and hash of each chapter the call names.
+   Once approved, the call checks or saves against that base instead of the chapter it reads when it
+   runs. When the author or another writer saved the chapter while the approval waited, nothing is
+   written over their text. `overwrite_chapter` goes through the ordinary conflict path, so the chapter
+   keeps what is on disk and the replacement is kept as a conflict copy in `conflicts/`. The other three
+   change nothing, because their line numbers and halves were chosen against text that is gone. Each
+   tells the model that the chapter changed since it read it, that nothing was overwritten and where a
+   copy went, so it reads again. A refused call is not a change, so the turn's checkpoint and changed
+   count leave it out. `delete_chapter` and `move_chapter` rewrite no text and are unchanged: a deleted
+   chapter's file goes to the trash with the author's words in it. (Amended 2026-11-04: the approved
+   call re-read the chapter when it ran, so the checked save saw no mismatch and wrote over words the
+   author saved during the pause.)
 
 ## Consequences
 
@@ -69,8 +83,12 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
   turn's writes, for example during an approval pause, the entry is marked. Undo keeps that chapter's
   file as a `conflict-undo` copy in `conflicts/` before restoring it, names the chapter and the copy in
   its result, and leaves the chapter alone if the copy cannot be made (amended 2026-11-04). The copy
-  holds the text as it was when undo ran. A mid-turn edit that a later approved `overwrite_chapter`
-  replaced in the same turn was already gone before undo ran, so no copy can hold it.
+  holds the text as it was when undo ran. An approved rewrite no longer replaces words saved during its
+  pause (decision 6), so undo finds them still in the chapter, leaves it as it is and names it.
+- The base is the chapter when the author is asked, not when the agent last read it. A save that lands
+  while the model is still writing the call, before the approval shows, is part of what the author
+  approves. Automatic tools still read the chapter when they run; they edit a passage, a line or the end,
+  not the whole text.
 
 ## Alternatives considered
 
@@ -94,4 +112,8 @@ the same mock: a change after an approval, two approvals, a denial after an earl
 deleted, moved and split chapters, a chapter's details, a chapter the author edits during an approval
 pause, and a chapter the author edits afterwards. Undo restores every chapter the turn reported
 changed, or skips and names the one edited since; a deleted chapter comes back from the trash with its
-id, and an edit made during the turn is kept as a conflict copy first.
+id, and an edit made during the turn is kept as a conflict copy first. For decision 6, an approved
+overwrite, line deletion, split or merge after the author saved the chapter during the pause writes
+over nothing and says so, and the overwrite's text is kept as a conflict copy. An approval with nothing
+saved to the chapter in between writes with no conflict. Undo after a refused overwrite leaves the
+author's words in place and names the chapter.

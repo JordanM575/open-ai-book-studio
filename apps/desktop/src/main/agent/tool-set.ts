@@ -6,7 +6,7 @@ import {
   type PluginParameters,
   type PluginTool
 } from "@ai-book-studio/core/agent/plugins";
-import { createChapterTools, type ChapterChange } from "./tools";
+import { createChapterTools, type ChapterChange, type ProposedBases } from "./tools";
 import type { ProviderOptions } from "./cache";
 import type { Library } from "../library/store";
 
@@ -24,6 +24,8 @@ export function buildToolSet(
     disabledTools?: string[];
     pluginTools?: PluginTool[];
     onBeforeChange?: (change: ChapterChange) => void | Promise<void>;
+    /** What each paused destructive call was proposed against, so its approved run writes against it. */
+    proposed?: ProposedBases;
     /**
      * The provider options for the last tool definition.
      *
@@ -35,7 +37,7 @@ export function buildToolSet(
 ): ToolSet {
   const disabled = new Set(options.disabledTools ?? []);
   const tools: ToolSet = {};
-  for (const [name, definition] of Object.entries(createChapterTools(library, bookId, options.onBeforeChange))) {
+  for (const [name, definition] of Object.entries(createChapterTools(library, bookId, options.onBeforeChange, options.proposed))) {
     if (disabled.has(name)) continue;
     tools[name] = definition as ToolSet[string];
   }

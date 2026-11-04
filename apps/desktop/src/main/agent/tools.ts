@@ -111,6 +111,51 @@ interface ToolLike {
 /** What a tool reports about a change it made: the checkpoint entry and what it found first. */
 export type ChapterChange = CheckpointChange;
 
+/** The version and file hash a checked save is made against. */
+export interface ChapterBase {
+  version: number;
+  hash: string;
+}
+
+/**
+ * What each paused destructive call was proposed against.
+ *
+ * Before a turn asks the author to approve a call that rewrites chapter text, it notes the version and
+ * hash of every chapter the call names. Once approved, the call writes against that base instead of
+ * against what it reads when it runs, so a chapter someone saved while the approval waited is a
+ * conflict and is never written over (ADR 0014).
+ */
+export class ProposedBases {
+  private readonly calls = new Map<string, Map<string, ChapterBase>>();
+
+  constructor(
+    private readonly library: Library,
+    private readonly bookId: string
+  ) {}
+
+  /** Note the chapters a call rewrites as they are now. One that cannot be read is left to the call. */
+  async note(call: { toolCallId: string; name: string; input: unknown }): Promise<void> {
+    const input = (call.input ?? {}) as Record<string, unknown>;
+    const named =
+      call.name === "merge_chapters"
+        ? [input.firstChapterId, input.secondChapterId]
+        : ["overwrite_chapter", "delete_lines_in_chapter", "split_chapter"].includes(call.name)
+          ? [input.chapterId]
+          : [];
+    const bases = new Map<string, ChapterBase>();
+    for (const chapterId of named) {
+      if (typeof chapterId !== "string") continue;
+      const chapter = await this.library.readChapter(this.bookId, chapterId).catch(() => null);
+      if (chapter) bases.set(chapterId, { version: chapter.version, hash: chapter.hash });
+    }
+    if (bases.size > 0) this.calls.set(call.toolCallId, bases);
+  }
+
+  get(toolCallId: string, chapterId: string): ChapterBase | undefined {
+    return this.calls.get(toolCallId)?.get(chapterId);
+  }
+}
+
 /**
  * The writing tools, bound to one book. Every manuscript change goes through `Library.saveChapter`,
  * so it keeps the same atomic write and version/hash guard as typing in the editor. Tool inputs are
@@ -119,17 +164,26 @@ export type ChapterChange = CheckpointChange;
 export function createChapterTools(
   library: Library,
   bookId: string,
-  onBeforeChange?: (change: ChapterChange) => void | Promise<void>
+  onBeforeChange?: (change: ChapterChange) => void | Promise<void>,
+  /** What each approved call was proposed against. Without it, a tool writes against what it reads. */
+  proposed?: ProposedBases
 ) {
+  /** Whether a chapter changed after its call was proposed, so the approved call must not act on it. */
+  const changedSinceProposed = (toolCallId: string, chapter: Chapter): boolean => {
+    const base = proposed?.get(toolCallId, chapter.id);
+    return base !== undefined && (base.version !== chapter.version || base.hash !== chapter.hash);
+  };
+
   /**
-   * Save with the usual version/hash guard, then report the text the chapter had before. A change is
-   * reported once it is on disk, and the tool waits for the report before it answers the model, so a
-   * turn can write its checkpoint first. A save that conflicted or changed nothing reports nothing.
+   * Save with the usual version/hash guard, against `base` when the call was proposed against an
+   * earlier read, then report the text the chapter had before. A change is reported once it is on
+   * disk, and the tool waits for the report before it answers the model, so a turn can write its
+   * checkpoint first. A save that conflicted or changed nothing reports nothing.
    */
-  const checkpoint = async (chapter: Chapter, content: string) => {
+  const checkpoint = async (chapter: Chapter, content: string, base: ChapterBase = chapter) => {
     const saved = await library.saveChapter(bookId, chapter.id, content, {
-      baseVersion: chapter.version,
-      baseHash: chapter.hash
+      baseVersion: base.version,
+      baseHash: base.hash
     });
     if (saved.status === "saved" && saved.chapter.content !== chapter.content) {
       await onBeforeChange?.({
@@ -322,11 +376,17 @@ export function createChapterTools(
           .optional()
           .describe(`Word limit to check the rewritten chapter against, at most ${MAX_WORD_CHECK} words`)
       }),
-      execute: async ({ chapterId, content, maxWords }) => {
+      execute: async ({ chapterId, content, maxWords }, { toolCallId }) => {
         const chapter = await library.readChapter(bookId, chapterId);
-        const saved = await checkpoint(chapter, content);
+        // Saved against the chapter the author was asked about: words saved during the pause stay,
+        // and the replacement is kept as a conflict copy instead.
+        const saved = await checkpoint(chapter, content, proposed?.get(toolCallId, chapterId));
         if (saved.status === "conflict") {
-          return result(false, "The chapter changed on disk while replacing it, so nothing changed. Read it again.");
+          return result(
+            false,
+            `“${chapter.title}” changed since you read it, so nothing was overwritten. The replacement text is kept as a conflict copy at ${saved.conflict.savedAs}. Read the chapter again before you change it.`,
+            { chapterId, savedAs: saved.conflict.savedAs }
+          );
         }
         const checked =
           maxWords === undefined
@@ -371,9 +431,16 @@ export function createChapterTools(
         startLine: z.number().int().min(1).max(MAX_LINE),
         endLine: z.number().int().min(1).max(MAX_LINE)
       }),
-      execute: async ({ chapterId, startLine, endLine }) => {
+      execute: async ({ chapterId, startLine, endLine }, { toolCallId }) => {
         if (endLine < startLine) return result(false, "The end line must be at or after the start line.");
         const chapter = await library.readChapter(bookId, chapterId);
+        if (changedSinceProposed(toolCallId, chapter)) {
+          return result(
+            false,
+            `“${chapter.title}” changed since you read it, so nothing was deleted. Read it again for the current line numbers.`,
+            { chapterId }
+          );
+        }
         const lines = chapter.content.split("\n");
         if (startLine > lines.length || endLine > lines.length) {
           return result(false, `That chapter has ${lines.length} lines, so that range is out of range.`);
@@ -445,8 +512,15 @@ export function createChapterTools(
         line: z.number().int().min(1).max(MAX_LINE),
         title: z.string().max(200).optional()
       }),
-      execute: async ({ chapterId, line, title }) => {
+      execute: async ({ chapterId, line, title }, { toolCallId }) => {
         const chapter = await library.readChapter(bookId, chapterId);
+        if (changedSinceProposed(toolCallId, chapter)) {
+          return result(
+            false,
+            `“${chapter.title}” changed since you read it, so nothing was split. Read it again for the current line numbers.`,
+            { chapterId }
+          );
+        }
         const lines = chapter.content.split("\n");
         const first = `${lines.slice(0, line - 1).join("\n")}\n`;
         const second = lines.slice(line - 1).join("\n");
@@ -511,10 +585,20 @@ export function createChapterTools(
         firstChapterId: z.string(),
         secondChapterId: z.string()
       }),
-      execute: async ({ firstChapterId, secondChapterId }) => {
+      execute: async ({ firstChapterId, secondChapterId }, { toolCallId }) => {
         const first = await library.readChapter(bookId, firstChapterId);
         const second = await library.readChapter(bookId, secondChapterId);
         if (first.id === second.id) return result(false, "A chapter cannot be merged with itself.");
+        // Checked before anything moves: a refused merge must not reach the rollback below.
+        const changed = [first, second].filter((chapter) => changedSinceProposed(toolCallId, chapter));
+        if (changed.length > 0) {
+          const names = changed.map((chapter) => `“${chapter.title}”`).join(" and ");
+          return result(
+            false,
+            `${names} changed since you read ${changed.length === 1 ? "it" : "them"}, so nothing was merged. Read both chapters again.`,
+            { chapterId: first.id }
+          );
+        }
         if (second.order !== first.order + 1) {
           return result(false, "Only adjacent chapters can be merged. Move one first or choose the next chapter.");
         }

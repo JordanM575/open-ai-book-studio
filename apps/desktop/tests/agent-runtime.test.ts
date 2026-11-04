@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { APICallError, ToolLoopAgent, isStepCount, simulateReadableStream } from "ai";
@@ -1153,10 +1153,10 @@ describe("agent runtime contract", () => {
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
   });
 
-  test("typing during a live turn survives the turn through undo", async () => {
+  test("typing during a live turn stays in the chapter when the overwrite is approved", async () => {
     const chapter = await createChapter();
     const { runtime, approval, done } = approvalRuntime(
-      approvalModel("I replaced the opening.", "overwrite_chapter", {
+      approvalModel("The opening changed while I waited, so I left it.", "overwrite_chapter", {
         chapterId: chapter.id,
         content: "A new opening.\n"
       })
@@ -1177,18 +1177,19 @@ describe("agent runtime contract", () => {
 
     await runtime.approve(started.turnId, request.approvalId, true);
     const finished = await done;
-    expect(finished.text).toBe("I replaced the opening.");
-    expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
 
-    // Nothing the author typed is lost: one undo restores the pre-overwrite text.
-    const undone = await runtime.undoLast(book.id);
-    expect(undone.restored).toBe(1);
-    expect((await library.readChapter(book.id, chapter.id)).content).toBe(
-      "The old opening. Author typing.\n"
-    );
-    // The typing came before the turn's only write, so it is the text undo restores, not a conflict.
-    expect(undone.kept).toBeUndefined();
-    expect(await library.listConflicts(book.id)).toEqual([]);
+    // Nothing the author typed leaves the chapter. The overwrite was made against the text the
+    // author was asked about, so the checked save kept it as a conflict copy instead.
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening. Author typing.\n");
+    expect(finished.changed).toBe(0);
+    const conflicts = await library.listConflicts(book.id);
+    expect(conflicts.map((conflict) => conflict.savedAs)).toEqual([
+      expect.stringMatching(new RegExp(`^books/${book.id}/conflicts/0001-the-door\\.conflict-newer-version\\.`))
+    ]);
+    expect(await readFile(join(root, conflicts[0]?.savedAs ?? ""), "utf8")).toContain("A new opening.");
+    // The turn changed nothing, so undo has nothing of it to take back.
+    await expect(runtime.undoLast(book.id)).rejects.toThrow("no agent turn to undo");
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening. Author typing.\n");
   });
 
   test("waits for approval before deleting a chapter", async () => {

@@ -51,7 +51,7 @@ import {
   recordChange,
   type CheckpointEntry
 } from "./checkpoints";
-import { DESTRUCTIVE_TOOL_NAMES } from "./tools";
+import { DESTRUCTIVE_TOOL_NAMES, ProposedBases } from "./tools";
 import { buildToolSet } from "./tool-set";
 import { buildPrompt } from "./prompt";
 import { readBookSkills } from "./skills";
@@ -113,6 +113,8 @@ interface TurnState {
   createdAt: string;
   persisted: boolean;
   checkpoint: CheckpointProgress;
+  /** What each paused destructive call was proposed against, noted before the author is asked. */
+  proposed: ProposedBases;
   /** Tool calls still running. A stop or a failure waits for them before it reports. */
   running: Set<Promise<void>>;
 }
@@ -384,6 +386,7 @@ export class AgentRuntime {
       createdAt: new Date().toISOString(),
       persisted: false,
       checkpoint: { revision: 0, saved: 0, at: null, file: null, queue: Promise.resolve() },
+      proposed: new ProposedBases(library, input.bookId),
       running: new Set()
     };
     const turnId = newId("turn");
@@ -395,6 +398,7 @@ export class AgentRuntime {
       disabledTools: book.settings?.agent?.disabledTools ?? [],
       pluginTools: await this.pluginToolsFor(),
       ...(cache.toolProviderOptions ? { toolProviderOptions: cache.toolProviderOptions } : {}),
+      proposed: state.proposed,
       // Every change goes into the checkpoint as it is made, before the tool answers the model, so
       // a change after a pause or a resume is as undoable as one before it.
       onBeforeChange: async (change) => {
@@ -603,7 +607,7 @@ export class AgentRuntime {
     state: TurnState
   ): Promise<void> {
     let waiting = false;
-    let approval: { approvalId: string; name: string; input: unknown } | null = null;
+    let approval: { approvalId: string; toolCallId: string; name: string; input: unknown } | null = null;
 
     // Each change saved the checkpoint as it was made. This catches up after a save that failed.
     const saveCheckpoint = (): Promise<boolean> => this.saveCheckpoint(turnId, input, state);
@@ -688,6 +692,7 @@ export class AgentRuntime {
           waiting = true;
           approval = {
             approvalId: part.approvalId,
+            toolCallId: part.toolCall.toolCallId,
             name: part.toolCall.toolName,
             input: part.toolCall.input
           };
@@ -717,6 +722,9 @@ export class AgentRuntime {
       const costBasis = state.costUsd === null ? "unknown" : "reported";
 
       if (waiting && approval) {
+        // The call's chapters as they are now, before the author sees the request. Once approved,
+        // the call writes against them, so words saved while it waits are a conflict, never lost.
+        await state.proposed.note(approval);
         await saveCheckpoint();
         const responseMessages = await stream.responseMessages;
         state.approvals.push({

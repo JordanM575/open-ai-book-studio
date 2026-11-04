@@ -399,6 +399,28 @@ Update the `Unreleased` section before every commit.
 - Allowing Contributor training in the model picker now reaches the book. The book update kept the
   chosen Contributor model but dropped the consent, so every Contributor turn was refused with a
   request to allow it in the picker.
+- An approved agent edit no longer writes over words you saved while it waited for your approval.
+  Before, `overwrite_chapter`, `delete_lines_in_chapter`, `split_chapter` and `merge_chapters` read the
+  chapter again when they ran, after the approval. The checked save then saw no conflict, so your
+  edit was replaced or the wrong lines went. If the turn had written that chapter earlier, undo's
+  conflict copy held the agent's text, and your words were nowhere.
+  - The runtime now notes the version and hash of each chapter such a call names before it shows the
+    approval, and the approved call checks against those. If you saved the chapter in between, an
+    overwrite keeps your text and saves its replacement as an ordinary conflict copy in `conflicts/`.
+    A line deletion, split or merge changes nothing. The tool tells the agent the chapter changed
+    since it read it, that nothing was overwritten, and where the copy is, so it reads again.
+  - A refused call is not counted as a change, and the turn's undo checkpoint leaves it out. Undo
+    afterwards leaves your words in place and names the chapter.
+  - `delete_chapter` and `move_chapter` are unchanged: they rewrite no text, and a deleted chapter's
+    file keeps your words in the trash. A save that lands while the model is still writing the call,
+    before the approval shows, is part of what you approve (ADR 0014 decision 6).
+  - `apps/desktop/tests/turn-checkpoint.test.ts` and `agent-runtime.test.ts` cover the overwrite, line
+    deletion, split and both sides of a merge, and undo afterwards. Each fails without the fix. A
+    test with nothing saved during the pause shows the approval still writes, with no conflict. The
+    runtime test that expected the approved overwrite to land on your typing now expects your typing
+    to stay. A checkpoint test reached its `conflict-undo` copy through an approved line deletion over
+    your line. It now gets there through an ordinary edit after an approval on another chapter, and
+    what it proves is unchanged.
 - The ambient strip now says where you are in the chapter on screen. It always named the book's last
   chapter and its word count, and "Say where you are" spoke that; it now follows the open chapter, a
   chapter switch and a saved change.
