@@ -265,6 +265,8 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The GitHub workflow runs only when started by hand, with Bun pinned to 1.4.4, until a Linux run has
+  been watched passing. Verification runs locally with `bun run verify`, as the README says.
 - The README is the public front page: the pitch and tagline, a plain account of the pre-event base
   and the labelled baseline commit, what an author can do with the Meta model each feature uses, the
   Meta models table, a quick start on the sample and the `bookwriter` CLI, the local verification

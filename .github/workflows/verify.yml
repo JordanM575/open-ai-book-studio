@@ -6,10 +6,10 @@ name: verify
 # The live provider check is deliberately absent. It needs keys and costs money, so it is run by a
 # person against a temporary copy of the sample, not by a runner on every push.
 
+# Run by hand until a Linux run has been watched passing. The gates are proven locally today
+# (`bun run verify`); a workflow that has never run green should not mark every public push.
 on:
-  push:
-    branches: [main, meta-hackathon]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: verify-${{ github.ref }}
@@ -24,7 +24,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.4
 
       - name: Install
         run: bun install --frozen-lockfile
@@ -48,7 +48,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.4
 
       - name: Install
         run: bun install --frozen-lockfile
