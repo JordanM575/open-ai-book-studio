@@ -20,7 +20,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | Shared UI | `packages/app/tests`, `packages/ui` | `bun test` (root) | Chat view, manuscript dialogs, voice text |
 | Toolkit | `apps/toolkit/tests` | `bun test` (root) | CLI and MCP surface over the backend |
 | Toolkit E2E | `scripts/toolkit-e2e.mjs` | `bun run e2e toolkit` | Compiled CLI and `bookwriter mcp` against the hidden app, checked on disk: withdrawn-tool refusal, checked and stale saves, the `--allow-writes` gate |
-| Coverage ratchet | `scripts/coverage-check.mjs` | `bun run coverage` | Fails below 85% functions / 92% lines |
+| Coverage ratchet | `scripts/coverage-check.mjs` | `bun run coverage` | Fails below 85% functions / 92% lines, averaged over the repository's own files; temp-folder fixtures are left out and listed. 2026-11-04: 90.70% / 93.26% over 180 files (bun's summary 87.85% / 93.21%) |
 | Browser E2E | `scripts/web-smoke/main.cjs`, `scripts/e2e.mjs` | `bun run smoke:web`, `bun run e2e` | Real Chromium journey: create, write, reload, conflict, archive |
 | Browser matrix | `apps/web/check/main.ts` | `node scripts/browser-matrix.mjs` | Chromium gate; Firefox/WebKit findings |
 | Desktop smoke | `apps/desktop/src/main/smoke.ts` | `bun run smoke` | 34 hidden checks through the real renderer |

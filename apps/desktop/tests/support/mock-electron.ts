@@ -7,6 +7,24 @@ type Handler = (event: unknown, payload: unknown) => Promise<unknown>;
 export interface ElectronHooks {
   handle?: (channel: string, handler: Handler) => void;
   showItemInFolder?: (path: string) => void;
+  /** Protected storage in Electron 45's shape: availability is a promise, encryption is not. */
+  safeStorage?: {
+    isAsyncEncryptionAvailable: () => Promise<boolean>;
+    encryptString: (value: string) => Buffer;
+    decryptString: (value: Buffer) => string;
+  };
+  /** The native dialogs, given the options and the window they were attached to, if any. */
+  showOpenDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePaths: string[] }>;
+  showSaveDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
+  showMessageBox?: (options: unknown, window: unknown) => Promise<{ response: number }>;
+}
+
+type Answer<T> = (options: unknown, window: unknown) => Promise<T>;
+
+/** A dialog the file under test did not answer fails the call rather than opening anything. */
+function answer<T>(name: string, hook: Answer<T> | undefined, args: unknown[]): Promise<T> {
+  if (!hook) return Promise.reject(new Error(`No ${name} answer in checks.`));
+  return hook(args.at(-1), args.length > 1 ? args[0] : null);
 }
 
 const current: { userData: string; hooks: ElectronHooks } = { userData: tmpdir(), hooks: {} };
@@ -24,20 +42,29 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
   current.userData = userData;
   current.hooks = hooks;
   mock.module("electron", () => ({
-    app: { getPath: (name: string) => (name === "userData" ? current.userData : tmpdir()) },
+    app: {
+      getPath: (name: string) => (name === "userData" ? current.userData : tmpdir()),
+      getVersion: () => "0.0.0-checks"
+    },
     BrowserWindow: { getAllWindows: () => [], getFocusedWindow: () => null },
-    dialog: {},
+    dialog: {
+      showOpenDialog: (...args: unknown[]) => answer("open dialog", current.hooks.showOpenDialog, args),
+      showSaveDialog: (...args: unknown[]) => answer("save dialog", current.hooks.showSaveDialog, args),
+      showMessageBox: (...args: unknown[]) => answer("message box", current.hooks.showMessageBox, args)
+    },
     ipcMain: {
       handle: (channel: string, handler: Handler) => current.hooks.handle?.(channel, handler)
     },
     Menu: {},
     Notification: { isSupported: () => false },
     safeStorage: {
-      isAsyncEncryptionAvailable: () => false,
-      encryptString: () => {
+      isAsyncEncryptionAvailable: () => current.hooks.safeStorage?.isAsyncEncryptionAvailable() ?? false,
+      encryptString: (value: string) => {
+        if (current.hooks.safeStorage) return current.hooks.safeStorage.encryptString(value);
         throw new Error("unavailable in checks");
       },
-      decryptString: () => {
+      decryptString: (value: Buffer) => {
+        if (current.hooks.safeStorage) return current.hooks.safeStorage.decryptString(value);
         throw new Error("unavailable in checks");
       }
     },

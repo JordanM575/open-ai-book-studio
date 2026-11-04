@@ -229,6 +229,32 @@ smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
       before writing anything; lint/typecheck clean; full suite 1062 pass. The full positive
       release run still needs a clean tree (and a runner for the workflow); packaged smoke last
       passed in the T014 era on the same smoke module. The ledger now maps 012 FR-033 as covered.
+- [x] T033 Make the coverage gate measure the repository's own files. `bun test --coverage` also lists
+      the TypeScript plugin fixtures that tests write into temporary folders (`studio-capabilities-*`,
+      `studio-plugins-*`), most at 0% of functions and a different set each run, and bun's "All files"
+      line averages them in. So `bun run coverage` failed at 84.83% of functions and 90.69% of lines
+      while the repository's own 179 files stood at 87.58% and 90.65%. Current evidence:
+      `scripts/coverage-check.mjs` parses bun's per-file rows and keeps the files inside the
+      repository root (by `path.relative`, so a sibling folder sharing the root's prefix is outside).
+      It prints the count and paths it left out and checks that bun's summary is still the unweighted
+      mean of its rows. It fails on a missing, malformed or truncated table. The method and the 85/92
+      floor are unchanged. `apps/desktop/tests/coverage-check.test.ts` covers the parser, the filter
+      and the verdicts with synthetic tables. Line coverage then rose through tests of existing
+      behaviour:
+      - IPC handlers through `registerIpc`, covering refusals, envelopes, library results on disk and
+        dialogs;
+      - the live check against stubbed providers;
+      - the desktop credential vault, the draft buffer and the settings store;
+      - the ambient "last said" line and damaged Word files;
+      - the search, book settings, new book and blocked-review dialogs.
+
+      Verified: `bun run coverage` PASS at 90.70% of functions and 93.26% of lines over 180 files
+      (bun's summary 87.85/93.21); full suite 1566 pass, twice; `bun run verify` PASS. Two product
+      defects were found and are left for a product change:
+      - `DesktopCredentialVault.status()` tests `safeStorage.isAsyncEncryptionAvailable()` without
+        awaiting the promise, so the status read always reports protected storage as available;
+      - `library:importLegacy` passes the backup's text to `importLegacyBackup`, whose parser expects
+        the parsed object, so every desktop backup import is refused as not a backup.
 
 ## Phase 6 — Live providers
 

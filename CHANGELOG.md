@@ -188,6 +188,31 @@ Update the `Unreleased` section before every commit.
   failed to save. An export reads the saved files, so it would have left the newest words out
   without saying so. Now a save that failed or hit a conflict stops the export with a plain notice
   ("…so nothing was exported"). A component test covers this and fails without the fix.
+- The coverage gate now measures the repository's own code. `bun test --coverage` also lists the
+  TypeScript plugin fixtures that tests write into temporary folders, most at 0% of functions and a
+  different set on every run, and bun's summary averages them in. So `bun run coverage` failed at
+  84.83% of functions and 90.69% of lines, and the number moved from run to run.
+  `scripts/coverage-check.mjs` now:
+  - reads bun's per-file rows and keeps only the files inside the repository root;
+  - prints how many files it left out, and which;
+  - checks that bun's summary is still the unweighted mean of its rows;
+  - fails loudly on a table it cannot read in full.
+
+  The averaging method and the floor (85% of functions, 92% of lines) are unchanged.
+  `apps/desktop/tests/coverage-check.test.ts` covers the parser with synthetic tables. New tests of
+  existing behaviour then raised line coverage. They cover:
+  - the IPC handlers through `registerIpc`: refusals, envelopes, results on disk and dialogs;
+  - the live check against stubbed providers;
+  - the desktop credential vault, the draft buffer and the settings store;
+  - the ambient "last said" line and damaged Word files;
+  - the search, book settings, new book and blocked-review dialogs.
+
+  The shared Electron mock gained per-file answers for safeStorage and the native dialogs. Over
+  the repository's own 180 files, coverage rose from 87.58% to 90.70% of functions and from 90.65%
+  to 93.26% of lines; bun's own summary now reads 87.85% and 93.21%. Writing the tests exposed two
+  product defects, which are reported rather than fixed in this test-only change:
+  - the desktop vault's status read always says protected storage is available;
+  - importing an old backup from the desktop dialog always refuses it as not a backup.
 - The browser build's `window.studio` is now tested end to end over site storage
   (`apps/web/tests/storage/browser-api.test.ts`). The test covers:
   - creating, renaming, searching and reopening a book;
