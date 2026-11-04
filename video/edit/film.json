@@ -1,0 +1,379 @@
+{
+  "about": "The edit list for the product film. video/script.md is the source of truth: node video/edit/assemble.mjs --check fails when the voiceover, on-screen text or tags here drift from it. Times are targets until the narration is recorded; then lock start and end to the narration.",
+  "title": "AI Book Studio",
+  "version": "v1",
+  "narration": "narration.wav",
+  "tags": {
+    "before": "Built before the event",
+    "during": "Built during the event"
+  },
+  "cutOrderScript": "the glasses page, the warning, the strip, and the vertical cut. Only the 3:00 master is required.",
+  "cutOrder": [
+    {
+      "segment": "glasses",
+      "script": "the glasses page"
+    },
+    {
+      "segment": "offline",
+      "script": "the warning"
+    },
+    {
+      "segment": "strip",
+      "script": "the strip"
+    },
+    {
+      "deliverable": "15s-vertical",
+      "script": "the vertical cut"
+    }
+  ],
+  "cut30": {
+    "source": "specs/021-product-film/plan.md, Edit and delivery: problem → agent → voice → background → close",
+    "narration": "narration-30s.wav",
+    "beats": [
+      {
+        "beat": "problem",
+        "segment": "opening",
+        "from": 0,
+        "duration": 6
+      },
+      {
+        "beat": "agent",
+        "segment": "contributor",
+        "from": 0,
+        "duration": 6
+      },
+      {
+        "beat": "voice",
+        "segment": "dictation",
+        "from": 0,
+        "duration": 6
+      },
+      {
+        "beat": "background",
+        "segment": "background",
+        "from": 0,
+        "duration": 6
+      },
+      {
+        "beat": "close",
+        "segment": "close",
+        "from": 7,
+        "duration": 6
+      }
+    ]
+  },
+  "endSlate": {
+    "title": "AI Book Studio",
+    "lines": [
+      "Meta Global AI Developer Hackathon · October 26 – November 4, 2026",
+      "Code licensed under Apache-2.0"
+    ],
+    "link": ""
+  },
+  "segments": [
+    {
+      "id": "opening",
+      "start": "0:00",
+      "end": "0:25",
+      "tag": "Built before the event",
+      "voiceover": "Most AI writing tools give you a chat window, and the book lives somewhere else. So you copy, you paste, and you hope nothing is lost. AI Book Studio starts from the other side: every book is a folder of Markdown files that you own. Everything after this was built during the hackathon.",
+      "onScreen": [
+        "The book is somewhere else.",
+        "A folder, not an account."
+      ],
+      "live": {
+        "provider": "No",
+        "captureOrder": 10,
+        "needs": "Nothing live",
+        "ifItFails": "None needed"
+      },
+      "picture": [
+        {
+          "plate": "problem",
+          "duration": 10
+        },
+        {
+          "plate": "files",
+          "duration": 5
+        },
+        {
+          "clip": "shot-10a-library.mov",
+          "duration": 10,
+          "shows": "The studio opens on the sample library, and Finder shows the book's folder: `book.json` and `chapters/`."
+        }
+      ],
+      "lowerThird": {
+        "lines": [
+          "A folder, not an account."
+        ],
+        "from": 15.5,
+        "to": 24.5
+      },
+      "cut": false,
+      "note": "The problem and files plates carry both on-screen lines as their headlines; over the footage the lower third repeats the second."
+    },
+    {
+      "id": "contributor",
+      "start": "0:25",
+      "end": "0:43",
+      "tag": "Built during the event",
+      "voiceover": "Muse Spark 1.3 Contributor may train on what you send, so the studio refuses it until this book opts in. Opt the sample book in, ask for the next scene, and the conversation names the model that answered.",
+      "onScreen": [
+        "Contributor stays off until the book opts in."
+      ],
+      "live": {
+        "provider": "Meta",
+        "captureOrder": 1,
+        "needs": "Meta key; the Contributor model on the account",
+        "ifItFails": "Keep the Muse Spark 1.3 turn and cut the Contributor lines. If no Meta model answers, stop."
+      },
+      "picture": [
+        {
+          "clip": "shot-01-contributor.mov",
+          "duration": 18,
+          "shows": "One turn already on Muse Spark 1.3. Open the model picker and choose **Muse Spark 1.3 Contributor**. It warns that it may train on what you send and refuses until the book opts in. Tick the opt-in, then ask for the next scene. The divider reads “Now answering with Meta · Muse Spark 1.3 Contributor”."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "agent-panel",
+      "start": "0:43",
+      "end": "1:01",
+      "tag": "Built during the event",
+      "voiceover": "The Agent panel counts every tool call and how often it worked. Turn a tool off for this book, and it is refused everywhere: by the model, the command line and any MCP client.",
+      "onScreen": [
+        "One switch: the model, the CLI and MCP."
+      ],
+      "live": {
+        "provider": "No",
+        "captureOrder": 2,
+        "needs": "The turns from shot 1",
+        "ifItFails": "Show the switch only; cut “from the command line”"
+      },
+      "picture": [
+        {
+          "clip": "shot-02-agent-panel.mov",
+          "duration": 18,
+          "shows": "Header bot icon → the **Agent** dialog: calls and successes per tool. Switch off `find_in_chapter`. In a terminal, `bookwriter call <bookId> find_in_chapter --allow-writes --args '…'` prints “find_in_chapter is turned off for this book. The author withdrew it.”"
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "dictation",
+      "start": "1:01",
+      "end": "1:15",
+      "tag": "Built during the event",
+      "voiceover": "When typing is in the way, dictate. Muse Voice Transcribe puts your words at the caret, and the audio is not kept.",
+      "onScreen": [
+        "Dictate with Muse Voice Transcribe."
+      ],
+      "live": {
+        "provider": "Meta",
+        "captureOrder": 3,
+        "needs": "Meta key; microphone permission for the app",
+        "ifItFails": "Cut the shot and its line"
+      },
+      "picture": [
+        {
+          "clip": "shot-03-dictation.mov",
+          "duration": 14,
+          "shows": "The manuscript's microphone button: recording, then the transcript inserted at the caret."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "strip",
+      "start": "1:15",
+      "end": "1:29",
+      "tag": "Built during the event",
+      "voiceover": "Step back from the keyboard and a small strip keeps you oriented: where you are, what changed, what it would do next. Ask out loud, and it answers out loud.",
+      "onScreen": [
+        "Listens with Muse Voice Transcribe · speaks with OpenRouter text-to-speech."
+      ],
+      "live": {
+        "provider": "Meta + OpenRouter",
+        "captureOrder": 4,
+        "needs": "Meta key and OpenRouter key",
+        "ifItFails": "Cut the shot and its line"
+      },
+      "picture": [
+        {
+          "clip": "shot-04-strip.mov",
+          "duration": 14,
+          "shows": "The strip at the bottom of the workspace (“The writing agent, in brief”): press **Say where you are** and the status is read aloud. Open the agent's actions, tap the microphone, ask a question out loud, and the reply appears and is spoken."
+        }
+      ],
+      "lowerThird": {
+        "position": "top"
+      },
+      "cut": false,
+      "note": "The strip sits at the bottom of the workspace, so the lower third goes to the top."
+    },
+    {
+      "id": "background",
+      "start": "1:29",
+      "end": "1:45",
+      "tag": "Built during the event",
+      "voiceover": "Tick Background and close the window. The agent keeps working, and a notification tells you when the scene is ready, or when it needs your approval.",
+      "onScreen": [
+        "It keeps working after you close the window."
+      ],
+      "live": {
+        "provider": "Meta",
+        "captureOrder": 5,
+        "needs": "Meta key; the Focus mode allows the studio",
+        "ifItFails": "Cut the shot and its line"
+      },
+      "picture": [
+        {
+          "clip": "shot-05-background.mov",
+          "duration": 16,
+          "shows": "Tick **Background** in the composer and send. Close the window. A notification arrives (“The Salt Road — ready”, previewing the reply); click it, and the window reopens on the finished conversation."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "illustration",
+      "start": "1:45",
+      "end": "2:03",
+      "tag": "Built during the event",
+      "voiceover": "Illustrate a chapter with Muse Image. The price is on the button before you spend anything, and the picture goes with the chapter into the Word export.",
+      "onScreen": [
+        "Muse Image, carried into the Word export."
+      ],
+      "live": {
+        "provider": "Meta",
+        "captureOrder": 6,
+        "needs": "Meta key with Muse Image",
+        "ifItFails": "Cut the shot and its line. Never show the fixture's images as Muse Image output."
+      },
+      "picture": [
+        {
+          "clip": "shot-06-illustration.mov",
+          "duration": 18,
+          "shows": "The illustration dialog for a chapter: the prompt, then **Generate · $0.01**; the new image appears (“1024×1024 · muse-image-1.0”) and is attached. **Export Word document**; Quick Look in Finder shows the illustration in the document."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "cli-mcp",
+      "start": "2:03",
+      "end": "2:19",
+      "tag": "Built during the event",
+      "voiceover": "Because the book is files behind one careful writer, other agents can work on it too. The bookwriter command line and its MCP server read and save the same open book, with the same checks.",
+      "onScreen": [
+        "CLI and MCP. The same book, no second copy."
+      ],
+      "live": {
+        "provider": "No",
+        "captureOrder": 7,
+        "needs": "The studio open on the fixture",
+        "ifItFails": "None needed"
+      },
+      "picture": [
+        {
+          "clip": "shot-07-cli-mcp.mov",
+          "duration": 16,
+          "shows": "Terminal beside the studio: `bookwriter books`, `bookwriter tools`, then `bookwriter read <bookId> <chapterId>` showing the scene from 0:25. `bookwriter mcp` reports “AI Book Studio MCP server on stdio”."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "offline",
+      "start": "2:19",
+      "end": "2:29",
+      "tag": "Built during the event",
+      "voiceover": "When something goes wrong, the studio says so in plain words, and keeps what you typed.",
+      "onScreen": [
+        "Plain warnings. Nothing lost."
+      ],
+      "live": {
+        "provider": "No (Wi-Fi off)",
+        "captureOrder": 8,
+        "needs": "Wi-Fi off for a moment",
+        "ifItFails": "Cut it (second in the cut order)"
+      },
+      "picture": [
+        {
+          "clip": "shot-08-offline.mov",
+          "duration": 10,
+          "shows": "Wi-Fi off; send a turn. The conversation says “You are offline. Your words are safe — writing, planning and exporting all still work.” The request stays ready to retry."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "glasses",
+      "start": "2:29",
+      "end": "2:40",
+      "tag": "Built during the event",
+      "voiceover": "And the same status is ready for a glasses display: six hundred pixels square, one glance at a time.",
+      "onScreen": [
+        "Shown at glasses size. Not filmed on glasses."
+      ],
+      "live": {
+        "provider": "No",
+        "captureOrder": 9,
+        "needs": "The studio's loopback backend (see `scripts/glasses-check.mjs`)",
+        "ifItFails": "Cut it (first in the cut order)"
+      },
+      "picture": [
+        {
+          "clip": "shot-09-glasses.mov",
+          "duration": 11,
+          "shows": "The 600×600 glasses page, served by the studio, in a 600×600 browser window."
+        }
+      ],
+      "lowerThird": {},
+      "cut": false
+    },
+    {
+      "id": "close",
+      "start": "2:40",
+      "end": "3:00",
+      "tag": null,
+      "voiceover": "Everything in the middle was built during these nine days. The book is still a folder you own. Your book. Your files. Your agent.",
+      "onScreen": [
+        "Your book. Your files. Your agent.",
+        "AI Book Studio"
+      ],
+      "live": {
+        "provider": "No",
+        "captureOrder": 10,
+        "needs": "Nothing live",
+        "ifItFails": "None needed"
+      },
+      "picture": [
+        {
+          "clip": "shot-10b-finder.mov",
+          "duration": 7,
+          "shows": "Finder: the book's `images/` and `images.json` (added during the event), and the exported Word file outside the library."
+        },
+        {
+          "plate": "close",
+          "duration": 9
+        },
+        {
+          "card": "end",
+          "duration": 4
+        }
+      ],
+      "lowerThird": false,
+      "cut": false,
+      "note": "The close plate carries both on-screen lines, so no lower third is drawn. The end slate follows it."
+    }
+  ]
+}

@@ -14,12 +14,53 @@ the actual book, and the author keeps the actual files** — see
 
 1. `rm -rf video/fixture/library && bun run film:fixture` for the original fixture book, then open it
    in a throwaway profile. See [`fixture/README.md`](fixture/README.md).
-2. Build the motion plates with the design tokens; capture them frame-exactly through Playwright.
-3. Record the app at 1440×900, 2× scale, 30 fps, on the fixture library.
-4. Record the narration, or generate a licensed voice; transcribe with Muse Voice Transcribe for
-   captions and timing.
-5. Edit the 3:00 master, then derive the 0:30 and 0:15 cuts.
+2. Record the app at 1440×900, 2× scale, 30 fps, on the fixture library. Save each clip in
+   `video/footage/` under the name [`footage/README.md`](footage/README.md) gives it.
+3. Record the narration, or generate a licensed voice, as `video/footage/narration.wav`. Transcribe
+   it with Muse Voice Transcribe, then lock each segment's `start` and `end` in
+   [`edit/film.json`](edit/film.json) to where its line falls.
+4. Build and check the cuts:
+
+   ```bash
+   node video/edit/assemble.mjs           # 3:00 master and its .srt in video/renders/
+   node video/edit/assemble.mjs --cut30   # the 0:30 cut
+   node video/edit/assemble.mjs --check   # timings per segment; fails over 3:00 or off the script
+   ```
+
+   Run them with `env -u ELECTRON_RUN_AS_NODE` if your terminal sets it. Until a clip exists, its
+   place is a slate that says "Footage pending", so the same command builds a timing preview today.
+   Never upload a build that reports a pending clip.
+5. Derive the 0:15 vertical cut and burn the captions in for the silent cut. Neither is automated yet.
 6. Run the checks in the spec: truth, privacy, silent, phone, link.
+
+The assembler renders any missing or stale motion plates and caption cards before it cuts. To render
+them by hand, run `node video/motion/render.mjs --all --ambient --scene=problem` (also `files` and
+`close`) and `node video/cards/render.mjs`. Add `--preview` to the cards command for one still per
+card in `video/renders/cards/previews/`.
+
+### The edit list
+
+[`edit/film.json`](edit/film.json) has one segment per row of the script's shot table. Each segment has:
+
+- its times;
+- the voiceover and on-screen text, copied exactly;
+- its event tag;
+- `live`, what the shot needs and what to do if it fails;
+- `picture`, a list of motion plates, clips (with optional `in` and `out` seconds) and cards;
+- `lowerThird`, false where a plate already carries the line;
+- `cut`.
+
+Set `"cut": true` to drop a segment's picture and its line, following `cutOrder`, which is the
+script's cut order. `cut30` maps the plan's 0:30 cut (problem → agent → voice → background → close)
+onto segments. The 0:30 cut is silent unless `video/footage/narration-30s.wav` exists, and it gets no
+captions file.
+
+`--check` fails when the voiceover, on-screen text, tags or cut order drift from
+[`script.md`](script.md), which stays the source of truth.
+
+The caption cards in [`cards/`](cards/) follow the motion-plate pattern. The page is
+deterministic: `window.renderAt(ms)` sets every reveal. It uses the studio tokens and the type scale
+at 1.5×.
 
 ## Do not
 

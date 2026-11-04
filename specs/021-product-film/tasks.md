@@ -36,7 +36,11 @@
 ## Phase 4 — Edit and deliver
 
 - [ ] T010 Edit the 3:00 master, 0:30 cut and 0:15 vertical; add burned-in captions and export SRT.
-  Blocked on T005–T009 (capture, motion, voice and music).
+  Blocked on T005–T009 (capture, motion, voice and music). The tooling is ready.
+  `video/edit/film.json` is the edit list. `node video/edit/assemble.mjs` builds the master and its
+  SRT, and `--cut30` builds the 0:30 cut; each shows a footage-pending slate until its clip exists.
+  `--check` compares the edit list with the script and fails over 3:00. Still to do: the 0:15
+  vertical, the burned-in captions and the final mix.
 - [ ] T011 Run the truth, privacy, silent and phone checks; record the commit and test count in
   `video/assets.md`.
 - [ ] T012 Upload the master and short cut, check both links in a private window, and attach them to

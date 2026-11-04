@@ -30,6 +30,21 @@ Update the `Unreleased` section before every commit.
   font the computer lacks prints in a similar one. Nothing claims KDP or other publisher
   acceptance, EPUBCheck validity, PDF/UA or exact pagination, and PDFs are not byte-identical,
   because Chromium writes a creation date into each one.
+- The product film now assembles with one command. `video/edit/film.json` is the edit list: one
+  segment per row of the approved script, with its times, the voiceover and on-screen text copied
+  exactly, its event tag, what the shot needs live, its picture (motion plates, footage clips with
+  in and out points, and cards), whether it is cut, and the script's cut order.
+  `node video/edit/assemble.mjs` renders any missing plates and caption cards, then builds a
+  1920×1080, 30 fps H.264 master no longer than 3:00. Each segment's picture is fitted to its slot,
+  with its lower third and event tag laid over it. The sound is the matching slice of
+  `video/footage/narration.wav`, or silence. It also writes an `.srt` of the voiceover. A clip that
+  has not been recorded is a slate that says "Footage pending" and names the file, so the timing can
+  be checked before any footage exists. `--cut30` builds the plan's 0:30 cut. `--check` prints each
+  segment's planned and built duration, and fails when the film runs over 3:00 or the edit list
+  drifts from `video/script.md`. The caption cards (`video/cards/`) are a deterministic page in the
+  studio tokens, rendered frame by frame through Playwright like the motion plates.
+  `video/footage/README.md` names every clip and the 1440×900 @2×, 30 fps capture. Footage and
+  renders stay out of git.
 - An end-to-end check of the agent toolkit, `scripts/toolkit-e2e.mjs` (`bun run e2e toolkit`). It
   launches the built app hidden over a synthetic library, drives the compiled `bookwriter` CLI and
   `bookwriter mcp` over stdio, and checks every answer against the bytes on disk. A tool switched
