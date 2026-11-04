@@ -14,6 +14,7 @@ import {
 } from "@ai-book-studio/core/ipc";
 import { idSchema } from "@ai-book-studio/core/schema";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
+import { EXTERNAL_LINKS } from "@ai-book-studio/core/providers/links";
 import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
 import { imageIdSchema } from "@ai-book-studio/core/images/schema";
 import { ProviderError, connectionIdSchema, providerIdSchema } from "@ai-book-studio/core/providers/types";
@@ -185,6 +186,11 @@ export function registerIpc(
   /** Read-only: the list the build wrote beside the main bundle. It takes no input. */
   const readLicenses = createLicenseReader();
   handle(IPC.app.licenses, () => readLicenses());
+  handle(IPC.app.openLink, async (payload) => {
+    // A whole-string match against the allow-list: no prefix, query, host or scheme widens it.
+    await shell.openExternal(z.enum(EXTERNAL_LINKS).parse(payload));
+    return null;
+  });
 
   /* ------------------------------------------------------------------ library */
 
@@ -633,6 +639,11 @@ export function registerIpc(
   handle(IPC.providers.list, () => PROVIDER_LIST);
 
   handle(IPC.providers.models, async (payload) => providers.models(connectionId.parse(payload)));
+
+  handle(IPC.providers.addModel, async (payload) => {
+    const input = z.object({ connectionId, modelId: z.string().min(1).max(200) }).parse(payload);
+    return providers.addModel(input.connectionId, input.modelId);
+  });
 
   /* ------------------------------------------------------------- connections */
 

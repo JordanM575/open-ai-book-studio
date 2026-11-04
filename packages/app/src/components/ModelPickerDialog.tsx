@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, Loader2, Search } from "lucide-react";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ConnectionSummary, ModelInfo, ProviderDescription } from "@ai-book-studio/core/providers/types";
@@ -36,6 +36,16 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The connection's own list could not be read, so the hand-entry path opens by itself (FR-007). */
+  const [listFailed, setListFailed] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualId, setManualId] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [manualResult, setManualResult] = useState<{ error: boolean; text: string } | null>(null);
+  const manualInput = useRef<HTMLInputElement>(null);
+  const manualInputId = useId();
+  // A model id only matters to the writing agent, which the browser build does not run.
+  const manualAllowed = window.studio.platform !== "web";
 
   const loadConnections = useCallback(async () => {
     setError(null);
@@ -62,18 +72,27 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
     setChosen(initialModelId);
     setAllowContributor(book.allowContributorTraining);
     setSearch("");
+    setManualOpen(false);
+    setManualId("");
+    setManualResult(null);
     void loadConnections();
   }, [open, initialConnectionId, initialModelId, book.allowContributorTraining, loadConnections]);
 
   const loadModels = useCallback(async (id: string) => {
     setLoading(true);
     setError(null);
+    setListFailed(false);
     setModels([]);
     try {
       const catalogue = await must(window.studio.providers.models(id));
       setModels(catalogue.models);
+      if (catalogue.listError) {
+        setError(catalogue.listError);
+        setListFailed(true);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      setListFailed(true);
     } finally {
       setLoading(false);
     }
@@ -105,6 +124,43 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
   const chosenModel = models.find((model) => model.id === chosen) ?? null;
   const contributor = isContributorModel(chosenModel);
   const warning = contributorWarning(chosenModel);
+  const manualVisible = manualAllowed && connection !== null && (manualOpen || listFailed);
+
+  useEffect(() => {
+    if (manualOpen) manualInput.current?.focus();
+  }, [manualOpen]);
+
+  const addManual = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    const id = manualId.trim();
+    if (!connection || !id || checking) return;
+    setManualResult(null);
+    const listed = models.find((model) => model.id === id);
+    if (listed) {
+      if (canRunAgent(listed)) setChosen(listed.id);
+      setManualResult({ error: false, text: "This connection already lists that model, so nothing was sent." });
+      return;
+    }
+    setChecking(true);
+    try {
+      const model = await must(window.studio.providers.addModel(connection.id, id));
+      setModels((current) => [...current.filter((item) => item.id !== model.id), model]);
+      setManualId("");
+      setSearch("");
+      const reason = unavailableReason(model);
+      if (canRunAgent(model)) setChosen(model.id);
+      setManualResult({
+        error: false,
+        text: `${model.name} answered, so it is saved on ${connection.label}.${
+          canRunAgent(model) || !reason ? "" : ` The writing agent cannot use it yet. ${reason}`
+        }`
+      });
+    } catch (cause) {
+      setManualResult({ error: true, text: cause instanceof Error ? cause.message : String(cause) });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const save = async (): Promise<void> => {
     if (!connection || !chosen || saving) return;
@@ -181,6 +237,9 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                     onClick={() => {
                       setConnectionId(item.id);
                       setChosen(null);
+                      setManualOpen(false);
+                      setManualId("");
+                      setManualResult(null);
                     }}
                     className={`rounded-[var(--corner-md)] border px-3 py-2 text-left text-[var(--text-subheadline-size)] transition-colors ${
                       item.id === connectionId
@@ -241,6 +300,11 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-[var(--text-subheadline-size)] font-medium">{model.name}</span>
+                        {model.manual ? (
+                          <span className="block text-[var(--text-caption-size)] text-muted-foreground" data-testid="model-manual">
+                            Entered by hand
+                          </span>
+                        ) : null}
                         <span className="tabular block text-[var(--text-caption-size)] text-muted-foreground">
                           {model.contextLength ? `${Math.round(model.contextLength / 1000)}k context` : "Context not reported"}
                           {" · "}
@@ -283,6 +347,53 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
               </p>
             ) : null}
 
+            {manualVisible ? (
+              <form
+                className="space-y-2 rounded-[var(--corner-lg)] border border-[var(--border)] p-3"
+                onSubmit={(event) => void addManual(event)}
+                data-testid="manual-model"
+              >
+                <label htmlFor={manualInputId} className="block text-[var(--text-caption-size)] font-medium text-muted-foreground">
+                  Model id
+                </label>
+                <p className="text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+                  {listFailed
+                    ? "This connection's model list could not be read, so enter the model id by hand."
+                    : "For a model this connection does not list."}{" "}
+                  The studio sends the model one short request with no book text and saves the id only if it answers.
+                  Your provider may bill that request.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    ref={manualInput}
+                    id={manualInputId}
+                    value={manualId}
+                    onChange={(event) => setManualId(event.target.value)}
+                    placeholder="vendor/model-name"
+                    maxLength={200}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-1.5 font-[var(--font-code)] text-[var(--text-caption-size)] outline-none placeholder:font-[var(--font-ui)] placeholder:text-muted-foreground focus-visible:border-[var(--ring)]"
+                  />
+                  <Button type="submit" size="sm" variant="secondary" disabled={checking || !manualId.trim()} data-testid="manual-model-add">
+                    {checking ? <Loader2 size={13} className="animate-spin" /> : null}
+                    Add model
+                  </Button>
+                </div>
+                {manualResult ? (
+                  <p
+                    className={`text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] ${
+                      manualResult.error ? "text-destructive-text" : "text-muted-foreground"
+                    }`}
+                    role={manualResult.error ? "alert" : "status"}
+                    data-testid="manual-model-result"
+                  >
+                    {manualResult.text}
+                  </p>
+                ) : null}
+              </form>
+            ) : null}
+
             {contributor && warning ? (
               <div className="rounded-[var(--corner-lg)] border border-[var(--warning)] bg-[var(--secondary)] p-3">
                 <p className="text-[var(--text-subheadline-size)] font-medium">Contributor mode</p>
@@ -305,6 +416,11 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
         )}
 
         <DialogFooter>
+          {manualAllowed && connection !== null && !manualVisible ? (
+            <Button variant="ghost" className="mr-auto" onClick={() => setManualOpen(true)} data-testid="enter-model-id">
+              Enter a model id
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

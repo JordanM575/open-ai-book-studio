@@ -4,7 +4,8 @@ AI Book Studio does not keep provider keys in the library, logs or the renderer.
 vault is:
 
 1. **Ciphertext** in `<userData>/credentials.json` (mode `0600`). The file contains provider, label,
-   dates and an encrypted secret blob; never a plaintext key.
+   dates, any base URL and model ids the author entered by hand, and an encrypted secret blob; never a
+   plaintext key.
 2. **A master key in the macOS login keychain**, created by Electron `safeStorage`. It is the
    `<app name> Safe Storage` item (the dev build can use a different item name than the packaged app).
 
@@ -95,8 +96,8 @@ item is scoped to the app name. Reconnect in the build you are using.
 
 ## Security limits, stated plainly
 
-- The credential file's metadata (provider, label, dates) is visible to anyone who can read the file;
-  the secret is ciphertext.
+- The credential file's metadata (provider, label, dates, any base URL and model ids entered by hand) is
+  visible to anyone who can read the file; the secret is ciphertext.
 - The legacy keychain item is accessible to the logged-in user's processes subject to its ACL. It is not
   a hardware-bound or Touch ID-gated secret.
 - The browser build has no keychain; it uses origin storage with the disclosure in the app.

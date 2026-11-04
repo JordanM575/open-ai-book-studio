@@ -31,7 +31,8 @@ const api: StudioApi = {
   app: {
     info: () => invoke(IPC.app.info),
     licenses: () => invoke(IPC.app.licenses),
-    onSecondInstance: (callback) => secondInstance.subscribe(callback)
+    onSecondInstance: (callback) => secondInstance.subscribe(callback),
+    openLink: (url) => invoke(IPC.app.openLink, url)
   },
   library: {
     choose: () => invoke(IPC.library.choose),
@@ -119,7 +120,8 @@ const api: StudioApi = {
   },
   providers: {
     list: () => invoke(IPC.providers.list),
-    models: (connectionId) => invoke(IPC.providers.models, connectionId)
+    models: (connectionId) => invoke(IPC.providers.models, connectionId),
+    addModel: (connectionId, modelId) => invoke(IPC.providers.addModel, { connectionId, modelId })
   },
   connections: {
     list: () => invoke(IPC.connections.list),

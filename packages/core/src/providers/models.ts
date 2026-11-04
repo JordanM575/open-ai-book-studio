@@ -7,6 +7,11 @@ export type CatalogueFreshness = "fresh" | "stale" | "absent";
 export interface Catalogue<T extends ModelInfo = ModelInfo> {
   models: T[];
   fetchedAt: string | null;
+  /**
+   * Why the provider's own list could not be read, when `models` holds only the ids the author
+   * entered by hand (FR-007). Absent whenever the list was read.
+   */
+  listError?: string | undefined;
 }
 
 export function catalogueFreshness(

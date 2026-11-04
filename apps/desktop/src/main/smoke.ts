@@ -203,6 +203,10 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="library-view"]')`)),
         "the library view"
       );
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="book-card"]')`)),
+        "the book card"
+      );
       const title = await evaluate<string>(
         win,
         `document.querySelector('[data-testid="book-card"]')?.innerText ?? ""`
@@ -218,6 +222,23 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       if (!line.includes("Ready")) throw new Error(`health line read: ${JSON.stringify(line)}`);
       return line;
+    });
+
+    // Refusals only: the allowed page would open a real browser and a real connection would reach a
+    // provider, so a hidden run never asks for either.
+    await check("the bridge refuses an unlisted page and a model id for a missing connection", async () => {
+      const outcome = await evaluate<string>(
+        win,
+        `(async () => {
+          const link = await window.studio.app.openLink("https://example.com/");
+          if (link.ok) return "an unlisted page was opened";
+          const model = await window.studio.providers.addModel("conn_smokemissing1", "vendor/model");
+          if (model.ok) return "a model id was kept for a connection that does not exist";
+          return link.error.code + " · " + model.error.code;
+        })()`
+      );
+      if (outcome !== "invalid · auth") throw new Error(outcome);
+      return "an unlisted page and a missing connection are both refused";
     });
 
     await check("opening a book shows the manuscript", async () => {
@@ -265,6 +286,9 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         inPage(`document.querySelector('[data-testid="open-provider-settings"]')`)
       );
       if (!settingsOpener) throw new Error("the empty model picker offered no way to open Settings");
+      // A model id belongs to a connection, so the hand-entry path waits until one exists.
+      const manualOffered = await evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="enter-model-id"]')`));
+      if (manualOffered) throw new Error("the empty model picker offered a model id without a connection");
       const closed = await evaluate<boolean>(
         win,
         `(() => {

@@ -79,6 +79,28 @@ export function normalizeProviderError(input: NormalizeInput): ProviderError {
   return new ProviderError("unknown", input.message ?? "The provider returned an unexpected response.", options);
 }
 
+const MODEL_MISSING =
+  /not a valid model|model_not_found|not_found_error|(?:unknown|invalid|no such) model|model\b[^.]{0,60}\b(?:not found|does not exist|not exist)/i;
+
+/**
+ * Why a hand-entered model id failed its check (FR-007). A 404, or a 400 that says the model does not
+ * exist, means the id is wrong for this connection. Every other answer keeps the shared mapping, so no
+ * access, rate limits and an unreachable provider read the same here as they do anywhere else.
+ */
+export function normalizeModelCheckError(input: NormalizeInput): ProviderError {
+  const haystack = `${input.message ?? ""} ${input.body ?? ""}`;
+  const missing =
+    input.status === 404 || ((input.status === 400 || input.status === 422) && MODEL_MISSING.test(haystack));
+  if (missing) {
+    return new ProviderError(
+      "not-found",
+      "This connection does not offer a model with that id. Check the spelling and that your account can use it.",
+      { provider: input.provider }
+    );
+  }
+  return normalizeProviderError(input);
+}
+
 function isOffline(input: NormalizeInput): boolean {
   if (input.status !== undefined) return false;
   return /fetch failed|network|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|abort/i.test(input.message ?? "");

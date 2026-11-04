@@ -67,6 +67,11 @@ export interface ModelInfo {
   reasoningEfforts?: string[] | null;
   /** Short provider or policy note shown in the model picker. */
   note?: string | null;
+  /**
+   * True when the author typed this id and one short request proved the model answers (FR-007).
+   * The provider's list did not include it, so its facts are unknown unless a preset supplies them.
+   */
+  manual?: boolean;
 }
 
 /** What the credential vault can safely tell the interface about its protected storage. */

@@ -91,6 +91,8 @@ and the desktop/web test foundation existed on `015-web-target` at the October 2
   - offline and rate-limit notes;
   - checkpoints for a failed turn;
   - per-turn and monthly spending warnings;
+  - a model id typed by hand, checked with one minimal request before it is kept, and a link to
+    revoke an OpenRouter key at the source;
   - tone and answer-length settings (specs 011 and 031).
 - Verification added during the event (spec 012), on top of the existing tests and desktop smoke:
   - one `verify` gate covering lint, typecheck, tests, the quarantine and waiver ledgers and both

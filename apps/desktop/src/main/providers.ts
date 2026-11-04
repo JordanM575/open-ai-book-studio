@@ -6,7 +6,22 @@ import { endpointFor, parseProviderModels } from "@ai-book-studio/core/providers
 import { applyModelPreset } from "@ai-book-studio/core/providers/compatibility";
 import { providerById } from "@ai-book-studio/core/providers/registry";
 import type { CredentialVault } from "@ai-book-studio/core/providers/credentials";
-import { ProviderError, type ConnectionSummary, type CredentialStatus, type ProviderId, type StoredCredential } from "@ai-book-studio/core/providers/types";
+import {
+  isManualModelId,
+  manualModel,
+  readManualModelIds,
+  withManualModelId,
+  withManualModels
+} from "@ai-book-studio/core/providers/manual";
+import { redact } from "@ai-book-studio/core/providers/redact";
+import {
+  ProviderError,
+  type ConnectionSummary,
+  type CredentialStatus,
+  type ModelInfo,
+  type ProviderId,
+  type StoredCredential
+} from "@ai-book-studio/core/providers/types";
 import { normalizeProviderError, parseRetryAfter } from "@ai-book-studio/core/providers/errors";
 import {
   OPENROUTER_KEY_EXCHANGE_URL,
@@ -19,6 +34,7 @@ import {
   readCallback
 } from "@ai-book-studio/core/providers/openrouter";
 import { newConnectionId } from "./credential-file";
+import { checkModel } from "./agent/transport";
 
 interface ActiveSignIn {
   server: Server;
@@ -214,6 +230,63 @@ export class ProviderService {
     const cached = this.catalogues.get(connectionId);
     if (cached) return cached;
     const credential = await this.requireCredential(connectionId);
+    const manual = readManualModelIds(credential.metadata).map((id) => manualModel(credential.provider, id));
+    let listed: ModelInfo[];
+    try {
+      listed = await this.listModels(credential);
+    } catch (error) {
+      // FR-007: a connection whose list cannot be read still offers the models the author checked by
+      // hand. Nothing is cached, so the next read asks the provider for its list again.
+      if (manual.length === 0) throw error;
+      return { models: manual, fetchedAt: null, listError: redact(error instanceof Error ? error.message : String(error)) };
+    }
+    const catalogue: Catalogue = { models: withManualModels(listed, manual), fetchedAt: new Date().toISOString() };
+    this.catalogues.set(connectionId, catalogue);
+    await this.vault.touch(connectionId);
+    return catalogue;
+  }
+
+  /**
+   * Keep a model id this connection does not list (FR-007). The model must answer one short request on
+   * the connection's own endpoint first; an id that does not answer is never saved.
+   */
+  async addModel(connectionId: string, modelId: string): Promise<ModelInfo> {
+    const id = modelId.trim();
+    if (!isManualModelId(id)) {
+      throw new ProviderError(
+        "invalid-request",
+        "That does not look like a model id. Copy it exactly as your provider writes it, with no spaces."
+      );
+    }
+    const credential = await this.requireCredential(connectionId);
+    await checkModel(credential, id, this.fetchImpl);
+    // Read the record again rather than writing the copy from before the check: the author may have
+    // removed the connection while the model answered, and a stale copy must never bring a key back.
+    const current = await this.requireCredential(connectionId);
+    if (!readManualModelIds(current.metadata).includes(id)) {
+      await this.vault.set({ ...current, metadata: withManualModelId(current.metadata, id) });
+    }
+    const model = manualModel(current.provider, id);
+    const cached = this.catalogues.get(connectionId);
+    if (cached) this.catalogues.set(connectionId, { ...cached, models: withManualModels(cached.models, [model]) });
+    return model;
+  }
+
+  async test(connectionId: string): Promise<{ message: string }> {
+    const credential = await this.requireCredential(connectionId);
+    const endpoint = endpointFor(credential.provider, credential.secret, credential.metadata?.baseUrl);
+    const response = await this.request(endpoint.url, endpoint.headers, credential.provider);
+    await this.vault.touch(connectionId);
+    if (credential.provider !== "openrouter") {
+      return { message: `${providerById(credential.provider).name} accepted this connection.` };
+    }
+    const payload = (await response.json()) as { data?: { label?: unknown; limit_remaining?: unknown } };
+    const remaining = payload.data?.limit_remaining;
+    const suffix = typeof remaining === "number" ? ` $${remaining.toFixed(2)} of credit remains.` : "";
+    return { message: `OpenRouter accepted this connection.${suffix}` };
+  }
+
+  private async listModels(credential: StoredCredential): Promise<ModelInfo[]> {
     const endpoint =
       credential.provider === "openrouter"
         ? {
@@ -231,25 +304,7 @@ export class ProviderService {
       credential.provider === "openrouter"
         ? parseOpenRouterModels(payload)
         : parseProviderModels(credential.provider, payload);
-    const enriched = models.map((model) => applyModelPreset(credential.provider, model));
-    const catalogue: Catalogue = { models: enriched, fetchedAt: new Date().toISOString() };
-    this.catalogues.set(connectionId, catalogue);
-    await this.vault.touch(connectionId);
-    return catalogue;
-  }
-
-  async test(connectionId: string): Promise<{ message: string }> {
-    const credential = await this.requireCredential(connectionId);
-    const endpoint = endpointFor(credential.provider, credential.secret, credential.metadata?.baseUrl);
-    const response = await this.request(endpoint.url, endpoint.headers, credential.provider);
-    await this.vault.touch(connectionId);
-    if (credential.provider !== "openrouter") {
-      return { message: `${providerById(credential.provider).name} accepted this connection.` };
-    }
-    const payload = (await response.json()) as { data?: { label?: unknown; limit_remaining?: unknown } };
-    const remaining = payload.data?.limit_remaining;
-    const suffix = typeof remaining === "number" ? ` $${remaining.toFixed(2)} of credit remains.` : "";
-    return { message: `OpenRouter accepted this connection.${suffix}` };
+    return models.map((model) => applyModelPreset(credential.provider, model));
   }
 
   private async exchangeCode(code: string, verifier: string): Promise<string> {

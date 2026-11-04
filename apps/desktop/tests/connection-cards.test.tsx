@@ -53,6 +53,7 @@ interface CardMocks {
   models: ReturnType<typeof mock>;
   remove: ReturnType<typeof mock>;
   list: ReturnType<typeof mock>;
+  openLink: ReturnType<typeof mock>;
 }
 
 function mockSettings(conns: unknown[], hooks: { test?: (id: string) => Promise<unknown>; remove?: (id: string) => Promise<unknown> } = {}): CardMocks {
@@ -78,6 +79,7 @@ function mockSettings(conns: unknown[], hooks: { test?: (id: string) => Promise<
     return Promise.resolve({ ok: true, data: null });
   });
   const list = mock(() => Promise.resolve({ ok: true, data: current }));
+  const openLink = mock((_url: string) => Promise.resolve({ ok: true, data: null }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
     providers: { list: mock(async () => ({ ok: true, data: [] })), models },
@@ -91,7 +93,7 @@ function mockSettings(conns: unknown[], hooks: { test?: (id: string) => Promise<
       cancelOpenRouter: mock(async () => ({ ok: true, data: null }))
     },
     library: { current: mock(async () => ({ ok: true, data: null })) },
-    app: { info: mock(async () => ({ ok: false, error: { code: "internal", message: "Synthetic." } })) },
+    app: { info: mock(async () => ({ ok: false, error: { code: "internal", message: "Synthetic." } })), openLink },
     voice: {
       connections: mock(async () => ({ ok: true, data: [] })),
       speakers: mock(async () => ({
@@ -100,7 +102,7 @@ function mockSettings(conns: unknown[], hooks: { test?: (id: string) => Promise<
       }))
     }
   };
-  return { test, models, remove, list };
+  return { test, models, remove, list, openLink };
 }
 
 function renderSettings() {
@@ -197,6 +199,48 @@ describe("connection cards", () => {
     await testing.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
+  });
+
+  test("removing an OpenRouter connection says the key also lives at OpenRouter, with a link to revoke it", async () => {
+    const mocks = mockSettings([KEY_CONN, OAUTH_CONN]);
+    const view = renderSettings();
+    await openCards(view, 2);
+    expect(view.queryByTestId("openrouter-revoke-note")).toBeNull();
+
+    testing.fireEvent.click(view.getAllByTestId("connection-remove")[1]!);
+    const note = view.getByTestId("openrouter-revoke-note");
+    expect(note.textContent).toContain("Remove deletes the key from this computer.");
+    expect(note.textContent).toContain("The key also exists in your OpenRouter account, where you can revoke it.");
+    // The confirm button is described by the note, so a screen reader hears it before removing.
+    const describedBy = view.getByTestId("connection-remove-confirm").getAttribute("aria-describedby");
+    expect(describedBy ? document.getElementById(describedBy)?.textContent : null).toContain("revoke it");
+
+    // The link opens OpenRouter's keys page through the main process and removes nothing.
+    testing.fireEvent.click(view.getByTestId("openrouter-keys-link"));
+    await testing.waitFor(() => expect(mocks.openLink).toHaveBeenCalledTimes(1));
+    expect(mocks.openLink.mock.calls[0]?.[0]).toBe("https://openrouter.ai/settings/keys");
+    expect(mocks.remove).not.toHaveBeenCalled();
+    expect(view.getAllByTestId("connection-card")).toHaveLength(2);
+
+    testing.fireEvent.click(view.getByTestId("connection-remove-confirm"));
+    await testing.waitFor(() => {
+      expect(view.getAllByTestId("connection-card")).toHaveLength(1);
+    });
+    expect(mocks.remove.mock.calls[0]?.[0]).toBe("conn_test000002");
+    await testing.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+  });
+
+  test("an API key's removal has no OpenRouter note", async () => {
+    mockSettings([KEY_CONN, OAUTH_CONN]);
+    const view = renderSettings();
+    await openCards(view, 2);
+
+    testing.fireEvent.click(view.getAllByTestId("connection-remove")[0]!);
+    expect(view.getByTestId("connection-remove-confirm")).toBeTruthy();
+    expect(view.queryByTestId("openrouter-revoke-note")).toBeNull();
+    expect(view.getByTestId("connection-remove-confirm").getAttribute("aria-describedby")).toBeNull();
   });
 
   test("card actions are keyboard-focusable", async () => {

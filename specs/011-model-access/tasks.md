@@ -1,12 +1,12 @@
 # Tasks: model access
 
-**Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **State**: in progress — Phases 1–4, selection, model picker, transport, the first writing-agent loop and usage records implemented
+**Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **State**: in progress — Phases 1–4, selection, model picker, transport, the first writing-agent loop, usage records, hand-entered model ids and the OpenRouter revocation link implemented
 Tasks are ordered. `[P]` means it can run in parallel with the other `[P]` tasks in the same phase.
 A task that depends on an open decision is marked and must not start until the decision is accepted.
 
 **Implemented channel names**: `providers:list`, `providers:models`, `connections:list`,
 `connections:available`, `connections:addKey`, `connections:startOpenRouter`, `connections:cancelOpenRouter`,
-`connections:remove`, `connections:test`, `usage:summary`. T006 is complete. T007 stays open
+`connections:remove`, `connections:test`, `usage:summary`, `providers:addModel` and `app:openLink`. T006 is complete. T007 stays open
 for handler-level malformed-input tests. T011 has the `0600` write and startup availability warning but
 no permission repair; T012 has a credential-file plaintext test but does not yet scan `studio.json` or a
 fixture library. T032 is complete: every agent turn appends its total across steps. T033 and T034 are
@@ -170,3 +170,40 @@ tasks rather than interface-blocked. T039 remains blocked on D-101.
   and add `STUDIO_VISIBLE=1` for a visible throwaway profile. The doc covers the ciphertext file, the
   `<app name> Safe Storage` item, `security unlock-keychain` without a password argument, locked-state
   testing, dev/packaged identity differences, recovery and the legacy-keychain limits.
+
+## Phase 10 — Hand-entered model ids and key revocation
+
+FR-007 and FR-013 had no tasks. Stated assumption, recorded here rather than as a new store: a
+hand-entered id belongs to one connection, so it lives in that connection's credential metadata beside
+its base URL. It is not a secret, survives a restart, and goes with the record when the connection is
+removed (FR-027).
+
+- [x] T045 Check a model id the connection does not list before keeping it (FR-007). `providers:addModel`
+  validates sizes with Zod and the id's shape in `ProviderService` (one token, no `.` or `..` segment),
+  then `checkModel` in `apps/desktop/src/main/agent/transport.ts` sends one request through the adapter a
+  turn uses: a fixed prompt with no book text, a 16-token limit (the smallest OpenAI's Responses API
+  accepts), no retries, and only the connection's own endpoint and base URL. The id is saved only if the
+  model answers; `normalizeModelCheckError` maps a refusal to not found, no access, rate limited or
+  unreachable, and the record is re-read after the check so a connection removed meanwhile stays removed.
+  The browser build refuses plainly, because it cannot run the writing agent. Tests:
+  `apps/desktop/tests/manual-models.test.ts`, `apps/desktop/tests/ipc-provider-links.test.ts`,
+  `packages/core/tests/manual-models.test.ts`, `apps/web/tests/provider-links.test.ts`.
+- [x] T046 List kept ids like catalogue models. `providers.models()` adds them behind the listed models
+  (a listed model keeps the provider's facts) and still returns them, with `listError`, when the list
+  cannot be read, so a turn on that connection runs. The picker offers Enter a model id as a secondary
+  footer action, opens the path by itself when the list fails, marks kept ids "Entered by hand" and says
+  "not reported" for unknown price, context and capabilities; unknown tool support keeps a model from the
+  writing agent as before, and Meta's Muse Spark presets and the Contributor opt-in still apply. Tests:
+  a restart over `FileCredentialVault`, an unlisted connection and a turn in
+  `apps/desktop/tests/manual-models.test.ts`, and `apps/desktop/tests/model-picker-manual.test.tsx`.
+- [x] T047 Tell the author, in the OpenRouter removal confirmation, that the key also exists in their
+  OpenRouter account and can be revoked there, with Open OpenRouter keys (FR-013). `app:openLink` opens
+  only `https://openrouter.ai/settings/keys`, compared as a whole string in the main process; the
+  browser build opens the same allow-list in a new tab with no opener. The hidden smoke run checks that
+  the bridge refuses an unlisted page and a model id for a missing connection. Tests:
+  `apps/desktop/tests/connection-cards.test.tsx`, `apps/desktop/tests/ipc-provider-links.test.ts`,
+  `apps/web/tests/provider-links.test.ts`.
+- [ ] T048 Run the live pass: enter a model id that a real connection does not list, confirm one short
+  request reaches only that connection's endpoint and the id survives a restart, then remove an OpenRouter
+  connection and follow Open OpenRouter keys in the system browser. Not run yet: automated checks use
+  mocked fetch only and never open a browser.

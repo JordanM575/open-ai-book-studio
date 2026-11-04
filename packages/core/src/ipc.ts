@@ -14,7 +14,8 @@ import type { ImageSize } from "./providers/images";
 import type { ImageRecord } from "./images/schema";
 import type { SegmentationResult } from "./images/segmentation";
 import type { ImageList } from "./images/store";
-import type { ConnectionSummary, CredentialStatus, ProviderDescription, ProviderId } from "./providers/types";
+import type { ConnectionSummary, CredentialStatus, ModelInfo, ProviderDescription, ProviderId } from "./providers/types";
+import type { ExternalLink } from "./providers/links";
 import type { UsageSummary } from "./providers/usage";
 import type { VoiceTranscript } from "./providers/speech";
 import type { AgentEvent, AgentTurnInput, AgentTurnStarted } from "./agent";
@@ -95,7 +96,9 @@ export const IPC = {
   app: {
     info: "app:info",
     /** The open-source licenses this build ships, read-only (D-186). */
-    licenses: "app:licenses"
+    licenses: "app:licenses",
+    /** Open one allow-listed page in the author's browser. Any other address is refused. */
+    openLink: "app:openLink"
   },
   library: {
     choose: "library:choose",
@@ -154,7 +157,9 @@ export const IPC = {
   },
   providers: {
     list: "providers:list",
-    models: "providers:models"
+    models: "providers:models",
+    /** Check a model id the connection does not list with one short request, then keep it. */
+    addModel: "providers:addModel"
   },
   connections: {
     list: "connections:list",
@@ -348,6 +353,8 @@ export interface StudioApi {
      * the library. Returns an unsubscribe.
      */
     onSecondInstance(callback: () => void): () => void;
+    /** Opens an allow-listed page in the system browser. The main process refuses any other address. */
+    openLink(url: ExternalLink): Promise<Result<null>>;
   };
   library: {
     choose(): Promise<Result<LibraryInfo | null>>;
@@ -411,6 +418,11 @@ export interface StudioApi {
   providers: {
     list(): Promise<Result<ProviderDescription[]>>;
     models(connectionId: string): Promise<Result<Catalogue>>;
+    /**
+     * Keep a model id this connection does not list (FR-007). The main process sends the model one
+     * short request on the connection's own endpoint first and saves nothing unless it answers.
+     */
+    addModel(connectionId: string, modelId: string): Promise<Result<ModelInfo>>;
   };
   connections: {
     list(): Promise<Result<ConnectionSummary[]>>;

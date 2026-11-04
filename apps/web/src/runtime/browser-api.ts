@@ -4,6 +4,7 @@ import { ArchiveError } from "@ai-book-studio/core/archive/errors";
 import { LibraryError, LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { buildMetadata } from "@ai-book-studio/core/build";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
+import { EXTERNAL_LINKS } from "@ai-book-studio/core/providers/links";
 import type { UsageSummary } from "@ai-book-studio/core/providers/usage";
 import { exportBrowserArchive, importBrowserArchive, pickArchiveFile } from "../storage/archive-io";
 import { BrowserCredentialVault } from "../storage/credentials";
@@ -65,7 +66,16 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       info: () => safe(async () => buildMetadata("web", { platform: "web", arch: "unknown" })),
       licenses: () => safe(() => fetchLicenses()),
       // A browser build has no second copy to refuse; tabs take turns through a storage lock.
-      onSecondInstance: () => () => {}
+      onSecondInstance: () => () => {},
+      // The browser is the shell here: the same allow-list, opened in a new tab that cannot reach back.
+      openLink: (url) =>
+        safe(async (): Promise<null> => {
+          if (!(EXTERNAL_LINKS as readonly string[]).includes(url)) {
+            throw new Error("The studio does not open that page.");
+          }
+          window.open(url, "_blank", "noopener,noreferrer");
+          return null;
+        })
     },
     library: {
       choose: () => safe(() => libraries.chooseFolder()),
@@ -248,7 +258,12 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
 
     providers: {
       list: () => safe(async () => PROVIDER_LIST),
-      models: () => safe(async () => ({ models: [], fetchedAt: null }))
+      models: () => safe(async () => ({ models: [], fetchedAt: null })),
+      // A model id is only useful to the writing agent, which the browser build does not run yet.
+      addModel: () =>
+        Promise.resolve(
+          failure("invalid", "Entering a model id is available in the desktop app. The browser build cannot run the writing agent yet.")
+        )
     },
 
     connections: {

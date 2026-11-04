@@ -1,7 +1,8 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, KeyRound, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, KeyRound, Loader2, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import type { BuildMetadata } from "@ai-book-studio/core/build";
 import { BROWSER_CREDENTIAL_DISCLOSURE } from "@ai-book-studio/core/providers/credentials";
+import { OPENROUTER_KEYS_PAGE_URL } from "@ai-book-studio/core/providers/links";
 import type { ConnectionSummary, CredentialStatus, ModelInfo, ProviderDescription, ProviderErrorCode, ProviderId } from "@ai-book-studio/core/providers/types";
 import { providerStatus, type ProviderLastCheck } from "@ai-book-studio/core/providers/status";
 import type { SyncSettings, VoiceSpeakers } from "@ai-book-studio/core/ipc";
@@ -366,6 +367,15 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
     }
   };
 
+  /** FR-013: removing deletes the key here, but OpenRouter keeps its copy until the author revokes it. */
+  const openOpenRouterKeys = async (): Promise<void> => {
+    try {
+      await must(window.studio.app.openLink(OPENROUTER_KEYS_PAGE_URL));
+    } catch (error) {
+      onNotice(error);
+    }
+  };
+
   const remove = async (connection: ConnectionSummary): Promise<void> => {    setBusy(connection.id);
     try {
       await must(window.studio.connections.remove(connection.id));
@@ -561,6 +571,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                           size="sm"
                           disabled={busy === connection.id}
                           onClick={() => void remove(connection)}
+                          aria-describedby={connection.provider === "openrouter" ? `revoke-${connection.id}` : undefined}
                           data-testid="connection-remove-confirm"
                         >
                           Remove
@@ -578,6 +589,27 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                       )}
                     </div>
                   </div>
+                  {removing === connection.id && connection.provider === "openrouter" ? (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2" data-testid="openrouter-revoke-note">
+                      <p
+                        id={`revoke-${connection.id}`}
+                        className="min-w-0 flex-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground"
+                      >
+                        Remove deletes the key from {build?.target === "web" ? "this browser" : "this computer"}. The key also
+                        exists in your OpenRouter account, where you can revoke it.
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => void openOpenRouterKeys()}
+                        data-testid="openrouter-keys-link"
+                      >
+                        <ExternalLink size={13} />
+                        Open OpenRouter keys
+                      </Button>
+                    </div>
+                  ) : null}
                   {result[connection.id] ? (
                     <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
                       {result[connection.id]}

@@ -115,6 +115,19 @@ Update the `Unreleased` section before every commit.
   other outbound request. The key is in no file of the run's profile or library and in no line the
   app printed. The check turns desktop notifications off inside the app, because a hidden window
   would otherwise announce every finished turn; a hidden run now logs them instead (see Fixed).
+- A model the connection does not list, or a connection whose list cannot be read, can now be
+  entered by hand (011 FR-007). Enter a model id in the model picker; the path opens by itself when
+  the list fails. The main process sends that model one short request through the same adapter a turn
+  uses, so it goes only to the connection's own endpoint and base URL, with no book text and no
+  retries, and keeps the id only if the model answers. A refusal says why: not found, no access,
+  rate limited or unreachable. Kept ids live in the connection's record beside its base URL, so they
+  survive a restart and go when the connection is removed. The picker marks them "Entered by hand"
+  and says "not reported" for every fact the provider did not give; unknown tool support still keeps
+  a model from the writing agent, while Meta's Muse Spark presets, Contributor opt-in included, still
+  apply. The browser build does not offer it, because it cannot run the writing agent yet. Removing
+  an OpenRouter connection now also says that the key exists in the author's OpenRouter account and
+  can be revoked there, with Open OpenRouter keys (FR-013); a new `app:openLink` channel opens exactly
+  https://openrouter.ai/settings/keys and refuses any other address.
 - The workspace exports the manuscript as one Markdown file beside the Word export: the book
   title, then each chapter in reading order under its own heading with its text unchanged. It
   goes through the same publication boundary as Word (a cancelled picker or a declined

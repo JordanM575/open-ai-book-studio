@@ -140,7 +140,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-018 | Static assets only; no account, telemetry, background upload | GAP: no test tracks outbound requests or asserts static-only/no-telemetry; nearest is `apps/web/tests/csp.test.ts` connect-src allowlist (policy, not behavior) |
 | FR-019 | Failures stay usable with specific recovery actions | COVER: `apps/web/tests/storage/opfs.test.ts`, `apps/web/tests/storage/permission-recovery.test.ts`, `apps/web/tests/storage/fsa.test.ts` |
 
-## 011 — Model access (58 requirements: 40 covered, 1 partial, 17 gaps)
+## 011 — Model access (58 requirements: 42 covered, 1 partial, 15 gaps)
 
 | FR | Requirement | Coverage |
 | --- | --- | --- |
@@ -150,13 +150,13 @@ can perform and why. **GAP** names what covers nothing yet and why.
 | FR-004 | Disable impossible actions with one-sentence reason | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/providers-contract.test.ts`, `apps/desktop/tests/manuscript-editor.test.ts` |
 | FR-005 | Agent requires tool support, explains when lacking | COVER: `packages/core/tests/providers.test.ts`, `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/selection.test.ts` |
 | FR-006 | Cached timestamped catalogue, on-demand refresh, offline use | COVER: `packages/core/tests/providers-contract.test.ts`, `packages/core/tests/providers.test.ts`, `apps/desktop/tests/providers-service.test.ts` |
-| FR-007 | Manual model id with minimal-request validation | GAP: no manual-id code path or test found anywhere |
+| FR-007 | Manual model id with minimal-request validation | COVER: `apps/desktop/tests/manual-models.test.ts` (one short request to the connection's own endpoint, mapped refusals, restart, unlisted connection, a turn), `apps/desktop/tests/ipc-provider-links.test.ts`, `apps/desktop/tests/model-picker-manual.test.tsx`, `packages/core/tests/manual-models.test.ts`, `apps/web/tests/provider-links.test.ts`; mocked fetch only, the live pass is T048 |
 | FR-008 | OpenRouter one-click OAuth PKCE S256, state, no secret | COVER: `packages/core/tests/providers.test.ts`, `apps/desktop/tests/providers-service.test.ts`, `apps/desktop/tests/oauth-signin.test.ts` |
 | FR-009 | Desktop loopback 127.0.0.1 free port, closes after | COVER: `apps/desktop/tests/oauth-signin.test.ts`, `apps/desktop/tests/providers-service.test.ts` |
 | FR-010 | Web callback to own origin, short-lived verifier | COVER: `apps/web/tests/storage/openrouter.test.ts` |
 | FR-011 | Reject bad state, exchange once, explain expiry | COVER: `packages/core/tests/openrouter-callback.test.ts`, `apps/desktop/tests/oauth-signin.test.ts`, `packages/core/tests/providers.test.ts` |
 | FR-012 | Issued key labelled, protected, never displayed | COVER: `apps/desktop/tests/providers-service.test.ts`, `apps/desktop/tests/credentials.test.ts` |
-| FR-013 | Removal deletes key, links OpenRouter revocation | GAP: deletion tested; revocation-link copy in SettingsDialog untested |
+| FR-013 | Removal deletes key, links OpenRouter revocation | COVER: `apps/desktop/tests/credentials.test.ts` (remove deletes the record), `apps/desktop/tests/connection-cards.test.tsx` (revocation note and link in the OpenRouter confirm), `apps/desktop/tests/ipc-provider-links.test.ts` (only the keys page opens), `apps/web/tests/provider-links.test.ts` |
 | FR-014 | ChatGPT sign-in desktop-only, absent in web | GAP: no flow implemented; registry holds only a note |
 | FR-015 | Install host id, PKCE, nonce, verified identity | GAP: no ChatGPT implementation or test exists |
 | FR-016 | Identity/offline/plan scopes only, no conversations | GAP: no scope model or request implemented |
@@ -342,7 +342,7 @@ can perform and why. **GAP** names what covers nothing yet and why.
 
 ## Totals
 
-272 requirements: 182 covered, 4 partial, 14 manual, 72 gaps. The gaps cluster: the
+272 requirements: 184 covered, 4 partial, 14 manual, 70 gaps. The gaps cluster: the
 unbuilt ChatGPT plan flow (011 FR-014–FR-020 and dependents), unbuilt device lock
 (016 FR-013–FR-018), unregistered CI (012 FR-028–FR-034), unenforced workspace
 hygiene (013 FR-001–FR-006; T002 lint would cover these), and timing budgets (012

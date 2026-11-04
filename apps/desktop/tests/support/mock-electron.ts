@@ -21,6 +21,7 @@ export interface ElectronHooks {
   showOpenDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePaths: string[] }>;
   showSaveDialog?: (options: unknown, window: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
   showMessageBox?: (options: unknown, window: unknown) => Promise<{ response: number }>;
+  openExternal?: (url: string) => void;
 }
 
 type Answer<T> = (options: unknown, window: unknown) => Promise<T>;
@@ -82,6 +83,9 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
       }
     },
     session: {},
-    shell: { showItemInFolder: (path: string) => current.hooks.showItemInFolder?.(path) }
+    shell: {
+      showItemInFolder: (path: string) => current.hooks.showItemInFolder?.(path),
+      openExternal: async (url: string) => current.hooks.openExternal?.(url)
+    }
   }));
 }
