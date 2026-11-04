@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, session, shell } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -9,6 +9,8 @@ import {
 } from "@ai-book-studio/core/ipc";
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
 import { DraftBuffer } from "./drafts";
+import { ExitGuard, type ExitQuestion } from "./exit-guard";
+import { RecoveryStore } from "./recovery";
 import { SyncService } from "./sync";
 import { registerIpc } from "./ipc";
 import { createDesktopVault } from "./credentials";
@@ -68,7 +70,10 @@ let providers: ProviderService;
 let agentRuntime: AgentRuntime;
 let notifier: BackgroundNotifier;
 let backend: LocalBackend | null = null;
-let flushed = false;
+let exitGuard: ExitGuard | undefined;
+/** Set once a quit has saved or kept every draft and the author did not choose to stay. */
+let quitting = false;
+let quitCheck: Promise<void> | null = null;
 
 /*
  * One writer per profile (spec 002 FR-069), and the first thing a run does once its userData folder
@@ -179,17 +184,28 @@ function createWindow(): BrowserWindow {
   window.on("moved", rememberBounds);
 
   // Give the draft buffer one chance to reach the disk before the window goes away. The window is
-  // asked for its newest text first: the draft it last sent can trail the last keystrokes.
+  // asked for its newest text first: the draft it last sent can trail the last keystrokes. Words the
+  // library refuses are kept for recovery, and the author chooses whether the window closes. A quit
+  // already did all of this before it closes the window, so it is not asked twice.
   let allowClose = false;
+  let closeCheck: Promise<void> | null = null;
   window.on("close", (event) => {
-    if (allowClose) return;
+    if (allowClose || quitting || !exitGuard) return;
     event.preventDefault();
-    void studio
-      .flushDrafts(window.webContents)
-      .catch((error: unknown) => console.warn("[studio] Flush before close failed:", error))
-      .finally(() => {
+    if (closeCheck) return;
+    closeCheck = exitGuard
+      .check(window.webContents, "close")
+      .catch((error: unknown) => {
+        console.warn("[studio] Flush before close failed:", error);
+        return "leave" as const;
+      })
+      .then((choice) => {
+        if (choice === "stay") return;
         allowClose = true;
         window.close();
+      })
+      .finally(() => {
+        closeCheck = null;
       });
   });
 
@@ -368,7 +384,8 @@ const started = app.whenReady().then(async () => {
 
   const settings = new SettingsStore();
   await settings.load();
-  studio = new Studio(settings, new DraftBuffer());
+  studio = new Studio(settings, new DraftBuffer(), new RecoveryStore(join(app.getPath("userData"), "recovery")));
+  exitGuard = new ExitGuard(studio, { headless, ask: askBeforeExit });
   studio.onExternalChange = (event) => {
     mainWindow?.webContents.send(LIBRARY_EVENT_CHANNEL, event);
   };
@@ -546,18 +563,37 @@ const started = app.whenReady().then(async () => {
   });
 });
 
+/** The native question before a close or quit with unsaved words, on the window when there is one. */
+async function askBeforeExit(question: ExitQuestion): Promise<number> {
+  const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const { response } = window ? await dialog.showMessageBox(window, question) : await dialog.showMessageBox(question);
+  return response;
+}
+
+/*
+ * The quit decides before it stops anything: an author who keeps the studio open keeps the control
+ * plane too. A second quit while the question is open waits for the first, and a quit during the
+ * close question shares its answer (`ExitGuard.check`).
+ */
 app.on("before-quit", (event) => {
-  if (flushed || !studio) return;
+  if (quitting || !studio || !exitGuard) return;
   event.preventDefault();
-  void Promise.allSettled([
-    studio.flushDrafts(mainWindow?.webContents ?? null),
-    backend?.stop() ?? Promise.resolve()
-  ])
-    .catch((error: unknown) => console.warn("[studio] Flush before quit failed:", error))
-    .finally(() => {
-      flushed = true;
-      app.quit();
+  if (quitCheck) return;
+  const guard = exitGuard;
+  quitCheck = (async () => {
+    const choice = await guard.check(mainWindow?.webContents ?? null, "quit").catch((error: unknown) => {
+      console.warn("[studio] Flush before quit failed:", error);
+      return "leave" as const;
     });
+    if (choice === "stay") return;
+    await (backend?.stop() ?? Promise.resolve()).catch((error: unknown) =>
+      console.warn("[backend] Could not stop the agent toolkit service:", error)
+    );
+    quitting = true;
+    app.quit();
+  })().finally(() => {
+    quitCheck = null;
+  });
 });
 
 app.on("window-all-closed", () => {

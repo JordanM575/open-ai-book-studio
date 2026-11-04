@@ -224,6 +224,12 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
       // A browser tab is never asked before it closes; `flushDraftsOnHide` is its safety net.
       onFlushRequest: () => () => {}
     },
+    // Only the desktop app keeps words a close could not save; a tab has no profile folder for them.
+    recovery: {
+      list: () => safe(async () => []),
+      restore: () => Promise.resolve(failure("not-found", "The browser build keeps no words outside the library.")),
+      discard: () => safe(async () => null)
+    },
     sync: {
       check: () =>
         safe(async () => {

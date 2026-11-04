@@ -67,6 +67,7 @@ function mockStudio(chapterReadIssues: Array<{ fileName: string; order: number |
       clear: mock(() => Promise.resolve({ ok: true, data: null })),
       onFlushRequest: mock(() => () => {})
     },
+    recovery: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
     images: { list: mock(() => Promise.resolve({ ok: true, data: { manifest: { images: [] } } })) },
     library: { onChange: mock(() => () => {}) },
     agent: { onEvent: mock(() => () => {}) },

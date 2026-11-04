@@ -8,6 +8,8 @@ import type {
   ManuscriptSettings
 } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
+import type { RecoveredDraft } from "@ai-book-studio/core/ipc";
+import { plainSaveReason } from "@ai-book-studio/core/library/errors";
 import { modelDisplayName } from "@ai-book-studio/core/providers/compatibility";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { Button } from "@ai-book-studio/ui/button";
@@ -31,7 +33,15 @@ import {
   reviewSourceSnapshotFromBookDetail,
   runReviewWork
 } from "@ai-book-studio/core/review";
-import { ManuscriptEditor, statusLabel, type EditorHandle, type EditorSelection, type SaveStatus } from "../components/ManuscriptEditor";
+import {
+  ManuscriptEditor,
+  saveProblem,
+  statusLabel,
+  type EditorHandle,
+  type EditorSelection,
+  type SaveStatus
+} from "../components/ManuscriptEditor";
+import { RecoveryPanel } from "../components/RecoveryPanel";
 import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateDialog";
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
 import { runAfterReviewSave } from "../lib/review-save-gate";
@@ -77,7 +87,7 @@ const EMPTY_STATUS: SaveStatus = { kind: "saved", at: Date.now() };
 function compactStatus(status: SaveStatus): string {
   switch (status.kind) {
     case "saved":
-      return "Saved";
+      return status.afterRetry ? "Saved after retrying" : "Saved";
     case "dirty":
       return "Unsaved";
     case "saving":
@@ -126,6 +136,8 @@ export function WorkspaceView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<SaveStatus>(EMPTY_STATUS);
   const [conflicts, setConflicts] = useState<ChapterConflict[]>([]);
+  const [recovered, setRecovered] = useState<RecoveredDraft[]>([]);
+  const [recovering, setRecovering] = useState(false);
   const [externalChange, setExternalChange] = useState<{ paths: string[]; at: string } | null>(null);
   const [issuesDismissed, setIssuesDismissed] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Chapter | null>(null);
@@ -232,6 +244,19 @@ export function WorkspaceView({
   useEffect(() => {
     if (status.kind === "conflict") void refreshConflicts();
   }, [status, refreshConflicts]);
+
+  // Words a close or quit could not save to this book are offered as soon as it opens.
+  const loadRecovered = useCallback(async () => {
+    try {
+      setRecovered(await must(window.studio.recovery.list(bookId)));
+    } catch (error) {
+      onNotice(error);
+    }
+  }, [bookId, onNotice]);
+
+  useEffect(() => {
+    void loadRecovered();
+  }, [loadRecovered]);
 
   useEffect(() => {
     // The main process reports only another writer's changes: it recognises the studio's own saves,
@@ -419,6 +444,50 @@ export function WorkspaceView({
       setReloadKey((key) => key + 1);
     } catch (error) {
       onNotice(error);
+    }
+  };
+
+  /**
+   * Put kept words back through the checked save. The editor saves its own text first, so kept words
+   * for the open chapter land as a conflict copy rather than replacing what the author typed since;
+   * then the workspace reloads what is on disk, as refreshFromDisk does. A failed restore keeps them.
+   */
+  const restoreRecovered = async (entry: RecoveredDraft): Promise<void> => {
+    if (recovering) return;
+    setRecovering(true);
+    const title = detail?.chapters.find((chapter) => chapter.id === entry.chapterId)?.title.trim() || "the chapter";
+    try {
+      await editorRef.current?.flush();
+      const result = await must(window.studio.recovery.restore(entry.id));
+      clearEditorHistory(entry.chapterId);
+      await load(result.status === "saved" ? entry.chapterId : (selectedId ?? undefined));
+      setReloadKey((key) => key + 1);
+      onNotice(
+        result.status === "saved"
+          ? `Your words are back in “${title}”.`
+          : `“${title}” changed after you typed these words, so they were kept as a separate copy instead of replacing it.`
+      );
+    } catch (error) {
+      onNotice(
+        `Your words are still kept, because they could not be restored. ${plainSaveReason(error instanceof Error ? error.message : String(error))}`
+      );
+    } finally {
+      await loadRecovered();
+      setRecovering(false);
+    }
+  };
+
+  /** Let kept words go, once the author has confirmed it in the panel. */
+  const discardRecovered = async (entry: RecoveredDraft): Promise<void> => {
+    if (recovering) return;
+    setRecovering(true);
+    try {
+      await must(window.studio.recovery.discard(entry.id));
+    } catch (error) {
+      onNotice(error);
+    } finally {
+      await loadRecovered();
+      setRecovering(false);
     }
   };
 
@@ -721,13 +790,14 @@ export function WorkspaceView({
 
         <div className="titlebar-no-drag flex shrink-0 items-center gap-2">
           <span
-            className="flex items-center gap-1.5 text-(length:--text-caption-size) text-muted-foreground"
+            className="flex min-w-0 items-center gap-1.5 text-(length:--text-caption-size) text-muted-foreground"
             role="status"
             aria-label={statusLabel(status)}
+            title={status.kind === "error" ? statusLabel(status) : undefined}
             data-testid="save-status"
           >
             <span
-              className={`size-1.5 rounded-full ${
+              className={`size-1.5 shrink-0 rounded-full ${
                 status.kind === "saved"
                   ? "bg-[var(--success)]"
                   : status.kind === "conflict" || status.kind === "error"
@@ -736,7 +806,18 @@ export function WorkspaceView({
               }`}
               aria-hidden
             />
-            <span className="text-[11px] min-[700px]:text-(length:--text-caption-size)">{compactStatus(status)}</span>
+            <span className="shrink-0 text-(length:--text-caption-2-size) min-[700px]:text-(length:--text-caption-size)">
+              {compactStatus(status)}
+            </span>
+            {status.kind === "error" ? (
+              // The reason the library gave; the full sentence, with the retry, is the status's label.
+              <span
+                className="max-w-[16ch] truncate text-(length:--text-caption-2-size) min-[700px]:max-w-[34ch] min-[700px]:text-(length:--text-caption-size)"
+                data-testid="save-problem"
+              >
+                · {saveProblem(status.message)}
+              </span>
+            ) : null}
           </span>
 
           <div className="hidden items-center gap-2 min-[700px]:flex">
@@ -927,6 +1008,14 @@ export function WorkspaceView({
         ) : null}
 
         <section className="thin-scroll min-w-0 flex-1 overflow-y-auto">
+          <RecoveryPanel
+            entries={recovered}
+            chapters={detail?.chapters ?? []}
+            busy={recovering}
+            onRestore={(entry) => void restoreRecovered(entry)}
+            onDiscard={(entry) => void discardRecovered(entry)}
+          />
+
           {conflict ? (
             <div className="glass mb-4 rounded-[var(--corner-lg)] p-4">
               <p className="text-(length:--text-callout-size) font-semibold text-[var(--destructive-text)]">

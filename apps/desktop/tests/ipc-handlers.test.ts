@@ -11,6 +11,7 @@ import type { Chapter } from "@ai-book-studio/core/schema";
 import { DraftBuffer } from "../src/main/drafts";
 import { Library } from "../src/main/library/store";
 import { MetricsStore } from "../src/main/metrics";
+import { RecoveryStore } from "../src/main/recovery";
 import { UsageStore } from "../src/main/usage";
 import { mockElectron } from "./support/mock-electron";
 
@@ -114,9 +115,12 @@ const PNG = new Uint8Array(
 async function setup(options: { open?: boolean; window?: object } = {}) {
   const root = await temp("studio-ipc-");
   const library = await Library.open(root);
+  // The recovery store lives in the profile, which is never inside the library.
+  const profile = await temp("studio-ipc-profile-");
   const studio = {
     library: options.open === false ? null : (library as Library | null),
     drafts: new DraftBuffer(),
+    recovery: new RecoveryStore(join(profile, "recovery")),
     current() {
       return this.library
         ? { root: this.library.root, deviceId: this.library.deviceId, deviceName: this.library.deviceName }
@@ -283,6 +287,9 @@ describe("ipc boundary", () => {
       [IPC.conflicts.reveal, { bookId: id, savedAs: "" }],
       [IPC.drafts.set, { bookId: id, chapterId, content: "x", baseVersion: 1, baseHash: "z".repeat(64) }],
       [IPC.drafts.clear, {}],
+      [IPC.recovery.list, "book_../x"],
+      [IPC.recovery.restore, "../studio.json"],
+      [IPC.recovery.discard, "rec_123"],
       [IPC.sync.accept, "books/one.md"],
       [IPC.sync.keepMine, {}],
       [IPC.sync.discardDraft, { bookId: id }],
@@ -607,6 +614,43 @@ describe("drafts and drift", () => {
     expect((await data<{ status: string }>(IPC.sync.keepMine, { bookId, chapterId: one.id })).status).toBe("saved");
     expect(await readFile(chapterFile(root, bookId, one), "utf8")).toContain("Typed before the window closed.");
     expect(studio.drafts.size).toBe(0);
+  });
+
+  test("kept words are listed without their text, restored through the checked save, or discarded", async () => {
+    const { root, library, studio } = await setup();
+    const { bookId, one, two } = await book(library);
+    const keep = (chapter: Chapter, content: string) =>
+      studio.recovery.keep(
+        { bookId, chapterId: chapter.id, content, baseVersion: chapter.version, baseHash: chapter.hash },
+        "The disk is full. Nothing was replaced.",
+        root
+      );
+    const first = await keep(one, "The salt road was under water, and the gulls had gone.\n");
+    const stale = await keep(two, "Mara waited for the ebb, and then she ran.\n");
+    const unwanted = await keep(two, "A line nobody wants.\n");
+
+    const listed = await data<Array<Record<string, unknown>>>(IPC.recovery.list, bookId);
+    expect(listed.map((entry) => entry.id).sort()).toEqual([first.id, stale.id, unwanted.id].sort());
+    // The renderer is told what was kept and why, never handed the text itself.
+    for (const entry of listed) {
+      expect(entry).not.toHaveProperty("content");
+      expect(entry.reason).toBe("The disk is full. Nothing was replaced.");
+    }
+
+    expect((await data<{ status: string }>(IPC.recovery.restore, first.id)).status).toBe("saved");
+    expect(await readFile(chapterFile(root, bookId, one), "utf8")).toContain("and the gulls had gone.");
+
+    // Another writer saved the second chapter after the words were kept: they become a conflict copy.
+    await library.saveChapter(bookId, two.id, "Mara crossed at dawn.\n", { baseVersion: two.version, baseHash: two.hash });
+    const conflict = await data<{ status: string; conflict: { savedAs: string } }>(IPC.recovery.restore, stale.id);
+    expect(conflict.status).toBe("conflict");
+    expect(await readFile(chapterFile(root, bookId, two), "utf8")).toContain("Mara crossed at dawn.");
+    expect(await readFile(join(root, conflict.conflict.savedAs), "utf8")).toContain("and then she ran.");
+
+    expect(await data(IPC.recovery.discard, unwanted.id)).toBeNull();
+    expect(await data(IPC.recovery.list, bookId)).toEqual([]);
+    const gone = await call(IPC.recovery.restore, first.id);
+    expect(gone.ok ? null : gone.error.code).toBe("not-found");
   });
 
   test("the drift scan runs on the open library and remembers when it ran", async () => {

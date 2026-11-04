@@ -13,6 +13,12 @@ export interface FlushTarget {
   send(channel: string, request: DraftFlushRequest): void;
 }
 
+/** A draft a flush could not save, and the reason the library gave. The buffer still holds it. */
+export interface FlushFailure {
+  draft: DraftInput;
+  reason: string;
+}
+
 /**
  * Keeps the newest text of an open chapter in memory so closing the window, quitting, or a crash
  * in the renderer cannot lose the last few seconds of typing. The renderer still saves on its own;
@@ -20,7 +26,8 @@ export interface FlushTarget {
  *
  * The editor sends a draft only after a 300 ms pause, so the buffer alone trails the last keystrokes.
  * Before a close or quit the window is asked for its newest text first (`requestNewest`); the drafts
- * already held are the fallback when it does not answer.
+ * already held are the fallback when it does not answer. A draft the library refuses is handed back
+ * rather than dropped, and the studio keeps it in its profile for recovery (`recovery.ts`).
  */
 export class DraftBuffer {
   private readonly drafts = new Map<string, DraftInput>();
@@ -37,6 +44,16 @@ export class DraftBuffer {
 
   clear(bookId: string, chapterId: string): void {
     this.drafts.delete(this.key(bookId, chapterId));
+  }
+
+  /**
+   * Let go of a draft that is kept for recovery once the author has chosen to close or quit, so the
+   * next flush has nothing left to ask about. A newer draft for the same chapter stays.
+   */
+  release(draft: DraftInput): void {
+    const key = this.key(draft.bookId, draft.chapterId);
+    const held = this.drafts.get(key);
+    if (held && held.content === draft.content && held.baseHash === draft.baseHash) this.drafts.delete(key);
   }
 
   get size(): number {
@@ -107,14 +124,26 @@ export class DraftBuffer {
     this.requests.get(requestId)?.();
   }
 
-  /** Before a close or quit: ask the window for its newest text, then save every draft held. */
-  async flushBeforeExit(library: Library, target: FlushTarget | null, timeoutMs = FLUSH_REQUEST_TIMEOUT_MS): Promise<void> {
+  /**
+   * Before a close or quit: ask the window for its newest text, then save every draft held. Returns
+   * the drafts that could not be saved, which the buffer still holds.
+   */
+  async flushBeforeExit(
+    library: Library,
+    target: FlushTarget | null,
+    timeoutMs = FLUSH_REQUEST_TIMEOUT_MS
+  ): Promise<FlushFailure[]> {
     await this.requestNewest(target, timeoutMs);
-    await this.flush(library);
+    return this.flush(library);
   }
 
-  /** Best effort: a conflict here preserves the draft next to the chapter instead of overwriting it. */
-  async flush(library: Library): Promise<void> {
+  /**
+   * Best effort: a conflict here preserves the draft next to the chapter instead of overwriting it.
+   * A draft that cannot be saved is kept in the buffer and returned with the reason, so a close or
+   * quit can keep its words for recovery instead of only logging them.
+   */
+  async flush(library: Library): Promise<FlushFailure[]> {
+    const failures: FlushFailure[] = [];
     for (const [key, draft] of [...this.drafts]) {
       try {
         const disk = await library.readChapter(draft.bookId, draft.chapterId);
@@ -128,8 +157,11 @@ export class DraftBuffer {
         });
         this.drafts.delete(key);
       } catch (error) {
-        console.warn(`[drafts] Could not flush ${key}:`, (error as Error).message);
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`[drafts] Could not flush ${key}:`, reason);
+        failures.push({ draft: { ...draft }, reason });
       }
     }
+    return failures;
   }
 }

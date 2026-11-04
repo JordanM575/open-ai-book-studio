@@ -1,7 +1,9 @@
 # The studio file format
 
 A library is an ordinary folder. Everything the app knows can be read, diffed and edited with a text
-editor; nothing important lives in a database, in the app's profile, or in an opaque blob.
+editor; nothing important lives in a database or in an opaque blob. The app's profile holds settings,
+and words a close or quit could not save until the author restores or discards them (see
+[Words kept after a failed close or quit](#words-kept-after-a-failed-close-or-quit)).
 
 ```
 <library>/
@@ -311,6 +313,43 @@ file is named `.<file name>.<process id>.<milliseconds in base 36>.tmp`, for exa
 `.book.json.4242.mhl7x2ps.tmp`. It exists only for the moment of the write; the studio's watcher never
 reports a file of that shape, and nothing should sync, edit or keep one.
 
+## Words kept after a failed close or quit
+
+When the last save before a window closes or the studio quits cannot write a chapter (a full disk, a
+read-only or locked folder, a chapter file that is missing, a library folder renamed while open), the
+unsaved text is kept in the studio's own profile, never in the library, at
+`<userData>/recovery/rec_<16 hex digits>.json`:
+
+```json
+{
+  "version": 1,
+  "id": "rec_0f3c9a1b2d4e5f60",
+  "bookId": "book_1f4c8a2b9d3e5a71",
+  "chapterId": "ch_6a1d0f9c2b7e4d13",
+  "content": "The whole chapter text as it was in the editor.",
+  "baseVersion": 4,
+  "baseHash": "…",
+  "keptAt": "2026-11-04T07:15:00.000Z",
+  "reason": "The disk is full. Nothing was replaced.",
+  "libraryRoot": "/Users/…/Writing"
+}
+```
+
+- `baseVersion` and `baseHash` are the chapter's version and SHA-256 the words were typed against.
+  `libraryRoot` is shown, never matched: a library folder that was renamed keeps its book ids.
+- Each file is written atomically with mode `0600`, in a folder with mode `0700`. A failure that
+  repeats writes a new file, so later words never replace earlier ones; an identical copy (same
+  chapter, base hash and text) is written once. A file that does not read is reported and left alone.
+- The author is asked before the studio closes or quits with kept words: keep it open, or leave with
+  the words kept. A hidden run logs the counts and the reason instead.
+- A kept copy is offered when its book opens. *Restore words* saves it through the checked save above,
+  so a chapter that changed since keeps the words as a conflict copy; the file goes once that save
+  returns. *Discard words* asks first, then removes the file. Nothing else removes one: not a later
+  save, not a restart, not a timer.
+- It is a disposable draft, not a second source of truth. Nothing reads it as the chapter, it never
+  travels in a portable archive, and deleting the folder loses only words the author has not restored.
+  The browser build keeps none; its drafts are flushed into storage when the page hides.
+
 ## Trash
 
 Deleting a chapter moves its file to `.studio/trash/<bookId>/<stamp>-<original name>.md`, where `<stamp>`
@@ -436,8 +475,9 @@ A book folder that does not open is never hidden. The library shows it as a card
 ## Privacy
 
 Library files are the only copy. The app has no account, no telemetry and no server-side copy. It
-writes exactly three things outside the library: the library path in `studio.json`, window bounds in
-the same file, and an OpenRouter key (later, in the macOS Keychain).
+writes exactly four things outside the library: the library path in `studio.json`, window bounds in
+the same file, an OpenRouter key (later, in the macOS Keychain), and words a close or quit could not
+save, in `recovery/` in the same profile, until the author restores or discards them.
 
 ## Images
 

@@ -585,6 +585,16 @@ enforcement, and the D-124 device-identity question stands.
 | **Evidence** | `apps/web/src/desktop-only/` (the list and the stubs), `apps/web/tests/desktop-only.test.ts`; `bun run perf`: the web bundle went from 917,120 to 886,906 bytes (1.19 to 1.15 times the baseline), and the CSS and the desktop build are byte-identical; `bun run smoke:web`, `bun run e2e`, `bun run visual` and `bun run a11y` pass without new baselines. |
 | **Owner** | spec 012 (SC-009) |
 
+### D-189 · Words a close or quit could not save are kept in the profile
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-04, on the author's delegation) |
+| **Question** | Where do the words go when the last save before a close or quit cannot write to the library, and how do they come back? |
+| **Decision** | Into `userData/recovery/`: one owner-only JSON file per refused draft, written atomically, with its book and chapter ids, the version and hash it was typed against, the reason and the time. The author is asked before the app goes: stay, or leave with the words kept. The next time the book opens, the workspace offers each copy. Restoring goes only through the checked save, so a chapter that changed since keeps the words as a conflict copy; discarding is an explicit, confirmed choice, and nothing removes a copy automatically. The library stays the only source of truth: a kept copy is a disposable draft, never read as the chapter. Rejected: writing beside the chapter (the folder is what failed, and a sync service would spread the copy); keeping the words only in memory (lost at quit); restoring them at launch without asking (a silent overwrite risk); deleting a copy after a later save of the chapter (the editor reloads from disk, so that would delete the only copy). |
+| **Evidence** | `apps/desktop/src/main/recovery.ts`, `exit-guard.ts`, `packages/app/src/components/RecoveryPanel.tsx`; `apps/desktop/tests/recovery.test.ts`, `failed-save.test.tsx`; `docs/FORMAT.md` ("Words kept after a failed close or quit"); the QA stress audit's D2. |
+| **Owner** | spec 002 (FR-013) |
+
 ## Resolved browser decisions
 
 ### D-104 · OpenRouter OAuth redirect on desktop and web

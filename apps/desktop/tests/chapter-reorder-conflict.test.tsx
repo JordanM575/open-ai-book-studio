@@ -101,6 +101,7 @@ function mockWorkspace(saveBehavior: "saved" | "conflict", syncCopies: unknown[]
       clear: mock(() => Promise.resolve({ ok: true, data: null })),
       onFlushRequest: mock(() => () => {})
     },
+    recovery: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
     images: { list: mock(() => Promise.resolve({ ok: true, data: { manifest: { images: [] } } })) },
     library: { onChange: mock(() => () => {}) },
     agent: { onEvent: mock(() => () => {}) },

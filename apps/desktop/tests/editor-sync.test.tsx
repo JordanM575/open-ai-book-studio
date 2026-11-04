@@ -56,7 +56,7 @@ interface Workspace {
   emitAgent: (event: AgentEvent) => void;
   emitChange: (change: LibraryChangeEvent) => void;
   /** What the main process does on a close or quit: ask the window for its newest text, then save every draft. */
-  quit: () => Promise<void>;
+  quit: () => Promise<unknown>;
   /** How many times the workspace has listed conflicts: the last step of every book load. */
   loads: () => number;
 }
@@ -145,6 +145,7 @@ async function mountWorkspace({ undo, ambient = null, saveDelayMs = 0 }: MountOp
       },
       onFlushRequest: (handler: () => Promise<unknown>) => flushRequests.subscribe(handler)
     },
+    recovery: { list: async () => ok([]) },
     images: { list: async () => ok({ manifest: { images: [] } }) },
     library: {
       onChange: (callback: (change: LibraryChangeEvent) => void) => {

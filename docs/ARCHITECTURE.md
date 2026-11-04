@@ -21,6 +21,7 @@ trusted file owner. The split is the architecture; everything else is detail.
 │   library/      format (markdown), atomic writes, paths, Library store       │
 │   settings.ts   userData/studio.json (library root, window bounds)           │
 │   drafts.ts     in-memory keystroke buffer, flushed on close and quit        │
+│   recovery.ts   words a close or quit could not save, kept in userData       │
 └───────────────────────────────────┬──────────────────────────────────────────┘
                                     │ fs (atomic)
                           the author's chosen folder
@@ -89,6 +90,19 @@ enough, and it keeps the format explainable. The index exists for queries, not f
   therefore through the conflict protocol), once, before the window closes. The editor sends its
   draft copy only after a 300 ms pause, so without the ask the last keystrokes would be lost; a window
   that does not answer within 1.5 s leaves the drafts already held as the fallback.
+- When that flush cannot write a chapter (a full disk, a read-only or locked folder, a missing file, a
+  renamed library), nothing is dropped. The editor whose own save failed hands its newest text to the
+  draft buffer; each draft the library refuses is written atomically to `recovery/` in the profile,
+  never the library (`docs/FORMAT.md`, "Words kept after a failed close or quit"); then the author
+  chooses in a native message box: keep the studio (or window) open, which keeps retrying, or leave
+  with the words kept. When even the profile refuses them, the leave button says the words will be
+  lost. A hidden run logs the counts and the reason instead of asking. The next time the book opens,
+  the workspace offers each kept copy: restoring goes through the checked save, and discarding asks.
+- A failed save shows the main process's reason in the save status, keeps the text in the editor, and
+  tries again after 2 s, 5 s and 10 s, then every 30 s while the text is unsaved; the status says when a
+  retry lands. A conflict is never retried, because the author resolves it. The one library message
+  that names a chapter by its id (its file is not where the book expects it) reaches the author through
+  `plainSaveReason` (`packages/core/src/library/errors.ts`) instead; agents and logs keep the original.
 
 ## Sync without a server
 
@@ -122,7 +136,10 @@ prevent divergence but to make it visible and non-destructive.
    restored bounds, denied window opens, external links to the system browser.
 5. `close` / `before-quit` send `drafts:flush-request` to the window, wait for the preload bridge's
    answer on `drafts:flushed` (at most 1.5 s; always sent, even with no editor open), flush drafts once,
-   then quit.
+   keep what could not be saved in `recovery/`, and ask before going when anything was kept
+   (`exit-guard.ts`). A quit decides before it stops the control plane, so an author who keeps the
+   studio open keeps it too; a second quit or close while the question is open waits for it; and the
+   window a quit then closes is not flushed a second time.
 6. `StudioWindows` (`windows.ts`) brings the one window back or makes it again, for the notification's
    click, a second copy and the dock's `activate`. A background turn that finishes, fails or pauses for
    approval with no window open is remembered, and the next window made opens on its conversation once,
@@ -246,10 +263,16 @@ so the authoritative device id should move to the host profile.
   `apps/desktop/tests/library.test.ts` with temporary directories.
 - `packages/core/tests/library-port.test.ts` tests the new port contract and in-memory implementation.
 - `smoke.ts` drives the built app in a hidden window: preload surface, fixture library, opening a
-  book, typing and autosave to disk, the close-and-quit flush of words typed a moment earlier, own
-  writes staying quiet and an outside edit right after a save being announced, chapter reorder and
-  build metadata. `scripts/smoke.mjs` builds a throwaway profile so it never touches the author's
-  library.
+  book, typing and autosave to disk, the close-and-quit flush of words typed a moment earlier, the
+  same flush with the book folder made read-only (the words kept in the run's profile with the chapter
+  file unchanged, the reason in the save status, offered when the book reopens and restored as the next
+  version), own writes staying quiet and an outside edit right after a save being announced, chapter
+  reorder and build metadata. `scripts/smoke.mjs` builds a throwaway profile so it never touches the
+  author's library.
+- `apps/desktop/tests/recovery.test.ts` and `failed-save.test.tsx` cover the recovery store, the exit
+  question and the failed-save status: a read-only folder and a stubbed full disk at the library, the
+  author staying or leaving, a hidden run, a close and a quit at once, the retry schedule, and the
+  workspace's offer, restore, conflict copy and confirmed discard.
 - `apps/desktop/tests/editor-sync.test.tsx` mounts the real workspace, editor, chat and ambient strip
   over a real library in a temporary folder: turns and undo from either reach the open editor, an
   outside edit right after a save is announced, and a quit 50 ms after the last key saves it. `apps/desktop/tests/own-writes.test.ts`

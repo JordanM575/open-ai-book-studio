@@ -1,8 +1,17 @@
 import type { LibraryChangeEvent, LibraryInfo } from "@ai-book-studio/core/ipc";
 import { ChangeBatcher } from "./library/changes";
 import { Library } from "./library/store";
-import type { DraftBuffer, FlushTarget } from "./drafts";
+import type { DraftBuffer, FlushFailure, FlushTarget } from "./drafts";
+import type { RecoveryStore } from "./recovery";
 import type { SettingsStore } from "./settings";
+
+/**
+ * A draft a close or quit could not save. `keptId` names its copy in the recovery store; it is null
+ * when even that write failed, and the words are then only in memory.
+ */
+export interface UnsavedDraft extends FlushFailure {
+  keptId: string | null;
+}
 
 export class Studio {
   library: Library | null = null;
@@ -15,7 +24,8 @@ export class Studio {
 
   constructor(
     private readonly settings: SettingsStore,
-    readonly drafts: DraftBuffer
+    readonly drafts: DraftBuffer,
+    readonly recovery: RecoveryStore
   ) {}
 
   async restore(): Promise<void> {
@@ -60,9 +70,33 @@ export class Studio {
     return this.library;
   }
 
-  /** Save every held draft, asking `window` for its newest text first when there is one. */
-  async flushDrafts(window: FlushTarget | null = null): Promise<void> {
-    if (this.library) await this.drafts.flushBeforeExit(this.library, window);
+  /**
+   * Save every held draft, asking `window` for its newest text first when there is one. A draft the
+   * library refuses is kept in the recovery store, and the list says which ones could not be saved.
+   */
+  async flushDrafts(window: FlushTarget | null = null): Promise<UnsavedDraft[]> {
+    const library = this.library;
+    if (!library) return [];
+    const failures = await this.drafts.flushBeforeExit(library, window);
+    const unsaved: UnsavedDraft[] = [];
+    for (const failure of failures) {
+      try {
+        const kept = await this.recovery.keep(failure.draft, failure.reason, library.root);
+        unsaved.push({ ...failure, keptId: kept.id });
+      } catch (error) {
+        console.warn(
+          `[recovery] Could not keep ${failure.draft.bookId}:${failure.draft.chapterId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
+        unsaved.push({ ...failure, keptId: null });
+      }
+    }
+    return unsaved;
+  }
+
+  /** The author chose to close or quit: what could not be saved leaves the buffer, kept or not. */
+  letGo(unsaved: UnsavedDraft[]): void {
+    for (const entry of unsaved) this.drafts.release(entry.draft);
   }
 
   settingsWindowBounds(): { width: number; height: number; x?: number; y?: number } | undefined {

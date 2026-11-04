@@ -105,6 +105,11 @@ const api: StudioApi = {
     clear: (bookId, chapterId) => invoke(IPC.drafts.clear, { bookId, chapterId }),
     onFlushRequest: (handler) => flushRequests.subscribe(handler)
   },
+  recovery: {
+    list: (bookId) => invoke(IPC.recovery.list, bookId),
+    restore: (id) => invoke(IPC.recovery.restore, id),
+    discard: (id) => invoke(IPC.recovery.discard, id)
+  },
   sync: {
     check: () => invoke(IPC.sync.check),
     accept: (paths) => invoke(IPC.sync.accept, paths),

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DRAFT_FLUSH_CHANNEL } from "@ai-book-studio/core/ipc";
+import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import type { Chapter } from "@ai-book-studio/core/schema";
 import { DraftBuffer } from "../src/main/drafts";
 import { Library } from "../src/main/library/store";
@@ -121,6 +122,41 @@ describe("draft buffer", () => {
     expect(await onDisk(root, bookId, two)).toBe(unchanged);
     // The text that could not be saved is still held rather than dropped.
     expect(drafts.dirtyChapterIds()).toEqual([gone.id]);
+  });
+
+  test("a final flush hands back what it could not save, with the library's reason", async () => {
+    const { library, bookId, one, two } = await setup();
+    const drafts = new DraftBuffer();
+    const stuck = draft(bookId, one, "Words the library would not take.");
+    drafts.set(stuck);
+    drafts.set(draft(bookId, two, "Mara walked on, salt in her boots."));
+    const save = library.saveChapter.bind(library);
+    const refused = spyOn(library, "saveChapter").mockImplementation((book, chapter, content, expected) =>
+      chapter === one.id
+        ? Promise.reject(new LibraryPortError("storage-full", "The disk is full. Nothing was replaced.", true))
+        : save(book, chapter, content, expected)
+    );
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const failures = await drafts.flushBeforeExit(library, null);
+      expect(failures).toEqual([{ draft: stuck, reason: "The disk is full. Nothing was replaced." }]);
+    } finally {
+      warn.mockRestore();
+      refused.mockRestore();
+    }
+    expect(drafts.dirtyChapterIds()).toEqual([one.id]);
+    expect(await drafts.flush(library)).toEqual([]);
+  });
+
+  test("releasing a kept draft lets only that text go, never newer words for the chapter", () => {
+    const drafts = new DraftBuffer();
+    const kept = { bookId: "book_release01", chapterId: "ch_release001", content: "Kept.", baseVersion: 1, baseHash: "a".repeat(64) };
+    drafts.set({ ...kept, content: "Kept, and typed on." });
+    drafts.release(kept);
+    expect(drafts.size).toBe(1);
+    drafts.set(kept);
+    drafts.release(kept);
+    expect(drafts.size).toBe(0);
   });
 });
 

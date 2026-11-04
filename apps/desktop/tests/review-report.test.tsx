@@ -397,6 +397,7 @@ describe("workspace review entry to report", () => {
         clear: mock(() => Promise.resolve({ ok: true, data: null })),
         onFlushRequest: mock(() => () => {})
       },
+      recovery: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
       chapters: {
         save: mock((input: unknown) => {
           saves.push(input);
@@ -497,6 +498,7 @@ describe("workspace review entry to report", () => {
         clear: mock(() => Promise.resolve({ ok: true, data: null })),
         onFlushRequest: mock(() => () => {})
       },
+      recovery: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
       chapters: {
         save: mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } })),
         updateMeta: mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } }))

@@ -15,6 +15,18 @@ export class LibraryError extends Error {
   }
 }
 
+/**
+ * Why a chapter save failed, in the words the author reads. The library's messages are already plain,
+ * except the one that names a chapter by its id when its file is not where the book expects it: a file
+ * moved or deleted outside the studio, or a library folder renamed while it was open. The message
+ * itself stays as it is, because agents and logs read it too.
+ */
+export function plainSaveReason(message: string): string {
+  return /^No chapter \S+ in this book\.$/.test(message.trim())
+    ? "This chapter's file is not in your library folder. It may have been moved, renamed or deleted."
+    : message;
+}
+
 /** Safe adapter failures shared across filesystem targets. Never include file bytes or secrets. */
 export type LibraryPortErrorCode =
   | "permission-required"

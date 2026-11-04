@@ -448,6 +448,28 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Words that could not be saved when the studio closed or quit are no longer lost (002 FR-013, D-189).
+  When the last save cannot write a chapter (a full disk, a read-only or Finder-locked book folder, a
+  chapter file that is briefly missing, a library folder renamed while open), the studio writes the
+  unsaved text atomically, owner-only, to `recovery/` in its own profile, never to the library, with
+  the book and chapter ids, the version and hash it was typed against, the reason and the time. Then it
+  asks before going: keep the studio open, where it keeps trying, or quit (or close the window) with the
+  words kept. If even the profile refuses them, the button says the words will be lost. A hidden run
+  logs the counts and the reason instead of asking. The editor now hands its newest text to the main
+  process when its own last save fails, so words typed just before quitting are kept too. The next
+  time the book opens, the workspace offers each kept copy. *Restore words* goes through the checked
+  save, so a chapter that changed since keeps them as a conflict copy, and *Discard words* asks first.
+  A quit now decides before it stops the agent toolkit service, it no longer flushes the window a
+  second time as it closes it, and a close and a quit at once ask one question. The smoke run makes
+  the built app's book folder read-only, flushes as a quit does, and restores the kept words when the
+  book reopens.
+- A failed save now says why and tries again by itself (002 FR-012). The save status shows the main
+  process's reason, for example "Not saved · The disk is full. Nothing was replaced.", and its label
+  adds that your words are still in the editor and the studio keeps trying. It retries after 2 s, 5 s
+  and 10 s, then every 30 s while the text is unsaved, without waiting for a keystroke, and reads
+  "Saved after retrying" when a retry lands. A conflict still reads "Not saved" and is never retried.
+  A chapter file that went missing, or a library folder renamed while open, is described in plain
+  words in the save status and the quit question, never by the chapter's id.
 - Reopening the studio after a background turn opens that book with the writing agent on the turn's
   conversation, instead of on the library (017 FR-012). When a turn finishes, fails or stops for your
   approval while no window is open, the main process remembers its book and conversation. The next

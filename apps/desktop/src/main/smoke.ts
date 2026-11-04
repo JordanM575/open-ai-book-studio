@@ -1,7 +1,7 @@
 import type { BrowserWindow } from "electron";
 import { app } from "electron";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -258,6 +258,25 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       if (outcome !== "invalid · auth") throw new Error(outcome);
       return "an unlisted page and a missing connection are both refused";
+    });
+
+    // Kept words live in this run's throwaway profile, so a fresh one has none; an id that is not a
+    // kept copy's is refused before the store builds a path from it.
+    await check("the bridge lists no kept words and refuses a malformed recovery id", async () => {
+      const outcome = await evaluate<string>(
+        win,
+        `(async () => {
+          const books = await window.studio.books.list();
+          if (!books.ok || !books.data[0]) return "no book to ask about";
+          const listed = await window.studio.recovery.list(books.data[0].id);
+          if (!listed.ok) return "the list failed: " + listed.error.message;
+          if (listed.data.length !== 0) return listed.data.length + " kept copies in a fresh profile";
+          const restored = await window.studio.recovery.restore("../studio");
+          return restored.ok ? "a malformed id was restored" : restored.error.code;
+        })()`
+      );
+      if (outcome !== "invalid") throw new Error(outcome);
+      return "none kept, and a malformed id is refused";
     });
 
     await check("opening a book shows the manuscript", async () => {
@@ -1056,6 +1075,93 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       if (after.version <= before.version) throw new Error(`version did not move (${before.version} → ${after.version})`);
       if ((await library.listConflicts(book.id)).length > 0) throw new Error("the flush left a conflict copy");
       return `flushed ${sinceLastKey} ms after the last key, version ${before.version} → ${after.version}`;
+    });
+
+    // The audit's read-only book folder, on the built app (D-189). Nothing in the folder can be written,
+    // so the quit's flush keeps the newest words in this run's profile, never in the library; the book
+    // then offers them back, and restoring them is an ordinary checked save.
+    await check("words a quit could not save are kept, and the book offers them back", async () => {
+      const library = studio.requireLibrary();
+      const book = (await library.listBooks())[0];
+      if (!book) throw new Error("the smoke book disappeared");
+      const first = (await library.readBook(book.id)).chapters[0];
+      if (!first) throw new Error("the smoke chapter disappeared");
+      const before = await library.readChapter(book.id, first.id);
+      const folder = join(library.root, "books", book.id, "chapters");
+      const file = join(folder, before.path);
+      const bytes = await readFile(file);
+      const sentence = `The lamp stayed lit at ${Date.now()}.`;
+
+      let unsaved: Awaited<ReturnType<Studio["flushDrafts"]>> = [];
+      let reason = "";
+      await chmod(folder, 0o555);
+      try {
+        const typed = await evaluate<boolean>(
+          win,
+          `(() => {
+            const el = document.querySelector('[data-testid="manuscript-text"]');
+            if (!el) return false;
+            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+            setter.call(el, el.value + ${JSON.stringify(`\n${sentence}`)});
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            return true;
+          })()`
+        );
+        if (!typed) throw new Error("the editor was not found");
+        // A quit straight after the last key: the editor's own save fails, so it hands its newest text
+        // to the main process, which keeps what the library refuses.
+        unsaved = await studio.flushDrafts(win.webContents);
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="save-problem"]')`)),
+          "the save status to give the reason"
+        );
+        reason = await evaluate<string>(win, `document.querySelector('[data-testid="save-problem"]')?.textContent ?? ""`);
+        // The author's "Quit and keep the words", then the book is closed while the folder still refuses.
+        studio.letGo(unsaved);
+        await evaluate(win, `document.querySelector('[aria-label="Back to library"]')?.click()`);
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="book-card"]')`)),
+          "the library after closing the book"
+        );
+      } finally {
+        await chmod(folder, 0o755);
+      }
+
+      const keptId = unsaved.length === 1 ? unsaved[0]?.keptId : null;
+      if (!keptId) throw new Error(`expected one kept draft, got ${JSON.stringify(unsaved.map((entry) => entry.keptId))}`);
+      if (!(await studio.recovery.read(keptId))?.content.includes(sentence)) throw new Error("the kept copy lacks the newest words");
+      if (!(await readFile(file)).equals(bytes)) throw new Error("the chapter file changed while its folder refused writes");
+      if (!reason.includes("cannot be written")) throw new Error(`the save status read ${JSON.stringify(reason)}`);
+
+      await evaluate(win, `document.querySelector('[data-testid="book-card"]')?.click()`);
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(`document.querySelector('[data-testid="recovery-offer"]') && document.querySelector('[data-testid="manuscript-text"]')`)
+          ),
+        "the offer of the kept words"
+      );
+      const shown = await evaluate<string>(win, `document.querySelector('[data-testid="manuscript-text"]')?.value ?? ""`);
+      if (shown.includes(sentence)) throw new Error("the kept words reached the editor before the author restored them");
+      await evaluate(win, `document.querySelector('[data-testid="recovery-restore"]')?.click()`);
+      await waitUntil(
+        () =>
+          evaluate<boolean>(
+            win,
+            inPage(
+              `!document.querySelector('[data-testid="recovery-offer"]') && (document.querySelector('[data-testid="manuscript-text"]')?.value ?? "").includes(${JSON.stringify(sentence)})`
+            )
+          ),
+        "the restored words in the editor"
+      );
+
+      const after = await library.readChapter(book.id, first.id);
+      if (!after.content.includes(sentence)) throw new Error("the restored words are not in the file");
+      if (after.version !== before.version + 1) throw new Error(`version ${before.version} → ${after.version}`);
+      if ((await library.listConflicts(book.id)).length > 0) throw new Error("the restore left a conflict copy");
+      if ((await studio.recovery.all()).length > 0) throw new Error("the kept copy outlived its restore");
+      return `kept in the profile (${reason.replace(/^·\s*/, "")}), offered on reopening, restored as version ${after.version}`;
     });
 
     await check("the studio's own writes stay quiet, and an outside edit right after a save is announced", async () => {

@@ -30,6 +30,7 @@ import { buildMetadata } from "@ai-book-studio/core/build";
 import { createLicenseReader } from "./licenses";
 import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
+import { recoveryIdSchema, restoreKept } from "./recovery";
 import {
   collectDocxImages,
   exportBookImages,
@@ -629,6 +630,20 @@ export function registerIpc(
 
   handle(IPC.drafts.flushed, async (payload) => {
     studio.drafts.answered(z.string().min(1).max(80).parse(payload));
+    return null;
+  });
+
+  /* ----------------------------------------------------------------- recovery */
+
+  // Kept words live in the profile, never in the library; ids are checked and the store builds the paths.
+  handle(IPC.recovery.list, async (payload) => studio.recovery.list(idSchema.parse(payload)));
+
+  handle(IPC.recovery.restore, async (payload) =>
+    restoreKept(studio.recovery, studio.requireLibrary(), recoveryIdSchema.parse(payload))
+  );
+
+  handle(IPC.recovery.discard, async (payload) => {
+    await studio.recovery.remove(recoveryIdSchema.parse(payload));
     return null;
   });
 

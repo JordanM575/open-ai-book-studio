@@ -149,6 +149,14 @@ export const IPC = {
     /** The window's answer to a flush request. Sent by the preload bridge itself, never by the page. */
     flushed: "drafts:flushed"
   },
+  recovery: {
+    /** The words a close or quit could not save to one book, kept in the studio's profile. */
+    list: "recovery:list",
+    /** Save kept words through the checked save; a chapter that changed keeps them as a conflict copy. */
+    restore: "recovery:restore",
+    /** Let kept words go. Only the author's explicit choice sends this. */
+    discard: "recovery:discard"
+  },
   sync: {
     /** Run a read-only drift scan now and remember when it ran. */
     check: "sync:check",
@@ -318,6 +326,24 @@ export interface DraftInput {
   baseHash: string;
 }
 
+/**
+ * Words a close or quit could not save to the library, kept in the studio's own profile until the
+ * author restores or discards them (`docs/FORMAT.md`, "Kept words"). The renderer gets this summary;
+ * the text itself stays in the main process until it is restored.
+ */
+export interface RecoveredDraft {
+  id: string;
+  bookId: string;
+  chapterId: string;
+  /** When the words were kept, as an ISO timestamp. */
+  keptAt: string;
+  /** Why the save failed, in the main process's words. */
+  reason: string;
+  wordCount: number;
+  /** The last words of the kept text, so two kept copies of one chapter can be told apart. */
+  ending: string;
+}
+
 export interface SaveChapterInput {
   bookId: string;
   chapterId: string;
@@ -458,6 +484,14 @@ export interface StudioApi {
      * Returns an unsubscribe.
      */
     onFlushRequest(handler: () => Promise<unknown>): () => void;
+  };
+  recovery: {
+    /** The words kept for this book after a close or quit could not save them, newest first. */
+    list(bookId: string): Promise<Result<RecoveredDraft[]>>;
+    /** Save kept words through the checked save. A chapter that changed keeps them as a conflict copy. */
+    restore(id: string): Promise<Result<SaveChapterResult>>;
+    /** Let kept words go. Only the author's explicit choice calls this. */
+    discard(id: string): Promise<Result<null>>;
   };
   sync: {
     check(): Promise<Result<DriftReport | null>>;
