@@ -8,6 +8,21 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Fixed
+
+- Atomic writes use exclusively created, random sibling temporary files, preserve existing ordinary
+  permission bits when no mode is specified, and respect the process umask for new files. Temporary
+  files start private; transient rename retries retain the same complete file, and failed cleanup
+  does not hide the original error. This does not provide compare-and-swap against external writers
+  or preserve ACLs, ownership, extended attributes or symlink identity.
+- Conflict copies retry occupied names, including when the device and clock are unchanged, and never
+  report a saved copy when storage rejected the write. Book detail updates check the snapshot they
+  read rather than requesting an unconditional replacement.
+- A failed chapter merge restores the second chapter's original file and identity instead of
+  recreating its text. Recovery distinguishes save failure from a version conflict and recognizes
+  a chapter already returned to the book. Agent undo also checks for a chapter returned during
+  recovery and refuses a trash reference to another chapter rather than creating a duplicate.
+
 ### Added
 
 - Front and back matter for every export (spec 035 T007–T013, D-169 and D-170, accepted on the

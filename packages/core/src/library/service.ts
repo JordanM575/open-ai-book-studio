@@ -296,16 +296,17 @@ export class LibraryService {
     // The matter changes only through `saveMatter`, which checks what the author edited.
     const { matter: _matter, ...fields } = patch;
     return this.serializeWrite(bookId, async () => {
-      const current = await this.readBook(bookId);
+      const { snapshot, book: current } = await this.readBookFile(bookId);
       const next = bookSchema.parse({
-        ...current.book,
+        ...current,
         ...fields,
-        id: current.book.id,
-        schemaVersion: current.book.schemaVersion,
-        createdAt: current.book.createdAt,
+        id: current.id,
+        schemaVersion: current.schemaVersion,
+        createdAt: current.createdAt,
         updatedAt: this.env.runtime.now()
       });
-      await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, { kind: "any" });
+      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, { kind: "sha256", value: snapshot.sha256 });
+      if (result.status === "changed") throw new LibraryError("io", "The book changed while saving. Nothing was saved; try again with your changes.");
       await this.rebuildCatalog();
       return next;
     });
@@ -314,7 +315,7 @@ export class LibraryService {
   /**
    * Saves the book's front and back matter (spec 035, D-169). Like a chapter save it carries the
    * version and hash of the matter the author edited. When the saved matter has moved on since,
-   * nothing is written over it: the author's version is kept as a Markdown copy in `conflicts/`
+   * nothing is written over it: the author's version is kept as a JSON copy in `conflicts/`
    * and the book is returned with the newer matter. Sections are written front first, then back.
    */
   async saveMatter(
@@ -357,8 +358,8 @@ export class LibraryService {
     await this.ensureBookLayout(bookId);
     const stamp = this.env.runtime.now().replace(/[:.]/g, "-");
     // JSON, as `book.json` holds it, so nothing the author wrote is reshaped on the way.
-    const savedName = `front-and-back-matter.conflict-${reason}.${this.device.id}.${stamp}.json`;
-    await this.commitText(conflictPath(bookId, savedName), `${JSON.stringify({ matter }, null, 2)}\n`, { kind: "absent" });
+    const base = `front-and-back-matter.conflict-${reason}.${this.device.id}.${stamp}`;
+    const savedName = await this.writeConflictCopy(bookId, base, ".json", `${JSON.stringify({ matter }, null, 2)}\n`);
     return { status: "conflict", reason, savedAs: conflictDisplayPath(bookId, savedName), book };
   }
 
@@ -1112,7 +1113,7 @@ export class LibraryService {
     const now = this.env.runtime.now();
     const stamp = now.replace(/[:.]/g, "-");
     const base = unreadableFileName.replace(/\.md$/, "");
-    const savedName = `${base}.conflict-placeholder.${this.device.id}.${stamp}.md`;
+    const copyBase = `${base}.conflict-placeholder.${this.device.id}.${stamp}`;
     const title = base.replace(/^\d+-/, "").replace(/[-_]+/g, " ").trim() || "Untitled chapter";
     const text = serializeChapter(
       {
@@ -1131,7 +1132,7 @@ export class LibraryService {
       },
       localContent
     );
-    await this.commitText(conflictPath(bookId, savedName), text, { kind: "absent" });
+    const savedName = await this.writeConflictCopy(bookId, copyBase, ".md", text);
 
     return {
       status: "conflict",
@@ -1214,10 +1215,10 @@ export class LibraryService {
   ): Promise<SaveChapterResult> {
     await this.ensureBookLayout(bookId);
     const stamp = this.env.runtime.now().replace(/[:.]/g, "-");
-    const savedName = `${fileName.replace(/\.md$/, "")}.conflict-${reason}.${this.device.id}.${stamp}.md`;
+    const base = `${fileName.replace(/\.md$/, "")}.conflict-${reason}.${this.device.id}.${stamp}`;
     const { content: _content, path: _path, wordCount: _wordCount, hash: _hash, ...stored } = disk;
     const text = serializeChapter({ ...stored, version: localVersion, updatedAt: this.env.runtime.now() }, localContent);
-    await this.commitText(conflictPath(bookId, savedName), text, { kind: "absent" });
+    const savedName = await this.writeConflictCopy(bookId, base, ".md", text);
 
     return {
       status: "conflict",
@@ -1231,6 +1232,23 @@ export class LibraryService {
         localVersion
       }
     };
+  }
+
+  private async writeConflictCopy(bookId: string, base: string, extension: string, text: string): Promise<string> {
+    const intended = textEncoder.encode(text);
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const name = `${base}${attempt === 0 ? "" : `-${attempt + 1}`}${extension}`;
+      const result = await this.commitText(conflictPath(bookId, name), text, { kind: "absent" });
+      if (result.status === "written") {
+        // Some adapters read back after publication. Do not call a different writer's bytes our
+        // saved copy, or remove them. This verifies that snapshot, not any later external change.
+        if (result.snapshot.bytes.length !== intended.length || !intended.every((byte, index) => result.snapshot.bytes[index] === byte)) {
+          throw new LibraryError("io", "The conflict copy could not be verified. Keep your changes and try again.");
+        }
+        return name;
+      }
+    }
+    throw new LibraryError("io", "Could not keep a conflict copy. Your changes were not saved; keep them and try again.");
   }
 
   /** Keeps one writer per book, so two calls cannot interleave a read and a write. */

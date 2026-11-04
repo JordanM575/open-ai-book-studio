@@ -619,16 +619,21 @@ export function createChapterTools(
           .saveChapter(bookId, first.id, combined, { baseVersion: first.version, baseHash: first.hash })
           .catch(() => null);
         if (!saved || saved.status === "conflict") {
-          const recreated = await library
-            .createChapter(bookId, { title: second.title, content: second.content })
-            .catch(() => null);
-          if (recreated) await library.moveChapterTo(bookId, recreated.id, second.order - 1).catch(() => {});
-          return result(
-            false,
-            recreated
-              ? "The first chapter changed on disk, so nothing was merged. The second chapter was restored."
-              : "The first chapter changed on disk and the second chapter could not be restored. Check the trash."
-          );
+          const cause = saved
+            ? "The first chapter changed on disk, so the merge was not saved."
+            : "The merge could not be saved. Check the first chapter before trying again.";
+          try {
+            await library.restoreChapter(bookId, second.id, trashed.trashedAt);
+            return result(false, `${cause} The second chapter was restored.`);
+          } catch {
+            // Restore can fail because the author already returned the chapter from trash.
+            // Check its identity, but do not assume its contents are still the original bytes.
+            const current = await library.readChapter(bookId, second.id).catch(() => null);
+            if (current?.id === second.id) {
+              return result(false, `${cause} The second chapter is already back in the book; check its contents.`);
+            }
+            return result(false, `${cause} The second chapter could not be restored automatically. Check the book and trash for it.`);
+          }
         }
 
         await onBeforeChange?.({

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeFileAtomic } from "../src/main/library/atomic";
+import { atomicTempName, isAtomicTempName, writeFileAtomic } from "../src/main/library/atomic";
 
 /**
  * The atomic write, which is the promise that a manuscript is never half-written.
@@ -64,6 +64,21 @@ describe("writing a file", () => {
     await writeFileAtomic(path, "not for others\n", { mode: 0o600 });
     const mode = (await stat(path)).mode & 0o777;
     expect(mode).toBe(0o600);
+  });
+
+  test("preserves restrictive existing permissions when replacing", async () => {
+    const dir = await folder();
+    for (const mode of [0o600, 0o640]) {
+      const path = join(dir, `private-${mode}.md`);
+      await writeFile(path, "old");
+      await chmod(path, mode);
+      await writeFileAtomic(path, "new");
+      expect((await stat(path)).mode & 0o777).toBe(mode);
+    }
+  });
+
+  test("recognizes legacy temp names", () => {
+    expect(isAtomicTempName(atomicTempName("chapter.md", 123, 1234))).toBe(true);
   });
 
   test("a large file lands whole rather than in pieces", async () => {

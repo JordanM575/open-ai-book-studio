@@ -1110,6 +1110,7 @@ async function undoEntry(library: Library, bookId: string, entry: CheckpointEntr
       const { chapters } = await library.readBook(bookId);
       if (chapters.some((chapter) => chapter.id === entry.chapterId)) return left("is already back in the book");
       const back = entry.trashedAt ? await fromTrash(library, bookId, entry.chapterId, entry.trashedAt) : null;
+      if (back?.status === "already-in-book") return left("is already back in the book");
       if (!back) {
         // The file has left the trash, or an older checkpoint did not say where it went.
         const recreated = await library.createChapter(bookId, { title: entry.title, content: entry.before });
@@ -1119,7 +1120,7 @@ async function undoEntry(library: Library, bookId: string, entry: CheckpointEntr
           note: `${name} was no longer in the trash, so undo wrote it again as a new chapter with its title and text only.`
         };
       }
-      current = back;
+      current = back.chapter;
     } else {
       current = await library.readChapter(bookId, entry.chapterId);
       // Text or details that are no longer what the turn left belong to whoever wrote them since. The
@@ -1174,14 +1175,21 @@ async function undoEntry(library: Library, bookId: string, entry: CheckpointEntr
 }
 
 /**
- * Bring a deleted chapter's own file back from the trash. Null when the trash no longer holds it,
- * so the caller can write the chapter again instead.
+ * Bring a deleted chapter's own file back from the trash. A failed restore may mean the author
+ * returned it after undo's first read. Check again before recreating anything; an invalid trash
+ * reference is not evidence of a missing chapter and must never trigger recreation.
  */
-async function fromTrash(library: Library, bookId: string, chapterId: string, trashedAt: string): Promise<Chapter | null> {
+async function fromTrash(
+  library: Library, bookId: string, chapterId: string, trashedAt: string
+): Promise<{ status: "restored"; chapter: Chapter } | { status: "already-in-book" } | null> {
   try {
-    return await library.restoreChapter(bookId, chapterId, trashedAt);
+    return { status: "restored", chapter: await library.restoreChapter(bookId, chapterId, trashedAt) };
   } catch (error) {
-    if (error instanceof LibraryError && (error.code === "not-found" || error.code === "invalid")) return null;
+    if (error instanceof LibraryError && (error.code === "not-found" || error.code === "invalid")) {
+      const { chapters } = await library.readBook(bookId);
+      if (chapters.some((chapter) => chapter.id === chapterId)) return { status: "already-in-book" };
+      if (error.code === "not-found") return null;
+    }
     throw error;
   }
 }

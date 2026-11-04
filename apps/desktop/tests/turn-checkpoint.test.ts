@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rename, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { simulateReadableStream } from "ai";
@@ -544,6 +544,56 @@ describe("a turn's checkpoint", () => {
     expect([undone.restored, undone.skipped]).toEqual([0, 1]);
     expect(undone.notes).toEqual([expect.stringContaining("“Two”")]);
     expect((await library.readBook(book.id)).chapters.map((entry) => entry.id)).toEqual([one.id, two.id, three.id]);
+  });
+
+  for (const keepTrash of [false, true]) {
+    test(`undo does not duplicate a chapter returned just before restore (${keepTrash ? "copied" : "moved"})`, async () => {
+      const one = await chapter("One", "One.\n");
+      const two = await chapter("Two", "Two.\n");
+      const { runtime } = await runTurn(
+        [step([["delete_chapter", { chapterId: two.id }]]), step([], "I moved Two to the trash.")],
+        [true]
+      );
+      const originalRestore = library.restoreChapter.bind(library);
+      library.restoreChapter = async (...args) => {
+        const [trashed] = await trashFiles();
+        if (!trashed) throw new Error("Missing test trash");
+        const source = join(root, ".studio", "trash", book.id, trashed);
+        const destination = join(root, "books", book.id, "chapters", two.path);
+        await (keepTrash ? copyFile(source, destination) : rename(source, destination));
+        return originalRestore(...args);
+      };
+
+      const undone = await runtime.undoLast(book.id);
+      expect([undone.restored, undone.skipped]).toEqual([0, 1]);
+      expect(undone.notes).toEqual([expect.stringContaining("is already back in the book")]);
+      expect((await library.readBook(book.id)).chapters.map((entry) => entry.id)).toEqual([one.id, two.id]);
+      expect(await text(two.id)).toBe(two.content);
+      expect(await trashFiles()).toHaveLength(keepTrash ? 1 : 0);
+    });
+  }
+
+  test("undo refuses a trash reference to a different chapter rather than recreating the deleted one", async () => {
+    const one = await chapter("One", "One.\n");
+    const two = await chapter("Two", "Two.\n");
+    const { runtime } = await runTurn(
+      [step([["delete_chapter", { chapterId: two.id }]]), step([], "I moved Two to the trash.")],
+      [true]
+    );
+    const otherTrash = await library.deleteChapter(book.id, one.id);
+    const store = new CheckpointStore(root);
+    const checkpoint = await store.latest(book.id);
+    if (!checkpoint?.entries[0]) throw new Error("Missing test checkpoint");
+    checkpoint.entries[0].trashedAt = otherTrash.trashedAt;
+    await store.save(checkpoint);
+    const before = await Promise.all((await trashFiles()).sort().map(async (name) => [name, await readFile(join(root, ".studio", "trash", book.id, name), "utf8")]));
+
+    const undone = await runtime.undoLast(book.id);
+    expect([undone.restored, undone.skipped]).toEqual([0, 1]);
+    expect(undone.notes).toEqual([expect.stringContaining("could not be put back")]);
+    expect((await library.readBook(book.id)).chapters).toEqual([]);
+    const after = await Promise.all((await trashFiles()).sort().map(async (name) => [name, await readFile(join(root, ".studio", "trash", book.id, name), "utf8")]));
+    expect(after).toEqual(before);
   });
 
   test("undo puts a merged chapter back in its place when the chapter numbers have a gap", async () => {
