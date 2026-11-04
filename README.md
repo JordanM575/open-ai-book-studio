@@ -1,204 +1,219 @@
 # AI Book Studio
 
-A quiet, local-first writing studio for long-form fiction. Your manuscript is a folder of ordinary
-files on your own disk — in iCloud Drive, Google Drive, Dropbox, or anywhere else you like. There is
-no account, no server, and no database that can quietly disagree with your prose.
+**Your book. Your files. Your agent.**
 
-AI Book Studio began on 2026-10-24, two days before the Meta Global AI Developer Hackathon opened.
-This repository is the event edition: the studio as it stood at submission.
+AI Book Studio is a local-first desktop writing studio for long-form fiction. Your book is a folder of
+Markdown and JSON on your own disk, in iCloud Drive, Google Drive, Dropbox or any folder you choose,
+with no account, no server and no database that can quietly disagree with your prose. A writing agent
+works on that folder directly: it reads the Story Bible and the chapters, edits through checked saves
+you can undo, and can keep working after you close the window.
+The agent works on the actual book, and the author keeps the actual files.
 
-Status: v0.1.0 development. The library, manuscript editor, autosave, conflict handling, Story Bible,
-provider connections, writing agent, Word export, legacy import, browser storage, read-only sync
-drift detection, Muse Voice Transcribe dictation, background agent turns and the standalone CLI/MCP
-toolkit are working. Remaining work is deployment, mobile device verification and the sync review
-interface.
+Built for the Meta Global AI Developer Hackathon (Indie Developer track, "Build for Your World"),
+starting from a pre-event base: the library format, manuscript editor, atomic saves, conflict copies,
+Story Bible, provider connections, a first writing-agent loop, Word export, backup import from an
+earlier studio, browser storage, the sync detector and the test foundation existed at the October 26
+cut. The public history starts with a labelled baseline commit at that cut, then the event's work.
 
-**Verification:** local `bun run verify` is the source of truth. A Gitea workflow is ready at
-[`.gitea/workflows/verify.yml`](.gitea/workflows/verify.yml), but no runner is registered yet, so this
-project does not claim a passing CI badge.
+<!-- film: link added at submission -->
 
-## What exists today
+## What it does
 
-- **Library** — choose a folder once; every book inside it is a folder with `book.json` and
-  `chapters/*.md`.
-- **Workspace** — chapter rail, solid manuscript sheet, autosave with a visible save state.
-- **Honest conflicts** — if a file changed elsewhere (another device, a sync provider, an editor),
-  your text is kept as a copy in `conflicts/` instead of overwriting the other version.
-- **Recovery** — a draft buffer in the main process flushes unfinished typing on quit; deleted
-  chapters go to `.studio/trash`, not into the void.
-- **Voice dictation** — record with Muse Voice Transcribe, convert to WAV in the browser, and insert
-  the transcript at the caret through the normal save path.
-- **Background turns** — let the agent finish after the window closes and notify you on macOS; a
-  destructive tool still waits for approval.
-- **Agent toolkit** — `bookwriter` exposes the open library through a CLI and an MCP server. It
-  serves the *same* writing tools the built-in agent uses, so another agent gets the same verbs;
-  read-only by default, with writes and destructive changes behind their own flags. See
-  [docs/TOOLKIT.md](docs/TOOLKIT.md).
-- **Sample and submission** — [`samples/the-salt-road`](samples/README.md) is an original, complete
-  library with two chapters, a Story Bible, an illustration and a cutout. The submission packet and
-  readiness check are in [`hackathon/SUBMISSION.md`](hackathon/SUBMISSION.md) and
-  `bun run submission:check`.
-- **Liquid Glass interface** — the AI Book Studio design kit compiled into tokens, with
-  light, dark, reduced-transparency and reduced-motion support.
+[SUBMISSION.md](hackathon/SUBMISSION.md) separates what existed before the event from event work.
 
-## Running it
+### Write
+
+- **Your library is a folder.** Each book is a folder of `book.json` and one Markdown file per chapter.
+- **A manuscript sheet** with a chapter rail, autosave, a visible save state and book search.
+- **A Story Bible** for the description, outline, three-act arc, characters and memories.
+- **Dictation** at the caret with Muse Voice Transcribe 1.0. The recording is never written to disk.
+
+### Work with the agent
+
+- **A writing agent** on Muse Spark 1.3, or on a model from OpenRouter, OpenAI, Anthropic or Google
+  Gemini. It reads the Story Bible and chapters through 22 tools, and every edit is a checked save.
+- **Contributor consent.** Muse Spark 1.3 Contributor may train on what you send, so the studio
+  refuses it until the book opts in.
+- **Approvals and undo.** Destructive edits, such as deleting or merging chapters, wait for your
+  approval, and one undo restores every chapter a turn changed.
+- **Background turns.** Tick **Background** and close the window; a macOS notification tells you
+  when the reply is ready or needs your approval.
+- **The ambient strip** says where you are, what changed and what the agent would do next. It listens
+  with Muse Voice Transcribe 1.0 and replies aloud through OpenRouter's text-to-speech, which is not a
+  Meta model. A 600×600 glasses page shows the same status; it has not been run on glasses.
+- **Plain reporting.** Each turn names its model and shows its usage, with spending warnings, offline
+  and rate-limit notes, and hand-typed model ids that are checked before they are kept.
+- **Your rules.** Per book, turn any tool off for every agent, see per-tool call counts and give the
+  agent house rules in a `SKILLS.md`. A folder of TypeScript plugins can add tools.
+
+### Illustrate and export
+
+- **Illustrations** with Muse Image 1.0, priced on the button (about $0.01) before you generate.
+- **Exports:** Word with illustrations embedded, plus Markdown, PDF and EPUB from the Format dialog.
+  No KDP, EPUBCheck or PDF/UA acceptance is claimed.
+- **Images and archives:** every image in a book as a JPEG, or the whole library as an archive.
+
+### Bring a book in
+
+- **Manuscript import** (macOS): a Word, text or Markdown file becomes a new book, after a preview and
+  in one atomic step, with a report of anything a Word file could not carry across.
+- **Backup import** from an earlier studio. Running it twice adds nothing.
+
+### Other agents
+
+- **`bookwriter`**, a CLI and MCP server, gives other agents the built-in agent's tools over a
+  loopback-only backend with a per-run token: read-only by default, writes behind flags.
+
+### Trust
+
+- **No overwritten text.** Saves carry the version and hash they were based on; if the file changed
+  elsewhere, your text is kept in `conflicts/` and you see both versions.
+- **Nothing lost.** Atomic writes, a trash for chapters and books, and unsaved typing flushed on quit.
+- **Sync review.** If a file changes outside the studio, keep yours, keep the one on disk or open both.
+- **Plain warnings** for a library location or provider that needs attention; one studio per profile.
+- **Licenses.** Settings lists every open-source package each build ships, with its license text.
+
+## Meta models
+
+| Need | Model | How the studio uses it |
+| --- | --- | --- |
+| Planning, drafting, revision | Muse Spark 1.3 | The writing agent, through your own Meta connection (Meta Model API) |
+| Cheap agent testing | Muse Spark 1.3 Contributor | Off by default and refused until the book opts in, because it may train on prompts and outputs; intended for the sample only |
+| Illustration | Muse Image 1.0 | Chapter illustrations, priced on the button before you generate |
+| Dictation and listening | Muse Voice Transcribe 1.0 | Dictation at the caret, and questions spoken to the ambient strip |
+| Spoken replies | OpenRouter text-to-speech | **Not a Meta model.** A partner service that voices the strip's replies |
+
+No cutout feature is claimed. The illustration dialog still offers a SAM 3.1 cutout, but its requests
+return no records ([D-158](docs/DECISIONS.md)).
+
+Keys are encrypted with Electron's safeStorage under a master key in your macOS login keychain. The
+app's profile holds only ciphertext, and no key is written to your library, logs or exports.
+
+## Try it
+
+You need macOS on Apple Silicon or Intel, [Bun](https://bun.sh) 1.4 or later, and Node 22.12 or later
+for Electron's tooling.
 
 ```bash
+git clone https://github.com/JordanM575/open-ai-book-studio.git
+cd open-ai-book-studio
 bun install
-bun run dev        # Vite + Electron with hot reload
+bun run dev
 ```
 
-Other commands:
+1. Click **Choose a library folder** and select `samples/the-salt-road` (later, use **File → Open
+   library…**). The studio adds a derived `library.json` and `.studio/` there, so copy the sample out
+   of the clone first if you want the clone to stay clean.
+2. Open **Settings** from the library's header. Under **Provider connections**, **Connect** signs you
+   in to OpenRouter in your browser. For Meta, use **Add a key**: choose **Meta**, paste the base URL
+   from Meta's developer console and your key, then choose **Add connection**.
+3. Open *The Salt Road*, choose a model in the header, and ask the writing agent for the next scene.
+   Without a connection you can still open, edit and export the sample.
+
+> If `ELECTRON_RUN_AS_NODE=1` is set, Electron starts as plain Node; run `env -u ELECTRON_RUN_AS_NODE bun run dev`.
+
+### The `bookwriter` CLI
+
+With the studio open on a library ([docs/TOOLKIT.md](docs/TOOLKIT.md) has every command):
 
 ```bash
-bun run typecheck  # both TypeScript projects (main/preload and renderer)
-bun test           # Bun test: library, format, conflicts, path safety
-bun run smoke      # build, then drive a hidden window through the real UI
-bun run smoke:packaged # package the app, then run the hidden suite against the packaged binary
-bun run ui:audit   # drive the real app through the main flows and report any dead end
-bun run build      # typecheck + production bundle into apps/desktop/out
-bun run build:web  # static web bundle in apps/web/dist
-bun run toolkit:build # compiled `bookwriter` CLI/MCP binary in apps/toolkit/dist
-bun run toolkit    # run the CLI from source
-bun run submission:check # branch/tree, required files, secret scan and sample integrity
-bun run smoke:web  # build the web bundle and drive the browser shell
-bun run gallery:build # shared-component light/dark gallery in apps/web/check/gallery-dist
-bun run package    # unpacked app in release/
-bun run dist       # installers for the current platform
-bun run build:info # version, commit, schema and target; fails if versions disagree
-bun run tokens     # regenerate renderer tokens from design/tokens.json
-bun run verify     # version check, typecheck, tests and both builds
+bun run toolkit:build                       # builds apps/toolkit/dist/bookwriter
+export PATH="$PWD/apps/toolkit/dist:$PATH"
+bookwriter books                            # the books in the open library
+bookwriter mcp                              # an MCP server on stdio, read-only by default
 ```
-
-If Electron's binary was skipped, the install prints the exact command:
-`node apps/desktop/node_modules/electron/install.js`.
-
-### Testing without a window
-
-`bun run smoke` never puts anything on screen. It launches a second instance with its own throwaway
-profile (`STUDIO_USER_DATA`), parks the window off-screen, hides the Dock icon, points the app at a
-fixture library, then checks the preload bridge, the library view, opening a book, and an autosave
-reaching the disk. It prints one line per check and exits non-zero on failure.
-
-`bun run ui:audit` is the companion: it opens the same fixture library in a throwaway profile and
-walks the main flows — library, manuscript, model picker, agent panel, Story Bible, Settings, search
-and the illustration dialog — then prints what worked and what an author would get stuck on. It
-exits non-zero when it finds a dead end.
-
-Useful while developing:
-
-```bash
-STUDIO_TEST=1 STUDIO_HEADLESS=1 \
-  STUDIO_USER_DATA=/tmp/abs-profile bun run dev   # hidden window, isolated profile
-
-STUDIO_TEST=1 STUDIO_VISIBLE=1 \
-  STUDIO_USER_DATA=/tmp/abs-keychain-profile bun run dev
-  # visible isolated profile for a manual provider/keychain test
-```
-
-`STUDIO_TEST=1` gives the run its own settings file, and with `STUDIO_USER_DATA` its single-instance
-lock lives in that throwaway profile too. A hidden run can sit beside your real window without
-touching it, and a second copy on the same throwaway profile is refused, as a second copy of the real
-app is. `STUDIO_VISIBLE=1` keeps that isolation but shows the window. The macOS keychain process is
-in [docs/KEYCHAIN.md](docs/KEYCHAIN.md).
-`SMOKE_KEEP=1 bun run smoke:run` keeps the temp library for inspection.
-
-To see the real renderer at a device size, capture it without showing a window:
-
-```bash
-bun run build
-bun scripts/capture.mjs 393x852 /tmp/iphone.png
-bun scripts/capture.mjs 393x852 /tmp/iphone-workspace.png '[data-testid="book-card"]'
-bun scripts/capture.mjs 744x1133 /tmp/ipad-mini.png
-```
-
-`STUDIO_WINDOW_SIZE` sets the window size and `STUDIO_CAPTURE` writes a PNG before the app exits.
-The optional third argument is a selector, or several joined with `||`, to open a book or panel first.
-Examples are in [docs/research/mobile-layouts.md](docs/research/mobile-layouts.md).
-
-
-> `ELECTRON_RUN_AS_NODE=1` in your shell makes `electron` start as plain Node. If you see
-> `Cannot read properties of undefined (reading 'isPackaged')`, launch with
-> `env -u ELECTRON_RUN_AS_NODE bun run dev`.
 
 ## How it is put together
 
-```
-apps/desktop/        Electron application (Node main, sandboxed renderer)
-  src/main/          owns the files, the only writer
-    library/         atomic writes, paths, the Library store
-    ipc.ts           typed IPC, Zod validation, Result envelopes
-  src/preload/       contextBridge surface (window.studio)
-  src/renderer/      React 19 + Tailwind 4 interface
-packages/core/       schemas, Markdown format and IPC contract — no Node, no DOM
-design/              vendored design tokens, compiled by scripts/build-tokens.mjs
-docs/                format, architecture, design rules, decisions, ADRs
-specs/               spec-driven feature history and plans
-.specify/            the constitution every spec is measured against
+```text
+apps/desktop/     Electron app; its main process owns the files and is the only writer
+apps/web/         the browser build and its storage adapters
+apps/toolkit/     the bookwriter CLI and MCP server
+apps/mobile/      a Capacitor iOS shell, run in the Simulator, not yet on a device
+packages/core/    schemas, the book format, the IPC contract and the agent's message format
+packages/app/     the React interface every build shares
+packages/ui/      shared components and the Liquid Glass styles
+design/           vendored design tokens, compiled by scripts/build-tokens.mjs
+docs/  specs/     format, architecture, decisions, ADRs and the spec-driven history
 ```
 
-Bun installs and runs the scripts; Electron itself runs on Node. `packages/core` is imported by both
-sides of the app and ships TypeScript source, so electron-vite bundles it instead of externalising it.
-
-The renderer never touches the filesystem. It asks the main process, which validates input, writes
-atomically, and returns either data or a typed error.
+The interface never touches the filesystem. It asks the main process, which validates every call with
+Zod, writes atomically through one `Library` and returns data or a typed error. The agent runs there
+too, on the Vercel AI SDK, and its tools call the same `Library`, so its edits are checked like yours.
+Electron 45, React 19, TypeScript 7, Tailwind 4 and Zod 4, in a Bun workspace. The browser build
+keeps books in browser storage or a folder you pick; the agent, dictation and export are desktop-only.
 
 ## Where your book lives
 
-```
+```text
 <your library folder>/
-  library.json                      derived catalog, safe to delete
+  library.json                   derived catalog, safe to delete
   books/
     book_…/
-      book.json                     idea, outline, cast, memories, settings
-      chapters/0001-the-door.md     YAML front matter + Markdown prose
-      conflicts/                    versions kept when two writers disagreed
-      threads/  checkpoints/        reserved for the agent
-  .studio/
-    device.json                     identity of this machine
-    trash/                          deleted chapters, recoverable
+      book.json                  idea, outline, cast, memories, settings
+      chapters/0001-the-door.md  YAML front matter and Markdown prose
+      images/  images.json       illustrations and where each one came from
+      threads/                   agent conversations, one JSON file each
+      conflicts/                 versions kept when two writers disagreed
+      SKILLS.md                  optional house rules for the agent
+      .studio/checkpoints/       one undo point per agent turn
+  .studio/                       this machine's identity, and trash/ for deleted chapters and books
 ```
 
-See [docs/FORMAT.md](docs/FORMAT.md) for the exact schema and the conflict protocol.
+[docs/FORMAT.md](docs/FORMAT.md) is the exact schema and the conflict protocol.
+
+## Privacy
+
+There is no account, no telemetry and no server-side copy. Your text leaves the computer only when you
+ask: an agent turn sends what the agent needs to the provider you chose, dictation sends the
+recording to Meta, an illustration sends its prompt to Muse Image, and a spoken reply sends its text
+to the voice service you connected. Keys never appear in the library, logs or exports. The browser
+build keeps an OpenRouter sign-in in that browser's own storage and does not run the agent yet.
+
+## Verification
+
+There is no public CI yet. Verification runs locally with these commands, and none of them needs a
+provider key:
+
+| Command | What it proves |
+| --- | --- |
+| `bun run verify` | Lint, typecheck, the quarantine and waiver ledgers, every unit and component test, and both production builds |
+| `bun run smoke` | The built app, driven through its real interface in a hidden window on a throwaway profile, through to an autosave on disk |
+| `bun run e2e` | The desktop and browser builds end to end: the CLI and MCP server against the running app, one agent turn against a fake provider on loopback, writing through export with outbound connections denied (macOS), and a refused second copy |
+| `bun run coverage` | Function and line coverage stay at or above a floor that only moves up |
+
+The latest results are in [the submission packet](hackathon/SUBMISSION.md#verification-evidence), and
+[docs/TESTING.md](docs/TESTING.md) explains the layers.
 
 ## Documentation
 
 - [docs/FORMAT.md](docs/FORMAT.md) — the library format, normative
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — processes, save protocol, sync model
-- [docs/DESIGN.md](docs/DESIGN.md) — Liquid Glass rules, type, voice, accessibility
-- [docs/DECISIONS.md](docs/DECISIONS.md) — the decision register: what is settled, what is open, what
-  each open question blocks
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — environments, artifact names, promotion, rollback and CI
-- [hackathon/](hackathon/) — Meta Global AI Developer Hackathon brief and 10-day plan
-- [docs/adr/](docs/adr/) — decisions and the alternatives rejected
-- [specs/002-studio-v1/spec.md](specs/002-studio-v1/spec.md) — what version 1 is, in full
-- [specs/003-earlier-studio-import/spec.md](specs/003-earlier-studio-import/spec.md) — importing an earlier studio's export
-- [specs/](specs/README.md) — the index, and the foundation's record
-- [.specify/memory/constitution.md](.specify/memory/constitution.md) — the seven principles
-
-## Privacy
-
-Your manuscript, your key, your machine. The studio never sends prose anywhere unless you ask an
-agent to work on it, and there is no telemetry. Provider keys live in the operating system's protected
-storage, never in the library, logs or archives. The browser build has no provider credentials yet.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — processes, the save protocol and the sync model
+- [docs/TOOLKIT.md](docs/TOOLKIT.md) — the `bookwriter` CLI and MCP server
+- [docs/AGENT-CAPABILITIES.md](docs/AGENT-CAPABILITIES.md) — tool switches, `SKILLS.md`, plugins
+- [docs/VOICE.md](docs/VOICE.md) — how the studio listens and speaks
+- [docs/KEYCHAIN.md](docs/KEYCHAIN.md) — how keys are stored, and testing with a throwaway profile
+- [docs/TESTING.md](docs/TESTING.md) — the test layers and what each proves
+- [docs/DECISIONS.md](docs/DECISIONS.md) and [docs/adr/](docs/adr/) — settled and open decisions
+- [specs/README.md](specs/README.md) — the spec index and roadmap
+- [hackathon/SUBMISSION.md](hackathon/SUBMISSION.md) — the submission packet
+- [samples/README.md](samples/README.md) — the sample library
 
 ## Repository
-
-The public repository is on GitHub:
 
 ```bash
 git clone https://github.com/JordanM575/open-ai-book-studio.git
 ```
-
-The repository starts fresh; it
-replaces an earlier local prototype and shares no history, no Next.js server and no localStorage
-library with it.
 
 Read [AGENTS.md](AGENTS.md) before changing code, [docs/DECISIONS.md](docs/DECISIONS.md) before
 choosing an approach, and [CHANGELOG.md](CHANGELOG.md) before committing.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). You may use, modify and distribute
-the application under those terms. The license covers the code; the books you write with it remain
-yours.
+The code is licensed under the Apache License 2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). The
+books you write with it remain yours. The sample's text and images are dedicated to the public domain
+under CC0 1.0; see [samples/README.md](samples/README.md).
+
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) is generated from the build and lists every package
+each build ships, with its license. One is an allowed exception: the desktop build ships Meta's
+`@meta-sam/parser` under the SAM License, not Apache-2.0 ([D-137](docs/DECISIONS.md)).

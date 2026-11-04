@@ -265,6 +265,17 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The README is the public front page: the pitch and tagline, a plain account of the pre-event base
+  and the labelled baseline commit, what an author can do with the Meta model each feature uses, the
+  Meta models table, a quick start on the sample and the `bookwriter` CLI, the local verification
+  commands and the public clone URL. It drops the stale status line that listed the sync review as
+  still to do, the sample cutout and the development repository notes. It now says Bun 1.4 or later,
+  that keys are ciphertext in the app's profile under a keychain master key, that the browser build
+  holds an OpenRouter sign-in but does not run the agent, that the illustration dialog's SAM 3.1
+  cutout returns no records and is not claimed (D-158), and that the desktop build ships one
+  package under the SAM License (D-137). The sample's README calls its 512×512 image a figure drawn
+  by the fixture generator, not a cutout or a generated image, and names the real buttons for
+  opening it.
 - The requirement map's tallies are recounted from its rows: 002 reads 65 covered, 3 partial and 10
   gaps, 012 reads 26 covered and 16 gaps, and the totals read 182 covered, 4 partial, 14 manual and
   72 gaps of 272. Export formats leave its list of gap clusters. The submission packet's list of
