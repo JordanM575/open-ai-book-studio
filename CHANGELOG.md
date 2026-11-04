@@ -10,6 +10,16 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- A test pins how a book without front or back matter exports, before ordered matter is built
+  (spec 035 T013). Five synthetic books were rendered by the current exporters into goldens: every
+  Word part, the EPUB's exact bytes, the Markdown text, and the HTML Chromium prints to PDF with
+  the text a reader sees in it. They cover a contents page on and off, an empty title, no chapters,
+  verse and blank lines, text that needs escaping, PNG and JPEG illustrations, both title
+  alignments and a populated legacy `frontMatter` record, which no export includes.
+  `no-matter-identity.test.ts` requires the same output from today's code. The Word build time
+  and the `docx` library's drawing counter, which numbers pictures for as long as the process
+  lives, are not content and are left out of the comparison.
+
 - The Format dialog now exports all four targets, with an Export action for the chosen one (002
   FR-051, D-108). PDF prints the manuscript's own HTML through Electron's built-in Chromium in a
   hidden window that runs no script, on a private in-memory session that answers every web request
