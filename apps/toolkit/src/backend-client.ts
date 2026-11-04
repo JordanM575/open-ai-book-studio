@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolDescriptor } from "@ai-book-studio/core/agent/tools";
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
-import type { AgentTurnResult } from "@ai-book-studio/core/agent";
+import type { AgentTurnResult, AgentUndoResult } from "@ai-book-studio/core/agent";
 import type {
   BookDetail,
   BookSummary,
@@ -205,8 +205,8 @@ export class BackendClient {
     return result.result;
   }
 
-  async undoLast(bookId: string): Promise<{ restored: number; skipped: number }> {
-    const result = await this.request<{ result: { restored: number; skipped: number } }>(
+  async undoLast(bookId: string): Promise<AgentUndoResult> {
+    const result = await this.request<{ result: AgentUndoResult }>(
       `/v1/books/${encodeURIComponent(bookId)}/undo`,
       { method: "POST", body: JSON.stringify({}) }
     );

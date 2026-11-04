@@ -411,6 +411,19 @@ describe("the tools and the session", () => {
     expect(none.out).toBe("There was nothing to restore.\n");
   });
 
+  test("undo prints each note naming a chapter that did not simply go back", async () => {
+    const noted = await run(["undo", BOOK], {
+      overrides: {
+        undoLast: async () => ({
+          restored: 1,
+          skipped: 1,
+          notes: ["“The Gate” changed after the turn, so undo left it as it is."]
+        })
+      }
+    });
+    expect(noted.out).toBe("Restored 1 chapter, skipped 1.\n“The Gate” changed after the turn, so undo left it as it is.\n");
+  });
+
   test("calls a tool with the arguments it was given, and only asks for destructive permission when told", async () => {
     const plain = await run(["call", BOOK, "read_chapter", "--args", '{"chapterId":"ch_cli000001"}', "--allow-writes"]);
     expect(plain.code).toBe(0);

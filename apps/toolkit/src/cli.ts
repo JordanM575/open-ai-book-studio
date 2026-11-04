@@ -256,6 +256,7 @@ export async function runCli(
             ? `Restored ${result.restored} chapter${result.restored === 1 ? "" : "s"}${result.skipped > 0 ? `, skipped ${result.skipped}` : ""}.\n`
             : "There was nothing to restore.\n"
         );
+        for (const note of result.notes ?? []) io.stdout.write(`${note}\n`);
         return 0;
       }
       case "call": {

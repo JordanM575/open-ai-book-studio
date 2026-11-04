@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import type { LibraryInfo } from "@ai-book-studio/core/ipc";
 import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools";
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
-import type { AgentTurnResult } from "@ai-book-studio/core/agent";
+import type { AgentTurnResult, AgentUndoResult } from "@ai-book-studio/core/agent";
 import type {
   BookDetail,
   BookSummary,
@@ -32,7 +32,7 @@ export interface ToolkitClient {
   /** The ambient agent's status of a book: where the author is and what changed. */
   ambient(bookId: string): Promise<AmbientStatus>;
   /** Undo the agent's last turn. */
-  undoLast(bookId: string): Promise<{ restored: number; skipped: number }>;
+  undoLast(bookId: string): Promise<AgentUndoResult>;
   /** Stop the agent if it is working on a book. */
   stop(bookId: string): Promise<{ stopped: number }>;
   /** Run a turn and wait for the agent's answer. */

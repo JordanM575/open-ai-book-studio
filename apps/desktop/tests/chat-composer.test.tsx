@@ -287,6 +287,36 @@ describe("chat composer", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  test("an undo that kept a copy of words written during the turn says where they are", async () => {
+    const note = "“The Gate” was edited during the turn, so undo kept its text from before the undo at books/b/conflicts/0002-the-gate.conflict-undo.md.";
+    const { start, fire } = renderComposer(null, null, () =>
+      Promise.resolve({
+        ok: true,
+        data: {
+          restored: 1,
+          skipped: 0,
+          kept: [{ chapterId: "ch_cmp000002", title: "The Gate", savedAs: "books/b/conflicts/0002-the-gate.conflict-undo.md" }],
+          notes: [note]
+        }
+      })
+    );
+    const { view } = composer();
+    await failAfterChange(fire, start, {
+      type: "error",
+      turnId: "turn_cmp000001",
+      code: "unknown",
+      message: "The model stopped mid-reply.",
+      changed: 1,
+      undoAvailable: true
+    });
+
+    await testing.waitFor(() => expect(view.getByTestId("agent-undo-turn")).toBeDefined());
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("agent-undo-turn"));
+    });
+    await testing.waitFor(() => expect(view.getByText(`Restored 1 chapter. ${note}`)).toBeDefined());
+  });
+
   test("an undo that skips a chapter edited since says so and still withholds retry", async () => {
     const { start, fire, undoLast } = renderComposer(
       null,

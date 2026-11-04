@@ -518,13 +518,16 @@ export function ChatPanel({
   const undo = async (messageId: string): Promise<void> => {
     try {
       const result = await must(window.studio.agent.undoLast(bookId));
+      // Each note names a chapter that did not simply go back, and where a kept copy is.
+      const notes = result.notes?.length ? ` ${result.notes.join(" ")}` : "";
       patchMessage(messageId, (message) => ({
         ...message,
         changed: result.skipped,
         undoAvailable: false,
-        note: result.skipped
-          ? `Restored ${result.restored} ${result.restored === 1 ? "chapter" : "chapters"}, but skipped ${result.skipped}. Review the remaining changes before retrying.`
-          : `Restored ${result.restored} ${result.restored === 1 ? "chapter" : "chapters"}.`
+        note:
+          (result.skipped
+            ? `Restored ${result.restored} ${result.restored === 1 ? "chapter" : "chapters"}, but skipped ${result.skipped}. Review the remaining changes before retrying.`
+            : `Restored ${result.restored} ${result.restored === 1 ? "chapter" : "chapters"}.`) + notes
       }));
       await onChanged();
     } catch (error) {

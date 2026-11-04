@@ -364,6 +364,9 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- After an undo, the chat, the ambient strip and `bookwriter undo` now say which chapters did not simply
+  go back and why, and where a copy of words written during the turn was kept. The notes were
+  returned by undo but never shown.
 - Undoing an agent turn no longer throws away your words, a deleted chapter's identity or a chapter's
   details. A turn's checkpoint still has one file and one undo.
   - Text you wrote during a turn is no longer silently discarded. Before, if the agent wrote a
