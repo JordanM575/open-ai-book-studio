@@ -1,7 +1,7 @@
 import { app, Notification } from "electron";
 import type { BrowserWindow } from "electron";
 import type { AgentOutcome } from "./agent/runtime";
-import { notificationFor, shouldNotify } from "./background-copy";
+import { notificationFor, notificationRoute } from "./background-copy";
 
 /**
  * Native notification and dock badge for turns that finish while the author is elsewhere.
@@ -13,7 +13,9 @@ export class BackgroundNotifier {
 
   constructor(
     private readonly getWindow: () => BrowserWindow | null,
-    private readonly showWindow: () => void
+    private readonly showWindow: () => void,
+    /** Whether this launch's window is never shown (`launchMode`). */
+    private readonly headless: boolean
   ) {}
 
   handle(outcome: AgentOutcome): void {
@@ -22,9 +24,16 @@ export class BackgroundNotifier {
       visible: window?.isVisible() ?? false,
       focused: window?.isFocused() ?? false
     };
-    if (!shouldNotify(outcome, state)) return;
+    const route = notificationRoute(outcome, state, this.headless);
+    if (!route) return;
     const copy = notificationFor(outcome);
-    if (!copy || !Notification.isSupported()) return;
+    if (!copy) return;
+    if (route === "log") {
+      // The title and body only: the words the author would have seen, and nothing else.
+      console.log(`[notification] would post ${JSON.stringify({ title: copy.title, body: copy.body })}`);
+      return;
+    }
+    if (!Notification.isSupported()) return;
 
     this.current = new Notification({ title: copy.title, body: copy.body });
     this.current.on("click", () => {

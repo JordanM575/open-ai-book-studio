@@ -23,9 +23,11 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
    `{ type: "approval", turnId, approvalId, name, input }` and keeps the active turn so the same
    conversation can resume. It does not execute the tool.
 3. **The author answers through IPC.** `agent.approve(turnId, approvalId, approved)` checks that the
-   approval is still waiting, builds the `tool-approval-response`, and resumes the agent with the
-   response messages from the paused stream. A denial is passed to the model with a reason; the model
-   must not repeat the same request.
+   approval is still waiting, builds the `tool-approval-response`, and resumes the agent with the same
+   conversation: the messages the paused stream was given (the history and the author's prompt, or an
+   earlier resume), then its response messages, then the approval. A denial is passed to the model
+   with a reason; the model must not repeat the same request. (Amended 2026-11-03: the resume had
+   sent the response messages alone, so the model lost the author's request after an approval.)
 4. **Checkpoint before the pause.** If the turn already changed chapters, the runtime saves the
    checkpoint before showing the approval, so those changes remain undoable if the app quits while
    waiting.
@@ -62,4 +64,7 @@ conversation with a `role: "tool"` message containing a `tool-approval-response`
 
 `apps/desktop/tests/agent-runtime.test.ts` uses a mock model to prove four things: the memory survives
 until approval, Allow removes it, Deny keeps it, and the final assistant text is persisted in the
-thread. The tool itself is covered in `agent-tools.test.ts`.
+thread. It also records every request the model receives: a resume repeats the paused request message
+for message before the tool call and its result or denial, a second approval in the same turn runs
+each approved call once, and the next turn asks again instead of reusing an earlier approval. The
+tool itself is covered in `agent-tools.test.ts`.

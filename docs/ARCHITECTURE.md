@@ -262,7 +262,9 @@ The Electron main process already owned the turn; `AgentTurnInput.background` ma
 intent explicit. `AgentRuntime` calls an outcome callback after `done`, `error`, `stopped` or an
 approval pause. `BackgroundNotifier` decides whether the author can see the window, shows a native
 notification with the book title and a short preview, sets the dock badge and focuses the existing
-window on click. A paused destructive tool is reported but never approved automatically.
+window on click. A paused destructive tool is reported but never approved automatically. A hidden run
+(`STUDIO_TEST=1` without `STUDIO_VISIBLE=1`, or `STUDIO_HEADLESS=1`; `launch-mode.ts`) never posts
+to the desktop: it logs the title and body as `[notification] would post {…}` instead.
 
 A background turn uses the same thread, checkpoint and usage stores as an interactive one. Closing the
 window on macOS leaves the process alive; quitting the app stops all work. The web build does not

@@ -276,6 +276,21 @@ Update the `Unreleased` section before every commit.
   Coverage of that file rose from 5% to 96% of functions. Writing it exposed a leak between test
   files: `browser-libraries.test.ts` stubbed `window` with only a folder picker and never removed it,
   so later files saw a fake page. It now restores `window` after each test.
+- After the author approves or denies a destructive tool, the agent hears the whole conversation
+  again. The resume sent only the paused step's reply and the approval, so the model lost the
+  author's prompt and the earlier turns, and a multi-step request lost the rest of its instructions
+  after an approval. A fake OpenAI-compatible provider recorded the resumed request as
+  `system, assistant, tool`. It now repeats the paused request message for message (the system
+  prompt, the history and the author's prompt), then the tool call and its result or denial. A second
+  approval in the same turn no longer sends a tool result without its call, and each approved call
+  still runs once. Approvals stay per turn, a denial still writes nothing, and usage and cost still sum
+  every leg. ADR 0014 decision 3 now says the same.
+- A hidden test run no longer posts real desktop notifications. Its window is never visible, so every
+  finished turn counted as "away" and notified on the author's own desktop. A hidden run
+  (`STUDIO_TEST=1` without `STUDIO_VISIBLE=1`, or `STUDIO_HEADLESS=1`) now writes the title and body
+  to its log as `[notification] would post {…}` instead. A visible test run, the way the film is
+  recorded, and the app itself notify exactly as before. The window and the notifier read one rule,
+  `launchMode` in `apps/desktop/src/main/launch-mode.ts`.
 - The glasses page now opens the chapter its status line names. Before, it always opened the first
   chapter while the agent's sentence below said "You're in Chapter Two", so the display and the
   sentence disagreed about where the author was. Its chapter heading also reads "1 word" for a

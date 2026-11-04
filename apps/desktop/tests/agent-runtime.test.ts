@@ -266,6 +266,29 @@ function createChapter(content = "The old opening.\n"): ReturnType<Library["crea
   return library.createChapter(book.id, { title: "The Door", content });
 }
 
+/** An exchange the author had earlier in the conversation, before the turn under test. */
+const HISTORY = [
+  { role: "user" as const, text: "Who keeps the lighthouse?" },
+  { role: "assistant" as const, text: "Mara keeps it, since the second chapter." }
+];
+
+type ModelPrompt = MockLanguageModelV4["doStreamCalls"][number]["prompt"];
+
+/** One line per message the provider received: its role and what it carried. */
+function transcript(prompt: ModelPrompt): string[] {
+  return prompt.map((message) => {
+    if (message.role === "system") return "system";
+    const parts: string[] = [];
+    for (const part of message.content) {
+      if (part.type === "text") parts.push(part.text);
+      else if (part.type === "tool-call") parts.push(`call ${part.toolName}`);
+      else if (part.type === "tool-result") parts.push(`result ${part.toolName} (${part.output.type})`);
+      else parts.push(part.type);
+    }
+    return `${message.role}: ${parts.join(" · ")}`;
+  });
+}
+
 describe("agent runtime contract", () => {
   test("refuses a contributor model until the book opts in", async () => {
     const runtime = new AgentRuntime(
@@ -751,6 +774,293 @@ describe("agent runtime contract", () => {
     expect(thread!.messages.at(-1)!.parts.find((part) => part.type === "approval")).toMatchObject({
       status: "denied"
     });
+  });
+
+  test("an approved resume resends the conversation before the call and its approval", async () => {
+    const chapter = await createChapter();
+    const model = approvalModel("I replaced the opening.", "overwrite_chapter", {
+      chapterId: chapter.id,
+      content: "A new opening.\n"
+    });
+    const { runtime, approval, done } = approvalRuntime(model);
+
+    const prompt = "Replace the opening, then tell me what you changed.";
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt, history: HISTORY });
+    const request = await approval;
+    await runtime.approve(started.turnId, request.approvalId, true);
+    await done;
+
+    expect(model.doStreamCalls).toHaveLength(2);
+    const [asked = [], resumed = []] = model.doStreamCalls.map((call) => call.prompt);
+    expect(transcript(asked)).toEqual([
+      "system",
+      "user: Who keeps the lighthouse?",
+      "assistant: Mara keeps it, since the second chapter.",
+      `user: ${prompt}`
+    ]);
+    // The resume is the same conversation, message for message, then the call and what it did.
+    expect(resumed.slice(0, asked.length)).toEqual(asked);
+    expect(transcript(resumed.slice(asked.length))).toEqual([
+      "assistant: call overwrite_chapter",
+      "tool: result overwrite_chapter (json)"
+    ]);
+    expect(resumed.at(-1)).toMatchObject({
+      role: "tool",
+      content: [{ type: "tool-result", toolCallId: "call-approval", output: { type: "json", value: { ok: true } } }]
+    });
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
+  });
+
+  test("a denied resume resends the conversation, writes nothing and reports plainly", async () => {
+    const before = await library.readChapter(book.id, (await createChapter()).id);
+    const model = approvalModel("I left the opening as it was.", "overwrite_chapter", {
+      chapterId: before.id,
+      content: "A new opening.\n"
+    });
+    const { runtime, approval, done } = approvalRuntime(model);
+
+    const prompt = "Replace the opening, then tell me what you changed.";
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt, history: HISTORY });
+    const request = await approval;
+    await runtime.approve(started.turnId, request.approvalId, false);
+    const finished = await done;
+
+    // Nothing was written: the same bytes and version, and no turn to undo.
+    const after = await library.readChapter(book.id, before.id);
+    expect(after.content).toBe("The old opening.\n");
+    expect(after.version).toBe(before.version);
+    expect(after.hash).toBe(before.hash);
+    await expect(runtime.undoLast(book.id)).rejects.toThrow("no agent turn to undo");
+    expect(finished.text).toBe("I left the opening as it was.");
+    expect(finished.changed).toBe(0);
+
+    // The model still hears the whole conversation, then the denial where a result would be.
+    const [asked = [], resumed = []] = model.doStreamCalls.map((call) => call.prompt);
+    expect(resumed.slice(0, asked.length)).toEqual(asked);
+    expect(transcript(resumed.slice(asked.length))).toEqual([
+      "assistant: call overwrite_chapter",
+      "tool: result overwrite_chapter (execution-denied)"
+    ]);
+    expect(resumed.at(-1)).toMatchObject({
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "call-approval",
+          output: { type: "execution-denied", reason: "Denied by the author." }
+        }
+      ]
+    });
+
+    const answer = (await library.threads.read(book.id, started.threadId))?.messages.at(-1);
+    expect(answer && messageText(answer)).toBe("I left the opening as it was.");
+    expect(answer?.parts.find((part) => part.type === "approval")).toMatchObject({ status: "denied" });
+    expect(answer?.parts.some((part) => part.type === "error")).toBe(false);
+  });
+
+  test("a second approval in one turn resends everything and runs each call once", async () => {
+    const chapter = await createChapter("One.\nTwo.\nThree.\n");
+    const model = new MockLanguageModelV4({
+      doStream: [
+        {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              {
+                type: "tool-call",
+                toolCallId: "call-overwrite",
+                toolName: "overwrite_chapter",
+                input: JSON.stringify({ chapterId: chapter.id, content: "One.\nTwo.\nThree.\nFour.\n" })
+              },
+              {
+                type: "finish",
+                finishReason: { unified: "tool-calls", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE,
+                providerMetadata: { openrouter: { usage: { cost: 0.001 } } }
+              }
+            ]
+          })
+        },
+        {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              {
+                type: "tool-call",
+                toolCallId: "call-delete",
+                toolName: "delete_lines_in_chapter",
+                input: JSON.stringify({ chapterId: chapter.id, startLine: 1, endLine: 1 })
+              },
+              {
+                type: "finish",
+                finishReason: { unified: "tool-calls", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE,
+                providerMetadata: { openrouter: { usage: { cost: 0.002 } } }
+              }
+            ]
+          })
+        },
+        {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "text-1" },
+              { type: "text-delta", id: "text-1", delta: "I added a fourth line and cut the first." },
+              { type: "text-end", id: "text-1" },
+              {
+                type: "finish",
+                finishReason: { unified: "stop", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE,
+                providerMetadata: { openrouter: { usage: { cost: 0.004 } } }
+              }
+            ]
+          })
+        }
+      ]
+    });
+    const answers: Array<{
+      resolve: (event: Extract<AgentEvent, { type: "approval" }>) => void;
+      reject: (error: Error) => void;
+    }> = [];
+    const nextApproval = (message: string): Promise<Extract<AgentEvent, { type: "approval" }>> =>
+      new Promise((resolve, reject) => {
+        answers.push({ resolve, reject });
+        deadline(reject, message);
+      });
+    const firstAsked = nextApproval("The first approval request did not arrive.");
+    const secondAsked = nextApproval("The second approval request did not arrive.");
+    let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;
+    let rejectDone!: (error: Error) => void;
+    const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+      deadline(reject, "The twice-approved turn did not finish.");
+    });
+    const ran: string[] = [];
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      (event) => {
+        if (event.type === "approval") answers.shift()?.resolve(event);
+        if (event.type === "tool" && event.status === "end") ran.push(event.id);
+        if (event.type === "done") resolveDone(event);
+        if (event.type === "error") {
+          for (const answer of answers.splice(0)) answer.reject(new Error(event.message));
+          rejectDone(new Error(event.message));
+        }
+      },
+      () => model
+    );
+
+    const prompt = "Add a fourth line, then cut the first.";
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt, history: HISTORY });
+    await runtime.approve(started.turnId, (await firstAsked).approvalId, true);
+    await runtime.approve(started.turnId, (await secondAsked).approvalId, true);
+    const finished = await done;
+
+    expect(finished.text).toBe("I added a fourth line and cut the first.");
+    // Usage and price are the sum of all three legs, not the last one's alone.
+    expect(finished.inputTokens).toBe(360);
+    expect(finished.outputTokens).toBe(36);
+    expect(finished.costUsd).toBeCloseTo(0.007, 10);
+    // Each approved call ran once: the second resume did not replay the first approval.
+    expect(ran).toEqual(["call-overwrite", "call-delete"]);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("Two.\nThree.\nFour.\n");
+
+    // Every resume carries the conversation so far, so the last request holds all of it, in order.
+    expect(model.doStreamCalls).toHaveLength(3);
+    const [asked = [], afterFirst = [], afterSecond = []] = model.doStreamCalls.map((call) => call.prompt);
+    expect(afterFirst.slice(0, asked.length)).toEqual(asked);
+    expect(afterSecond.slice(0, afterFirst.length)).toEqual(afterFirst);
+    expect(transcript(afterSecond)).toEqual([
+      "system",
+      "user: Who keeps the lighthouse?",
+      "assistant: Mara keeps it, since the second chapter.",
+      `user: ${prompt}`,
+      "assistant: call overwrite_chapter",
+      "tool: result overwrite_chapter (json)",
+      "assistant: call delete_lines_in_chapter",
+      "tool: result delete_lines_in_chapter (json)"
+    ]);
+
+    // One turn, one undo: the checkpoint holds the chapter as it was before the first approval.
+    const undone = await runtime.undoLast(book.id);
+    expect(undone.restored).toBe(1);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("One.\nTwo.\nThree.\n");
+  });
+
+  test("an approval never carries over to the next turn", async () => {
+    const chapter = await createChapter();
+    const first = approvalModel("I replaced the opening.", "overwrite_chapter", {
+      chapterId: chapter.id,
+      content: "A new opening.\n"
+    });
+    const second = approvalModel("Unused.", "overwrite_chapter", {
+      chapterId: chapter.id,
+      content: "Another opening.\n"
+    });
+    const models = [first, second];
+    const answers: Array<(event: Extract<AgentEvent, { type: "approval" }>) => void> = [];
+    const nextApproval = (message: string): Promise<Extract<AgentEvent, { type: "approval" }>> =>
+      new Promise((resolve, reject) => {
+        answers.push(resolve);
+        deadline(reject, message);
+      });
+    const firstAsked = nextApproval("The first turn's approval request did not arrive.");
+    const secondAsked = nextApproval("The next turn's approval request did not arrive.");
+    let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;
+    const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
+      resolveDone = resolve;
+      deadline(reject, "The first turn did not finish.");
+    });
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      (event) => {
+        if (event.type === "approval") answers.shift()?.(event);
+        if (event.type === "done") resolveDone(event);
+      },
+      () => {
+        const next = models.shift();
+        if (!next) throw new Error("No model is left for this turn.");
+        return next;
+      }
+    );
+
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace the opening." });
+    const approved = await firstAsked;
+    await runtime.approve(started.turnId, approved.approvalId, true);
+    await done;
+    const afterFirst = await library.readChapter(book.id, chapter.id);
+    expect(afterFirst.content).toBe("A new opening.\n");
+
+    const next = await runtime.start({
+      mode: "edit",
+      bookId: book.id,
+      threadId: started.threadId,
+      prompt: "Now replace it again."
+    });
+    // The same destructive call in a new turn asks again, and nothing runs while it waits.
+    const asked = await secondAsked;
+    expect(asked.turnId).toBe(next.turnId);
+    expect(asked.approvalId).not.toBe(approved.approvalId);
+    const waiting = await library.readChapter(book.id, chapter.id);
+    expect(waiting.version).toBe(afterFirst.version);
+    expect(waiting.hash).toBe(afterFirst.hash);
+    // The new turn hears the earlier one as text: no tool call, result or approval comes with it.
+    expect(transcript(second.doStreamCalls[0]?.prompt ?? [])).toEqual([
+      "system",
+      "user: Replace the opening.",
+      "assistant: I replaced the opening.",
+      "user: Now replace it again."
+    ]);
+
+    await runtime.stop(next.turnId);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
+    expect(second.doStreamCalls).toHaveLength(1);
   });
 
   test("expires a waiting approval when the author stops the turn", async () => {

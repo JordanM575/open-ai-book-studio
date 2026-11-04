@@ -705,7 +705,11 @@ export class AgentRuntime {
                   reason: approved ? "Approved by the author." : "Denied by the author."
                 }
               ];
+              // The resume is the same conversation: what this stream was sent (the history and the
+              // author's prompt, or an earlier resume), what it answered, then the approval. The
+              // stream's response alone would leave the model without the request it is carrying out.
               const resumed: ModelMessage[] = [
+                ...messages,
                 ...responseMessages,
                 { role: "tool", content: responses }
               ];

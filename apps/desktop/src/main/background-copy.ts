@@ -53,6 +53,23 @@ export function shouldNotify(outcome: AgentOutcome, state: WindowState): boolean
   return outcome.background || !state.visible || !state.focused;
 }
 
+/** Where a notification goes: the operating system, or the run's own log. */
+export type NotificationRoute = "desktop" | "log";
+
+/**
+ * A hidden run's window is never on screen, so every outcome would notify, and on the author's own
+ * desktop. Its notifications go to the run's log instead, where a check can read them. A visible
+ * test run is on screen, so it notifies exactly as the app does.
+ */
+export function notificationRoute(
+  outcome: AgentOutcome,
+  state: WindowState,
+  headless: boolean
+): NotificationRoute | null {
+  if (!shouldNotify(outcome, state)) return null;
+  return headless ? "log" : "desktop";
+}
+
 export function previewText(text: string): string {
   const collapsed = text.replace(/\s+/g, " ").trim();
   if (collapsed.length <= PREVIEW_LENGTH) return collapsed;

@@ -16,6 +16,7 @@ import { ProviderService } from "./providers";
 import { AgentRuntime } from "./agent/runtime";
 import { ToolBridge } from "./agent/tool-bridge";
 import { BackgroundNotifier } from "./background";
+import { launchMode } from "./launch-mode";
 import { LocalBackend } from "./backend";
 import { LocalBridge, localAddresses, type BridgeLocator } from "./bridge";
 import { MetricsStore } from "./metrics";
@@ -45,10 +46,10 @@ const isDev = !app.isPackaged;
  *   manual keychain or credential pass. It is the only way to see a test profile on screen.
  * - `STUDIO_SMOKE=1` runs the built-in smoke checks once the renderer has loaded, prints them and
  *   exits with a status code.
+ *
+ * A hidden run logs its background notifications instead of posting them to the desktop.
  */
-const isTest = process.env.STUDIO_TEST === "1";
-const visibleTest = isTest && process.env.STUDIO_VISIBLE === "1";
-const headless = !visibleTest && (isTest || process.env.STUDIO_HEADLESS === "1");
+const { isTest, headless } = launchMode(process.env);
 const smoke = process.env.STUDIO_SMOKE === "1";
 const capturePath = process.env.STUDIO_CAPTURE;
 const windowSize = parseWindowSize(process.env.STUDIO_WINDOW_SIZE);
@@ -463,7 +464,7 @@ const started = app.whenReady().then(async () => {
       console.warn("[credentials] Protected storage is unavailable; model connections cannot be saved on this computer.");
     }
   });
-  notifier = new BackgroundNotifier(() => mainWindow, showStudioWindow);
+  notifier = new BackgroundNotifier(() => mainWindow, showStudioWindow, headless);
   const metrics = new MetricsStore(() => studio.library?.root ?? null);
   agentRuntime = new AgentRuntime(
     studio,
