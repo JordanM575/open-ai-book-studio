@@ -969,7 +969,7 @@ describe("library folders and archives", () => {
     const { result } = await logged(IPC.library.importLegacy);
     const message = result.ok ? "" : result.error.message;
     expect(message).toBe(
-      "This file could not be read as a backup, so nothing was imported. It may be damaged or incomplete; export it again from Mom's AI Book Studio, then choose the new file."
+      "This file could not be read as a backup, so nothing was imported. It may be damaged or incomplete; export it again from the old app, then choose the new file."
     );
     expect(message).not.toMatch(/SyntaxError|JSON|Unexpected|token/);
     expect(await snapshot()).toEqual(before);

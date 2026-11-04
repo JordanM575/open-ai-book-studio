@@ -231,7 +231,7 @@ function exportFrom(raw: unknown): unknown {
     return JSON.parse(raw);
   } catch {
     throw new LegacyImportError(
-      "This file could not be read as a backup, so nothing was imported. It may be damaged or incomplete; export it again from Mom's AI Book Studio, then choose the new file."
+      "This file could not be read as a backup, so nothing was imported. It may be damaged or incomplete; export it again from the old app, then choose the new file."
     );
   }
 }

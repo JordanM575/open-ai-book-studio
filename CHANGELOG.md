@@ -223,7 +223,10 @@ Update the `Unreleased` section before every commit.
   no longer shows the event's image files or a cutout. The retired SAM plate is marked as not in the
   film.
 - A file that is not an old-app backup is now refused with "This file is not a backup from the old
-  app.", which no longer names the earlier app.
+  app.", which no longer names the earlier app. The refusal for a damaged backup now asks you to
+  export it again "from the old app" as well.
+- D-161 now records that the protected-storage status read on opening Settings waits at most 2
+  seconds.
 - The submission packet's latest re-check now shows the current numbers: 1,567 tests, smoke 34/34,
   e2e 10/10, and coverage of 90.70% of functions and 93.27% of lines, above the unchanged floor.
 - The submission packet's list of event work now includes Word import, the generated open-source
