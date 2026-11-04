@@ -65,6 +65,8 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
+  /** The words the last conflicted save kept as a copy, the base it was checked against, and its status. */
+  const kept = useRef<{ text: string; hash: string; status: SaveStatus } | null>(null);
 
   const updateStatus = useCallback((next: SaveStatus): SaveStatus => {
     statusRef.current = next;
@@ -87,18 +89,31 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     element.scrollIntoView({ block: "center" });
   }, [selectionNonce]);
 
+  /** Nothing is left to write: drop the pending draft copy, here and in the main process. */
+  const dropDraft = useCallback(() => {
+    if (draftTimer.current) {
+      clearTimeout(draftTimer.current);
+      draftTimer.current = null;
+    }
+    void window.studio.drafts.clear(bookId, chapter.id);
+  }, [bookId, chapter.id]);
+
   const saveNow = useCallback(
     async (text: string): Promise<SaveStatus> => {
       if (text === base.current.content) {
         if (statusRef.current.kind !== "dirty") return statusRef.current;
         // Typing and then undoing back to the saved text leaves nothing to write. The chapter on
         // disk already matches, so end where a save would: no pending draft, and saved.
-        if (draftTimer.current) {
-          clearTimeout(draftTimer.current);
-          draftTimer.current = null;
-        }
-        void window.studio.drafts.clear(bookId, chapter.id);
+        dropDraft();
         return updateStatus({ kind: "saved", at: Date.now() });
+      }
+      // These words are already in a conflict copy, checked against this same base. Saving them again,
+      // from a flush, a remount or a quit, would only write the same copy twice (QA C4).
+      const copy = kept.current;
+      if (copy && copy.text === text && copy.hash === base.current.hash) {
+        if (statusRef.current.kind !== "dirty") return statusRef.current;
+        dropDraft();
+        return updateStatus(copy.status);
       }
 
       updateStatus({ kind: "saving" });
@@ -115,7 +130,12 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
           return updateStatus({ kind: "error", message: result.error.message });
         }
         if (result.data.status === "conflict") {
-          return updateStatus({ kind: "conflict", conflict: result.data.conflict });
+          const status = updateStatus({ kind: "conflict", conflict: result.data.conflict });
+          kept.current = { text, hash: base.current.hash, status };
+          // The copy holds these words, so no draft of them may be saved again at quit. Words typed
+          // while the copy was written keep their draft until they are saved too.
+          if (latest.current === text) dropDraft();
+          return status;
         }
 
         const saved = result.data.chapter;
@@ -127,7 +147,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         return updateStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [bookId, chapter.id, onSaved, updateStatus]
+    [bookId, chapter.id, dropDraft, onSaved, updateStatus]
   );
 
   // One save at a time. A save that started while another was on its way would carry the old base

@@ -231,6 +231,10 @@ A conflict never overwrites the other writer. The local text is written to
 `conflicts/<name>.conflict-<reason>.<deviceId>.<timestamp>.md`, the UI shows both versions, and the
 author chooses: *Show the saved copy* or *Load the version on disk*.
 
+One conflicted save writes one copy. The editor never saves words a copy already holds against the
+same base again, and drops the draft it held for them, so loading the version on disk, closing and
+quitting write no second copy. Words typed after the conflict are new, so they get a copy of their own.
+
 An agent edit that waits for the author's approval is checked the same way, against the version and
 hash the chapter had when the author was asked. If the chapter was saved in between, an approved
 `overwrite_chapter` keeps the file on disk and writes its text as a conflict copy with the usual reason,

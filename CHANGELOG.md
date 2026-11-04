@@ -407,6 +407,15 @@ Update the `Unreleased` section before every commit.
   turns: two at once, as when a turn's tool calls finish together, used to drop one another's paths.
   A file another device or editor changes is still listed. Checkpoints written before this fix were
   never noted, so a library that has them lists them once more, until you keep the disk version.
+- One conflicted edit keeps one conflict copy (QA C4). The editor kept the author's draft after a
+  conflict, so "Load the version on disk" saved the same words again within milliseconds, and the main
+  process saved the leftover draft once more at quit: three identical copies, while the banner counted
+  one. A conflicted save now drops its draft, in the editor and in the main process, and the editor
+  never saves words a copy already holds against the same base, from a flush, a remount or a quit.
+  "Load the version on disk" saves words typed since the conflict first, as a copy of their own, then
+  lists the copies, so the banner counts the files on disk; it also recounts them when a conflict
+  happens. Like Refresh, it now clears the chapter's typing history, so undo cannot step back across
+  the version on disk.
 - A refused or unreachable connection (`ECONNREFUSED`, `ENETUNREACH`, `EHOSTUNREACH`, `ECONNRESET`)
   now reads as offline, with the offline note, instead of "The provider's content policy declined this
   request". The refusal pattern matched "ECONNREFUSED".

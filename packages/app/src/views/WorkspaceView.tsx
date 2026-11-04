@@ -220,6 +220,19 @@ export function WorkspaceView({
     void load();
   }, [load]);
 
+  /** List the conflict copies again after the editor or an agent tool kept one, so the banner counts what is on disk. */
+  const refreshConflicts = useCallback(async () => {
+    try {
+      setConflicts(await must(window.studio.conflicts.list(bookId)));
+    } catch (error) {
+      onNotice(error);
+    }
+  }, [bookId, onNotice]);
+
+  useEffect(() => {
+    if (status.kind === "conflict") void refreshConflicts();
+  }, [status, refreshConflicts]);
+
   useEffect(() => {
     // The main process reports only another writer's changes: it recognises the studio's own saves,
     // Story Bible, image and agent writes by their bytes, so every change that arrives is announced,
@@ -389,6 +402,11 @@ export function WorkspaceView({
     }
   };
 
+  /**
+   * Show the chapter as it is on disk: Refresh on the outside-change banner, and "Load the version on
+   * disk" on the conflict banner. The flush comes first, so words typed since a conflict get their own
+   * copy and the copies are listed after every write; words a copy already holds are not saved again.
+   */
   const refreshFromDisk = async (): Promise<void> => {
     try {
       await editorRef.current?.flush();
@@ -934,13 +952,7 @@ export function WorkspaceView({
                 >
                   Show the saved copy
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    void load(selectedId ?? undefined).then(() => setReloadKey((key) => key + 1));
-                  }}
-                >
+                <Button variant="primary" size="sm" onClick={() => void refreshFromDisk()}>
                   Load the version on disk
                 </Button>
               </div>

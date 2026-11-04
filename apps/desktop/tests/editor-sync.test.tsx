@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import React from "react";
@@ -554,5 +554,134 @@ describe("words typed just before a quit reach the file (A1)", () => {
     expect(saved.version).toBe(first.version + 2);
     expect(await library.listConflicts(bookId)).toHaveLength(0);
     expect(workspace.notices).toEqual([]);
+  }, 15_000);
+});
+
+/** The conflict copies in the book's folder, sorted by name. */
+async function conflictFiles(workspace: Workspace): Promise<string[]> {
+  const names = await readdir(join(workspace.root, "books", workspace.bookId, "conflicts")).catch(() => []);
+  return names.filter((name) => name.endsWith(".md")).sort();
+}
+
+async function conflictText(workspace: Workspace, name: string): Promise<string> {
+  return readFile(join(workspace.root, "books", workspace.bookId, "conflicts", name), "utf8");
+}
+
+/** Another writer, such as the CLI, saves the open chapter before the editor's autosave runs. */
+async function outsideSave(workspace: Workspace): Promise<void> {
+  const { library, bookId, first } = workspace;
+  const saved = await library.saveChapter(bookId, first.id, "The tide was out.\nThe gulls came back.\n", {
+    baseVersion: first.version,
+    baseHash: first.hash
+  });
+  expect(saved.status).toBe("saved");
+}
+
+async function settle(ms: number): Promise<void> {
+  await testing.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+}
+
+/*
+ * QA C4: one conflicted edit wrote three identical copies. The editor kept the author's draft after
+ * the conflict, so the remount for "Load the version on disk" saved the same words again, and the main
+ * process saved its leftover draft once more at quit.
+ */
+describe("a conflicted edit keeps one copy (C4)", () => {
+  test("loading the version on disk and quitting add no copy, and the banner counts the copies on disk", async () => {
+    const workspace = await mountWorkspace();
+    const { library, bookId, first } = workspace;
+
+    type("Mara wrote on.\n");
+    await outsideSave(workspace);
+    await testing.waitFor(() => expect(view().getByText("This chapter was saved somewhere else")).toBeTruthy(), {
+      timeout: 3000
+    });
+    const copies = await conflictFiles(workspace);
+    expect(copies).toHaveLength(1);
+    expect(await conflictText(workspace, copies[0] ?? "")).toContain("Mara wrote on.");
+
+    testing.fireEvent.click(view().getByText("Load the version on disk"));
+    await testing.waitFor(() => expect(editorText()).toBe("The tide was out.\nThe gulls came back.\n"), { timeout: 3000 });
+    await settle(150);
+    expect(await conflictFiles(workspace)).toEqual(copies);
+    expect(view().getByText("1 saved copy from earlier sync conflicts.")).toBeTruthy();
+
+    await workspace.quit();
+    expect(await conflictFiles(workspace)).toEqual(copies);
+    expect((await library.readChapter(bookId, first.id)).content).toBe("The tide was out.\nThe gulls came back.\n");
+    expect(workspace.notices).toEqual([]);
+  }, 15_000);
+
+  test("quitting and closing with the conflict still showing write no second copy", async () => {
+    const workspace = await mountWorkspace();
+
+    type("Mara wrote on.\n");
+    await outsideSave(workspace);
+    await testing.waitFor(() => expect(view().getByText("This chapter was saved somewhere else")).toBeTruthy(), {
+      timeout: 3000
+    });
+    const copies = await conflictFiles(workspace);
+    expect(copies).toHaveLength(1);
+
+    await workspace.quit();
+    expect(await conflictFiles(workspace)).toEqual(copies);
+    // Closing the window unmounts the editor, which saves any words it still holds.
+    testing.cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await conflictFiles(workspace)).toEqual(copies);
+  }, 15_000);
+
+  test("a save that conflicts before the draft copy is taken leaves no draft to save again at quit", async () => {
+    const workspace = await mountWorkspace();
+
+    type("Mara wrote on.\n");
+    await outsideSave(workspace);
+    // Leaving the text saves at once, before the 300 ms draft copy.
+    testing.fireEvent.blur(view().getByTestId("manuscript-text"));
+    await testing.waitFor(() => expect(view().getByText("This chapter was saved somewhere else")).toBeTruthy(), {
+      timeout: 3000
+    });
+    await settle(400);
+    expect(workspace.drafts.size).toBe(0);
+
+    await workspace.quit();
+    expect(await conflictFiles(workspace)).toHaveLength(1);
+  }, 15_000);
+
+  test("words typed after the conflict are kept in one more copy, which the banner counts", async () => {
+    const workspace = await mountWorkspace();
+
+    type("Mara wrote on.\n");
+    await outsideSave(workspace);
+    await testing.waitFor(() => expect(view().getByText("This chapter was saved somewhere else")).toBeTruthy(), {
+      timeout: 3000
+    });
+    const [firstCopy] = await conflictFiles(workspace);
+
+    // The author writes on in the conflicted editor; those words are new, so they get a copy of their own.
+    type("She stopped at the gate.\n");
+    await testing.waitFor(
+      async () => {
+        expect(await conflictFiles(workspace)).toHaveLength(2);
+      },
+      { timeout: 3000 }
+    );
+    const copies = await conflictFiles(workspace);
+    const newest = copies.find((name) => name !== firstCopy) ?? "";
+    expect(await conflictText(workspace, newest)).toContain("She stopped at the gate.");
+    await testing.waitFor(() => expect(view().getByText("This chapter was saved somewhere else")).toBeTruthy(), {
+      timeout: 3000
+    });
+
+    testing.fireEvent.click(view().getByText("Load the version on disk"));
+    await testing.waitFor(() => expect(editorText()).toBe("The tide was out.\nThe gulls came back.\n"), { timeout: 3000 });
+    await settle(150);
+    expect(await conflictFiles(workspace)).toEqual(copies);
+    expect(view().getByText("2 saved copies from earlier sync conflicts.")).toBeTruthy();
+
+    await workspace.quit();
+    expect(await conflictFiles(workspace)).toEqual(copies);
   }, 15_000);
 });
