@@ -184,6 +184,10 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The header's Word and Markdown export buttons no longer export when the open chapter's latest text
+  failed to save. An export reads the saved files, so it would have left the newest words out
+  without saying so. Now a save that failed or hit a conflict stops the export with a plain notice
+  ("…so nothing was exported"). A component test covers this and fails without the fix.
 - The browser build's `window.studio` is now tested end to end over site storage
   (`apps/web/tests/storage/browser-api.test.ts`). The test covers:
   - creating, renaming, searching and reopening a book;

@@ -396,7 +396,19 @@ export function WorkspaceView({
     if (exporting) return;
     setExporting(true);
     try {
-      await editorRef.current?.flush();
+      // An export reads the saved files, so a chapter whose latest text did not save would leave the
+      // author's newest words out without a word. Stop and say so instead.
+      const flushed = await editorRef.current?.flush();
+      if (flushed?.kind === "conflict" || flushed?.kind === "error") {
+        onNotice(
+          new Error(
+            flushed.kind === "conflict"
+              ? "This chapter has a conflicting copy, so nothing was exported. Resolve the conflict, then export again."
+              : `Your latest change couldn't be saved, so nothing was exported. ${flushed.message}`
+          )
+        );
+        return;
+      }
       const path = await must(request());
       if (!path) return;
       const name = path.split(/[\\/]/).pop() ?? path;

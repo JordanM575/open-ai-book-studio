@@ -40,7 +40,9 @@ function chapter(id: string, title: string, order: number, content: string): Cha
 
 const CHAPTER_A = chapter("ch_fx000001", "First", 1, "First line.\n");
 
-function mockWorkspace(order: string[]) {
+type SaveReply = { ok: true; data: { status: "saved"; chapter: Chapter } } | { ok: false; error: { code: "io"; message: string } };
+
+function mockWorkspace(order: string[], saveReply: SaveReply = { ok: true, data: { status: "saved", chapter: CHAPTER_A } }) {
   const detail = () => ({
     book: bookSchema.parse({ id: BOOK, title: "Flushed", createdAt: NOW, updatedAt: NOW }),
     chapters: [CHAPTER_A],
@@ -50,7 +52,7 @@ function mockWorkspace(order: string[]) {
   const open = mock(() => Promise.resolve({ ok: true, data: detail() }));
   const save = mock((_input: unknown) => {
     order.push("save");
-    return Promise.resolve({ ok: true, data: { status: "saved", chapter: CHAPTER_A } });
+    return Promise.resolve(saveReply);
   });
   const exportDocx = mock((_bookId: string) => {
     order.push("export");
@@ -128,5 +130,27 @@ describe("docx export flush", () => {
       expect(view.getByText("Saved flushed.docx")).toBeTruthy();
     });
     expect(mocks.onNotice).not.toHaveBeenCalled();
+  });
+
+  test("a chapter whose latest text did not save is not exported, and the author is told", async () => {
+    const order: string[] = [];
+    const mocks = mockWorkspace(order, { ok: false, error: { code: "io", message: "The disk is full." } });
+    const view = testing.within(document.body);
+    await testing.waitFor(() => {
+      expect(view.getByTestId("manuscript-text")).toBeTruthy();
+    });
+
+    testing.fireEvent.change(view.getByTestId("manuscript-text"), { target: { value: "Words that will not save.\n" } });
+    testing.fireEvent.click(view.getByTestId("export-docx"));
+
+    await testing.waitFor(() => {
+      expect(mocks.onNotice).toHaveBeenCalledTimes(1);
+    });
+    const notice = mocks.onNotice.mock.calls[0]?.[0];
+    expect(notice instanceof Error ? notice.message : String(notice)).toContain("nothing was exported");
+    expect(notice instanceof Error ? notice.message : String(notice)).toContain("The disk is full.");
+    expect(mocks.exportDocx).not.toHaveBeenCalled();
+    expect(order).toEqual(["save"]);
+    expect(view.queryByText("Saved flushed.docx")).toBeNull();
   });
 });
