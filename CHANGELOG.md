@@ -45,6 +45,18 @@ Update the `Unreleased` section before every commit.
   studio tokens, rendered frame by frame through Playwright like the motion plates.
   `video/footage/README.md` names every clip and the 1440×900 @2×, 30 fps capture. Footage and
   renders stay out of git.
+- The product film can play a clip's own sound. A clip in `video/edit/film.json` may set `sound`, a
+  gain from 0 to 1 (absent means muted), and its audio then plays in sync with its picture: from its
+  `in` point, after any earlier sources in the segment, and only inside the beat the 0:30 cut takes.
+  It is mixed with the narration at that gain, without amix's normalization, and a mono clip plays in
+  both channels; a clip without audio, or a slate, adds nothing. Only the strip
+  (`shot-04-strip.mov`, 1:15–1:29) has `"sound": 1`, so “it answers out loud” is heard; the other
+  clips stay muted. The master and the 0:30 cut are now normalized in two loudnorm passes to about
+  −14 LUFS integrated with a true peak at or under −1 dBTP (spec 021 FR-010), and the sound still
+  ends on the same sample inside the last frame. Segment intermediates carry float PCM, so a line and
+  a clip that add up past full scale do not clip before that pass. `--check` measures each build with
+  ffmpeg's EBU R128 meter and, when the build had narration, fails outside −15 to −13 LUFS or above
+  −0.5 dBTP.
 - An end-to-end check of the agent toolkit, `scripts/toolkit-e2e.mjs` (`bun run e2e toolkit`). It
   launches the built app hidden over a synthetic library, drives the compiled `bookwriter` CLI and
   `bookwriter mcp` over stdio, and checks every answer against the bytes on disk. A tool switched

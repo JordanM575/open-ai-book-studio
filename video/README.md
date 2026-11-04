@@ -24,7 +24,7 @@ the actual book, and the author keeps the actual files** — see
    ```bash
    node video/edit/assemble.mjs           # 3:00 master and its .srt in video/renders/
    node video/edit/assemble.mjs --cut30   # the 0:30 cut
-   node video/edit/assemble.mjs --check   # timings per segment; fails over 3:00 or off the script
+   node video/edit/assemble.mjs --check   # timings and loudness; fails over 3:00, off the script or off −14 LUFS
    ```
 
    Run them with `env -u ELECTRON_RUN_AS_NODE` if your terminal sets it. Until a clip exists, its
@@ -46,16 +46,28 @@ card in `video/renders/cards/previews/`.
 - the voiceover and on-screen text, copied exactly;
 - its event tag;
 - `live`, what the shot needs and what to do if it fails;
-- `picture`, a list of motion plates, clips (with optional `in` and `out` seconds) and cards;
+- `picture`, a list of motion plates, clips and cards. A clip may set `in` and `out` (seconds) and
+  `sound`, a gain from 0 to 1 for its own audio; a clip without `sound` is muted;
 - `lowerThird`, false where a plate already carries the line;
 - `cut`.
 
+A clip's sound plays in sync with its picture: from its `in` point, after any earlier sources in the
+segment, and only inside the beat the 0:30 cut takes. It is mixed with the narration at its gain, and
+a mono clip plays in both channels. Only the strip (`shot-04-strip.mov`) has `"sound": 1`, so the
+studio's spoken reply is heard; the other clips stay muted, so the app's sounds do not compete with
+the narration. A clip without an audio stream, or a slate, adds no sound.
+
 Set `"cut": true` to drop a segment's picture and its line, following `cutOrder`, which is the
 script's cut order. `cut30` maps the plan's 0:30 cut (problem → agent → voice → background → close)
-onto segments. The 0:30 cut is silent unless `video/footage/narration-30s.wav` exists, and it gets no
-captions file.
+onto segments. The 0:30 cut has no narration unless `video/footage/narration-30s.wav` exists, and it
+gets no captions file.
 
-`--check` fails when the voiceover, on-screen text, tags or cut order drift from
+The master and the 0:30 cut are normalized in two loudnorm passes to about −14 LUFS integrated with a
+true peak at or under −1 dBTP (spec 021 FR-010). `--check` measures each with ffmpeg's EBU R128 meter
+and prints the result. It fails when a build with narration is outside −15 to −13 LUFS or peaks above
+−0.5 dBTP; a build without narration is a preview, so its loudness is not held to that.
+
+`--check` also fails when the voiceover, on-screen text, tags or cut order drift from
 [`script.md`](script.md), which stays the source of truth.
 
 The caption cards in [`cards/`](cards/) follow the motion-plate pattern. The page is

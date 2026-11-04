@@ -15,6 +15,10 @@ recorded. Never put a stand-in here: a clip under one of these names is treated 
 - One file per shot, named exactly as below. `.mov` is expected; the same name ending in `.mp4` or
   `.m4v` is accepted.
 - The narration is one 48 kHz WAV for the whole film, read to the script's timings. Mono or stereo.
+- Record `shot-04-strip.mov` with system audio, so the file holds the studio's spoken reply. The edit
+  plays that clip's first audio track under the narration (`"sound": 1` in `video/edit/film.json`),
+  so put the system audio there; lower `sound` if the reply drowns the line. Every other clip is
+  muted, so its audio track is optional.
 
 ## File names
 

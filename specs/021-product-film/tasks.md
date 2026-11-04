@@ -39,8 +39,10 @@
   Blocked on T005–T009 (capture, motion, voice and music). The tooling is ready.
   `video/edit/film.json` is the edit list. `node video/edit/assemble.mjs` builds the master and its
   SRT, and `--cut30` builds the 0:30 cut; each shows a footage-pending slate until its clip exists.
-  `--check` compares the edit list with the script and fails over 3:00. Still to do: the 0:15
-  vertical, the burned-in captions and the final mix.
+  `--check` compares the edit list with the script, fails over 3:00 and measures loudness. The
+  assembler plays the strip's own sound under the narration (`"sound": 1`) and normalizes the master
+  and the 0:30 cut to −14 LUFS / −1 dBTP. Still to do: the 0:15 vertical, the burned-in captions and
+  the music (T009).
 - [ ] T011 Run the truth, privacy, silent and phone checks; record the commit and test count in
   `video/assets.md`.
 - [ ] T012 Upload the master and short cut, check both links in a private window, and attach them to

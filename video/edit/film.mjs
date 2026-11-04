@@ -107,6 +107,10 @@ export function validate(film) {
       if (!(source.duration > 0)) problems.push(`${where}: every source needs a planned duration in seconds`);
       if (source.in !== undefined && !(source.in >= 0)) problems.push(`${where}: in must be 0 or more seconds`);
       if (source.out !== undefined && !(source.out > (source.in ?? 0))) problems.push(`${where}: out must be after in`);
+      if (source.sound !== undefined && !source.clip) problems.push(`${where}: only a clip has sound`);
+      if (source.sound !== undefined && !(typeof source.sound === "number" && source.sound >= 0 && source.sound <= 1)) {
+        problems.push(`${where}: sound must be a gain from 0 to 1`);
+      }
     }
     const third = segment.lowerThird;
     if (third !== false && (typeof third !== "object" || third === null)) problems.push(`${where}: lowerThird is false or an object`);

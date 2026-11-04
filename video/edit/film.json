@@ -206,6 +206,7 @@
         {
           "clip": "shot-04-strip.mov",
           "duration": 14,
+          "sound": 1,
           "shows": "The strip at the bottom of the workspace (“The writing agent, in brief”): press **Say where you are** and the status is read aloud. Open the agent's actions, tap the microphone, ask a question out loud, and the reply appears and is spoken."
         }
       ],

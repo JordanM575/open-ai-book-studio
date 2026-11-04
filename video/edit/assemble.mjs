@@ -4,7 +4,7 @@
  *
  *   node video/edit/assemble.mjs              the 3:00 master and its .srt
  *   node video/edit/assemble.mjs --cut30      the 0:30 cut
- *   node video/edit/assemble.mjs --check      planned and built durations; fails over 3:00
+ *   node video/edit/assemble.mjs --check      planned and built durations and loudness; fails over 3:00
  *
  * Options: --version=v1 --date=YYYY-MM-DD --footage=<dir> --out=<dir> --film=<edit list> --keep (keep
  * the per-segment intermediates).
@@ -13,7 +13,9 @@
  * "Footage pending", so a build with no footage is a timing preview, never a fake. Plates and caption
  * cards that are missing or stale are rendered first through video/motion/render.mjs and
  * video/cards/render.mjs. Each segment's picture is fitted to its slot (trimmed, or its last frame
- * held), and its line is the same slice of video/footage/narration.wav, or silence.
+ * held), and its line is the same slice of video/footage/narration.wav, or silence. A clip with a
+ * `sound` gain also plays its own audio under its picture. The finished sound is normalized to about
+ * −14 LUFS integrated with a true peak under −1 dBTP (spec 021 FR-010).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -44,6 +46,13 @@ const SAMPLES_PER_FRAME = RATE / FPS;
 const AAC_FRAME = 1024;
 const FADE = 0.3;
 const PLATE_SECONDS = 3;
+/**
+ * FR-010: about −14 LUFS integrated, true peak at or under −1 dBTP. loudnorm aims 0.5 dB lower, because
+ * the AAC encode adds a little peak. --check accepts −15 to −13 LUFS and a true peak up to −0.5 dBTP.
+ */
+const LOUDNESS = { integrated: -14, truePeak: -1.5, range: 11 };
+const LOUDNESS_LIMITS = { low: -15, high: -13, truePeak: -0.5 };
+const LOUDNORM = `loudnorm=I=${LOUDNESS.integrated}:TP=${LOUDNESS.truePeak}:LRA=${LOUDNESS.range}`;
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
@@ -77,11 +86,11 @@ function run(command, commandArgs, label) {
     const tail = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim().split("\n").slice(-20).join("\n");
     throw new Error(`${label} failed (exit ${result.status ?? result.signal}):\n${tail}`);
   }
-  return result.stdout;
+  return result;
 }
 
 function probe(file) {
-  const json = JSON.parse(run("ffprobe", ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file], `ffprobe ${file}`));
+  const json = JSON.parse(run("ffprobe", ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file], `ffprobe ${file}`).stdout);
   const video = json.streams.find((stream) => stream.codec_type === "video");
   const audio = json.streams.find((stream) => stream.codec_type === "audio");
   return { duration: Number(json.format.duration), video, audio, streams: json.streams };
@@ -119,6 +128,56 @@ function audioFile(name) {
 function narrationOverrun(narration) {
   if (!narration) return 0;
   return Math.max(0, narration.duration - seconds(film.segments.at(-1).end));
+}
+
+/** The last loudnorm print_format=json report in an ffmpeg log, with "-inf" read as -Infinity. */
+function loudnormReport(log, label) {
+  const json = log.match(/\{[^{}]*"input_i"[^{}]*\}/g)?.at(-1);
+  if (!json) throw new Error(`${label}: loudnorm printed no report`);
+  const report = JSON.parse(json);
+  const number = (key) => Number(String(report[key]).replace("inf", "Infinity"));
+  return {
+    integrated: number("input_i"),
+    truePeak: number("input_tp"),
+    range: number("input_lra"),
+    threshold: number("input_thresh"),
+    offset: number("target_offset"),
+    output: { integrated: number("output_i"), truePeak: number("output_tp") },
+    type: report.normalization_type
+  };
+}
+
+/** The loudness of a graph's [mix] output (LUFS, dBTP and LU), measured by loudnorm's first pass. */
+function measure(inputs, graph) {
+  const { stderr } = run(
+    "ffmpeg",
+    ["-hide_banner", "-nostats", ...inputs, "-filter_complex", `${graph};[mix]${LOUDNORM}:print_format=json[measured]`, "-map", "[measured]", "-f", "null", "-"],
+    "loudness measurement"
+  );
+  return loudnormReport(stderr, "loudness measurement");
+}
+
+/**
+ * Integrated loudness (LUFS) and true peak (dBTP) of a file's sound, from ffmpeg's EBU R128 meter, so
+ * --check does not grade loudnorm with loudnorm's own meter. Silence reads -70 LUFS, peaking at -Infinity.
+ */
+function meter(file) {
+  const { stderr } = run("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-map", "0:a:0", "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-"], `loudness of ${file}`);
+  const summary = stderr.slice(stderr.lastIndexOf("Summary:"));
+  const read = (pattern) => Number(pattern.exec(summary)?.[1].replace("inf", "Infinity"));
+  return { integrated: read(/\sI:\s+(\S+) LUFS/), truePeak: read(/Peak:\s+(\S+) dBFS/) };
+}
+
+/**
+ * loudnorm's second pass, from the first pass's measurement: a linear gain when the peak and range
+ * allow it, otherwise its dynamic mode with the true-peak limiter. Null for silence, or for a
+ * measurement outside loudnorm's option ranges.
+ */
+function normalizer(level) {
+  const { integrated, truePeak, range, threshold, offset } = level;
+  const usable = integrated >= -99 && integrated <= 0 && truePeak >= -99 && truePeak <= 99 && range >= 0 && range <= 99 && threshold >= -99 && threshold <= 0 && offset >= -99 && offset <= 99;
+  if (!usable) return null;
+  return `${LOUDNORM}:measured_I=${integrated}:measured_TP=${truePeak}:measured_LRA=${range}:measured_thresh=${threshold}:offset=${offset}:linear=true:print_format=json`;
 }
 
 /** How many seconds of picture a source supplies before the segment is fitted to its slot. */
@@ -219,7 +278,7 @@ function ensureCards(list, clips) {
   run("node", ["video/cards/render.mjs", `--only=${stale.join(",")}`, `--film=${filmPath}`], "caption cards");
 }
 
-/** The ffmpeg arguments for one beat: picture fitted to the slot, tag, lower third, line. */
+/** The ffmpeg arguments for one beat: picture fitted to the slot, tag, lower third, line and clip sound. */
 function beatArgs(beat, clips, narration, file) {
   const inputs = [];
   const graph = [];
@@ -231,6 +290,7 @@ function beatArgs(beat, clips, narration, file) {
   };
   const { segment } = beat;
   const counts = fitted(segment, clips);
+  const sounds = [];
   const parts = segment.picture.flatMap((source, index) => {
     const label = `s${index}`;
     const clip = source.clip ? clips.get(source.clip) : null;
@@ -248,6 +308,9 @@ function beatArgs(beat, clips, narration, file) {
       graph.push(
         `[b${index}][c${index}]overlay=x=(W-w)/2:y=(H-h)/2:shortest=1:format=rgb,format=rgba,tpad=stop_mode=clone:stop=${n},trim=end_frame=${n},setpts=PTS-STARTPTS[${label}]`
       );
+      if (source.sound > 0 && clip.audio) {
+        sounds.push({ at, channels: clip.audio.channels, gain: source.sound, start: counts.slice(0, index).reduce((sum, count) => sum + count, 0), n });
+      }
     } else {
       const at = input("-loop", 1, "-framerate", FPS, "-i", join(paths.cards, `slate-${stem(source.clip)}`, "frame-0000.png"));
       graph.push(`[${at}:v]format=rgba,setsar=1,trim=end_frame=${n},setpts=PTS-STARTPTS[${label}]`);
@@ -284,14 +347,31 @@ function beatArgs(beat, clips, narration, file) {
   graph.push(`[${last}]scale=${WIDTH}:${HEIGHT}:out_color_matrix=bt709:out_range=tv,format=yuv420p[vout]`);
 
   const samples = length * SAMPLES_PER_FRAME;
+  // A clip's sound runs with its picture: from its in point, after the sources before it, inside the beat.
+  const mixed = sounds.flatMap(({ at, channels, gain, start, n }, index) => {
+    const on = Math.max(start, first);
+    const off = Math.min(start + n, first + length);
+    if (off <= on) return [];
+    const pan = channels === 1 ? "pan=stereo|c0=c0|c1=c0," : "";
+    const delay = (on - first) * SAMPLES_PER_FRAME;
+    graph.push(
+      `[${at}:a:0]${pan}aresample=${RATE}:async=1:first_pts=0,aformat=sample_fmts=flt:channel_layouts=stereo,apad,atrim=start_sample=${(on - start) * SAMPLES_PER_FRAME}:end_sample=${(off - start) * SAMPLES_PER_FRAME},asetpts=N/SR/TB,volume=${gain}${delay > 0 ? `,adelay=delays=${delay}S:all=1` : ""}[k${index}]`
+    );
+    return [`[k${index}]`];
+  });
+  const line = mixed.length > 0 ? "line" : "aout";
   const from = seconds(segment.start) + beat.from;
   if (mode === "master" && narration && narration.duration > from + 0.01) {
     const at = input("-ss", from.toFixed(3), "-t", beat.duration.toFixed(3), "-i", narration.path);
     const pan = narration.channels === 1 ? "pan=stereo|c0=c0|c1=c0," : "";
-    graph.push(`[${at}:a]${pan}aresample=${RATE},aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=${samples},asetpts=N/SR/TB[aout]`);
+    graph.push(`[${at}:a]${pan}aresample=${RATE},aformat=sample_fmts=flt:channel_layouts=stereo,apad,atrim=end_sample=${samples},asetpts=N/SR/TB[${line}]`);
   } else {
     const at = input("-f", "lavfi", "-i", `anullsrc=r=${RATE}:cl=stereo`);
-    graph.push(`[${at}:a]atrim=end_sample=${samples},asetpts=N/SR/TB[aout]`);
+    graph.push(`[${at}:a]atrim=end_sample=${samples},asetpts=N/SR/TB[${line}]`);
+  }
+  if (mixed.length > 0) {
+    // normalize=0 keeps every input at its own gain; amix would otherwise divide them by the input count.
+    graph.push(`[line]${mixed.join("")}amix=inputs=${mixed.length + 1}:duration=first:normalize=0,apad,atrim=end_sample=${samples},asetpts=N/SR/TB[aout]`);
   }
 
   return [
@@ -314,7 +394,8 @@ function beatArgs(beat, clips, narration, file) {
     "-qp",
     0,
     "-c:a",
-    "pcm_s16le",
+    // Float, so a line and a clip that add up past full scale do not clip before the loudness pass.
+    "pcm_f32le",
     file
   ];
 }
@@ -439,10 +520,11 @@ function check() {
   const pending = [...clips].filter(([, clip]) => !clip).map(([name]) => name);
   if (pending.length > 0) console.log(`Footage pending (${pending.length} of ${clips.size}): ${pending.join(", ")}`);
 
-  for (const [kind, path] of [
-    ["master", record?.output],
-    ["0:30 cut", readJson(join(outDir, "edit", "cut30", "build.json"))?.output]
+  for (const [kind, built] of [
+    ["master", record],
+    ["0:30 cut", readJson(join(outDir, "edit", "cut30", "build.json"))]
   ]) {
+    const path = built?.output;
     if (!path || !existsSync(path)) {
       console.log(`${kind}: not built yet`);
       continue;
@@ -456,6 +538,16 @@ function check() {
     );
     if (longest > limit + 1e-6) failures.push(`the ${kind} is ${longest.toFixed(3)} s, over ${clock(limit, 0)}`);
     if (v.width !== WIDTH || v.height !== HEIGHT || v.r_frame_rate !== `${FPS}/1`) failures.push(`the ${kind} is not ${WIDTH}×${HEIGHT} at ${FPS} fps`);
+    if (!info.audio) continue;
+    // A build without narration is a preview, so its loudness is reported but not held to FR-010.
+    const level = meter(path);
+    const heard = level.integrated > -70 ? `${level.integrated.toFixed(1)} LUFS integrated · true peak ${level.truePeak.toFixed(1)} dBTP` : "silent";
+    console.log(`  ${heard}${built.narration ? "" : " · not checked: built without narration"}`);
+    if (!built.narration) continue;
+    if (!(level.integrated >= LOUDNESS_LIMITS.low && level.integrated <= LOUDNESS_LIMITS.high)) {
+      failures.push(`the ${kind} is ${level.integrated.toFixed(1)} LUFS integrated, outside ${LOUDNESS_LIMITS.low} to ${LOUDNESS_LIMITS.high} LUFS`);
+    }
+    if (!(level.truePeak <= LOUDNESS_LIMITS.truePeak)) failures.push(`the ${kind}'s true peak is ${level.truePeak.toFixed(1)} dBTP, above ${LOUDNESS_LIMITS.truePeak} dBTP`);
   }
   if (failures.length > 0) {
     console.error(`\nFAIL\n- ${failures.join("\n- ")}`);
@@ -495,19 +587,28 @@ function build() {
   // End the audio on a whole AAC frame inside the last video frame, so no stream runs past the picture.
   const audioSamples = Math.floor((totalFrames * SAMPLES_PER_FRAME) / AAC_FRAME) * AAC_FRAME;
   const inputs = ["-f", "concat", "-safe", "0", "-i", segmentList];
-  let audio = `[0:a]atrim=end_sample=${audioSamples},asetpts=N/SR/TB[a]`;
+  // [mix] is the sound before loudness: each beat's line and clip sound, and the 0:30 cut's own narration.
+  let mix = `[0:a]atrim=end_sample=${audioSamples}[mix]`;
   if (mode === "cut30" && narration) {
     inputs.push("-i", narration.path);
     const pan = narration.channels === 1 ? "pan=stereo|c0=c0|c1=c0," : "";
-    audio = `[1:a]${pan}aresample=${RATE},aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=end_sample=${audioSamples},asetpts=N/SR/TB[a]`;
+    mix = `[1:a]${pan}aresample=${RATE},aformat=sample_fmts=flt:channel_layouts=stereo,apad,atrim=end_sample=${audioSamples}[line];[0:a][line]amix=inputs=2:duration=first:normalize=0,apad,atrim=end_sample=${audioSamples}[mix]`;
   }
+  // Measure first, so the second pass can use one linear gain where the peak allows it.
+  const level = measure(inputs, mix);
+  const loudnorm = normalizer(level);
+  if (!loudnorm && Number.isFinite(level.integrated)) {
+    console.warn(`[film] warning: loudnorm cannot use its measurement (${level.integrated} LUFS, ${level.truePeak} dBTP), so the sound is not normalized`);
+  }
+  // loudnorm's dynamic mode runs at 192 kHz; the trim after it still ends the sound inside the picture.
+  const audio = `${mix};[mix]${loudnorm ? `${loudnorm},` : ""}aresample=${RATE},apad,atrim=end_sample=${audioSamples},asetpts=N/SR/TB[a]`;
   mkdirSync(outDir, { recursive: true });
-  run(
+  const encoded = run(
     "ffmpeg",
     [
       "-y",
-      "-v",
-      "error",
+      "-hide_banner",
+      "-nostats",
       ...inputs,
       "-filter_complex",
       audio,
@@ -552,15 +653,23 @@ function build() {
   if (mode === "master") writeFileSync(subtitles, srt(list));
   writeFileSync(
     buildRecord,
-    `${JSON.stringify({ mode, output, srt: mode === "master" ? subtitles : null, frames: totalFrames, beats: built.map(({ file, ...entry }) => entry) }, null, 2)}\n`
+    `${JSON.stringify({ mode, output, srt: mode === "master" ? subtitles : null, narration: narration ? narration.path : null, frames: totalFrames, beats: built.map(({ file, ...entry }) => entry) }, null, 2)}\n`
   );
   if (!flag("keep")) for (const entry of built) rmSync(entry.file, { force: true });
 
   const pending = new Set(list.flatMap((beat) => onScreen(beat, clips).filter((source) => source.clip && !clips.get(source.clip)).map((source) => source.clip)));
+  const voiced = new Set(list.flatMap((beat) => onScreen(beat, clips).filter((source) => source.sound > 0 && clips.get(source.clip)?.audio).map((source) => source.clip)));
   const info = probe(output);
   console.log(`\n[film] ${mode === "cut30" ? "0:30 cut" : "master"} → ${output.replace(`${root}/`, "")} (${info.duration.toFixed(3)} s)`);
   if (mode === "master") console.log(`[film] captions → ${subtitles.replace(`${root}/`, "")}`);
-  console.log(`[film] narration: ${narration ? narration.path.replace(`${root}/`, "") : "none, so the sound is silence"}`);
+  console.log(`[film] narration: ${narration ? narration.path.replace(`${root}/`, "") : "none"}`);
+  console.log(`[film] clip sound: ${voiced.size > 0 ? [...voiced].join(", ") : "none"}`);
+  if (loudnorm) {
+    const { output: result, type } = loudnormReport(encoded.stderr, "final encode");
+    console.log(`[film] loudness: ${level.integrated.toFixed(1)} → ${result.integrated.toFixed(1)} LUFS integrated, true peak ${result.truePeak.toFixed(1)} dBTP (${type})`);
+  } else if (!Number.isFinite(level.integrated)) {
+    console.log("[film] loudness: silence, so nothing to normalize");
+  }
   if (pending.size > 0) {
     console.log(`[film] preview: ${pending.size} clip${pending.size === 1 ? " is" : "s are"} a footage-pending slate. Do not upload this file.`);
   }
