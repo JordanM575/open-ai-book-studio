@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ComponentProps } from "react";
+import { createContext, useContext, useRef, useState, type ComponentProps, type RefObject } from "react";
 import { Button } from "#components/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "#components/hover-card";
 import { Progress } from "#components/progress";
@@ -13,13 +13,15 @@ interface ContextValue {
   maxTokens: number | undefined;
   open: boolean;
   setOpen: (open: boolean) => void;
+  trigger: RefObject<HTMLButtonElement | null>;
 }
 
 const ContextState = createContext<ContextValue>({
   usedTokens: 0,
   maxTokens: undefined,
   open: false,
-  setOpen: () => {}
+  setOpen: () => {},
+  trigger: { current: null }
 });
 
 /** The share of the window in whole percent, or undefined when the window size is unknown. */
@@ -35,20 +37,22 @@ export type ContextProps = Omit<ComponentProps<typeof HoverCard>, "open" | "onOp
 
 export function Context({ usedTokens, maxTokens, openDelay = 200, closeDelay = 150, ...props }: ContextProps) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   return (
-    <ContextState.Provider value={{ usedTokens, maxTokens, open, setOpen }}>
+    <ContextState.Provider value={{ usedTokens, maxTokens, open, setOpen, trigger }}>
       <HoverCard open={open} onOpenChange={setOpen} openDelay={openDelay} closeDelay={closeDelay} {...props} />
     </ContextState.Provider>
   );
 }
 
 export function ContextTrigger({ children, onClick, onPointerDown, ...props }: ComponentProps<typeof Button>) {
-  const { usedTokens, maxTokens, open, setOpen } = useContext(ContextState);
+  const { usedTokens, maxTokens, open, setOpen, trigger } = useContext(ContextState);
   const pointer = useRef("");
   const percent = contextPercent(usedTokens, maxTokens);
   return (
     <HoverCardTrigger asChild>
       <Button
+        ref={trigger}
         variant="ghost"
         size="xs"
         aria-expanded={open}
@@ -70,8 +74,19 @@ export function ContextTrigger({ children, onClick, onPointerDown, ...props }: C
   );
 }
 
-export function ContextContent({ className, ...props }: ComponentProps<typeof HoverCardContent>) {
-  return <HoverCardContent className={cn("flex w-64 flex-col gap-3", className)} {...props} />;
+export function ContextContent({ className, onPointerDownOutside, ...props }: ComponentProps<typeof HoverCardContent>) {
+  const { trigger } = useContext(ContextState);
+  return (
+    <HoverCardContent
+      className={cn("flex w-64 flex-col gap-3", className)}
+      onPointerDownOutside={(event) => {
+        // The trigger toggles the card itself, so a tap on it is not a tap outside that closes it first.
+        if (trigger.current?.contains(event.target as Node)) event.preventDefault();
+        onPointerDownOutside?.(event);
+      }}
+      {...props}
+    />
+  );
 }
 
 export function ContextContentHeader({ className, children, ...props }: ComponentProps<"div">) {

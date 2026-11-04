@@ -543,6 +543,11 @@ Update the `Unreleased` section before every commit.
   caps truncate behaviorally with full counts reported, and the system prompt
   policy sections state no numeric limits. No product change; descriptions
   interpolate the enforced constants and the schema carries every exact bound.
+- The context card's bar now tells assistive technology how much of the window a turn used. The
+  copied shadcn/ui Progress drew the bar but never passed its value to Radix, so a screen reader heard
+  an indeterminate bar. A second tap on the card's trigger now closes the card, as the first opens it;
+  before, the tap counted as a press outside the card, which closed it, and the click then reopened
+  it.
 
 ### Added
 
