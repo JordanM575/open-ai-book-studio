@@ -86,6 +86,8 @@ const speakInput = z.object({
   speed: z.number().min(0.25).max(4).optional()
 });
 
+const ambientRequestSchema = z.object({ bookId: idSchema, chapterId: idSchema });
+
 const saveInput = z.object({
   bookId: idSchema,
   chapterId: idSchema,
@@ -796,8 +798,11 @@ export function registerIpc(
   handle(IPC.agent.glassesUrl, () => getBackend()?.glassesUrl ?? null);
 
   handle(IPC.agent.ambient, async (payload) => {
-    const bookId = idSchema.parse(payload);
-    return new AmbientService(() => studio.library, isWorking).status(bookId);
+    // A bare book id, or the book and the chapter the author has open, so "where you are" is that one.
+    const { bookId, chapterId } = z
+      .union([idSchema.transform((id) => ({ bookId: id, chapterId: null })), ambientRequestSchema])
+      .parse(payload);
+    return new AmbientService(() => studio.library, isWorking).status(bookId, chapterId);
   });
 
   handle(IPC.agent.bridge, () => bridgeStatus());

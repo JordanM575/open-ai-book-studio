@@ -257,6 +257,7 @@ function render() {
   const view = testing.render(
     React.createElement(AmbientPanel, {
       bookId: BOOK,
+      chapterId: null,
       chapterTitle: "The Light",
       chapterContent: "The storm came in low.",
       onNextChapter: () => {},
@@ -274,6 +275,28 @@ describe("the status line", () => {
     await testing.waitFor(() =>
       expect(view.getByTestId("ambient-line").textContent).toContain("You're in Chapter One")
     );
+  });
+
+  test("asks about the chapter on screen, and asks again when the author switches chapters", async () => {
+    const asked: Array<string | null | undefined> = [];
+    (window as unknown as { studio: { agent: { ambient: unknown } } }).studio.agent.ambient = async (
+      _bookId: string,
+      chapterId?: string | null
+    ) => {
+      asked.push(chapterId);
+      return { ok: true, data: status };
+    };
+    const props = {
+      bookId: BOOK,
+      chapterTitle: "The Light",
+      chapterContent: "The storm came in low.",
+      onNextChapter: () => {},
+      onNotice: () => {}
+    };
+    const view = testing.render(React.createElement(AmbientPanel, { ...props, chapterId: "ch_amb000001" }));
+    await testing.waitFor(() => expect(asked).toEqual(["ch_amb000001"]));
+    view.rerender(React.createElement(AmbientPanel, { ...props, chapterId: "ch_amb000002", chapterTitle: "The Door" }));
+    await testing.waitFor(() => expect(asked).toEqual(["ch_amb000001", "ch_amb000002"]));
   });
 
   test("offers the actions the status offers, and only the ones available", async () => {

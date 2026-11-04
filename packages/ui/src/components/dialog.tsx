@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useRef, type ComponentProps, type ReactNode } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { X } from "lucide-react";
 import { cn } from "#lib/utils";
@@ -53,8 +53,12 @@ export function DialogContent({
   title,
   description,
   footer,
+  onCloseAutoFocus,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content> & { title: string; description?: ReactNode; footer?: ReactNode }) {
+  // The control that opened the dialog. The studio opens dialogs from plain buttons rather than a
+  // DialogTrigger, so Radix has nothing to return focus to; closing goes back here instead of the page.
+  const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -65,6 +69,15 @@ export function DialogContent({
           className
         )}
         {...props}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (event.defaultPrevented) return;
+          const target = opener.current;
+          if (target instanceof HTMLElement && target.isConnected && target !== document.body) {
+            event.preventDefault();
+            target.focus();
+          }
+        }}
       >
         <div className="flex items-start justify-between gap-4">
           <DialogHeader>

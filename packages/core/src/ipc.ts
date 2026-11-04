@@ -539,7 +539,7 @@ export interface StudioApi {
      * The ambient agent's status of a book: where the author is, what changed, and what can be
      * said or done next.
      */
-    ambient(bookId: string): Promise<Result<AmbientStatus>>;
+    ambient(bookId: string, chapterId?: string | null): Promise<Result<AmbientStatus>>;
     /**
      * The bridge to the phone.
      *

@@ -394,7 +394,7 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
        * minimal mode to be broken in a browser: it knows where the author is, what the book holds
        * and what can be said, even though the writing agent itself needs the desktop.
        */
-      ambient: (bookId) =>
+      ambient: (bookId, chapterId) =>
         safe(async () => {
           const detail = await libraries.require().readBook(bookId);
           return ambientStatus({
@@ -409,6 +409,7 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
               order: chapter.order,
               wordCount: chapter.wordCount
             })),
+            activeChapterId: chapterId ?? null,
             // There is no agent in this build, so nothing is running and nothing can be undone.
             working: false,
             canUndo: false,

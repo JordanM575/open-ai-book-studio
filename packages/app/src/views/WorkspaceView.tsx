@@ -8,6 +8,7 @@ import type {
   ManuscriptSettings
 } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
+import { modelDisplayName } from "@ai-book-studio/core/providers/compatibility";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
@@ -800,7 +801,7 @@ export function WorkspaceView({
               data-testid="open-model-picker"
             >
               <Cpu size={15} />
-              <span className="max-w-[160px] truncate">{detail?.book.defaultModelId?.split("/").pop() ?? "Choose a model"}</span>
+              <span className="max-w-[160px] truncate">{detail?.book.defaultModelId ? modelDisplayName(detail.book.defaultModelId) : "Choose a model"}</span>
             </Button>
           </div>
         </div>
@@ -1008,6 +1009,7 @@ export function WorkspaceView({
 
       <AmbientPanel
         bookId={bookId}
+        chapterId={selected?.id ?? null}
         chapterTitle={selected?.title ?? ""}
         chapterContent={selected?.content ?? ""}
         onNextChapter={nextChapter}

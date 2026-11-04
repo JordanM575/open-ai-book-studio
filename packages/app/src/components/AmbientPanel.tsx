@@ -10,6 +10,8 @@ import { useDictation } from "../hooks/use-dictation";
 
 interface Props {
   bookId: string;
+  /** The open chapter, so "where you are" is the chapter on screen rather than the last one. */
+  chapterId: string | null;
   /** The chapter the author is looking at, so "read it" means this one. */
   chapterTitle: string;
   /** The chapter's text, so it can be read aloud without another round trip. */
@@ -36,6 +38,7 @@ interface Props {
  */
 export function AmbientPanel({
   bookId,
+  chapterId,
   chapterTitle,
   chapterContent,
   onNextChapter,
@@ -84,15 +87,24 @@ export function AmbientPanel({
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await must(window.studio.agent.ambient(bookId)));
+      setStatus(await must(window.studio.agent.ambient(bookId, chapterId)));
     } catch (error) {
       onNotice(error);
     }
-  }, [bookId, onNotice]);
+  }, [bookId, chapterId, onNotice]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // A saved change to the open chapter moves its word count, so the line follows it a moment later.
+  const savedContent = useRef(chapterContent);
+  useEffect(() => {
+    if (savedContent.current === chapterContent) return;
+    savedContent.current = chapterContent;
+    const timer = window.setTimeout(() => void refresh(), 600);
+    return () => window.clearTimeout(timer);
+  }, [chapterContent, refresh]);
 
   // The agent's own voice, heard as it happens. It is reinstalled when the speaking function changes,
   // so the answer is spoken through the voice service once that has loaded.

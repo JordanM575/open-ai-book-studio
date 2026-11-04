@@ -61,6 +61,7 @@
     "tests/chat-composer.test.tsx",
     "tests/connection-cards.test.tsx",
     "tests/licenses-dialog.test.tsx",
+    "tests/dialog-focus.test.tsx",
     "tests/book-dialogs.test.tsx",
     "tests/review-gate-blocked.test.tsx",
     "tests/second-instance-notice.test.tsx",

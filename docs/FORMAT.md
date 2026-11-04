@@ -72,9 +72,10 @@ older one silently dropping them.
 
 ## Chapter files
 
-One Markdown file per chapter, named `NNNN-slug.md` (`0001-the-door.md`). The numeric prefix keeps
-files in reading order in any file browser; the slug comes from the title and is only a hint. The
-order that matters is the `order` field inside the file.
+One Markdown file per chapter, named `NNNN-slug.md` (`0001-the-door.md`). The numeric prefix is the
+chapter's position when the file was created, and the slug comes from its title; both are only hints.
+Moving a chapter rewrites `order` inside the files and never renames them, so after a reorder the
+prefixes no longer follow reading order. The order that matters is the `order` field inside the file.
 
 ```markdown
 ---
@@ -235,12 +236,13 @@ violations. Writes for a single book are serialised, so two IPC calls cannot int
 
 ## Trash
 
-Deleting a chapter moves its file to `.studio/trash/<bookId>/<timestamp>-<original name>.md`. Nothing
+Deleting a chapter moves its file to `.studio/trash/<bookId>/<stamp>-<original name>.md`, where `<stamp>`
+is the deletion time in milliseconds since 1970, written in base 36 (`mh3k2x1c-0002-the-door.md`). Nothing
 is unlinked. Restoring is a file move back into `chapters/`. Undo of an agent turn makes that move for
 a chapter the turn deleted: the file goes back under its original name, or the next free one, with its
 id and front matter, and only when no chapter with that id is in the book.
 
-Deleting a book moves its whole folder to `.studio/trash/books/<timestamp>-<bookId>/`. The folder keeps
+Deleting a book moves its whole folder to `.studio/trash/books/<stamp>-<bookId>/`, with the same stamp. The folder keeps
 its `book.json`, chapters, conflicts and checkpoints, so restoring is a move back into `books/`.
 
 ## Sync journals

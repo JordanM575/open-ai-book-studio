@@ -377,6 +377,15 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- The ambient strip now says where you are in the chapter on screen. It always named the book's last
+  chapter and its word count, and "Say where you are" spoke that; it now follows the open chapter, a
+  chapter switch and a saved change.
+- The header's model button shows the model's own name ("Muse Spark 1.3"), as the conversation
+  does, instead of its raw id.
+- Closing a dialog puts keyboard focus back on the button that opened it, instead of the page, so the
+  next Tab continues where you were. This covers every dialog the workspace opens.
+- `docs/FORMAT.md` now says that moving a chapter never renames its file, so the numeric prefixes stop
+  following reading order after a reorder, and gives the trash's real base-36 stamp.
 - After an undo, the chat, the ambient strip and `bookwriter undo` now say which chapters did not simply
   go back and why, and where a copy of words written during the turn was kept. The notes were
   returned by undo but never shown.

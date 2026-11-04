@@ -25,7 +25,8 @@ import {
   MUSE_SPARK_STANDARD,
   applyModelPreset,
   contributorWarning,
-  isContributorModelId
+  isContributorModelId,
+  modelDisplayName
 } from "../src/providers/compatibility";
 import type { ModelInfo, StoredCredential } from "../src/providers/types";
 
@@ -366,6 +367,12 @@ describe("provider compatibility and the Contributor model", () => {
     expect(model.reasoningEfforts).not.toContain("max");
     expect(isContributorModelId(MUSE_SPARK_CONTRIBUTOR)).toBe(true);
     expect(contributorWarning(model)).toMatch(/train/);
+  });
+
+  test("names a model the way the author reads it, not by its raw id", () => {
+    expect(modelDisplayName(MUSE_SPARK_STANDARD)).toBe("Muse Spark 1.3");
+    expect(modelDisplayName(MUSE_SPARK_CONTRIBUTOR)).toBe("Muse Spark 1.3 Contributor");
+    expect(modelDisplayName("vendor/some-model")).toBe("some-model");
   });
 
   test("keeps Standard non-training and does not touch another provider", () => {

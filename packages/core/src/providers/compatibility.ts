@@ -53,6 +53,11 @@ export function applyModelPreset(provider: ProviderId, model: ModelInfo): ModelI
   };
 }
 
+/** The name an author reads for a model id: Meta's own name when the studio knows it, else the id's last part. */
+export function modelDisplayName(modelId: string): string {
+  return META_MODEL_PRESETS[modelId]?.name ?? modelId.slice(modelId.lastIndexOf("/") + 1);
+}
+
 export function isContributorModelId(modelId: string): boolean {
   return /(?:^|[/-])contributor(?:$|[/-])/.test(modelId);
 }
