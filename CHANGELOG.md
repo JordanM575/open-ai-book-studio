@@ -238,7 +238,7 @@ Update the `Unreleased` section before every commit.
   no longer shows the event's image files or a cutout. The retired SAM plate is marked as not in the
   film.
 - The opening plate's chat card no longer clips its last line, and both opening plates name the
-  sample book's real chapter files.
+  sample book's real chapter files. The script describes the plate's copy · paste arrow as drawn.
 - A file that is not an old-app backup is now refused with "This file is not a backup from the old
   app.", which no longer names the earlier app. The refusal for a damaged backup now asks you to
   export it again "from the old app" as well.
