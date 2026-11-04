@@ -4,6 +4,7 @@ import type { Result } from "@ai-book-studio/core/ipc";
 import type { Chapter, ManuscriptSettings } from "@ai-book-studio/core/schema";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { must } from "../lib/utils";
 import type { SaveStatus } from "./ManuscriptEditor";
 
@@ -207,61 +208,65 @@ export function FormatDialog({
             <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3">
               <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
                 {FORMAT_LABELS.bodyFont}
-                <select
+                <NativeSelect
+                  className="w-full"
                   value={draft.bodyFont}
                   onChange={(event) => change({ bodyFont: event.target.value as ManuscriptSettings["bodyFont"] })}
                 >
                   {(
                     ["Times New Roman", "Garamond", "Georgia", "Palatino Linotype", "Book Antiqua", "Cambria", "Calibri", "Bookman Old Style", "Century", "Courier New", "Arial", "Helvetica"] as const
                   ).map((font) => (
-                    <option key={font} value={font}>
+                    <NativeSelectOption key={font} value={font}>
                       {font}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
                 {FORMAT_LABELS.bodyFontSize}
-                <select
+                <NativeSelect
+                  className="w-full"
                   value={draft.bodyFontSize}
                   onChange={(event) =>
                     change({ bodyFontSize: Number(event.target.value) as ManuscriptSettings["bodyFontSize"] })
                   }
                 >
                   {[10, 11, 12, 13, 14].map((size) => (
-                    <option key={size} value={size}>
+                    <NativeSelectOption key={size} value={size}>
                       {size} pt
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
                 {FORMAT_LABELS.firstLineIndent}
-                <select
+                <NativeSelect
+                  className="w-full"
                   value={draft.firstLineIndent}
                   onChange={(event) =>
                     change({ firstLineIndent: Number(event.target.value) as ManuscriptSettings["firstLineIndent"] })
                   }
                 >
                   {[0, 0.1, 0.2, 0.3, 0.5].map((indent) => (
-                    <option key={indent} value={indent}>
+                    <NativeSelectOption key={indent} value={indent}>
                       {indent === 0 ? "None" : `${indent} in`}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
                 {FORMAT_LABELS.lineSpacing}
-                <select
+                <NativeSelect
+                  className="w-full"
                   value={draft.lineSpacing}
                   onChange={(event) => change({ lineSpacing: event.target.value as ManuscriptSettings["lineSpacing"] })}
                 >
                   {(["Single", "1.15", "1.5", "Double"] as const).map((spacing) => (
-                    <option key={spacing} value={spacing}>
+                    <NativeSelectOption key={spacing} value={spacing}>
                       {spacing}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
             </div>
             <div className="mt-3 flex flex-wrap gap-4" role="radiogroup" aria-label={FORMAT_LABELS.chapterTitleAlignment}>

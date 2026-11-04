@@ -7,6 +7,7 @@ import type { SegmentationMatch } from "@ai-book-studio/core/images/segmentation
 import type { ImageSize } from "@ai-book-studio/core/providers/images";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { must } from "../lib/utils";
 import { cutoutPng } from "../lib/cutout";
 
@@ -310,18 +311,18 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
             <label className="block text-[var(--text-caption-size)] text-muted-foreground" htmlFor="illustration-size">
               Shape
             </label>
-            <select
+            <NativeSelect
               id="illustration-size"
               value={size}
               onChange={(event) => setSize(event.target.value as ImageSize)}
-              className="w-full rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-2 py-2 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              className="w-full"
             >
               {SIZES.map((option) => (
-                <option key={option.value} value={option.value}>
+                <NativeSelectOption key={option.value} value={option.value}>
                   {option.label}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
             {images.length > 0 ? (
               <div>
                 <p className="mb-1 text-[var(--text-caption-size)] text-muted-foreground">Saved images</p>
@@ -384,19 +385,20 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
                 <label className="text-[var(--text-caption-size)] text-muted-foreground" htmlFor="cutout-character">
                   Attach to
                 </label>
-                <select
+                <NativeSelect
                   id="cutout-character"
                   value={characterId}
                   onChange={(event) => setCharacterId(event.target.value)}
-                  className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-2 py-1.5 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  size="sm"
+                  className="min-w-0 flex-1"
                 >
-                  <option value="">No character yet</option>
+                  <NativeSelectOption value="">No character yet</NativeSelectOption>
                   {characters.map((character) => (
-                    <option key={character.id} value={character.id}>
+                    <NativeSelectOption key={character.id} value={character.id}>
                       {character.name || "Unnamed character"}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
                 {selected.kind === "character" ? (
                   <Button
                     variant="outline"

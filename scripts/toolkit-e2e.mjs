@@ -298,7 +298,7 @@ async function withdrawInTheDialog(page) {
   await click('[data-testid="open-agent"]');
   const toggle = `[data-testid="agent-tool-${WITHDRAWN}"]`;
   if (!(await wait(toggle))) return `the Agent dialog has no switch for ${WITHDRAWN}`;
-  if (!(await page.evaluate((target) => document.querySelector(target)?.checked === true, toggle))) {
+  if (!(await page.evaluate((target) => document.querySelector(target)?.getAttribute("aria-checked") === "true", toggle))) {
     return `${WITHDRAWN} was already off`;
   }
   await click(toggle);

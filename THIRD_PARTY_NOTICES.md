@@ -16,7 +16,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Desktop app
 
 <!-- licenses:desktop:start -->
-98 packages.
+131 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -33,35 +33,67 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `@floating-ui/utils` | 0.2.12 | MIT |
 | `@meta-sam/parser` | 0.1.0 | SAM License, not Apache-2.0 |
 | `@openrouter/ai-sdk-provider` | 3.1.0 | Apache-2.0 |
+| `@radix-ui/number` | 1.1.3 | MIT |
 | `@radix-ui/primitive` | 1.2.0 | MIT |
+| `@radix-ui/react-accessible-icon` | 1.2.0 | MIT |
+| `@radix-ui/react-accordion` | 1.3.1 | MIT |
+| `@radix-ui/react-alert-dialog` | 1.2.1 | MIT |
 | `@radix-ui/react-arrow` | 1.1.17 | MIT |
+| `@radix-ui/react-aspect-ratio` | 1.2.0 | MIT |
+| `@radix-ui/react-avatar` | 1.3.1 | MIT |
+| `@radix-ui/react-checkbox` | 1.4.1 | MIT |
+| `@radix-ui/react-collapsible` | 1.2.1 | MIT |
 | `@radix-ui/react-collection` | 1.2.0 | MIT |
 | `@radix-ui/react-compose-refs` | 1.1.5 | MIT |
 | `@radix-ui/react-context` | 1.3.0 | MIT |
+| `@radix-ui/react-context-menu` | 2.4.1 | MIT |
 | `@radix-ui/react-dialog` | 1.3.1 | MIT |
 | `@radix-ui/react-direction` | 1.2.0 | MIT |
 | `@radix-ui/react-dismissable-layer` | 1.2.1 | MIT |
 | `@radix-ui/react-dropdown-menu` | 2.2.1 | MIT |
 | `@radix-ui/react-focus-guards` | 1.2.0 | MIT |
 | `@radix-ui/react-focus-scope` | 1.3.1 | MIT |
+| `@radix-ui/react-form` | 0.3.0 | MIT |
+| `@radix-ui/react-hover-card` | 1.2.1 | MIT |
 | `@radix-ui/react-id` | 1.1.4 | MIT |
+| `@radix-ui/react-label` | 2.1.17 | MIT |
 | `@radix-ui/react-menu` | 2.2.1 | MIT |
+| `@radix-ui/react-menubar` | 1.2.1 | MIT |
+| `@radix-ui/react-navigation-menu` | 1.4.1 | MIT |
+| `@radix-ui/react-one-time-password-field` | 0.2.1 | MIT |
+| `@radix-ui/react-password-toggle-field` | 0.2.1 | MIT |
+| `@radix-ui/react-popover` | 1.3.1 | MIT |
 | `@radix-ui/react-popper` | 1.4.0 | MIT |
 | `@radix-ui/react-portal` | 1.2.0 | MIT |
 | `@radix-ui/react-presence` | 1.1.11 | MIT |
 | `@radix-ui/react-primitive` | 2.2.0 | MIT |
+| `@radix-ui/react-progress` | 1.2.1 | MIT |
+| `@radix-ui/react-radio-group` | 1.5.1 | MIT |
 | `@radix-ui/react-roving-focus` | 1.2.1 | MIT |
+| `@radix-ui/react-scroll-area` | 1.4.0 | MIT |
+| `@radix-ui/react-select` | 2.4.1 | MIT |
+| `@radix-ui/react-separator` | 1.2.0 | MIT |
+| `@radix-ui/react-slider` | 1.6.1 | MIT |
 | `@radix-ui/react-slot` | 1.5.0 | MIT |
+| `@radix-ui/react-switch` | 1.4.1 | MIT |
+| `@radix-ui/react-tabs` | 1.2.1 | MIT |
+| `@radix-ui/react-toast` | 1.3.1 | MIT |
+| `@radix-ui/react-toggle` | 1.2.1 | MIT |
+| `@radix-ui/react-toggle-group` | 1.2.1 | MIT |
+| `@radix-ui/react-toolbar` | 1.2.1 | MIT |
 | `@radix-ui/react-tooltip` | 1.4.1 | MIT |
 | `@radix-ui/react-use-callback-ref` | 1.1.5 | MIT |
 | `@radix-ui/react-use-controllable-state` | 1.3.0 | MIT |
 | `@radix-ui/react-use-effect-event` | 0.0.5 | MIT |
+| `@radix-ui/react-use-escape-keydown` | 1.1.6 | MIT |
 | `@radix-ui/react-use-is-hydrated` | 0.1.3 | MIT |
 | `@radix-ui/react-use-layout-effect` | 1.1.4 | MIT |
+| `@radix-ui/react-use-previous` | 1.1.4 | MIT |
 | `@radix-ui/react-use-rect` | 1.1.4 | MIT |
 | `@radix-ui/react-use-size` | 1.1.5 | MIT |
 | `@radix-ui/react-visually-hidden` | 1.2.13 | MIT |
 | `@radix-ui/rect` | 1.1.3 | MIT |
+| `@shadcn/react` | 0.3.1 | MIT |
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/node` | 26.6.5 | MIT |
 | `@vercel/oidc` | 3.2.0 | Apache-2.0 |
@@ -95,6 +127,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `option` | 0.2.4 | BSD-2-Clause |
 | `pako` | 1.0.11 | (MIT AND Zlib) |
 | `process-nextick-args` | 2.0.1 | MIT |
+| `radix-ui` | 1.8.1 | MIT |
 | `react` | 19.3.1 | MIT |
 | `react-dom` | 19.3.1 | MIT |
 | `react-remove-scroll` | 2.7.2 | MIT |
@@ -123,26 +156,39 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Web app
 
 <!-- licenses:web:start -->
-37 packages.
+50 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
+| `@floating-ui/core` | 1.8.0 | MIT |
+| `@floating-ui/dom` | 1.8.0 | MIT |
+| `@floating-ui/react-dom` | 2.1.9 | MIT |
+| `@floating-ui/utils` | 0.2.12 | MIT |
 | `@radix-ui/primitive` | 1.2.0 | MIT |
+| `@radix-ui/react-collapsible` | 1.2.1 | MIT |
 | `@radix-ui/react-compose-refs` | 1.1.5 | MIT |
 | `@radix-ui/react-context` | 1.3.0 | MIT |
 | `@radix-ui/react-dialog` | 1.3.1 | MIT |
 | `@radix-ui/react-dismissable-layer` | 1.2.1 | MIT |
 | `@radix-ui/react-focus-guards` | 1.2.0 | MIT |
 | `@radix-ui/react-focus-scope` | 1.3.1 | MIT |
+| `@radix-ui/react-hover-card` | 1.2.1 | MIT |
 | `@radix-ui/react-id` | 1.1.4 | MIT |
+| `@radix-ui/react-popper` | 1.4.0 | MIT |
 | `@radix-ui/react-portal` | 1.2.0 | MIT |
 | `@radix-ui/react-presence` | 1.1.11 | MIT |
 | `@radix-ui/react-primitive` | 2.2.0 | MIT |
+| `@radix-ui/react-progress` | 1.2.1 | MIT |
 | `@radix-ui/react-slot` | 1.5.0 | MIT |
+| `@radix-ui/react-switch` | 1.4.1 | MIT |
+| `@radix-ui/react-tooltip` | 1.4.1 | MIT |
 | `@radix-ui/react-use-callback-ref` | 1.1.5 | MIT |
 | `@radix-ui/react-use-controllable-state` | 1.3.0 | MIT |
 | `@radix-ui/react-use-effect-event` | 0.0.5 | MIT |
 | `@radix-ui/react-use-layout-effect` | 1.1.4 | MIT |
+| `@radix-ui/react-use-size` | 1.1.5 | MIT |
+| `@radix-ui/react-visually-hidden` | 1.2.13 | MIT |
+| `@shadcn/react` | 0.3.1 | MIT |
 | `aria-hidden` | 1.2.6 | MIT |
 | `class-variance-authority` | 0.7.1 | Apache-2.0 |
 | `clsx` | 2.1.1 | MIT |

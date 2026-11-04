@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./tokens.generated.css";
+@import "./shadcn.css";
 
 /* Scan the primitive package and the shared product shell. */
 @source "..";
@@ -213,11 +214,12 @@
 
 /* Compact and touch layouts keep the design but enlarge the hit area, not the icon. */
 @media (max-width: 999px), (pointer: coarse) {
-  :is(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], summary, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
+  :is(button:not([role="switch"]), [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], summary, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
     min-block-size: var(--touch-target);
   }
 
-  :is(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"]) {
+  /* A switch keeps its track size; its hit area already reaches past the track. */
+  :is(button:not([role="switch"]), [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"]) {
     min-inline-size: var(--touch-target);
   }
 
@@ -373,5 +375,9 @@
       inset 0 0 0 1px var(--foreground),
       0 0 0 0.5px var(--foreground),
       var(--elevation-glass);
+  }
+
+  [data-slot="switch"] {
+    box-shadow: inset 0 0 0 1px var(--foreground);
   }
 }

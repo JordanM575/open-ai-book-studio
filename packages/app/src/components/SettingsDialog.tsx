@@ -9,6 +9,8 @@ import type { SyncSettings, VoiceSpeakers } from "@ai-book-studio/core/ipc";
 import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { browserAvailabilityCopy } from "@ai-book-studio/core/providers/registry";
 import { Button } from "@ai-book-studio/ui/button";
+import { Badge } from "@ai-book-studio/ui/components/badge";
+import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { SyncSection } from "./SyncSection";
 import { OpenSourceLicenses } from "./LicensesDialog";
@@ -654,9 +656,12 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                       {provider.note}
                     </p>
                   </div>
-                  <span className="w-fit max-w-full self-start rounded-full bg-muted px-2 py-1 text-left text-[var(--text-caption-2-size)] leading-[var(--text-caption-leading)] text-muted-foreground min-[520px]:shrink-0">
+                  <Badge
+                    variant="muted"
+                    className="h-auto max-w-full self-start px-2 py-1 text-left font-normal whitespace-normal min-[520px]:shrink-0"
+                  >
                     {browserAvailabilityCopy(provider.browserAccess)}
-                  </span>
+                  </Badge>
                 </li>
               ))}
           </ul>
@@ -669,23 +674,22 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
           <h3 className="text-[var(--text-callout-size)] font-medium">Add a key</h3>
           <form className="mt-2 space-y-2" onSubmit={(event) => void addKey(event)}>
             <div className="flex flex-wrap gap-2">
-              <select
+              <NativeSelect
                 aria-label="Provider"
                 value={keyProvider}
                 onChange={(event) => {
                   setKeyProvider(event.target.value as ProviderId);
                   setKeyResult(null);
                 }}
-                className="h-9 rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               >
                 {providers
                   .filter((provider) => provider.id !== "openrouter")
                   .map((provider) => (
-                    <option key={provider.id} value={provider.id}>
+                    <NativeSelectOption key={provider.id} value={provider.id}>
                       {provider.name}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-              </select>
+              </NativeSelect>
               <input
                 aria-label="Connection label"
                 value={keyLabel}

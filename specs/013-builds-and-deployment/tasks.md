@@ -37,6 +37,16 @@
 
 - [x] T013 Identify components used by both targets and move them to `packages/ui`. `packages/ui` holds the primitives (`Button`, `Dialog`, `Brand`, `Notice`, `cn`), and `packages/app` holds the shared shell, views, product components, hooks and renderer utilities. The desktop renderer keeps a one-line `App` re-export; the web shell imports `@ai-book-studio/app` directly. The `@renderer` alias is removed from the desktop and web build and typecheck configs. The web stylesheet still imports the desktop token/base stylesheet; moving that stylesheet into a shared package is a follow-up.
 - [x] T014 Add a visual check page that renders shared components in both apps and compares storage-disclosure states. `apps/web/check/gallery.html` renders `Button`, `Brand`, `Notice` and `Dialog` from `packages/ui` and compares the browser-storage and folder-library disclosures. Measured at 1280×800, 744×1133 and 393×852 in light and dark: no horizontal overflow, 9 controls with none under 44 px, and the dialog opens. The desktop app re-exports the same package and is covered by the hidden smoke.
+- [x] T022 Adopt shadcn/ui (Radix) and the AI Elements patterns in `packages/ui` (D-185). `components.json`
+      and `#components`, `#lib` and `#ai-elements` imports let the shadcn CLI add components to the
+      package. `src/styles/shadcn.css` maps shadcn's variables onto the Liquid Glass tokens, and the
+      copied components drop shadcn defaults that break the interface rules. Button, Dialog, Notice,
+      Brand and `cn` keep their exports and props. The writing agent's chat (`ChatPanel`) is rebuilt on
+      Chat, Tool, Confirmation, Context, Checkpoint, Prompt Input and Suggestion, adapted from
+      `packages/core/src/agent/messages.ts`. Agent, Settings, Story Bible, Format, Illustration and the
+      ambient panel use Switch, Native Select, Collapsible and Badge. The web bundle is 1.19 times the
+      SC-009 perf baseline, under its 1.2 limit. Only the chat captures
+      and the 744-pixel Settings and Story Bible captures were re-accepted, each after locating its diff.
 
 ## Phase 4 — Web target
 

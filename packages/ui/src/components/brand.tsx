@@ -1,5 +1,5 @@
 import { BookOpen } from "lucide-react";
-import { cn } from "./utils";
+import { cn } from "#lib/utils";
 
 export function Logo({ size = "md" }: { size?: "sm" | "md" }) {
   return (

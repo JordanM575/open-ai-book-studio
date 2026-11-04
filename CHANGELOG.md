@@ -300,6 +300,42 @@ Update the `Unreleased` section before every commit.
   shown separately. That includes coverage below the floor.
 - `AGENTS.md` no longer refers to a document that was removed, and four research notes now say
   "locally" instead of process jargon.
+- Interface components now come from shadcn/ui, Radix flavour, themed with the Liquid Glass tokens
+  (D-185). `packages/ui` has a `components.json` for the shadcn CLI and package-local `#components`,
+  `#lib` and `#ai-elements` imports. `src/styles/shadcn.css` adds only what the tokens do not name:
+  `--radius`, a `dark:` variant on `data-theme`, shadcn's state variants, and the type scale for
+  `text-xs` to `text-lg`. Button and Dialog keep their props and look and gain shadcn's parts.
+  Floating surfaces (menus, tooltips, hover cards) are glass. shadcn's animations, shimmer, gradient
+  fades and computed tints are removed. The AI Elements patterns live in `packages/ui/src/ai-elements`:
+  Chat, Tool, Confirmation, Context, Checkpoint, Prompt Input, Suggestion, Reasoning and Model
+  Selector. New dependencies: `radix-ui` (MIT) and `@shadcn/react` (MIT). `@radix-ui/react-dialog`
+  is no longer a direct dependency of `packages/ui`.
+- The writing agent's chat is rebuilt on those patterns, adapted from the studio's own message parts
+  rather than AI SDK types (ADR 0013). Turns are messages in a Message Scroller that follows a
+  streaming reply. Tool lines are Trace steps whose raw detail opens in place, and a failed tool
+  reads as an error. Approvals use Confirmation. Undo is a Checkpoint after the turn. The context
+  share is a Context card that opens on hover, tap or keyboard. The composer is a Prompt Input. The
+  empty state offers three suggestions, and choosing one fills the field without sending it. The
+  model divider, offline note, rate-limit wait, content-policy notice, retry, failed-turn checkpoints,
+  background turns and every test id are unchanged. Reasoning stays hidden. Hints on the chat's icon
+  buttons are Tooltips, so they also appear on keyboard focus.
+- Other surfaces use shadcn/ui controls where one fits. Each tool's on or off control in the Agent
+  dialog, the prompt-cache option and the SKILLS.md option are Switches. Selects in the Agent, Settings,
+  Story Bible, Format, Illustration and ambient panels are Native Selects in the studio's field style.
+  Native Select was chosen over Radix Select because it keeps the platform picker, form semantics and
+  keyboard behaviour. The Story Bible's arc sections are Collapsibles, and the browser-access note in
+  Settings is a Badge. The theme picker keeps its pressed buttons: a Toggle Group would add about 16 kB
+  of Radix roving-focus code and push the web bundle past the SC-009 limit of 1.2 times the perf
+  baseline. The migration leaves the bundle at 1.19 times the baseline (it was 1.07). A switch keeps its own size on touch layouts (`base.css`), and `biome.json` lists `Switch`
+  and `NativeSelect` as form controls. Text fields stay at body size at every width. An off switch's
+  track is outlined in the secondary text colour, so its edge meets 3:1 against the dialog as the native
+  checkbox did, and increased contrast strengthens the outline.
+- The new components follow the type scale: `text-xs`, `text-sm` and `text-base` map to the caption,
+  subheadline and body tokens. Chat prose and the composer stay at body size. Secondary chat text (tool
+  lines, the approval card, the model divider, the composer's controls and hint) is at the caption or
+  subheadline step. Before, the app's `text-[var(--text-*-size)]` classes compiled to `color`
+  declarations under Tailwind 4, so that text inherited body size. This migration found the problem and
+  fixed it only where the new components replaced those classes; elsewhere the app still has it.
 
 ### Fixed
 

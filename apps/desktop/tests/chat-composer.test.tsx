@@ -55,6 +55,7 @@ function renderComposer(
   onChooseModel: ReturnType<typeof mock>;
   fire: (event: AgentEvent) => void;
   undoLast: ReturnType<typeof mock>;
+  approve: ReturnType<typeof mock>;
 } {
   const start = mock(
     startImpl ??
@@ -65,6 +66,7 @@ function renderComposer(
   const onChanged = mock(() => {});
   const onChooseModel = mock(() => {});
   const undoLast = mock(undoImpl ?? (() => Promise.resolve({ ok: true, data: null })));
+  const approve = mock(() => Promise.resolve({ ok: true, data: null }));
   let emit: ((event: AgentEvent) => void) | null = null;
   const listed = seed
     ? [
@@ -99,6 +101,7 @@ function renderComposer(
       },
       start,
       stop: mock(() => Promise.resolve({ ok: true, data: null })),
+      approve,
       undoLast,
       onEvent: mock((handler: (event: AgentEvent) => void) => {
         emit = handler;
@@ -126,7 +129,7 @@ function renderComposer(
   const fire = (event: AgentEvent): void => {
     emit?.(event);
   };
-  return { start, onTurnModelUsed, onChanged, onChooseModel, fire, undoLast };
+  return { start, onTurnModelUsed, onChanged, onChooseModel, fire, undoLast, approve };
 }
 
 function composer(): { input: HTMLElement; view: ReturnType<typeof testing.within> } {
@@ -462,6 +465,106 @@ describe("chat composer", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  test("a suggestion fills the composer and never sends by itself", async () => {
+    const { start } = renderComposer();
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getAllByTestId("agent-suggestion")).toHaveLength(3));
+    expect(view.getAllByTestId("agent-suggestion").map((chip: HTMLElement) => chip.textContent)).toEqual([
+      "Draft the next scene",
+      "Tighten this paragraph",
+      "Check what happened earlier"
+    ]);
+
+    const [first] = view.getAllByTestId("agent-suggestion");
+    testing.fireEvent.click(first as HTMLElement);
+    const input = view.getByTestId("chat-input") as HTMLTextAreaElement;
+    expect(input.value).toBe("Draft the next scene");
+    expect(document.activeElement).toBe(input);
+    expect(view.getByTestId("chat-send")).toHaveProperty("disabled", false);
+    await testing.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  test("a destructive tool waits behind Allow and Deny", async () => {
+    const { start, fire, approve } = renderComposer();
+    const { input, view } = composer();
+    testing.fireEvent.change(input, { target: { value: "Replace the opening." } });
+    testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    // Let the started turn register itself before its approval arrives.
+    await testing.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    await testing.act(async () => {
+      fire({
+        type: "approval",
+        turnId: "turn_cmp000001",
+        approvalId: "approval_cmp000001",
+        name: "overwrite_chapter",
+        input: { chapterId: CHAPTER }
+      });
+    });
+    const gate = await testing.waitFor(() => view.getByTestId("agent-approval"));
+    expect(testing.within(gate).getByText("Replace a chapter's text?")).toBeDefined();
+    expect(testing.within(gate).getByText("The agent will wait for your answer before changing anything.")).toBeDefined();
+    expect(view.getByText("Waiting for your approval.")).toBeDefined();
+
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("agent-approve"));
+    });
+    expect(approve).toHaveBeenCalledWith("turn_cmp000001", "approval_cmp000001", true);
+    await testing.waitFor(() => expect(view.getByText("Allowed")).toBeDefined());
+    expect(view.queryByTestId("agent-approve")).toBeNull();
+    expect(view.queryByTestId("agent-deny")).toBeNull();
+  });
+
+  test("the context share opens on a tap as well as a hover", async () => {
+    const { start, fire } = renderComposer();
+    const { input, view } = composer();
+    testing.fireEvent.change(input, { target: { value: "Tighten this." } });
+    testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    await testing.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await testing.act(async () => {
+      fire({
+        type: "done",
+        turnId: "turn_cmp000001",
+        text: "Tightened.",
+        model: { provider: "openrouter", modelId: "test-model", connectionLabel: "Test connection", name: "Test Model" },
+        inputTokens: 250,
+        outputTokens: 12,
+        costUsd: 0.0012,
+        costBasis: "reported",
+        contextLength: 1000,
+        context: {
+          estimated: true as const,
+          sections: [{ id: "chapters", label: "Chapters", characters: 800, estimatedTokens: 200 }],
+          conversationTokens: 40,
+          totalTokens: 240
+        },
+        changed: 0,
+        undoAvailable: false
+      });
+    });
+
+    const trigger = await testing.waitFor(() => view.getByTestId("agent-context"));
+    expect(trigger.textContent).toBe("Context · ~240 tokens");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    await testing.act(async () => {
+      testing.fireEvent.click(trigger);
+    });
+    await testing.waitFor(() => expect(view.getByRole("progressbar", { name: "Context used" })).toBeDefined());
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByText("250 / 1,000")).toBeDefined();
+    expect(view.getByText("Chapters")).toBeDefined();
+    expect(view.getByText("Estimated from characters. The provider's reported usage is authoritative.")).toBeDefined();
   });
 
   test("the input and send are keyboard-focusable", async () => {

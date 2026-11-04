@@ -1,16 +1,54 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent } from "react";
-import { Cpu, GitBranch, History, Pencil, Plus, Send, Square, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent, ReactElement } from "react";
+import { Cpu, GitBranch, History, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
 import type { ThreadSummary } from "@ai-book-studio/core/agent/threads";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-book-studio/ui/components/tooltip";
+import { Bubble, BubbleContent } from "@ai-book-studio/ui/components/bubble";
+import { InputGroupAddon, InputGroupButton } from "@ai-book-studio/ui/components/input-group";
+import { Marker, MarkerContent } from "@ai-book-studio/ui/components/marker";
+import { Message as MessageRow, MessageContent, MessageFooter } from "@ai-book-studio/ui/components/message";
+import { Checkpoint, CheckpointIcon, CheckpointTrigger } from "@ai-book-studio/ui/ai-elements/checkpoint";
+import {
+  Confirmation,
+  ConfirmationAction,
+  ConfirmationActions,
+  ConfirmationRequest,
+  ConfirmationTitle
+} from "@ai-book-studio/ui/ai-elements/confirmation";
+import {
+  Context,
+  ContextContent,
+  ContextContentBody,
+  ContextContentFooter,
+  ContextContentHeader,
+  ContextTrigger
+} from "@ai-book-studio/ui/ai-elements/context";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationItem,
+  ConversationScrollButton
+} from "@ai-book-studio/ui/ai-elements/conversation";
+import {
+  PromptInput,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools
+} from "@ai-book-studio/ui/ai-elements/prompt-input";
+import { Suggestion, Suggestions } from "@ai-book-studio/ui/ai-elements/suggestion";
+import { Tool, ToolContent, ToolHeader, ToolLine, ToolOutput, Tools } from "@ai-book-studio/ui/ai-elements/tool";
 import { cn, must } from "../lib/utils";
 import {
   approvalLabel,
   toChatMessage,
   toolDetailText,
   toolLabel,
+  toolStatus,
   usageNote,
   waitWords,
   type Approval,
@@ -43,6 +81,29 @@ const APPROVAL_STATUS: Record<Approval["status"], string> = {
   denied: "Denied",
   expired: "Expired"
 };
+
+/** Prompts the empty conversation offers. Picking one fills the field; it never sends by itself. */
+const SUGGESTIONS = ["Draft the next scene", "Tighten this paragraph", "Check what happened earlier"];
+
+const TOOL_DOT: Record<ReturnType<typeof toolStatus>, string> = {
+  running: "bg-[var(--warning)]",
+  done: "bg-[var(--success)]",
+  error: "bg-[var(--destructive)]"
+};
+
+/** A short hint on hover and keyboard focus, in place of the browser's title tooltip. */
+function Hint({ label, children }: { label: string; children: ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ToolDot({ status }: { status: ReturnType<typeof toolStatus> }) {
+  return <span className={cn("size-1.5 rounded-full", TOOL_DOT[status])} />;
+}
 
 /**
  * The author's side of one conversation with the writing agent. Text arrives as the model produces
@@ -78,7 +139,7 @@ export function ChatPanel({
   const turnRef = useRef<string | null>(null);
   const assistantRef = useRef<string | null>(null);
   const retryRequestsRef = useRef(new Map<string, AgentTurnInput>());
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadToken = useRef(0);
   const noticeRef = useRef(onNotice);
 
@@ -320,6 +381,11 @@ export function ChatPanel({
             ? `${event.model.connectionLabel} · ${event.model.name ?? event.model.modelId}`
             : (event.model.name ?? event.model.modelId),
           context: event.context,
+          usage: {
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+            contextLength: event.contextLength
+          },
           changed: event.changed ?? 0,
           undoAvailable: event.undoAvailable,
           note:
@@ -372,11 +438,6 @@ export function ChatPanel({
     });
     return unsubscribe;
   }, [onChanged, patchAssistant]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is the trigger, not a closure value — the transcript scrolls to the bottom whenever a message lands
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
 
   const send = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault();
@@ -471,11 +532,9 @@ export function ChatPanel({
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void send();
-    }
+  const fillSuggestion = (suggestion: string): void => {
+    setInput(suggestion);
+    inputRef.current?.focus();
   };
 
   return (
@@ -490,324 +549,356 @@ export function ChatPanel({
           <p className="text-[var(--text-caption-size)] text-muted-foreground">Edits arrive as small changes you can undo.</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={startNew}
-            disabled={running}
-            aria-label="New conversation"
-            title="New conversation"
-            className="size-11 min-[700px]:size-7"
-            data-testid="agent-new-thread"
-          >
-            <Plus size={15} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => void openHistory()}
-            disabled={running}
-            aria-label="Conversation history"
-            title="Conversation history"
-            className="size-11 min-[700px]:size-7"
-            data-testid="agent-history"
-          >
-            <History size={15} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label="Close the writing agent"
-            title="Close"
-            className="size-11 min-[700px]:size-7"
-          >
-            <X size={16} />
-          </Button>
+          <Hint label="New conversation">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={startNew}
+              disabled={running}
+              aria-label="New conversation"
+              className="size-11 min-[700px]:size-7"
+              data-testid="agent-new-thread"
+            >
+              <Plus size={15} />
+            </Button>
+          </Hint>
+          <Hint label="Conversation history">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void openHistory()}
+              disabled={running}
+              aria-label="Conversation history"
+              className="size-11 min-[700px]:size-7"
+              data-testid="agent-history"
+            >
+              <History size={15} />
+            </Button>
+          </Hint>
+          <Hint label="Close">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close the writing agent"
+              className="size-11 min-[700px]:size-7"
+            >
+              <X size={16} />
+            </Button>
+          </Hint>
         </div>
       </header>
 
-      <div ref={scrollRef} className="thin-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
-        {messages.length === 0 ? (
-          <div className="rounded-[var(--corner-lg)] bg-[var(--secondary)] px-4 py-3">
-            <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
-              Ask for a scene, a tighter paragraph, or a check of what happened earlier. The agent reads the book before it
-              changes anything.
-            </p>
-          </div>
-        ) : null}
-
-        {messages.map((message, index) => {
-          const previousModel = messages
-            .slice(0, index)
-            .reverse()
-            .find((item) => item.role === "assistant" && item.model)?.model;
-          const showModel = message.role === "assistant" && message.model && message.model !== previousModel;
-          return (
-            <Fragment key={message.id}>
-              {showModel ? (
-                <div
-                  className="flex items-center gap-2 pt-1 text-[var(--text-caption-size)] text-muted-foreground"
-                  data-testid="model-change"
-                >
-                  <span className="h-px flex-1 bg-[var(--border)]" aria-hidden />
-                  <span>Now answering with {message.model}</span>
-                  <span className="h-px flex-1 bg-[var(--border)]" aria-hidden />
-                </div>
-              ) : null}
-              <div className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
-            <div
-              className={`max-w-[92%] rounded-[var(--corner-lg)] px-3.5 py-2.5 ${
-                message.role === "user"
-                  ? "bg-[var(--bubble-author-bg)] text-[var(--primary-foreground)]"
-                  : "bg-[var(--bubble-agent-bg)] text-foreground"
-              }`}
+      <Conversation className="min-h-0 flex-1">
+        <ConversationContent>
+          {messages.length === 0 ? (
+            <ConversationEmptyState
+              className="rounded-[var(--corner-lg)] bg-[var(--secondary)] px-4 py-3"
+              description="Ask for a scene, a tighter paragraph, or a check of what happened earlier. The agent reads the book before it changes anything."
             >
-              {message.tools.length > 0 ? (
-                <ul className="mb-2 space-y-1">
-                  {message.tools.map((tool, index) => {
-                    const detail = toolDetailText(tool);
-                    return (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: tools update in place by index and never reorder within a message; the index is a tiebreaker for repeated tool names
-                      <li key={`${tool.id ?? tool.name}-${index}`} className="text-[var(--text-caption-size)]">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`size-1.5 shrink-0 rounded-full ${tool.status === "end" ? "bg-[var(--success)]" : "bg-[var(--warning)]"}`}
-                            aria-hidden
-                          />
-                          <span className={message.role === "user" ? "opacity-80" : "text-muted-foreground"}>{toolLabel(tool.name)}</span>
-                        </div>
-                        {detail ? (
-                          <details className="ml-3.5 mt-1">
-                            <summary className="cursor-pointer select-none text-[var(--text-caption-size)] text-muted-foreground">
-                              Details
-                            </summary>
-                            <pre className="thin-scroll mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-[var(--corner-md)] bg-[var(--background)] p-2 font-mono text-[11px] leading-[1.45] text-muted-foreground">{detail}</pre>
-                          </details>
+              <Suggestions>
+                {SUGGESTIONS.map((suggestion) => (
+                  <Suggestion
+                    key={suggestion}
+                    suggestion={suggestion}
+                    onClick={fillSuggestion}
+                    data-testid="agent-suggestion"
+                  />
+                ))}
+              </Suggestions>
+            </ConversationEmptyState>
+          ) : null}
+
+          {messages.map((message, index) => {
+            const previousModel = messages
+              .slice(0, index)
+              .reverse()
+              .find((item) => item.role === "assistant" && item.model)?.model;
+            const showModel = message.role === "assistant" && message.model && message.model !== previousModel;
+            const canUndo =
+              message.role === "assistant" && Boolean(message.changed) && Boolean(message.turnId) && message.undoAvailable !== false;
+            const canBranch = message.role === "assistant" && Boolean(message.turnId) && !message.failed;
+            return (
+              <ConversationItem
+                key={message.id}
+                messageId={message.id}
+                scrollAnchor={message.role === "user"}
+                className="flex flex-col gap-3"
+              >
+                {showModel ? (
+                  <Marker variant="separator" className="pt-1 text-xs" data-testid="model-change">
+                    <MarkerContent>Now answering with {message.model}</MarkerContent>
+                  </Marker>
+                ) : null}
+                <MessageRow align={message.role === "user" ? "end" : "start"}>
+                  <MessageContent className="gap-1.5">
+                    <Bubble
+                      align={message.role === "user" ? "end" : "start"}
+                      variant={message.role === "user" ? "author" : "agent"}
+                      className="max-w-[92%]"
+                    >
+                      <BubbleContent className="px-3.5 py-2.5 text-base">
+                        {message.tools.length > 0 ? (
+                          <Tools className="mb-2">
+                            {message.tools.map((tool, toolIndex) => {
+                              const detail = toolDetailText(tool);
+                              const status = toolStatus(tool);
+                              const line = {
+                                title: toolLabel(tool.name),
+                                status,
+                                icon: <ToolDot status={status} />,
+                                className: "text-[var(--text-caption-size)]"
+                              };
+                              return (
+                                // biome-ignore lint/suspicious/noArrayIndexKey: tools update in place by index and never reorder within a message; the index is a tiebreaker for repeated tool names
+                                <div key={`${tool.id ?? tool.name}-${toolIndex}`} className="min-w-0">
+                                  {detail ? (
+                                    <Tool>
+                                      <ToolHeader {...line} />
+                                      <ToolContent>
+                                        <ToolOutput>{detail}</ToolOutput>
+                                      </ToolContent>
+                                    </Tool>
+                                  ) : (
+                                    <ToolLine {...line} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </Tools>
                         ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
-              {message.text ? (
-                <p className="whitespace-pre-wrap text-[var(--text-body-size)] leading-[var(--text-body-leading)]">{message.text}</p>
-              ) : waiting && message.role === "assistant" ? (
-                <p className="text-[var(--text-subheadline-size)] text-muted-foreground">Reading and thinking…</p>
-              ) : null}
-              {message.approvals?.map((approval) => (
-                <div
-                  key={approval.id}
-                  className="mt-2 rounded-[var(--corner-md)] border border-[var(--border)] bg-[var(--secondary)] p-3"
-                  data-testid="agent-approval"
-                >
-                  <p className="text-[var(--text-subheadline-size)] font-medium">
-                    {approvalLabel(approval.name)}
-                  </p>
-                  <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
-                    {approval.status === "pending"
-                      ? "The agent will wait for your answer before changing anything."
-                      : APPROVAL_STATUS[approval.status]}
-                  </p>
-                  {approval.status === "pending" ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => void approve(message, approval, true)}
-                        data-testid="agent-approve"
-                      >
-                        Allow
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void approve(message, approval, false)}
-                        data-testid="agent-deny"
-                      >
-                        Deny
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {message.note ? (
-                <p
-                  role={message.failed ? "alert" : undefined}
-                  className={`mt-2 text-[var(--text-caption-size)] ${message.failed ? "text-[var(--destructive-text)]" : "text-muted-foreground"}`}
-                >
-                  {message.note}
-                </p>
-              ) : null}
-              {message.failed && message.changed ? (
-                <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
-                  This attempt changed {message.changed} {message.changed === 1 ? "chapter" : "chapters"}. Undo it before retrying.
-                </p>
-              ) : null}
-              {message.failed && message.errorCode === "offline" ? (
-                <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="agent-offline-note">
-                  You are offline. Your words are safe — writing, planning and exporting all still work.
-                </p>
-              ) : null}
-              {message.failed &&
-              message.errorCode === "rate-limit" &&
-              message.retryAfterSeconds !== undefined ? (
-                <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="agent-rate-note">
-                  The provider asked to wait. Try again {waitWords(message.retryAfterSeconds)}.
-                </p>
-              ) : null}
-              {message.role === "assistant" && message.changed && message.turnId && message.undoAvailable !== false ? (
-                <Button variant="secondary" size="sm" className="mt-2" onClick={() => void undo(message.id)} data-testid="agent-undo-turn">
-                  Undo this turn
-                </Button>
-              ) : null}
-              {message.role === "assistant" && message.turnId && !message.failed ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => void branchFrom(message)}
-                  data-testid="agent-branch-turn"
-                  title="Copy this conversation up to this turn into a new thread"
-                >
-                  <GitBranch size={13} />
-                  Branch from here
-                </Button>
-              ) : null}
-              {message.failed && !message.changed && message.retryable !== false && message.errorCode !== "context" ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => void retry(message.id)} data-testid="agent-retry-request">
-                    Retry request
-                  </Button>
-                  {message.errorCode === "auth" ? (
-                    <Button variant="ghost" size="sm" onClick={onReconnect} data-testid="agent-reconnect">
-                      Reconnect
-                    </Button>
-                  ) : null}
-                  {message.errorCode === "invalid-request" ? (
-                    <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-request-model">
-                      Choose a model
-                    </Button>
-                  ) : null}
-                  {message.errorCode === "refusal" ? (
-                    <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-try-another-model">
-                      Try another model
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-              {message.failed && message.errorCode === "context" ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={onChooseModel}
-                    data-testid="agent-context-model"
-                  >
-                    Choose a larger model
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={startNew}
-                    data-testid="agent-context-new"
-                  >
-                    Start a new conversation
-                  </Button>
-                </div>
-              ) : null}
-              {message.context ? (
-                <details className="mt-2 text-[var(--text-caption-size)]" data-testid="agent-context">
-                  <summary className="cursor-pointer select-none text-muted-foreground">
-                    Context · ~{message.context.totalTokens.toLocaleString()} tokens
-                  </summary>
-                  <ul className="mt-1 space-y-0.5 text-muted-foreground">
-                    {message.context.sections.map((section) => (
-                      <li key={section.id} className="flex justify-between gap-3">
-                        <span>{section.label}</span>
-                        <span className="tabular-nums">~{section.estimatedTokens.toLocaleString()}</span>
-                      </li>
-                    ))}
-                    <li className="flex justify-between gap-3">
-                      <span>Conversation</span>
-                      <span className="tabular-nums">~{message.context.conversationTokens.toLocaleString()}</span>
-                    </li>
-                  </ul>
-                  <p className="mt-1 text-muted-foreground">
-                    Estimated from characters. The provider&apos;s reported usage is authoritative.
-                  </p>
-                </details>
-              ) : null}
-            </div>
-          </div>
-            </Fragment>
-          );
-        })}
-      </div>
+                        {message.text ? (
+                          <p className="whitespace-pre-wrap text-[var(--text-body-size)] leading-[var(--text-body-leading)]">
+                            {message.text}
+                          </p>
+                        ) : waiting && message.role === "assistant" ? (
+                          <p className="text-[var(--text-subheadline-size)] text-muted-foreground">Reading and thinking…</p>
+                        ) : null}
+                        {message.approvals?.map((approval) => (
+                          <Confirmation key={approval.id} state={approval.status} className="mt-2" data-testid="agent-approval">
+                            <ConfirmationTitle
+                              description={
+                                approval.status === "pending"
+                                  ? "The agent will wait for your answer before changing anything."
+                                  : APPROVAL_STATUS[approval.status]
+                              }
+                            >
+                              {approvalLabel(approval.name)}
+                            </ConfirmationTitle>
+                            <ConfirmationRequest>
+                              <ConfirmationActions>
+                                <ConfirmationAction
+                                  onClick={() => void approve(message, approval, true)}
+                                  data-testid="agent-approve"
+                                >
+                                  Allow
+                                </ConfirmationAction>
+                                <ConfirmationAction
+                                  variant="outline"
+                                  onClick={() => void approve(message, approval, false)}
+                                  data-testid="agent-deny"
+                                >
+                                  Deny
+                                </ConfirmationAction>
+                              </ConfirmationActions>
+                            </ConfirmationRequest>
+                          </Confirmation>
+                        ))}
+                        {message.note ? (
+                          <p
+                            role={message.failed ? "alert" : undefined}
+                            className={`mt-2 text-[var(--text-caption-size)] ${message.failed ? "text-[var(--destructive-text)]" : "text-muted-foreground"}`}
+                          >
+                            {message.note}
+                          </p>
+                        ) : null}
+                        {message.failed && message.changed ? (
+                          <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+                            This attempt changed {message.changed} {message.changed === 1 ? "chapter" : "chapters"}. Undo it
+                            before retrying.
+                          </p>
+                        ) : null}
+                        {message.failed && message.errorCode === "offline" ? (
+                          <p
+                            role="status"
+                            className="mt-2 text-[var(--text-caption-size)] text-muted-foreground"
+                            data-testid="agent-offline-note"
+                          >
+                            You are offline. Your words are safe — writing, planning and exporting all still work.
+                          </p>
+                        ) : null}
+                        {message.failed && message.errorCode === "rate-limit" && message.retryAfterSeconds !== undefined ? (
+                          <p
+                            role="status"
+                            className="mt-2 text-[var(--text-caption-size)] text-muted-foreground"
+                            data-testid="agent-rate-note"
+                          >
+                            The provider asked to wait. Try again {waitWords(message.retryAfterSeconds)}.
+                          </p>
+                        ) : null}
+                        {message.failed && !message.changed && message.retryable !== false && message.errorCode !== "context" ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => void retry(message.id)} data-testid="agent-retry-request">
+                              Retry request
+                            </Button>
+                            {message.errorCode === "auth" ? (
+                              <Button variant="ghost" size="sm" onClick={onReconnect} data-testid="agent-reconnect">
+                                Reconnect
+                              </Button>
+                            ) : null}
+                            {message.errorCode === "invalid-request" ? (
+                              <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-request-model">
+                                Choose a model
+                              </Button>
+                            ) : null}
+                            {message.errorCode === "refusal" ? (
+                              <Button variant="ghost" size="sm" onClick={onChooseModel} data-testid="agent-try-another-model">
+                                Try another model
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {message.failed && message.errorCode === "context" ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button variant="secondary" size="sm" onClick={onChooseModel} data-testid="agent-context-model">
+                              Choose a larger model
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={startNew} data-testid="agent-context-new">
+                              Start a new conversation
+                            </Button>
+                          </div>
+                        ) : null}
+                      </BubbleContent>
+                    </Bubble>
+                    {canBranch || message.context ? (
+                      <MessageFooter className="flex-wrap gap-1 px-1 font-normal">
+                        {canBranch ? (
+                          <Hint label="Copy this conversation up to this turn into a new thread">
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => void branchFrom(message)}
+                              data-testid="agent-branch-turn"
+                            >
+                              <GitBranch size={13} />
+                              Branch from here
+                            </Button>
+                          </Hint>
+                        ) : null}
+                        {message.context ? (
+                          <Context
+                            usedTokens={message.usage?.inputTokens ?? message.context.totalTokens}
+                            maxTokens={message.usage?.contextLength ?? undefined}
+                          >
+                            <ContextTrigger
+                              className="font-normal text-muted-foreground hover:text-foreground"
+                              data-testid="agent-context"
+                            >
+                              Context · ~{message.context.totalTokens.toLocaleString()} tokens
+                            </ContextTrigger>
+                            <ContextContent align="start">
+                              {message.usage ? <ContextContentHeader /> : null}
+                              <ContextContentBody>
+                                <ul className="space-y-0.5">
+                                  {message.context.sections.map((section) => (
+                                    <li key={section.id} className="flex justify-between gap-3">
+                                      <span>{section.label}</span>
+                                      <span className="tabular-nums">~{section.estimatedTokens.toLocaleString()}</span>
+                                    </li>
+                                  ))}
+                                  <li className="flex justify-between gap-3">
+                                    <span>Conversation</span>
+                                    <span className="tabular-nums">~{message.context.conversationTokens.toLocaleString()}</span>
+                                  </li>
+                                </ul>
+                              </ContextContentBody>
+                              <ContextContentFooter>
+                                Estimated from characters. The provider&apos;s reported usage is authoritative.
+                              </ContextContentFooter>
+                            </ContextContent>
+                          </Context>
+                        ) : null}
+                      </MessageFooter>
+                    ) : null}
+                  </MessageContent>
+                </MessageRow>
+                {canUndo ? (
+                  <Checkpoint>
+                    <CheckpointIcon>
+                      <History />
+                    </CheckpointIcon>
+                    <CheckpointTrigger onClick={() => void undo(message.id)} data-testid="agent-undo-turn">
+                      Undo this turn
+                    </CheckpointTrigger>
+                  </Checkpoint>
+                ) : null}
+              </ConversationItem>
+            );
+          })}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
-      <form onSubmit={(event) => void send(event)} className="border-t border-[var(--glass-outline)] p-3">
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={onKeyDown}
-          rows={3}
-          placeholder="What should change?"
-          aria-label="Message the writing agent"
-          data-testid="chat-input"
-          className="w-full resize-none rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-        />
-        <div className="mt-2 flex items-center justify-end gap-2 min-[520px]:justify-between">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={onChooseTurnModel}
-              data-testid="agent-turn-model"
-              title="Choose a model for the next message only"
-              className="flex min-w-0 items-center gap-1 rounded-[var(--corner-sm)] px-1.5 py-1 text-[var(--text-caption-size)] text-muted-foreground transition-colors hover:bg-[var(--accent)] hover:text-foreground"
-            >
-              <Cpu size={13} className="shrink-0" />
-              <span className="truncate">
-                {turnModel ? `This turn: ${turnModel.modelId.split("/").pop()}` : "Model: book default"}
-              </span>
-            </button>
-            <label
-              className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[var(--text-caption-size)] text-muted-foreground"
-              title="Keep the turn running after the window closes and notify you when it finishes"
-            >
-              <input
-                type="checkbox"
-                checked={background}
-                onChange={(event) => setBackground(event.target.checked)}
-                disabled={running}
-                data-testid="agent-background"
-                className="size-4 accent-[var(--primary)]"
-              />
-              <span className="hidden min-[520px]:inline">Background</span>
-            </label>
-          </div>
-          {running ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="shrink-0"
-              onClick={() => void stop()}
-              data-testid="chat-stop"
-            >
-              <Square size={13} />
-              Stop
-            </Button>
-          ) : (
-            <Button type="submit" variant="primary" size="sm" className="shrink-0" disabled={!input.trim()} data-testid="chat-send">
-              <Send size={14} />
-              Send
-            </Button>
-          )}
-        </div>
-        {/* Its own line: in the narrow chat panel it would squeeze the model and Background controls. */}
-        <p className="mt-1.5 hidden text-[var(--text-caption-size)] text-muted-foreground min-[520px]:block">
-          Enter sends · Shift Enter adds a line
-        </p>
-      </form>
+      <div className="border-t border-[var(--glass-outline)] p-3">
+        <PromptInput onSubmit={(event) => void send(event)}>
+          <PromptInputTextarea
+            ref={inputRef}
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            rows={3}
+            placeholder="What should change?"
+            aria-label="Message the writing agent"
+            data-testid="chat-input"
+          />
+          <PromptInputFooter>
+            <PromptInputTools>
+              <Hint label="Choose a model for the next message only">
+                <InputGroupButton
+                  variant="ghost"
+                  size="xs"
+                  onClick={onChooseTurnModel}
+                  data-testid="agent-turn-model"
+                  className="min-w-0 gap-1 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+                >
+                  <Cpu size={13} className="shrink-0" />
+                  <span className="truncate">
+                    {turnModel ? `This turn: ${turnModel.modelId.split("/").pop()}` : "Model: book default"}
+                  </span>
+                </InputGroupButton>
+              </Hint>
+              <Hint label="Keep the turn running after the window closes and notify you when it finishes">
+                <label
+                  className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  <input
+                    type="checkbox"
+                    checked={background}
+                    onChange={(event) => setBackground(event.target.checked)}
+                    disabled={running}
+                    aria-label="Background"
+                    data-testid="agent-background"
+                    className="size-4 accent-[var(--primary)]"
+                  />
+                  <span className="hidden min-[520px]:inline">Background</span>
+                </label>
+              </Hint>
+            </PromptInputTools>
+            {running ? (
+              <PromptInputSubmit status="streaming" onStop={() => void stop()} data-testid="chat-stop" />
+            ) : (
+              <PromptInputSubmit disabled={!input.trim()} data-testid="chat-send" />
+            )}
+          </PromptInputFooter>
+          {/* Its own line: in the narrow chat panel it would squeeze the model and Background controls. */}
+          <InputGroupAddon
+            align="block-end"
+            className="hidden cursor-default pt-0 text-xs font-normal text-muted-foreground min-[520px]:flex"
+          >
+            Enter sends · Shift Enter adds a line
+          </InputGroupAddon>
+        </PromptInput>
+      </div>
 
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent
@@ -878,28 +969,30 @@ export function ChatPanel({
                           </span>
                         ) : null}
                       </button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="size-11 min-[700px]:size-7"
-                        onClick={() => beginRename(thread)}
-                        aria-label={`Rename ${thread.title}`}
-                        title="Rename conversation"
-                        data-testid="agent-rename-thread"
-                      >
-                        <Pencil size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="size-11 min-[700px]:size-7"
-                        onClick={() => setDeleteTarget(thread)}
-                        aria-label={`Delete ${thread.title}`}
-                        title="Delete conversation"
-                        data-testid="agent-delete-thread"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+                      <Hint label="Rename conversation">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-11 min-[700px]:size-7"
+                          onClick={() => beginRename(thread)}
+                          aria-label={`Rename ${thread.title}`}
+                          data-testid="agent-rename-thread"
+                        >
+                          <Pencil size={14} />
+                        </Button>
+                      </Hint>
+                      <Hint label="Delete conversation">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-11 min-[700px]:size-7"
+                          onClick={() => setDeleteTarget(thread)}
+                          aria-label={`Delete ${thread.title}`}
+                          data-testid="agent-delete-thread"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </Hint>
                     </div>
                   )}
                 </li>

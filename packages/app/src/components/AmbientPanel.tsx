@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Mic, MicOff, Pause, Play, Volume2 } from "lucid
 import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
 import { Button } from "@ai-book-studio/ui/button";
+import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { must } from "../lib/utils";
 import { useSpeech } from "../hooks/use-speech";
 import { useDictation } from "../hooks/use-dictation";
@@ -373,19 +374,19 @@ export function AmbientPanel({
           {speech.using === "tts" && speech.voices.length > 0 ? (
             <label className="mt-3 flex items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
               <span>Voice</span>
-              <select
-                className="rounded-[var(--corner-md)] border border-border bg-[var(--secondary)] px-2 py-1 text-[var(--text-caption-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+              <NativeSelect
+                size="sm"
                 value={voice}
                 onChange={(event) => setVoice(event.target.value)}
                 data-testid="ambient-voice"
               >
-                <option value="">The studio&apos;s default</option>
+                <NativeSelectOption value="">The studio&apos;s default</NativeSelectOption>
                 {speech.voices.map((name) => (
-                  <option key={name} value={name}>
+                  <NativeSelectOption key={name} value={name}>
                     {name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           ) : null}
           {speech.fellBack ? (

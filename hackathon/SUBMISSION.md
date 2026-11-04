@@ -111,6 +111,10 @@ public repository that cut is the first commit, "Baseline: AI Book Studio as it 
 - Open-source licenses generated from the build: Settings → About lists every package each build
   ships with its license text, `THIRD_PARTY_NOTICES.md` is generated from the same data, and the
   readiness check fails on a package with no license or an unknown one (D-186).
+- Interface components from shadcn/ui and the AI Elements patterns, themed with the Liquid Glass tokens
+  (D-185): the writing agent's chat is built from Message, Tool, Confirmation, Context, Checkpoint,
+  Prompt Input and Suggestion, with Tooltips on its icon buttons, and the dialogs use Switch, Native
+  Select, Collapsible and Badge.
 
 The commit history after the cut is the complete record of event work.
 

@@ -25,6 +25,12 @@ export interface Approval {
   status: "pending" | "approved" | "denied" | "expired";
 }
 
+export interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  contextLength?: number | null | undefined;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -43,6 +49,8 @@ export interface Message {
   approvals?: Approval[] | undefined;
   /** Where the request's estimated context went. */
   context?: ContextBreakdown | undefined;
+  /** The provider's reported tokens for the turn, and the model's window when it is known. */
+  usage?: TurnUsage | undefined;
   /** Connection label and model id used for this turn; shown when it changes. */
   model?: string | undefined;
 }
@@ -74,6 +82,13 @@ const TOOL_LABELS: Record<string, string> = {
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? "Worked on the book";
+}
+
+/** A tool is running until its result arrives, and failed when the result says it did not work. */
+export function toolStatus(tool: ToolNote): "running" | "done" | "error" {
+  if (tool.status === "start") return "running";
+  const output = tool.output;
+  return output && typeof output === "object" && "ok" in output && output.ok === false ? "error" : "done";
 }
 
 export function approvalLabel(name: string): string {
@@ -181,6 +196,15 @@ export function toChatMessage(message: AgentMessage, latestCheckpointTurn: strin
     tools,
     ...(approvals.length > 0 ? { approvals } : {}),
     ...(message.context ? { context: message.context } : {}),
+    ...(message.usage
+      ? {
+          usage: {
+            inputTokens: message.usage.inputTokens,
+            outputTokens: message.usage.outputTokens,
+            contextLength: message.usage.contextLength
+          }
+        }
+      : {}),
     ...(message.model
       ? {
           model: message.model.connectionLabel

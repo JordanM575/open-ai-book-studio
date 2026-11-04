@@ -5,36 +5,59 @@
   "description": "Shared React components and styles for every AI Book Studio target",
   "license": "Apache-2.0",
   "type": "module",
+  "imports": {
+    "#components/*": "./src/components/*.tsx",
+    "#ai-elements/*": "./src/ai-elements/*.tsx",
+    "#hooks/*": "./src/hooks/*.ts",
+    "#lib/*": "./src/lib/*.ts"
+  },
   "exports": {
     "./button": {
-      "types": "./src/button.tsx",
-      "default": "./src/button.tsx"
+      "types": "./src/components/button.tsx",
+      "default": "./src/components/button.tsx"
     },
     "./dialog": {
-      "types": "./src/dialog.tsx",
-      "default": "./src/dialog.tsx"
+      "types": "./src/components/dialog.tsx",
+      "default": "./src/components/dialog.tsx"
     },
     "./brand": {
-      "types": "./src/brand.tsx",
-      "default": "./src/brand.tsx"
+      "types": "./src/components/brand.tsx",
+      "default": "./src/components/brand.tsx"
     },
     "./notice": {
-      "types": "./src/notice.tsx",
-      "default": "./src/notice.tsx"
+      "types": "./src/components/notice.tsx",
+      "default": "./src/components/notice.tsx"
+    },
+    "./components/*": {
+      "types": "./src/components/*.tsx",
+      "default": "./src/components/*.tsx"
+    },
+    "./ai-elements/*": {
+      "types": "./src/ai-elements/*.tsx",
+      "default": "./src/ai-elements/*.tsx"
+    },
+    "./hooks/*": {
+      "types": "./src/hooks/*.ts",
+      "default": "./src/hooks/*.ts"
+    },
+    "./lib/*": {
+      "types": "./src/lib/*.ts",
+      "default": "./src/lib/*.ts"
     },
     "./styles/*": {
       "default": "./src/styles/*"
     },
     "./utils": {
-      "types": "./src/utils.ts",
-      "default": "./src/utils.ts"
+      "types": "./src/lib/utils.ts",
+      "default": "./src/lib/utils.ts"
     }
   },
   "dependencies": {
-    "@radix-ui/react-dialog": "^1.3.1",
+    "@shadcn/react": "^0.3.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.61.0",
+    "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "tailwind-merge": "^3.7.0"
   },

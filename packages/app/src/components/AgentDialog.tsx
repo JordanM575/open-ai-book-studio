@@ -6,6 +6,8 @@ import type { BridgeStatus } from "@ai-book-studio/core/ipc";
 import { formatUsd } from "@ai-book-studio/core/providers/usage";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
+import { Switch } from "@ai-book-studio/ui/components/switch";
 import { must } from "../lib/utils";
 
 interface Props {
@@ -199,14 +201,10 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
           {status ? <CacheDetail status={status} /> : null}
           {status ? (
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
-              <input
-                type="checkbox"
+              <Switch
                 checked={status.cache.mode === "auto"}
-                onChange={(event) =>
-                  void setSettings({ cachePrefixMode: event.target.checked ? "auto" : "off" })
-                }
+                onCheckedChange={(checked) => void setSettings({ cachePrefixMode: checked ? "auto" : "off" })}
                 disabled={busy}
-                className="size-4 accent-[var(--primary)]"
                 data-testid="agent-cache-prefix"
                 aria-label="Mark the prompt for the provider's cache"
               />
@@ -227,12 +225,10 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
           </p>
           {status?.skills.present ? (
             <label className="mt-2 flex cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
-              <input
-                type="checkbox"
+              <Switch
                 checked={status.skills.enabled}
-                onChange={(event) => void setSettings({ skillsEnabled: event.target.checked })}
+                onCheckedChange={(checked) => void setSettings({ skillsEnabled: checked })}
                 disabled={busy}
-                className="size-4 accent-[var(--primary)]"
                 data-testid="agent-skills-enabled"
                 aria-label="Use this book's SKILLS.md"
               />
@@ -290,19 +286,19 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
           >
             Answer length
           </label>
-          <select
+          <NativeSelect
             id="agent-answer-length"
             value={status?.answerLength ?? "standard"}
             onChange={(event) => void setSettings({ answerLength: event.target.value as AgentAnswerLength })}
             disabled={busy || !status}
-            className="mt-1 rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+            className="mt-1"
             data-testid="agent-answer-length"
             aria-label="Answer length"
           >
-            <option value="brief">Brief</option>
-            <option value="standard">Standard</option>
-            <option value="detailed">Detailed</option>
-          </select>
+            <NativeSelectOption value="brief">Brief</NativeSelectOption>
+            <NativeSelectOption value="standard">Standard</NativeSelectOption>
+            <NativeSelectOption value="detailed">Detailed</NativeSelectOption>
+          </NativeSelect>
         </section>
 
         <section className="mt-6">
@@ -533,14 +529,12 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
                 </div>
                 <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
                   <span>{tool.enabled ? "On" : "Off"}</span>
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={tool.enabled}
-                    onChange={(event) => void toggleTool(tool.name, event.target.checked)}
+                    onCheckedChange={(checked) => void toggleTool(tool.name, checked)}
                     disabled={busy}
-                    className="size-4 accent-[var(--primary)]"
                     data-testid={`agent-tool-${tool.name}`}
-                    aria-label={`${tool.name} ${tool.enabled ? "on" : "off"}`}
+                    aria-label={tool.name}
                   />
                 </label>
               </li>

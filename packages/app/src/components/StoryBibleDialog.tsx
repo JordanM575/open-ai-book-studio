@@ -1,8 +1,10 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Plus, Trash2 } from "lucide-react";
 import type { BookMeta, Character, Memory, StoryArc } from "@ai-book-studio/core/schema";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-book-studio/ui/components/collapsible";
+import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { must } from "../lib/utils";
 
 interface Props {
@@ -149,9 +151,16 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
             <h3 className="text-[var(--text-callout-size)] font-semibold">Story arc</h3>
             <div className="space-y-2">
               {(["beginning", "middle", "end"] as const).map((key) => (
-                <details key={key} className="rounded-[var(--corner-md)] bg-card px-3 py-2 shadow-[inset_0_0_0_1px_var(--border)]">
-                  <summary className="cursor-pointer text-[var(--text-subheadline-size)] font-medium capitalize">{key}</summary>
-                  <div className="mt-2 space-y-2">
+                <Collapsible key={key} className="rounded-[var(--corner-md)] bg-card px-3 py-2 shadow-[inset_0_0_0_1px_var(--border)]">
+                  <CollapsibleTrigger className="group/arc flex w-full items-center gap-1.5 rounded-[var(--corner-sm)] text-left text-[var(--text-subheadline-size)] font-medium capitalize">
+                    <ChevronRight
+                      size={14}
+                      aria-hidden
+                      className="shrink-0 text-muted-foreground transition-transform duration-[var(--duration-fast)] group-data-[state=open]/arc:rotate-90"
+                    />
+                    {key}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2 space-y-2">
                     {(["overview", "keyMoments", "openQuestions"] as const).map((field) => (
                       <label key={field} className="block space-y-1">
                         <span className="text-[var(--text-caption-size)] text-muted-foreground">
@@ -165,8 +174,8 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
                         />
                       </label>
                     ))}
-                  </div>
-                </details>
+                  </CollapsibleContent>
+                </Collapsible>
               ))}
             </div>
           </section>
@@ -243,16 +252,17 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
                       maxLength={180}
                       className="min-w-0 flex-1 resize-none rounded-[var(--corner-sm)] bg-card px-2 py-1.5 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                     />
-                    <select
+                    <NativeSelect
+                      size="sm"
                       value={memory.importance}
                       onChange={(event) => updateMemory(index, { importance: event.target.value as Memory["importance"] }, setMemories)}
-                      className="h-8 rounded-[var(--corner-sm)] bg-card px-1 text-[var(--text-caption-size)] shadow-[inset_0_0_0_1px_var(--input-border)]"
+                      className="shrink-0"
                       aria-label="Importance"
                     >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
+                      <NativeSelectOption value="low">Low</NativeSelectOption>
+                      <NativeSelectOption value="medium">Medium</NativeSelectOption>
+                      <NativeSelectOption value="high">High</NativeSelectOption>
+                    </NativeSelect>
                     <Button
                       variant="ghost"
                       size="icon-sm"
