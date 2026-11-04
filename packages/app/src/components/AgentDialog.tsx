@@ -53,6 +53,8 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  /** Tools switched on or off since the dialog opened. Their rows stay put until it closes. */
+  const [changedTools, setChangedTools] = useState<ReadonlySet<string>>(() => new Set());
   const [toneDraft, setToneDraft] = useState<string | null>(null);
   const [perTurnDraft, setPerTurnDraft] = useState<string | null>(null);
   const [monthlyDraft, setMonthlyDraft] = useState<string | null>(null);
@@ -77,6 +79,10 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
       .catch(() => undefined);
   }, [open, refresh]);
 
+  useEffect(() => {
+    if (open) setChangedTools(new Set());
+  }, [open]);
+
   const setSettings = async (
     patch: Parameters<typeof window.studio.agent.setSettings>[1]
   ): Promise<void> => {
@@ -93,7 +99,9 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
   };
 
   const toggleTool = async (name: string, enabled: boolean): Promise<void> => {
-    if (!status) return;
+    if (!status || busy) return;
+    // Before the save, so the row is still listed when the answer turns the tool off.
+    setChangedTools((current) => new Set(current).add(name));
     const disabled = new Set(status.tools.filter((tool) => !tool.enabled).map((tool) => tool.name));
     if (enabled) disabled.delete(name);
     else disabled.add(name);
@@ -129,7 +137,10 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
   };
 
   const withdrawn = status?.tools.filter((tool) => !tool.enabled) ?? [];
-  const visible = showAll ? status?.tools ?? [] : (status?.tools ?? []).filter((tool) => tool.enabled);
+  // A row never leaves from under the author's pointer: a tool switched off here stays listed, reading Off.
+  const visible = showAll
+    ? status?.tools ?? []
+    : (status?.tools ?? []).filter((tool) => tool.enabled || changedTools.has(tool.name));
 
   const toneValue = toneDraft ?? status?.tone ?? "";
   const saveTone = async (): Promise<void> => {
@@ -529,10 +540,11 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
                 </div>
                 <label className="flex shrink-0 cursor-pointer items-center gap-2 text-(length:--text-caption-size) text-muted-foreground">
                   <span>{tool.enabled ? "On" : "Off"}</span>
+                  {/* Never disabled while a save is on its way: Chromium drops focus from a focused
+                      button that becomes disabled. toggleTool ignores a press until the save lands. */}
                   <Switch
                     checked={tool.enabled}
                     onCheckedChange={(checked) => void toggleTool(tool.name, checked)}
-                    disabled={busy}
                     data-testid={`agent-tool-${tool.name}`}
                     aria-label={tool.name}
                   />

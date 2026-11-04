@@ -147,7 +147,8 @@ as a chapter and is not part of `library.json`; a missing or stale catalog never
 
 Message parts are `text`, `reasoning`, `tool-call`, `tool-result`, `source`, `file`, `error` and
 `guidance`. Tool calls and results keep their ids, so a resumed conversation can be inspected
-without replaying prose. A `guidance` part carries one turn of author instructions (1–2,000
+without replaying prose. A call that failed, including one whose tool threw, ends in a `tool-result`
+with `isError: true` and an output of `{ "ok": false, "message": … }`. A `guidance` part carries one turn of author instructions (1–2,000
 characters, never truncated) with the submitted user message; it applies to that turn only.
 The schema lives in `packages/core/src/agent/messages.ts`.
 

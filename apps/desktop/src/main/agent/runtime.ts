@@ -688,6 +688,21 @@ export class AgentRuntime {
             output: part.output,
             ...(output?.message ? { detail: output.message } : {})
           });
+        } else if (part.type === "tool-error") {
+          // A tool that throws ends like one that answered `ok: false`: a failed step in the chat and
+          // the thread, and a failed call in the metrics. Without this it would stay running forever.
+          const output = { ok: false, message: toolErrorMessage(part.error) };
+          state.toolParts.push({ type: "tool-result", id: part.toolCallId, name: part.toolName, output, isError: true });
+          await this.recordToolCall(input.bookId, part.toolName, false);
+          this.publish({
+            type: "tool",
+            turnId,
+            id: part.toolCallId,
+            name: part.toolName,
+            status: "end",
+            output,
+            detail: output.message
+          });
         } else if (part.type === "tool-approval-request") {
           waiting = true;
           approval = {
@@ -1134,6 +1149,16 @@ async function fromTrash(library: Library, bookId: string, chapterId: string, tr
     if (error instanceof LibraryError && (error.code === "not-found" || error.code === "invalid")) return null;
     throw error;
   }
+}
+
+/**
+ * What the author is told about a tool that threw. The library's refusal is written for the author and
+ * names only ids, so it is kept. Any other exception is the program's own, and its text can name paths
+ * on this computer, so the conversation file gets a plain line instead.
+ */
+function toolErrorMessage(error: unknown): string {
+  if (!(error instanceof LibraryError)) return "The tool failed.";
+  return redact(error.message.trim()).slice(0, 500) || "The tool failed.";
 }
 
 function assistantParts(reasoning: string, tools: AgentPart[], text: string, error?: AgentPart): AgentPart[] {

@@ -6,6 +6,7 @@ import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
 import type { StoredCredential } from "@ai-book-studio/core/providers/types";
+import { toChatMessage, toolStatus } from "@ai-book-studio/app/lib/chat-view";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderService } from "../src/main/providers";
 import type { Studio } from "../src/main/studio";
@@ -102,9 +103,11 @@ async function runTurn(
     provider?: StoredCredential;
     metrics?: MetricsStore;
     pluginFolder?: () => string | null;
+    /** Collects every event the turn sends, in order. */
+    events?: AgentEvent[];
   } = {},
   prompt = "Go on."
-): Promise<{ model: MockLanguageModelV4; done: Extract<AgentEvent, { type: "done" }> }> {
+): Promise<{ model: MockLanguageModelV4; done: Extract<AgentEvent, { type: "done" }>; threadId: string }> {
   const model = options.model ?? textModel();
   let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;
   let rejectDone!: (error: Error) => void;
@@ -117,6 +120,7 @@ async function runTurn(
     studioFor(),
     providersFor(options.provider ?? credential),
     (event) => {
+      options.events?.push(event);
       if (event.type === "done") {
         clearTimeout(timer);
         resolveDone(event);
@@ -130,8 +134,8 @@ async function runTurn(
     options.pluginFolder ?? (() => null),
     options.metrics
   );
-  await agent.start({ mode: "edit", bookId: book.id, prompt });
-  return { model, done: await done };
+  const started = await agent.start({ mode: "edit", bookId: book.id, prompt });
+  return { model, done: await done, threadId: started.threadId };
 }
 
 describe("the runtime and the book's own instructions", () => {
@@ -244,6 +248,97 @@ describe("the runtime and the tool metrics", () => {
     expect(summary.calls).toBe(1);
     expect(summary.failures).toBe(0);
     expect(summary.tools[0]?.name).toBe("read_chapter");
+  });
+
+  /** A model that asks to read one chapter, then answers in words once the read has ended. */
+  function readThenReply(toolCallId: string, chapterId: string, reply: string): MockLanguageModelV4 {
+    return new MockLanguageModelV4({
+      doStream: [
+        {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              { type: "tool-call", toolCallId, toolName: "read_chapter", input: JSON.stringify({ chapterId }) },
+              {
+                type: "finish",
+                finishReason: { unified: "tool-calls", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE
+              }
+            ]
+          })
+        },
+        {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "text-1" },
+              { type: "text-delta", id: "text-1", delta: reply },
+              { type: "text-end", id: "text-1" },
+              {
+                type: "finish",
+                finishReason: { unified: "stop", raw: undefined },
+                logprobs: undefined,
+                usage: USAGE
+              }
+            ]
+          })
+        }
+      ]
+    });
+  }
+
+  /*
+   * QA B3 (the counts are filmed at 0:43): a tool that throws, here `read_chapter` with a chapter id
+   * the book does not have, ends as a failed step. The chat gets its end with the red dot, the thread
+   * stores it as failed so a reopened chat shows the same, and the metrics count one failed call.
+   */
+  test("a tool that throws ends as a failed call: shown, stored and counted", async () => {
+    const model = readThenReply("call-missing", "ch_missing0001", "That chapter is not in the book.");
+    const metrics = new MetricsStore(root);
+    const events: AgentEvent[] = [];
+    const { threadId } = await runTurn({ model, metrics, events });
+
+    const steps = events.filter((event) => event.type === "tool");
+    expect(steps.map((event) => `${event.id} ${event.status}`)).toEqual(["call-missing start", "call-missing end"]);
+    const end = steps[1];
+    expect(toolStatus({ name: "read_chapter", status: end?.status ?? "start", output: end?.output })).toBe("error");
+    // The library's refusal is written for the author and names only the id, so it is the detail.
+    expect(end?.detail).toBe("No chapter ch_missing0001 in this book.");
+
+    const thread = await library.threads.read(book.id, threadId);
+    const reply = thread?.messages.find((message) => message.role === "assistant");
+    expect(reply?.parts.find((part) => part.type === "tool-result")).toMatchObject({
+      id: "call-missing",
+      name: "read_chapter",
+      output: { ok: false, message: "No chapter ch_missing0001 in this book." },
+      isError: true
+    });
+    const reopened = reply ? toChatMessage(reply, thread?.checkpointTurns.at(-1)) : null;
+    expect(reopened?.tools.map((entry) => toolStatus(entry))).toEqual(["error"]);
+    expect(reopened?.text).toBe("That chapter is not in the book.");
+
+    const summary = await metrics.summary(book.id);
+    expect(summary.calls).toBe(1);
+    expect(summary.failures).toBe(1);
+    expect(summary.tools[0]).toMatchObject({ name: "read_chapter", calls: 1, successes: 0, failures: 1 });
+  });
+
+  // Any other exception is the program's, not the author's: its text can name paths on this computer.
+  test("a tool that throws anything but the library's refusal says only that it failed", async () => {
+    const chapter = await library.createChapter(book.id, { title: "The Door", content: "The door was open.\n" });
+    library.readChapter = async () => {
+      throw new Error("EACCES: permission denied, open '/Users/author/Books/The Salt Road/chapters/0001-the-door.md'");
+    };
+    const events: AgentEvent[] = [];
+    const { threadId } = await runTurn({ model: readThenReply("call-denied", chapter.id, "I could not read it."), events });
+
+    const end = events.find((event) => event.type === "tool" && event.status === "end");
+    expect(end).toMatchObject({ output: { ok: false, message: "The tool failed." }, detail: "The tool failed." });
+    const stored = JSON.stringify(await library.threads.read(book.id, threadId));
+    expect(stored).toContain('"message":"The tool failed."');
+    expect(stored).not.toContain("/Users/author");
+    expect(stored).not.toContain("EACCES");
   });
 });
 

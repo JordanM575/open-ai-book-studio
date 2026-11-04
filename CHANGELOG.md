@@ -404,6 +404,17 @@ Update the `Unreleased` section before every commit.
 - The header's model button has room for "Muse Spark 1.3 Contributor" and its tooltip names the model;
   the composer names a one-turn model the same way instead of by its raw id.
 - The sync review counts "2 new files" and "3 conflict copies" in the plural.
+- Switching a tool off in the Agent dialog keeps its row, now reading Off, and keyboard focus stays on
+  its switch, so the same switch turns it back on. The dialog listed only enabled tools, so the row
+  vanished under the pointer and focus fell to the dialog. A tool changed while the dialog is open
+  stays listed until it closes, and the switches are no longer disabled while a save is on its way,
+  which also dropped focus in Chromium (QA B5).
+- A tool that throws, such as `read_chapter` with a chapter id the book does not have, now ends as a
+  failed step: the chat shows its red dot instead of a running one that never stopped, the
+  conversation stores it as failed so a reopened chat shows the same, and the Agent dialog counts it
+  as a failed call instead of saying the agent had not called a tool. Its detail is the library's own
+  message, such as "No chapter … in this book."; any other exception reads "The tool failed.", so its
+  text, which can name paths on this computer, stays out of the conversation (QA B3).
 - A saved connection that has not been tested in this Settings session now reads "Saved · not checked
   yet" instead of "Unavailable", which suggested a working key was broken.
 - A rate limit names one wait. When the provider says how long, the chat gives that time without a

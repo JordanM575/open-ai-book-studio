@@ -46,6 +46,7 @@
     "tests/schema-refusal.test.tsx",
     "tests/agent-tone.test.tsx",
     "tests/agent-spending.test.tsx",
+    "tests/agent-dialog-tools.test.tsx",
     "tests/agent-limits-contract.test.ts",
     "tests/drift-report.test.tsx",
     "tests/sync-section.test.tsx",
