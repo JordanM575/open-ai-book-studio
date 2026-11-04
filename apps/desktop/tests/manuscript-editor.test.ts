@@ -178,6 +178,38 @@ describe("ManuscriptEditor", () => {
     expect((testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(textarea);
   });
 
+  test("typing and then undoing back to the saved text reads as saved, so an export can run", async () => {
+    const { save, clear } = mockStudio({ ok: true, data: null });
+    const editor = React.createRef<EditorHandle>();
+    const onStatus = mock((_status: SaveStatus) => {});
+
+    testing.render(
+      React.createElement(ManuscriptEditor, {
+        ref: editor,
+        bookId: BOOK,
+        chapter: CHAPTER,
+        ordinal: 1,
+        onSaved: () => {},
+        onStatus
+      })
+    );
+    const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
+    testing.fireEvent.change(textarea, { target: { value: "Original, changed.\n" } });
+    testing.fireEvent.change(textarea, { target: { value: CHAPTER.content } });
+    expect(onStatus).toHaveBeenLastCalledWith({ kind: "dirty" });
+
+    let flushStatus: SaveStatus | undefined;
+    await testing.act(async () => {
+      flushStatus = await editor.current!.flush();
+    });
+
+    expect(flushStatus?.kind).toBe("saved");
+    expect(onStatus.mock.calls.at(-1)?.[0]?.kind).toBe("saved");
+    expect(save).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledWith(BOOK, CHAPTER.id);
+    expect(textarea.value).toBe(CHAPTER.content);
+  });
+
   test("flush confirms the saved chapter returned by the normal save path", async () => {
     const saved: Chapter = {
       ...CHAPTER,

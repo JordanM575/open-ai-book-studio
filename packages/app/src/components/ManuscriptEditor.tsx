@@ -91,7 +91,17 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         clearTimeout(timer.current);
         timer.current = null;
       }
-      if (text === base.current.content) return statusRef.current;
+      if (text === base.current.content) {
+        if (statusRef.current.kind !== "dirty") return statusRef.current;
+        // Typing and then undoing back to the saved text leaves nothing to write. The chapter on
+        // disk already matches, so end where a save would: no pending draft, and saved.
+        if (draftTimer.current) {
+          clearTimeout(draftTimer.current);
+          draftTimer.current = null;
+        }
+        void window.studio.drafts.clear(bookId, chapter.id);
+        return updateStatus({ kind: "saved", at: Date.now() });
+      }
 
       updateStatus({ kind: "saving" });
       try {

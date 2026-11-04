@@ -291,6 +291,9 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Typing in a chapter and then undoing back to the saved text no longer leaves it marked unsaved. The
+  Format dialog refused every export ("The chapter has not finished saving") until you typed again;
+  the chapter now reads as saved, with nothing written, because the file already matches.
 - Settings now says when this computer's protected storage is unavailable. Electron 45 answers
   that question with a promise, and the status read took the promise itself for a yes, so Settings
   always showed the keychain as unlocked. It now waits for the answer, at most two seconds. If the
