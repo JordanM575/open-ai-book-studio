@@ -44,19 +44,19 @@ export function NewBookDialog({ open, onOpenChange, onCreated, onNotice }: Props
       >
         <form onSubmit={(event) => void submit(event)} className="space-y-4">
           <label className="block space-y-1.5">
-            <span className="text-[var(--text-subheadline-size)] font-medium">Title</span>
+            <span className="text-(length:--text-subheadline-size) font-medium">Title</span>
             <input
               autoFocus
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="The Lighthouse Keeper's Daughter"
               maxLength={300}
-              className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
             />
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-[var(--text-subheadline-size)] font-medium">
+            <span className="text-(length:--text-subheadline-size) font-medium">
               What is it about? <span className="font-normal text-muted-foreground">Optional</span>
             </span>
             <textarea
@@ -65,11 +65,11 @@ export function NewBookDialog({ open, onOpenChange, onCreated, onNotice }: Props
               placeholder="A keeper's daughter inherits a lighthouse, and the letters her mother never sent."
               rows={3}
               maxLength={20000}
-              className="w-full resize-none rounded-[var(--corner-md)] bg-card px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              className="w-full resize-none rounded-[var(--corner-md)] bg-card px-3 py-2 text-(length:--text-body-size) leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
             />
           </label>
 
-          <p className="text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          <p className="text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
             This creates a new folder inside your library. Nothing leaves this computer.
           </p>
 

@@ -29,14 +29,14 @@ export function OpenRouterCallback() {
   return (
     <div className="window-wash flex min-h-full items-center justify-center p-6" data-testid="openrouter-callback">
       <div className="glass w-full max-w-[420px] rounded-[var(--corner-xl)] p-6">
-        <h1 className="text-[var(--text-title-3-size)] font-semibold">OpenRouter</h1>
-        <p className="mt-2 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+        <h1 className="text-(length:--text-title-3-size) font-semibold">OpenRouter</h1>
+        <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
           {message}
         </p>
         {message.startsWith("Connected") ? null : (
           <a
             href="/"
-            className="mt-4 inline-flex text-[var(--text-callout-size)] text-primary underline-offset-4 hover:underline"
+            className="mt-4 inline-flex text-(length:--text-callout-size) text-primary underline-offset-4 hover:underline"
           >
             Return to the studio
           </a>

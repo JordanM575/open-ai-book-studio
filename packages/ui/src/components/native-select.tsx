@@ -21,7 +21,7 @@ function NativeSelect({ className, size = "default", ...props }: NativeSelectPro
       <select
         data-slot="native-select"
         data-size={size}
-        className="h-9 w-full min-w-0 appearance-none rounded-[var(--corner-md)] bg-card py-1 pr-8 pl-3 text-[var(--text-body-size)] text-foreground shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none transition-shadow duration-[var(--duration-fast)] focus-visible:shadow-[inset_0_0_0_2px_var(--input-focus)] disabled:pointer-events-none data-[size=sm]:h-8 data-[size=sm]:pr-7 data-[size=sm]:pl-2 data-[size=sm]:text-[var(--text-caption-size)]"
+        className="h-9 w-full min-w-0 appearance-none rounded-[var(--corner-md)] bg-card py-1 pr-8 pl-3 text-(length:--text-body-size) text-foreground shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none transition-shadow duration-[var(--duration-fast)] focus-visible:shadow-[inset_0_0_0_2px_var(--input-focus)] disabled:pointer-events-none data-[size=sm]:h-8 data-[size=sm]:pr-7 data-[size=sm]:pl-2 data-[size=sm]:text-(length:--text-caption-size)"
         {...props}
       />
       <ChevronDownIcon

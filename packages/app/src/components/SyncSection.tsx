@@ -87,24 +87,24 @@ export function SyncSection({
 
   return (
     <div className="mt-4">
-      <h4 className="text-[var(--text-callout-size)] font-medium">Sync</h4>
-      <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+      <h4 className="text-(length:--text-callout-size) font-medium">Sync</h4>
+      <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
         Sync is the folder you chose — iCloud Drive, Google Drive, or a local folder — not a studio
         account. The studio never uploads your books.
       </p>
       {deviceName ? (
-        <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="sync-device">
+        <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground" data-testid="sync-device">
           This device is {deviceName}.
         </p>
       ) : null}
-      <p className="mt-1 text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="sync-last-scan">
+      <p className="mt-1 text-(length:--text-subheadline-size) text-muted-foreground" data-testid="sync-last-scan">
         {settings ? lastScanLine(settings.lastScanAt) : "Reading…"}
       </p>
       {!unsupported ? (
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <div>
             <label
-              className="block text-[var(--text-caption-size)] text-muted-foreground"
+              className="block text-(length:--text-caption-size) text-muted-foreground"
               htmlFor="sync-interval"
             >
               Check for changes every
@@ -120,11 +120,11 @@ export function SyncSection({
                 value={value}
                 onChange={(event) => setDraft(event.target.value)}
                 disabled={busy || saving || !settings}
-                className="w-32 rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+                className="w-32 rounded-[var(--corner-md)] border border-border px-3 py-2 text-(length:--text-body-size)"
                 data-testid="sync-interval"
                 aria-label="Check for changes every, in minutes"
               />
-              <span className="text-[var(--text-subheadline-size)] text-muted-foreground">minutes</span>
+              <span className="text-(length:--text-subheadline-size) text-muted-foreground">minutes</span>
               <Button
                 variant="secondary"
                 size="sm"
@@ -138,7 +138,7 @@ export function SyncSection({
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground">
+        <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
           The scan interval lives in the desktop app. This build scans when it opens a folder.
         </p>
       )}
@@ -153,7 +153,7 @@ export function SyncSection({
           Check for changes
         </Button>
         {checkedNote ? (
-          <span className="text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="sync-checked-note">
+          <span className="text-(length:--text-subheadline-size) text-muted-foreground" data-testid="sync-checked-note">
             {checkedNote}
           </span>
         ) : null}

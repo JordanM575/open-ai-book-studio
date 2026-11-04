@@ -157,7 +157,7 @@ export function FormatDialog({
         className="w-[720px]"
         footer={
           <DialogFooter className="mt-0 justify-between gap-3">
-            <div className="min-w-0 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)]">
+            <div className="min-w-0 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]">
               <p role="status" data-testid="format-export-note" className="truncate" title={note?.kind === "saved" ? note.path : undefined}>
                 {canExport ? (note?.kind === "saved" ? note.message : "") : "Exporting is available in the desktop app."}
               </p>
@@ -182,10 +182,10 @@ export function FormatDialog({
       >
         <div className="space-y-6">
           <fieldset>
-            <legend className="text-[var(--text-callout-size)] font-medium">Target</legend>
+            <legend className="text-(length:--text-callout-size) font-medium">Target</legend>
             <div className="mt-2 flex flex-wrap gap-4" role="radiogroup" aria-label="Output target">
               {TARGETS.map((option) => (
-                <label key={option} className="flex items-center gap-1.5 text-[var(--text-body-size)]">
+                <label key={option} className="flex items-center gap-1.5 text-(length:--text-body-size)">
                   <input
                     type="radio"
                     name="format-target"
@@ -198,15 +198,15 @@ export function FormatDialog({
                 </label>
               ))}
             </div>
-            <p className="mt-1.5 text-[var(--text-caption-size)] text-muted-foreground" data-testid="format-target-note">
+            <p className="mt-1.5 text-(length:--text-caption-size) text-muted-foreground" data-testid="format-target-note">
               {TARGET_COPY[target].note}
             </p>
           </fieldset>
 
           <fieldset>
-            <legend className="text-[var(--text-callout-size)] font-medium">Typography</legend>
+            <legend className="text-(length:--text-callout-size) font-medium">Typography</legend>
             <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3">
-              <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
+              <label className="flex flex-col gap-1 text-(length:--text-body-size)">
                 {FORMAT_LABELS.bodyFont}
                 <NativeSelect
                   className="w-full"
@@ -222,7 +222,7 @@ export function FormatDialog({
                   ))}
                 </NativeSelect>
               </label>
-              <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
+              <label className="flex flex-col gap-1 text-(length:--text-body-size)">
                 {FORMAT_LABELS.bodyFontSize}
                 <NativeSelect
                   className="w-full"
@@ -238,7 +238,7 @@ export function FormatDialog({
                   ))}
                 </NativeSelect>
               </label>
-              <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
+              <label className="flex flex-col gap-1 text-(length:--text-body-size)">
                 {FORMAT_LABELS.firstLineIndent}
                 <NativeSelect
                   className="w-full"
@@ -254,7 +254,7 @@ export function FormatDialog({
                   ))}
                 </NativeSelect>
               </label>
-              <label className="flex flex-col gap-1 text-[var(--text-body-size)]">
+              <label className="flex flex-col gap-1 text-(length:--text-body-size)">
                 {FORMAT_LABELS.lineSpacing}
                 <NativeSelect
                   className="w-full"
@@ -271,7 +271,7 @@ export function FormatDialog({
             </div>
             <div className="mt-3 flex flex-wrap gap-4" role="radiogroup" aria-label={FORMAT_LABELS.chapterTitleAlignment}>
               {(["Left", "Center"] as const).map((alignment) => (
-                <label key={alignment} className="flex items-center gap-1.5 text-[var(--text-body-size)]">
+                <label key={alignment} className="flex items-center gap-1.5 text-(length:--text-body-size)">
                   <input
                     type="radio"
                     name="format-title-alignment"
@@ -284,7 +284,7 @@ export function FormatDialog({
               ))}
             </div>
             <div className="mt-3 flex flex-col gap-2">
-              <label className="flex items-center gap-1.5 text-[var(--text-body-size)]">
+              <label className="flex items-center gap-1.5 text-(length:--text-body-size)">
                 <input
                   type="checkbox"
                   checked={draft.includeTableOfContents}
@@ -292,7 +292,7 @@ export function FormatDialog({
                 />
                 {FORMAT_LABELS.includeTableOfContents}
               </label>
-              <label className="flex items-center gap-1.5 text-[var(--text-body-size)]">
+              <label className="flex items-center gap-1.5 text-(length:--text-body-size)">
                 <input
                   type="checkbox"
                   checked={draft.preserveLineBreaks}
@@ -305,8 +305,8 @@ export function FormatDialog({
 
           <section aria-label="Preview">
             <div className="rounded-[var(--corner-lg)] border border-border p-4" data-testid="format-disclosure">
-              <p className="text-[var(--text-callout-size)] font-medium">Approximate preview</p>
-              <p className="mt-1 text-[var(--text-subheadline-size)] text-muted-foreground">
+              <p className="text-(length:--text-callout-size) font-medium">Approximate preview</p>
+              <p className="mt-1 text-(length:--text-subheadline-size) text-muted-foreground">
                 Final output may differ in your word processor, PDF reader or e-reader. Nothing here measures
                 pages, breaks, counts or trim, and nothing claims Kindle or publisher acceptance.
               </p>

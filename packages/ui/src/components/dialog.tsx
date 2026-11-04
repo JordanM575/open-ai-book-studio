@@ -22,7 +22,7 @@ export function DialogTitle({ className, ...props }: ComponentProps<typeof Dialo
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "text-[var(--text-title-2-size)] leading-[var(--text-title-2-leading)] font-semibold tracking-[-0.2px]",
+        "text-(length:--text-title-2-size) leading-[var(--text-title-2-leading)] font-semibold tracking-[-0.2px]",
         className
       )}
       {...props}
@@ -35,7 +35,7 @@ export function DialogDescription({ className, ...props }: ComponentProps<typeof
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground",
+        "text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground",
         className
       )}
       {...props}

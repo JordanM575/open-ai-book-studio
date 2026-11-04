@@ -65,7 +65,7 @@ export function Notice({
           className={`mt-0.5 shrink-0 ${iconClassName}`}
         />
         <div className="min-w-0 flex-1">
-          <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-foreground">
+          <p className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-foreground">
             {message}
           </p>
           {visibleActions.length > 0 && (

@@ -59,9 +59,9 @@ export function ConversationEmptyState({
 }: Omit<ComponentProps<"div">, "title"> & { title?: ReactNode; description?: ReactNode }) {
   return (
     <div data-slot="conversation-empty-state" className={cn("flex flex-col gap-3", className)} {...props}>
-      {title ? <p className="text-[var(--text-headline-size)] font-semibold">{title}</p> : null}
+      {title ? <p className="text-(length:--text-headline-size) font-semibold">{title}</p> : null}
       {description ? (
-        <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+        <p className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
           {description}
         </p>
       ) : null}

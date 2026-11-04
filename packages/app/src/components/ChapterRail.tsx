@@ -35,7 +35,7 @@ export function ChapterRail({
   return (
     <aside className={cn("glass flex w-[248px] shrink-0 flex-col rounded-[var(--corner-xl)]", className)} data-testid="chapter-rail">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        <h2 className="text-[var(--text-caption-size)] font-medium tracking-[0.2px] text-muted-foreground">Chapters</h2>
+        <h2 className="text-(length:--text-caption-size) font-medium tracking-[0.2px] text-muted-foreground">Chapters</h2>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon-sm" onClick={() => void onAdd()} aria-label="Add chapter" title="Add chapter">
             <Plus size={15} />
@@ -50,7 +50,7 @@ export function ChapterRail({
 
       <div className="thin-scroll flex-1 overflow-y-auto px-2 pb-3">
         {chapters.length === 0 ? (
-          <p className="px-2 py-3 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          <p className="px-2 py-3 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
             No chapters yet. Add the first one to begin.
           </p>
         ) : (
@@ -104,14 +104,14 @@ export function ChapterRail({
                       selected ? "bg-[var(--rail-item-selected)]" : "hover:bg-[var(--accent)]"
                     )}
                   >
-                    <span className="tabular mt-[3px] w-4 shrink-0 text-[var(--text-caption-size)] text-muted-foreground">
+                    <span className="tabular mt-[3px] w-4 shrink-0 text-(length:--text-caption-size) text-muted-foreground">
                       {chapter.isPrologue ? "P" : index + 1}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[var(--text-callout-size)] leading-[var(--text-callout-leading)] font-medium">
+                      <span className="block truncate text-(length:--text-callout-size) leading-[var(--text-callout-leading)] font-medium">
                         {chapter.title || "Untitled chapter"}
                       </span>
-                      <span className="tabular mt-0.5 block text-[var(--text-caption-size)] text-muted-foreground">
+                      <span className="tabular mt-0.5 block text-(length:--text-caption-size) text-muted-foreground">
                         {formatCount(chapter.wordCount)} {chapter.wordCount === 1 ? "word" : "words"}
                       </span>
                     </span>

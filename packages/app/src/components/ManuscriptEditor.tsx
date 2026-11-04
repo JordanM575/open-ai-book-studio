@@ -262,7 +262,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   return (
     <div className="mx-auto w-full max-w-[760px]" data-testid="manuscript-editor">
       <div className="rounded-[var(--corner-xl)] bg-[var(--manuscript-bg)] px-5 pt-8 pb-16 shadow-[var(--elevation-2)] min-[700px]:px-10 min-[700px]:pt-12 min-[700px]:pb-24 lg:px-14">
-        <div className="tabular mb-4 flex flex-wrap items-center gap-2 whitespace-nowrap text-[var(--text-caption-size)] text-muted-foreground">
+        <div className="tabular mb-4 flex flex-wrap items-center gap-2 whitespace-nowrap text-(length:--text-caption-size) text-muted-foreground">
           <span>{chapter.isPrologue ? "Prologue" : `Chapter ${ordinal}`}</span>
           <span className="opacity-50">·</span>
           <span>{formatWords(words)}</span>
@@ -278,7 +278,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
           </span>
         </div>
         {voiceError ? (
-          <p role="alert" className="mb-3 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-destructive">
+          <p role="alert" className="mb-3 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-destructive">
             {voiceError}
           </p>
         ) : null}
@@ -346,7 +346,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
               alt={illustration.prompt || `Illustration for ${chapter.title}`}
               className="w-full rounded-[var(--corner-lg)] bg-[var(--secondary)] object-contain"
             />
-            <figcaption className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <figcaption className="mt-2 text-(length:--text-caption-size) text-muted-foreground">
               {illustration.prompt || "Chapter illustration"} · {illustration.model}
             </figcaption>
           </figure>

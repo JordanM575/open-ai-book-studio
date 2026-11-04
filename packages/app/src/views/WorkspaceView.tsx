@@ -655,8 +655,8 @@ export function WorkspaceView({
             <ChevronLeft size={18} />
           </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-[var(--text-headline-size)] leading-tight font-semibold">{detail?.book.title || "Loading…"}</h1>
-            <p className="tabular text-[11px] text-muted-foreground min-[700px]:text-[var(--text-caption-size)]">
+            <h1 className="truncate text-(length:--text-headline-size) leading-tight font-semibold">{detail?.book.title || "Loading…"}</h1>
+            <p className="tabular text-[11px] text-muted-foreground min-[700px]:text-(length:--text-caption-size)">
               {detail ? `${formatCount(detail.chapters.length)} ${pluralize(detail.chapters.length, "chapter")} · ${formatWords(wordTotal)}` : "Opening book…"}
             </p>
           </div>
@@ -664,7 +664,7 @@ export function WorkspaceView({
 
         <div className="titlebar-no-drag flex shrink-0 items-center gap-2">
           <span
-            className="flex items-center gap-1.5 text-[var(--text-caption-size)] text-muted-foreground"
+            className="flex items-center gap-1.5 text-(length:--text-caption-size) text-muted-foreground"
             role="status"
             aria-label={statusLabel(status)}
             data-testid="save-status"
@@ -679,7 +679,7 @@ export function WorkspaceView({
               }`}
               aria-hidden
             />
-            <span className="text-[11px] min-[700px]:text-[var(--text-caption-size)]">{compactStatus(status)}</span>
+            <span className="text-[11px] min-[700px]:text-(length:--text-caption-size)">{compactStatus(status)}</span>
           </span>
 
           <div className="hidden items-center gap-2 min-[700px]:flex">
@@ -724,7 +724,7 @@ export function WorkspaceView({
               <FileSearch size={16} />
             </Button>
             {exportNote ? (
-              <span className="max-w-[180px] truncate text-[var(--text-caption-size)] text-muted-foreground" title={exportNote}>
+              <span className="max-w-[180px] truncate text-(length:--text-caption-size) text-muted-foreground" title={exportNote}>
                 {exportNote}
               </span>
             ) : null}
@@ -811,7 +811,7 @@ export function WorkspaceView({
         <p
           role="status"
           data-testid="chapter-read-issues"
-          className="mx-3 mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-subheadline-size)] text-muted-foreground min-[700px]:mx-4"
+          className="mx-3 mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-subheadline-size) text-muted-foreground min-[700px]:mx-4"
         >
           {readIssueCopy(readIssues)}{" "}
           <button
@@ -868,10 +868,10 @@ export function WorkspaceView({
         <section className="thin-scroll min-w-0 flex-1 overflow-y-auto">
           {conflict ? (
             <div className="glass mb-4 rounded-[var(--corner-lg)] p-4">
-              <p className="text-[var(--text-callout-size)] font-semibold text-[var(--destructive-text)]">
+              <p className="text-(length:--text-callout-size) font-semibold text-[var(--destructive-text)]">
                 {conflict.reason === "placeholder" ? "This chapter is not downloaded yet" : "This chapter was saved somewhere else"}
               </p>
-              <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
                 {conflict.reason === "placeholder"
                   ? "The file on disk could not be read. It may still be downloading, so your text was kept as a separate copy instead of overwriting it."
                   : conflict.reason === "external-edit"
@@ -906,7 +906,7 @@ export function WorkspaceView({
 
           {conflicts.length > 0 && !conflict ? (
             <div className="glass mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--corner-lg)] px-4 py-3">
-              <p className="text-[var(--text-subheadline-size)] text-muted-foreground">
+              <p className="text-(length:--text-subheadline-size) text-muted-foreground">
                 {formatCount(conflicts.length)} saved {pluralize(conflicts.length, "copy", "copies")} from earlier sync conflicts.
               </p>
               <Button
@@ -926,8 +926,8 @@ export function WorkspaceView({
               role="status"
             >
               <div className="min-w-0">
-                <p className="text-[var(--text-subheadline-size)] font-medium">The library changed outside the studio</p>
-                <p className="mt-0.5 truncate text-[var(--text-caption-size)] text-muted-foreground" title={externalChange.paths.join(", ")}>
+                <p className="text-(length:--text-subheadline-size) font-medium">The library changed outside the studio</p>
+                <p className="mt-0.5 truncate text-(length:--text-caption-size) text-muted-foreground" title={externalChange.paths.join(", ")}>
                   {externalChange.paths.length === 1
                     ? externalChange.paths[0]
                     : `${formatCount(externalChange.paths.length)} files changed`}
@@ -972,8 +972,8 @@ export function WorkspaceView({
             />
           ) : (
             <div className="glass mx-auto mt-10 max-w-[520px] rounded-[var(--corner-xl)] px-8 py-12 text-center">
-              <h2 className="text-[var(--text-title-3-size)] font-semibold">An empty book</h2>
-              <p className="mx-auto mt-2 max-w-[34ch] text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              <h2 className="text-(length:--text-title-3-size) font-semibold">An empty book</h2>
+              <p className="mx-auto mt-2 max-w-[34ch] text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
                 Add the first chapter and start writing. Each chapter is its own file in your library.
               </p>
               <Button variant="primary" className="mt-5" onClick={() => void addChapter()}>
@@ -1287,7 +1287,7 @@ export function WorkspaceView({
           title="Delete this chapter?"
           description="The chapter file moves to the library's trash folder. You can bring it back by moving it into the chapters folder again."
         >
-          <p className="rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-subheadline-size)]">
+          <p className="rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-subheadline-size)">
             {pendingDelete?.title || "Untitled chapter"}
             <span className="tabular text-muted-foreground"> · {formatWords(pendingDelete?.wordCount ?? 0)}</span>
           </p>

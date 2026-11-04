@@ -31,10 +31,10 @@ export class ErrorBoundary extends Component<Props, State> {
         data-testid="error-screen"
         className="window-wash flex h-full flex-col items-center justify-center gap-3 p-6 text-center"
       >
-        <p className="text-[var(--text-title-2-size)] leading-[var(--text-title-2-leading)] font-semibold tracking-[-0.2px]">
+        <p className="text-(length:--text-title-2-size) leading-[var(--text-title-2-leading)] font-semibold tracking-[-0.2px]">
           Something went wrong
         </p>
-        <p className="max-w-md text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+        <p className="max-w-md text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
           The studio ran into a problem showing this screen. Reloading starts fresh from what was
           last saved.
         </p>

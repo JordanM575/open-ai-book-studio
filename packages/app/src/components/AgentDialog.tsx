@@ -188,19 +188,19 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         }
       >
         <section>
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <Gauge size={15} />
             Performance
           </h3>
           <p
-            className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground"
+            className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground"
             data-testid="agent-performance"
           >
             {status ? <PerformanceLine status={status} /> : "Reading…"}
           </p>
           {status ? <CacheDetail status={status} /> : null}
           {status ? (
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-(length:--text-caption-size) text-muted-foreground">
               <Switch
                 checked={status.cache.mode === "auto"}
                 onCheckedChange={(checked) => void setSettings({ cachePrefixMode: checked ? "auto" : "off" })}
@@ -214,17 +214,17 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         </section>
 
         <section className="mt-6">
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <ScrollText size={15} />
             This book&apos;s instructions
           </h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             {status?.skills.present
               ? `This book has a SKILLS.md with ${status.skills.characters} characters of instructions. The agent reads it as the author's own voice.`
               : "This book has no SKILLS.md. Add one to the book folder to give the agent your own house rules."}
           </p>
           {status?.skills.present ? (
-            <label className="mt-2 flex cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-(length:--text-caption-size) text-muted-foreground">
               <Switch
                 checked={status.skills.enabled}
                 onCheckedChange={(checked) => void setSettings({ skillsEnabled: checked })}
@@ -238,16 +238,16 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         </section>
 
         <section className="mt-6">
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <SlidersHorizontal size={15} />
             Tone and answer length
           </h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Tell the agent how to sound and how long its answers should run. The tone and answer
             length travel with every turn you send for this book.
           </p>
           <label
-            className="mt-3 block text-[var(--text-caption-size)] text-muted-foreground"
+            className="mt-3 block text-(length:--text-caption-size) text-muted-foreground"
             htmlFor="agent-tone"
           >
             Tone
@@ -260,7 +260,7 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
             placeholder="For example: plainspoken with dry humor"
             onChange={(event) => setToneDraft(event.target.value)}
             disabled={busy}
-            className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+            className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-(length:--text-body-size)"
             data-testid="agent-tone"
             aria-label="Tone"
           />
@@ -281,7 +281,7 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
             ) : null}
           </div>
           <label
-            className="mt-4 block text-[var(--text-caption-size)] text-muted-foreground"
+            className="mt-4 block text-(length:--text-caption-size) text-muted-foreground"
             htmlFor="agent-answer-length"
           >
             Answer length
@@ -302,16 +302,16 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         </section>
 
         <section className="mt-6">
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <Wallet size={15} />
             Spending
           </h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Set a per-turn ceiling and a monthly warning level for this book, in dollars. The studio
             warns you here when spending nears them. A warning never stops the agent.
           </p>
           <p
-            className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground"
+            className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground"
             data-testid="agent-spending-month"
           >
             {status?.spending ? monthText(status.spending) : "Reading…"}
@@ -319,12 +319,12 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
           {status?.spending?.lastTurnWarning ?? status?.spending?.monthlyWarning ? (
             <ul className="mt-2 space-y-1" data-testid="agent-spending-warnings">
               {status?.spending?.lastTurnWarning ? (
-                <li className="text-[var(--text-caption-size)] text-muted-foreground">
+                <li className="text-(length:--text-caption-size) text-muted-foreground">
                   {status.spending.lastTurnWarning.message}
                 </li>
               ) : null}
               {status?.spending?.monthlyWarning ? (
-                <li className="text-[var(--text-caption-size)] text-muted-foreground">
+                <li className="text-(length:--text-caption-size) text-muted-foreground">
                   {status.spending.monthlyWarning.message}
                 </li>
               ) : null}
@@ -333,7 +333,7 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div>
               <label
-                className="block text-[var(--text-caption-size)] text-muted-foreground"
+                className="block text-(length:--text-caption-size) text-muted-foreground"
                 htmlFor="agent-spending-per-turn"
               >
                 Per-turn ceiling
@@ -348,14 +348,14 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
                 value={perTurnValue}
                 onChange={(event) => setPerTurnDraft(event.target.value)}
                 disabled={busy || !status}
-                className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+                className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-(length:--text-body-size)"
                 data-testid="agent-spending-per-turn"
                 aria-label="Per-turn ceiling in dollars"
               />
             </div>
             <div>
               <label
-                className="block text-[var(--text-caption-size)] text-muted-foreground"
+                className="block text-(length:--text-caption-size) text-muted-foreground"
                 htmlFor="agent-spending-monthly"
               >
                 Monthly warning level
@@ -370,7 +370,7 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
                 value={monthlyValue}
                 onChange={(event) => setMonthlyDraft(event.target.value)}
                 disabled={busy || !status}
-                className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-[var(--text-body-size)]"
+                className="mt-1 w-full rounded-[var(--corner-md)] border border-border px-3 py-2 text-(length:--text-body-size)"
                 data-testid="agent-spending-monthly"
                 aria-label="Monthly warning level in dollars"
               />
@@ -406,11 +406,11 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         </section>
 
         <section className="mt-6">
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <Smartphone size={15} />
             Your phone
           </h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Turn this on and a phone on the same network can reach the studio: to show the agent&apos;s
             status on your glasses, and to send you the agent&apos;s answer. It listens on one local
             address and stops when you turn it off.
@@ -439,11 +439,11 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         </section>
 
         <section className="mt-6">
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <Plug size={15} />
             Plugins
           </h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             A plugin folder holds TypeScript files that add tools. They run inside this app, with the same
             access to your books. Only point at code you trust.
           </p>
@@ -457,14 +457,14 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
             </p>
           ) : null}
           {status?.plugins.tools.length ? (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="agent-plugin-tools">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground" data-testid="agent-plugin-tools">
               Tools from plugins: {status.plugins.tools.join(", ")}
             </p>
           ) : null}
           {status?.plugins.failures.length ? (
             <ul className="mt-2 space-y-1" data-testid="agent-plugin-failures">
               {status.plugins.failures.map((failure) => (
-                <li key={failure.file} className="text-[var(--text-caption-size)] text-[var(--destructive-text)]">
+                <li key={failure.file} className="text-(length:--text-caption-size) text-[var(--destructive-text)]">
                   {failure.file}: {failure.reason}
                 </li>
               ))}
@@ -496,16 +496,16 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
         </section>
 
         <section className="mt-6">
-          <h3 className="flex items-center gap-2 text-[var(--text-callout-size)] font-medium">
+          <h3 className="flex items-center gap-2 text-(length:--text-callout-size) font-medium">
             <Wrench size={15} />
             Tools
           </h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Turn a tool off and the agent will not be offered it. A tool that is off is also
             unreachable from the command line and from another agent.
           </p>
           {withdrawn.length > 0 ? (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="agent-withdrawn-tools">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground" data-testid="agent-withdrawn-tools">
               Off for this book: {withdrawn.map((tool) => tool.name).join(", ")}
             </p>
           ) : null}
@@ -513,13 +513,13 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
             {TIER_ORDER.flatMap((tier) => visible.filter((tool) => tool.tier === tier)).map((tool) => (
               <li key={tool.name} className="flex items-start justify-between gap-3 p-3">
                 <div className="min-w-0">
-                  <p className="truncate font-mono text-[var(--text-caption-size)]">{tool.name}</p>
-                  <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
+                  <p className="truncate font-mono text-(length:--text-caption-size)">{tool.name}</p>
+                  <p className="mt-0.5 text-(length:--text-caption-size) text-muted-foreground">
                     {TIER_LABEL[tool.tier]}
                   </p>
                   {tool.calls > 0 ? (
                     <p
-                      className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground"
+                      className="mt-0.5 text-(length:--text-caption-size) text-muted-foreground"
                       data-testid={`agent-tool-counts-${tool.name}`}
                     >
                       {tool.calls} call{tool.calls === 1 ? "" : "s"} · {tool.successes} ok
@@ -527,7 +527,7 @@ export function AgentDialog({ open, bookId, onClose, onNotice }: Props) {
                     </p>
                   ) : null}
                 </div>
-                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-(length:--text-caption-size) text-muted-foreground">
                   <span>{tool.enabled ? "On" : "Off"}</span>
                   <Switch
                     checked={tool.enabled}
@@ -584,7 +584,7 @@ function CacheDetail({ status }: { status: AgentStatus }) {
   if (cache.turns === 0) return null;
   return (
     <dl
-      className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[var(--text-caption-size)] text-muted-foreground sm:grid-cols-4"
+      className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-(length:--text-caption-size) text-muted-foreground sm:grid-cols-4"
       data-testid="agent-cache-detail"
     >
       <div>

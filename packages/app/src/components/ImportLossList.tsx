@@ -22,7 +22,7 @@ export function ImportLossList({ loss, testId }: Props): ReactElement {
     <section data-testid={testId} className="space-y-2">
       {loss.length > 0 ? (
         <>
-          <h3 className="text-[var(--text-callout-size)] font-medium">Changed or left out</h3>
+          <h3 className="text-(length:--text-callout-size) font-medium">Changed or left out</h3>
           <ul className="space-y-1.5">
             {loss.map((item) => {
               const { label, outcome } = describeLoss(item);
@@ -31,7 +31,7 @@ export function ImportLossList({ loss, testId }: Props): ReactElement {
                 <li
                   key={item.kind}
                   data-testid={`${testId}-${item.kind}`}
-                  className="text-[var(--text-caption-size)] text-muted-foreground"
+                  className="text-(length:--text-caption-size) text-muted-foreground"
                 >
                   <span className="font-medium text-foreground">{label}</span> · {outcome}
                   {places ? ` · ${places}` : null}
@@ -41,7 +41,7 @@ export function ImportLossList({ loss, testId }: Props): ReactElement {
           </ul>
         </>
       ) : null}
-      <p role="note" className="text-[var(--text-caption-size)] text-muted-foreground">
+      <p role="note" className="text-(length:--text-caption-size) text-muted-foreground">
         {DOCX_FORMATTING_NOTE}
       </p>
     </section>

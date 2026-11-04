@@ -58,7 +58,7 @@ function StatusCopy({ view }: { view: Extract<ReviewRunView, { kind: "report" }>
   const { report } = view;
   if (report.status === "insufficient-evidence") {
     return (
-      <p role="status" data-testid="review-status" className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+      <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
         Not enough saved text to review. None of the chapters in scope contain readable saved prose. Add
         text, save, then run the review again.
       </p>
@@ -66,7 +66,7 @@ function StatusCopy({ view }: { view: Extract<ReviewRunView, { kind: "report" }>
   }
   if (report.status === "partial") {
     return (
-      <p role="status" data-testid="review-status" className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+      <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
         Partial report. {report.coverage.skipped} of {report.coverage.inScope}{" "}
         {pluralize(report.coverage.inScope, "chapter")} could not be read, so that text is not included in
         the counts below.
@@ -91,7 +91,7 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
       >
         {view.kind === "running" ? (
           <>
-            <p role="status" data-testid="review-status" className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               Reading saved chapters…
             </p>
             <DialogFooter>
@@ -104,7 +104,7 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
 
         {view.kind === "stopped" ? (
           <>
-            <p role="status" data-testid="review-status" className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               The review was stopped. Partial results are discarded and nothing was changed. Run again
               when ready.
             </p>
@@ -121,7 +121,7 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
 
         {view.kind === "failed" ? (
           <>
-            <p role="status" data-testid="review-status" className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               {view.message} Run again when the chapter files are readable.
             </p>
             <DialogFooter>
@@ -169,15 +169,15 @@ function ReportBody({
   const staleLabels = staleChapterLabels(report, freshness);
   return (
     <>
-      <p data-testid="review-run-meta" className="text-[var(--text-caption-size)] text-muted-foreground">
+      <p data-testid="review-run-meta" className="text-(length:--text-caption-size) text-muted-foreground">
         {bookTitle} · Reviewed {report.coverage.inScope} {pluralize(report.coverage.inScope, "chapter")} ·{" "}
         {formatWords(report.wordCounts.totalWordCount)} · {new Date(report.completedAt).toLocaleString()}
       </p>
 
       {stale ? (
         <div data-testid="review-stale" role="status" className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2">
-          <p className="text-[var(--text-subheadline-size)] font-medium">This report is stale</p>
-          <p className="mt-0.5 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="text-(length:--text-subheadline-size) font-medium">This report is stale</p>
+          <p className="mt-0.5 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Changed since this run: {staleLabels.join(", ")}. Evidence navigation is disabled until a new
             run reads the current text.
           </p>
@@ -190,13 +190,13 @@ function ReportBody({
       <StatusCopy view={{ kind: "report", report, freshness }} />
 
       <section aria-label="Coverage" className="mt-4" data-testid="review-coverage">
-        <h3 className="text-[var(--text-callout-size)] font-semibold">Coverage</h3>
+        <h3 className="text-(length:--text-callout-size) font-semibold">Coverage</h3>
         <ul className="mt-2 space-y-1.5">
           {report.coverage.chapters.map((entry, index) => (
             <li
               key={entry.status === "skipped" ? `skipped-${entry.fileName}` : entry.chapterId}
               data-testid={`review-coverage-row-${index}`}
-              className="flex items-baseline justify-between gap-3 text-[var(--text-subheadline-size)]"
+              className="flex items-baseline justify-between gap-3 text-(length:--text-subheadline-size)"
             >
               <span className="min-w-0 truncate">{coverageRowTitle(entry)}</span>
               <span className="shrink-0 text-muted-foreground">{coverageRowLabel(entry)}</span>
@@ -206,32 +206,32 @@ function ReportBody({
       </section>
 
       <section aria-label="Definitions" className="mt-4" data-testid="review-definitions">
-        <h3 className="text-[var(--text-callout-size)] font-semibold">What was measured</h3>
+        <h3 className="text-(length:--text-callout-size) font-semibold">What was measured</h3>
         <ul className="mt-2 space-y-2">
           {report.metricDefinitions.map((definition) => (
-            <li key={definition.id} className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)]">
+            <li key={definition.id} className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]">
               <span className="font-medium">{definition.label}. </span>
               <span className="text-muted-foreground">{definition.definition}</span>
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+        <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
           Repeated-phrase findings are not in this report. The first report measures saved words and
           coverage only.
         </p>
       </section>
 
       <section aria-label="Findings" className="mt-4" data-testid="review-findings">
-        <h3 className="text-[var(--text-callout-size)] font-semibold">Findings</h3>
+        <h3 className="text-(length:--text-callout-size) font-semibold">Findings</h3>
         {report.findings.length === 0 ? (
-          <p className="mt-2 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             No phrase findings to show.
           </p>
         ) : (
           <ul className="mt-2 space-y-3">
             {report.findings.map((finding) => (
               <li key={finding.id}>
-                <p className="text-[var(--text-subheadline-size)] font-medium">{finding.label}</p>
+                <p className="text-(length:--text-subheadline-size) font-medium">{finding.label}</p>
                 <ul className="mt-1 space-y-1.5">
                   {finding.evidence.map((span: ReviewEvidenceSpan, evidenceIndex: number) => (
                     <li key={`${finding.id}-${span.sourceHash}-${span.startOffset}-${span.endOffset}`} className="flex items-center justify-between gap-3">

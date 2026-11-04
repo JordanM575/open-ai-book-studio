@@ -26,10 +26,10 @@ function Section({
       className="glass rounded-[var(--corner-xl)] p-5"
       aria-labelledby={`${testId}-title`}
     >
-      <h2 id={`${testId}-title`} className="text-[var(--text-headline-size)] font-semibold">
+      <h2 id={`${testId}-title`} className="text-(length:--text-headline-size) font-semibold">
         {title}
       </h2>
-      <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">{description}</p>
+      <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">{description}</p>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -42,15 +42,15 @@ function StorageCard({ kind }: { kind: "browser" | "folder" }) {
       data-testid={browser ? "storage-browser" : "storage-folder"}
       className="rounded-[var(--corner-lg)] border border-[var(--border)] bg-[var(--secondary)] p-4"
     >
-      <h3 className="text-[var(--text-subheadline-size)] font-semibold">
+      <h3 className="text-(length:--text-subheadline-size) font-semibold">
         {browser ? "Browser storage" : "Folder library"}
       </h3>
-      <p className="mt-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+      <p className="mt-1 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
         {browser
           ? "Kept in this browser. The browser can clear it, so export an archive to keep a copy."
           : "A folder the desktop app and other editors can open. Use a folder you can back up."}
       </p>
-      <p className="mt-2 text-[var(--text-caption-size)] font-medium">
+      <p className="mt-2 text-(length:--text-caption-size) font-medium">
         {browser ? "Less protected · can be cleared" : "Portable · yours to back up"}
       </p>
     </article>
@@ -127,7 +127,7 @@ function Gallery() {
                   </DialogFooter>
                 }
               >
-                <p className="text-[var(--text-subheadline-size)] text-muted-foreground">
+                <p className="text-(length:--text-subheadline-size) text-muted-foreground">
                   Content sits between the title and the footer, with the close control in the header.
                 </p>
               </DialogContent>
@@ -144,7 +144,7 @@ function Gallery() {
           </div>
         </Section>
 
-        <p className="px-1 text-[var(--text-caption-size)] text-muted-foreground">
+        <p className="px-1 text-(length:--text-caption-size) text-muted-foreground">
           The desktop renderer re-exports these components from <code>@ai-book-studio/ui</code>; this
           page is the web target&apos;s visual check. Storage copy is compared above.
         </p>

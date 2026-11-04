@@ -216,7 +216,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
       >
         {connections.length === 0 ? (
           <div className="py-6">
-            <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <p className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               No provider is connected yet. Add a key in Settings to choose a model.
             </p>
             {onOpenSettings ? (
@@ -228,7 +228,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <p className="text-[var(--text-caption-size)] font-medium text-muted-foreground">Connection</p>
+              <p className="text-(length:--text-caption-size) font-medium text-muted-foreground">Connection</p>
               <div className="flex flex-wrap gap-2">
                 {connections.map((item) => (
                   <button
@@ -241,16 +241,16 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                       setManualId("");
                       setManualResult(null);
                     }}
-                    className={`rounded-[var(--corner-md)] border px-3 py-2 text-left text-[var(--text-subheadline-size)] transition-colors ${
+                    className={`rounded-[var(--corner-md)] border px-3 py-2 text-left text-(length:--text-subheadline-size) transition-colors ${
                       item.id === connectionId
                         ? "border-[var(--ring)] bg-[var(--accent)]"
                         : "border-[var(--border)] hover:bg-[var(--accent)]"
                     }`}
                   >
                     <span className="block font-medium">{item.label}</span>
-                    <span className="block text-[var(--text-caption-size)] text-muted-foreground">{providerName(item.provider)}</span>
+                    <span className="block text-(length:--text-caption-size) text-muted-foreground">{providerName(item.provider)}</span>
                     {item.id === book.defaultConnectionId || (turnMode && initial && item.id === initial.connectionId) ? (
-                      <span className="block text-[var(--text-caption-size)] text-muted-foreground" data-testid="connection-active">
+                      <span className="block text-(length:--text-caption-size) text-muted-foreground" data-testid="connection-active">
                         {item.id === book.defaultConnectionId ? "Book default" : "This turn"}
                       </span>
                     ) : null}
@@ -260,7 +260,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
             </div>
 
             {savedModelMissing ? (
-              <p className="rounded-[var(--corner-md)] border border-[var(--border)] bg-[var(--accent)] px-3 py-2 text-[var(--text-subheadline-size)] text-muted-foreground">
+              <p className="rounded-[var(--corner-md)] border border-[var(--border)] bg-[var(--accent)] px-3 py-2 text-(length:--text-subheadline-size) text-muted-foreground">
                 The {turnMode ? "chosen" : "saved"} model is no longer offered on this connection. Choose
                 another before you write.
               </p>
@@ -273,17 +273,17 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search models"
                 aria-label="Search models"
-                className="w-full rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] py-2 pl-9 pr-3 text-[var(--text-subheadline-size)] outline-none focus-visible:border-[var(--ring)]"
+                className="w-full rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] py-2 pl-9 pr-3 text-(length:--text-subheadline-size) outline-none focus-visible:border-[var(--ring)]"
               />
             </div>
 
             <div className="thin-scroll max-h-[320px] space-y-1 overflow-y-auto rounded-[var(--corner-lg)] border border-[var(--border)] p-1">
               {loading ? (
-                <p className="flex items-center gap-2 p-4 text-[var(--text-subheadline-size)] text-muted-foreground">
+                <p className="flex items-center gap-2 p-4 text-(length:--text-subheadline-size) text-muted-foreground">
                   <Loader2 size={14} className="animate-spin" /> Loading models…
                 </p>
               ) : filtered.length === 0 ? (
-                <p className="p-4 text-[var(--text-subheadline-size)] text-muted-foreground">No models match that search.</p>
+                <p className="p-4 text-(length:--text-subheadline-size) text-muted-foreground">No models match that search.</p>
               ) : (
                 filtered.map((model) => {
                   const usable = canRunAgent(model);
@@ -299,20 +299,20 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                       }`}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[var(--text-subheadline-size)] font-medium">{model.name}</span>
+                        <span className="block truncate text-(length:--text-subheadline-size) font-medium">{model.name}</span>
                         {model.manual ? (
-                          <span className="block text-[var(--text-caption-size)] text-muted-foreground" data-testid="model-manual">
+                          <span className="block text-(length:--text-caption-size) text-muted-foreground" data-testid="model-manual">
                             Entered by hand
                           </span>
                         ) : null}
-                        <span className="tabular block text-[var(--text-caption-size)] text-muted-foreground">
+                        <span className="tabular block text-(length:--text-caption-size) text-muted-foreground">
                           {model.contextLength ? `${Math.round(model.contextLength / 1000)}k context` : "Context not reported"}
                           {" · "}
                           {model.inputPricePerMillion === null
                             ? "Price not reported"
                             : `$${model.inputPricePerMillion.toFixed(2)} in · $${(model.outputPricePerMillion ?? 0).toFixed(2)} out per million`}
                         </span>
-                        <span className="block text-[var(--text-caption-size)] text-muted-foreground">
+                        <span className="block text-(length:--text-caption-size) text-muted-foreground">
                           {model.supportsTools === null
                             ? "Tools not reported"
                             : model.supportsTools
@@ -326,12 +326,12 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                               : "No pictures"}
                         </span>
                         {model.trainingOnData ? (
-                          <span className="block text-[var(--text-caption-size)] text-muted-foreground">
+                          <span className="block text-(length:--text-caption-size) text-muted-foreground">
                             Contributor · Meta may train on this content
                           </span>
                         ) : null}
                         {!usable && reason ? (
-                          <span className="block text-[var(--text-caption-size)] text-destructive-text">{reason}</span>
+                          <span className="block text-(length:--text-caption-size) text-destructive-text">{reason}</span>
                         ) : null}
                       </span>
                       {model.id === chosen ? <Check size={16} className="mt-0.5 shrink-0 text-[var(--primary)]" aria-hidden /> : null}
@@ -342,7 +342,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
             </div>
 
             {error ? (
-              <p className="text-[var(--text-subheadline-size)] text-destructive-text" role="alert">
+              <p className="text-(length:--text-subheadline-size) text-destructive-text" role="alert">
                 {error}
               </p>
             ) : null}
@@ -353,10 +353,10 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                 onSubmit={(event) => void addManual(event)}
                 data-testid="manual-model"
               >
-                <label htmlFor={manualInputId} className="block text-[var(--text-caption-size)] font-medium text-muted-foreground">
+                <label htmlFor={manualInputId} className="block text-(length:--text-caption-size) font-medium text-muted-foreground">
                   Model id
                 </label>
-                <p className="text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+                <p className="text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
                   {listFailed
                     ? "This connection's model list could not be read, so enter the model id by hand."
                     : "For a model this connection does not list."}{" "}
@@ -373,7 +373,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                     maxLength={200}
                     autoComplete="off"
                     spellCheck={false}
-                    className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-1.5 font-[var(--font-code)] text-[var(--text-caption-size)] outline-none placeholder:font-[var(--font-ui)] placeholder:text-muted-foreground focus-visible:border-[var(--ring)]"
+                    className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-1.5 font-(family-name:--font-code) text-(length:--text-caption-size) outline-none placeholder:font-(family-name:--font-ui) placeholder:text-muted-foreground focus-visible:border-[var(--ring)]"
                   />
                   <Button type="submit" size="sm" variant="secondary" disabled={checking || !manualId.trim()} data-testid="manual-model-add">
                     {checking ? <Loader2 size={13} className="animate-spin" /> : null}
@@ -382,7 +382,7 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
                 </div>
                 {manualResult ? (
                   <p
-                    className={`text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] ${
+                    className={`text-(length:--text-caption-size) leading-[var(--text-caption-leading)] ${
                       manualResult.error ? "text-destructive-text" : "text-muted-foreground"
                     }`}
                     role={manualResult.error ? "alert" : "status"}
@@ -396,9 +396,9 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
 
             {contributor && warning ? (
               <div className="rounded-[var(--corner-lg)] border border-[var(--warning)] bg-[var(--secondary)] p-3">
-                <p className="text-[var(--text-subheadline-size)] font-medium">Contributor mode</p>
-                <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">{warning}</p>
-                <label className="mt-2 flex items-start gap-2 text-[var(--text-caption-size)]">
+                <p className="text-(length:--text-subheadline-size) font-medium">Contributor mode</p>
+                <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">{warning}</p>
+                <label className="mt-2 flex items-start gap-2 text-(length:--text-caption-size)">
                   <input
                     type="checkbox"
                     checked={allowContributor}

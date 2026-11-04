@@ -548,8 +548,8 @@ export function ChatPanel({
     >
       <header className="flex items-center justify-between border-b border-[var(--glass-outline)] px-4 py-3">
         <div>
-          <h2 className="text-[var(--text-headline-size)] font-semibold">Writing agent</h2>
-          <p className="text-[var(--text-caption-size)] text-muted-foreground">Edits arrive as small changes you can undo.</p>
+          <h2 className="text-(length:--text-headline-size) font-semibold">Writing agent</h2>
+          <p className="text-(length:--text-caption-size) text-muted-foreground">Edits arrive as small changes you can undo.</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Hint label="New conversation">
@@ -650,7 +650,7 @@ export function ChatPanel({
                                 title: toolLabel(tool.name),
                                 status,
                                 icon: <ToolDot status={status} />,
-                                className: "text-[var(--text-caption-size)]"
+                                className: "text-(length:--text-caption-size)"
                               };
                               return (
                                 // biome-ignore lint/suspicious/noArrayIndexKey: tools update in place by index and never reorder within a message; the index is a tiebreaker for repeated tool names
@@ -671,11 +671,11 @@ export function ChatPanel({
                           </Tools>
                         ) : null}
                         {message.text ? (
-                          <p className="whitespace-pre-wrap text-[var(--text-body-size)] leading-[var(--text-body-leading)]">
+                          <p className="whitespace-pre-wrap text-(length:--text-body-size) leading-[var(--text-body-leading)]">
                             {message.text}
                           </p>
                         ) : waiting && message.role === "assistant" ? (
-                          <p className="text-[var(--text-subheadline-size)] text-muted-foreground">Reading and thinking…</p>
+                          <p className="text-(length:--text-subheadline-size) text-muted-foreground">Reading and thinking…</p>
                         ) : null}
                         {message.approvals?.map((approval) => (
                           <Confirmation key={approval.id} state={approval.status} className="mt-2" data-testid="agent-approval">
@@ -710,13 +710,13 @@ export function ChatPanel({
                         {message.note ? (
                           <p
                             role={message.failed ? "alert" : undefined}
-                            className={`mt-2 text-[var(--text-caption-size)] ${message.failed ? "text-[var(--destructive-text)]" : "text-muted-foreground"}`}
+                            className={`mt-2 text-(length:--text-caption-size) ${message.failed ? "text-[var(--destructive-text)]" : "text-muted-foreground"}`}
                           >
                             {message.note}
                           </p>
                         ) : null}
                         {message.failed && message.changed ? (
-                          <p role="status" className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+                          <p role="status" className="mt-2 text-(length:--text-caption-size) text-muted-foreground">
                             This attempt changed {message.changed} {message.changed === 1 ? "chapter" : "chapters"}. Undo it
                             before retrying.
                           </p>
@@ -724,7 +724,7 @@ export function ChatPanel({
                         {message.failed && message.errorCode === "offline" ? (
                           <p
                             role="status"
-                            className="mt-2 text-[var(--text-caption-size)] text-muted-foreground"
+                            className="mt-2 text-(length:--text-caption-size) text-muted-foreground"
                             data-testid="agent-offline-note"
                           >
                             You are offline. Your words are safe — writing, planning and exporting all still work.
@@ -733,7 +733,7 @@ export function ChatPanel({
                         {message.failed && message.errorCode === "rate-limit" && message.retryAfterSeconds !== undefined ? (
                           <p
                             role="status"
-                            className="mt-2 text-[var(--text-caption-size)] text-muted-foreground"
+                            className="mt-2 text-(length:--text-caption-size) text-muted-foreground"
                             data-testid="agent-rate-note"
                           >
                             The provider asked to wait. Try again {waitWords(message.retryAfterSeconds)}.
@@ -909,9 +909,9 @@ export function ChatPanel({
           description="Continue an earlier conversation or start a new one."
         >
           {historyLoading ? (
-            <p className="text-[var(--text-subheadline-size)] text-muted-foreground">Loading conversations…</p>
+            <p className="text-(length:--text-subheadline-size) text-muted-foreground">Loading conversations…</p>
           ) : threads.length === 0 ? (
-            <p className="text-[var(--text-subheadline-size)] text-muted-foreground">
+            <p className="text-(length:--text-subheadline-size) text-muted-foreground">
               No earlier conversations yet. Send a message to start one.
             </p>
           ) : (
@@ -929,7 +929,7 @@ export function ChatPanel({
                         aria-label="Conversation title"
                         data-testid="agent-rename-input"
                         autoFocus
-                        className="min-w-0 flex-1 rounded-[var(--corner-sm)] border border-[var(--input)] bg-[var(--card)] px-2 py-1.5 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                        className="min-w-0 flex-1 rounded-[var(--corner-sm)] border border-[var(--input)] bg-[var(--card)] px-2 py-1.5 text-(length:--text-subheadline-size) outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                       />
                       <Button type="submit" size="sm" disabled={!renameValue.trim()} data-testid="agent-rename-save">
                         Save
@@ -952,22 +952,22 @@ export function ChatPanel({
                         className="min-w-0 flex-1 rounded-[var(--corner-sm)] px-1.5 py-1 text-left transition-colors hover:bg-[var(--accent)] focus-visible:outline-2"
                       >
                         <span className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-[var(--text-subheadline-size)] font-medium">
+                          <span className="truncate text-(length:--text-subheadline-size) font-medium">
                             {thread.title}
                             {thread.id === threadId ? " · current" : ""}
                           </span>
-                          <span className="shrink-0 text-[var(--text-caption-size)] text-muted-foreground">
+                          <span className="shrink-0 text-(length:--text-caption-size) text-muted-foreground">
                             {new Date(thread.updatedAt).toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric"
                             })}
                           </span>
                         </span>
-                        <span className="mt-0.5 block text-[var(--text-caption-size)] text-muted-foreground">
+                        <span className="mt-0.5 block text-(length:--text-caption-size) text-muted-foreground">
                           {thread.messageCount} {thread.messageCount === 1 ? "message" : "messages"}
                         </span>
                         {thread.preview ? (
-                          <span className="mt-1 line-clamp-2 block text-[var(--text-caption-size)] text-muted-foreground">
+                          <span className="mt-1 line-clamp-2 block text-(length:--text-caption-size) text-muted-foreground">
                             {thread.preview}
                           </span>
                         ) : null}
@@ -1025,7 +1025,7 @@ export function ChatPanel({
             </DialogFooter>
           }
         >
-          <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <p className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             “{deleteTarget?.title ?? "This conversation"}” will be removed from this book. This cannot be
             undone.
           </p>

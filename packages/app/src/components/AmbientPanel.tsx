@@ -227,14 +227,14 @@ export function AmbientPanel({
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <p
-            className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground"
+            className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground"
             data-testid="ambient-line"
           >
             {status?.say ?? "Looking at your book…"}
           </p>
           {reply ? (
             <p
-              className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)]"
+              className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]"
               data-testid="ambient-reply"
             >
               {reply}
@@ -242,14 +242,14 @@ export function AmbientPanel({
           ) : null}
           {heard ? (
             <p
-              className="mt-1 text-[var(--text-caption-size)] text-muted-foreground"
+              className="mt-1 text-(length:--text-caption-size) text-muted-foreground"
               data-testid="ambient-heard"
             >
               Heard: “{heard}”
             </p>
           ) : null}
           {note ? (
-            <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground" data-testid="ambient-note">
+            <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground" data-testid="ambient-note">
               {note}
             </p>
           ) : null}
@@ -351,7 +351,7 @@ export function AmbientPanel({
               {dictating ? <MicOff size={14} /> : <Mic size={14} />}
             </Button>
             <input
-              className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-border bg-[var(--secondary)] px-3 py-2 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+              className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-border bg-[var(--secondary)] px-3 py-2 text-(length:--text-subheadline-size) outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
               placeholder={speech.supported ? "Say what you want, or type it" : "Type what you want"}
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -376,7 +376,7 @@ export function AmbientPanel({
             </Button>
           </div>
           {dictation.state !== "idle" ? (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="ambient-dictation">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground" data-testid="ambient-dictation">
               {dictation.state === "requesting"
                 ? "Waiting for the microphone…"
                 : dictation.state === "transcribing"
@@ -385,7 +385,7 @@ export function AmbientPanel({
             </p>
           ) : null}
           {speech.using === "tts" && speech.voices.length > 0 ? (
-            <label className="mt-3 flex items-center gap-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <label className="mt-3 flex items-center gap-2 text-(length:--text-caption-size) text-muted-foreground">
               <span>Voice</span>
               <NativeSelect
                 size="sm"
@@ -403,18 +403,18 @@ export function AmbientPanel({
             </label>
           ) : null}
           {speech.fellBack ? (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground" data-testid="ambient-fallback">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground" data-testid="ambient-fallback">
               The studio&apos;s voice failed, so this computer&apos;s own voice read it instead.
             </p>
           ) : null}
           {speech.using === "device" ? (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground">
               Speaking with this computer&apos;s own voice. Connect a voice service in Settings for
               the studio&apos;s voice instead.
             </p>
           ) : null}
           {!speech.supported ? (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground">
               This device cannot speak, so the agent shows its status instead of saying it.
             </p>
           ) : null}

@@ -363,7 +363,8 @@ Update the `Unreleased` section before every commit.
   lines, the approval card, the model divider, the composer's controls and hint) is at the caption or
   subheadline step. Before, the app's `text-[var(--text-*-size)]` classes compiled to `color`
   declarations under Tailwind 4, so that text inherited body size. This migration found the problem and
-  fixed it only where the new components replaced those classes; elsewhere the app still has it.
+  fixed it only where the new components replaced those classes; the fix for the rest of the app is
+  under Fixed.
 - The chat's Message Scroller keeps shadcn/ui's parts, slots and classes, but the scrolling under it is
   the studio's own rather than `@shadcn/react`'s. That package's 19 kB took the web bundle to 1.21
   times the perf baseline, past the SC-009 limit of 1.2. The studio's version follows a reply while
@@ -413,6 +414,26 @@ Update the `Unreleased` section before every commit.
   - The book's details, cast and memories are still not checkpointed (ADR 0014 and D-113 amended).
   - `apps/desktop/tests/turn-checkpoint.test.ts` and `apps/desktop/tests/library.test.ts` cover each
     case and fail without the fix.
+- Type sizes render at their designed sizes across the studio. Tailwind 4 reads an untyped arbitrary
+  value by its shape, and a `var()` has none, so the 360 `text-[var(--text-*-size)]` classes compiled
+  to `color` declarations the browser ignored: captions, footnotes, headings and titles all inherited
+  the 15 px body size. Four `font-[var(--font-code)]` and `font-[var(--font-ui)]` classes compiled to
+  a font weight, so the API key and manual model fields were never monospaced. A codemod rewrote them
+  to the typed forms `text-(length:--text-…-size)` and `font-(family-name:--font-…)`, which compile to
+  `font-size` and `font-family`. Dialog titles are now 22 px, the library title 34 px from 700 px wide
+  and book titles on their cards 20 px; secondary text sits at the callout, subheadline or caption
+  step. Designed colours arrive with the sizes, because an invalid colour acts as `inherit` and
+  outranked a colour written earlier in the stylesheet: error and warning lines that also carry a size
+  (Settings' storage warning, the chapter conflict notice, the Search, Licenses, Illustration and
+  Agent dialogs, a failed chat message and the browser welcome) are now red, and the chapter and word
+  count under the book title is muted. tailwind-merge read the old classes as colours too, so it
+  dropped the muted colour from the chat's tool lines and the size from every dialog description; both
+  now survive the merge. The newer-format refusal named a token that does not exist,
+  `--text-caption-1-size`, and now uses the caption size.
+  `apps/desktop/tests/type-size-classes.test.ts` fails on the old forms, naming the fix, and on any
+  type token missing from `tokens.generated.css`. No layout needed a fix at 1440×900 or 1024×700,
+  light or dark, nor at the phone and tablet widths; the visual baselines are regenerated for the new
+  sizes.
 - Typing in a chapter and then undoing back to the saved text no longer leaves it marked unsaved. The
   Format dialog refused every export ("The chapter has not finished saving") until you typed again;
   the chapter now reads as saved, with nothing written, because the file already matches.

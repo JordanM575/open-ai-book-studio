@@ -85,11 +85,11 @@ export function VoiceButton({ onText, onError, disabled = false }: Props) {
         {busy ? <Loader2 size={17} className="animate-spin" /> : recording ? <Square size={15} /> : unavailable ? <MicOff size={17} /> : <Mic size={17} />}
       </Button>
       {recording ? (
-        <span className="tabular text-[var(--text-caption-size)] text-muted-foreground" role="status">
+        <span className="tabular text-(length:--text-caption-size) text-muted-foreground" role="status">
           {elapsed(elapsedMs)}
         </span>
       ) : state === "transcribing" ? (
-        <span className="text-[var(--text-caption-size)] text-muted-foreground" role="status">
+        <span className="text-(length:--text-caption-size) text-muted-foreground" role="status">
           Transcribing…
         </span>
       ) : null}

@@ -216,7 +216,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
         <Wordmark subtitle="Library" />
         <div className="titlebar-no-drag flex items-center gap-1.5">
           {importNote ? (
-            <span className="hidden max-w-[200px] truncate text-[var(--text-caption-size)] text-muted-foreground min-[700px]:inline" title={importNote}>
+            <span className="hidden max-w-[200px] truncate text-(length:--text-caption-size) text-muted-foreground min-[700px]:inline" title={importNote}>
               {importNote}
             </span>
           ) : null}
@@ -280,8 +280,8 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
         <div className="mx-auto w-full max-w-[1080px]">
           <div className="flex flex-wrap items-end justify-between gap-4 pt-5 pb-5 min-[700px]:pt-6 min-[700px]:pb-6">
             <div className="min-w-0">
-              <h1 className="text-[30px] leading-[36px] font-semibold tracking-[-0.4px] min-[700px]:text-[var(--text-large-title-size)] min-[700px]:leading-[var(--text-large-title-leading)]">Library</h1>
-              <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[var(--text-subheadline-size)] text-muted-foreground">
+              <h1 className="text-[30px] leading-[36px] font-semibold tracking-[-0.4px] min-[700px]:text-(length:--text-large-title-size) min-[700px]:leading-[var(--text-large-title-leading)]">Library</h1>
+              <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-(length:--text-subheadline-size) text-muted-foreground">
                 <FolderOpen size={13} className="shrink-0" />
                 <span
                   className="min-w-0 max-w-[62ch] truncate font-mono text-[12px]"
@@ -293,7 +293,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
               </p>
               {health ? (
                 <p
-                  className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[var(--text-caption-size)] text-muted-foreground"
+                  className="mt-1.5 flex min-w-0 items-center gap-1.5 text-(length:--text-caption-size) text-muted-foreground"
                   data-testid="location-health"
                 >
                   <span className={health.severity === "danger" ? "font-medium text-destructive" : "font-medium"}>
@@ -353,8 +353,8 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
             </div>
           ) : books.length === 0 ? (
             <div className="glass mt-10 rounded-[var(--corner-xl)] px-8 py-14 text-center">
-              <h2 className="text-[var(--text-title-3-size)] font-semibold">No books yet</h2>
-              <p className="mx-auto mt-2 max-w-[38ch] text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              <h2 className="text-(length:--text-title-3-size) font-semibold">No books yet</h2>
+              <p className="mx-auto mt-2 max-w-[38ch] text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
                 Start with a title and a one-line idea. You can change both later, or replace them as the story takes shape.
               </p>
               <Button variant="primary" className="mt-5" onClick={() => setCreating(true)}>
@@ -372,13 +372,13 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                     onClick={() => onOpenBook(book.id)}
                     className="glass group h-full w-full rounded-[var(--corner-lg)] p-5 pr-12 text-left transition-[box-shadow,background-color,transform] duration-[var(--duration-fast)] hover:brightness-[1.02] focus-visible:outline-2"
                   >
-                    <h2 className="line-clamp-2 text-[var(--text-title-3-size)] leading-[var(--text-title-3-leading)] font-semibold tracking-[-0.2px]">
+                    <h2 className="line-clamp-2 text-(length:--text-title-3-size) leading-[var(--text-title-3-leading)] font-semibold tracking-[-0.2px]">
                       {book.title || "Untitled book"}
                     </h2>
-                    <p className="mt-1.5 line-clamp-2 min-h-[2.9em] text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+                    <p className="mt-1.5 line-clamp-2 min-h-[2.9em] text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
                       {book.description || "No description yet."}
                     </p>
-                    <p className="tabular mt-4 text-[var(--text-caption-size)] text-muted-foreground">
+                    <p className="tabular mt-4 text-(length:--text-caption-size) text-muted-foreground">
                       {formatCount(book.chapterCount)} {book.chapterCount === 1 ? "chapter" : "chapters"}
                       <span className="mx-1.5 opacity-50">·</span>
                       {formatWords(book.wordCount)}
@@ -402,7 +402,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
             </ul>
           )}
 
-          <p className="mt-10 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          <p className="mt-10 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
             Each book is a folder: <span className="font-mono">book.json</span> for the idea and cast,{" "}
             <span className="font-mono">chapters/*.md</span> for the prose. Open them in any editor; the studio will pick up
             the change.

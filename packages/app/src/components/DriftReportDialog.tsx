@@ -95,17 +95,17 @@ export function DriftReportDialog({
         description="Sync is the folder you chose — iCloud Drive, Google Drive, or a local folder — not a studio account. Nothing here uploads."
       >
         {report.warning ? (
-          <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="drift-warning">
+          <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground" data-testid="drift-warning">
             {report.warning}
           </p>
         ) : null}
         {report.clean ? (
-          <p className="mt-2 text-[var(--text-body-size)]" data-testid="drift-clean">
+          <p className="mt-2 text-(length:--text-body-size)" data-testid="drift-clean">
             Everything matches. Nothing to review.
           </p>
         ) : (
           <>
-            <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="drift-counts">
+            <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground" data-testid="drift-counts">
               {countLine(report)}
             </p>
             <ul className="mt-3 space-y-3" data-testid="drift-entries">
@@ -113,13 +113,13 @@ export function DriftReportDialog({
                 const actions = actionsFor(entry);
                 return (
                   <li key={`${entry.kind}:${entry.path}`} className="rounded-[var(--corner-md)] border border-border p-3" data-testid={`drift-entry-${index}`}>
-                    <p className="text-[var(--text-caption-size)] text-muted-foreground">
+                    <p className="text-(length:--text-caption-size) text-muted-foreground">
                       {KIND_LABEL[entry.kind]}
                     </p>
-                    <p className="mt-0.5 text-[var(--text-body-size)] font-medium">
+                    <p className="mt-0.5 text-(length:--text-body-size) font-medium">
                       {entryTitle(entry, bookTitles)}
                     </p>
-                    <p className="mt-1 text-[var(--text-subheadline-size)] text-muted-foreground">
+                    <p className="mt-1 text-(length:--text-subheadline-size) text-muted-foreground">
                       {entry.message}
                     </p>
                     {actions.length > 0 ? (

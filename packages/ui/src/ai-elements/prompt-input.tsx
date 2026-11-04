@@ -35,7 +35,7 @@ export function PromptInputTextarea({ className, onKeyDown, ...props }: Componen
   return (
     <InputGroupTextarea
       className={cn(
-        "field-sizing-fixed px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] placeholder:text-muted-foreground",
+        "field-sizing-fixed px-3 py-2 text-(length:--text-body-size) leading-[var(--text-body-leading)] placeholder:text-muted-foreground",
         className
       )}
       onKeyDown={(event) => {

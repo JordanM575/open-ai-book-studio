@@ -252,8 +252,8 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
       >
         {!connected ? (
           <div className="rounded-[var(--corner-lg)] border border-border p-4">
-            <p className="text-[var(--text-subheadline-size)] font-medium">Connect Meta to generate images</p>
-            <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+            <p className="text-(length:--text-subheadline-size) font-medium">Connect Meta to generate images</p>
+            <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
               Muse Image uses the same Meta connection as the writing agent. Add one in Settings. The
               image and prompt stay in this book folder.
             </p>
@@ -278,24 +278,24 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
               ) : (
                 <div className="flex flex-col items-center gap-2 p-6 text-center text-muted-foreground">
                   <ImageIcon size={28} />
-                  <p className="text-[var(--text-caption-size)]">
+                  <p className="text-(length:--text-caption-size)">
                     {loading ? "Reading the book…" : "No illustration for this chapter yet."}
                   </p>
                 </div>
               )}
             </div>
-            <p className="text-[var(--text-caption-size)] text-muted-foreground" aria-live="polite">
+            <p className="text-(length:--text-caption-size) text-muted-foreground" aria-live="polite">
               {savedNote ?? (selected ? `${selected.width}×${selected.height} · ${selected.model}` : "")}
             </p>
             {error ? (
-              <p role="alert" className="text-[var(--text-caption-size)] text-[var(--destructive-text)]">
+              <p role="alert" className="text-(length:--text-caption-size) text-[var(--destructive-text)]">
                 {error}
               </p>
             ) : null}
           </div>
 
           <div className="space-y-3">
-            <label className="block text-[var(--text-caption-size)] text-muted-foreground" htmlFor="illustration-prompt">
+            <label className="block text-(length:--text-caption-size) text-muted-foreground" htmlFor="illustration-prompt">
               Prompt
             </label>
             <textarea
@@ -305,10 +305,10 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
               rows={5}
               maxLength={4_000}
               placeholder="A lighthouse in a storm, ink and wash, warm lantern light…"
-              className="w-full resize-none rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              className="w-full resize-none rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-2 text-(length:--text-body-size) leading-[var(--text-body-leading)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               data-testid="illustration-prompt"
             />
-            <label className="block text-[var(--text-caption-size)] text-muted-foreground" htmlFor="illustration-size">
+            <label className="block text-(length:--text-caption-size) text-muted-foreground" htmlFor="illustration-size">
               Shape
             </label>
             <NativeSelect
@@ -325,14 +325,14 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
             </NativeSelect>
             {images.length > 0 ? (
               <div>
-                <p className="mb-1 text-[var(--text-caption-size)] text-muted-foreground">Saved images</p>
+                <p className="mb-1 text-(length:--text-caption-size) text-muted-foreground">Saved images</p>
                 <ul className="max-h-40 space-y-1 overflow-y-auto">
                   {images.slice(0, 8).map((image) => (
                     <li key={image.id}>
                       <button
                         type="button"
                         onClick={() => void showImage(image)}
-                        className={`w-full rounded-[var(--corner-sm)] px-2 py-1 text-left text-[var(--text-caption-size)] transition-colors hover:bg-[var(--accent)] ${
+                        className={`w-full rounded-[var(--corner-sm)] px-2 py-1 text-left text-(length:--text-caption-size) transition-colors hover:bg-[var(--accent)] ${
                           selected?.id === image.id ? "bg-[var(--accent)]" : ""
                         }`}
                         title={image.prompt}
@@ -353,8 +353,8 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
 
         {selected && connected ? (
           <div className="mt-4 rounded-[var(--corner-lg)] border border-border p-3">
-            <p className="text-[var(--text-subheadline-size)] font-medium">Cut out a character</p>
-            <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+            <p className="text-(length:--text-subheadline-size) font-medium">Cut out a character</p>
+            <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
               SAM 3.1 finds one object from a short noun phrase. The source image stays untouched.
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -367,7 +367,7 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
                 onChange={(event) => setCutoutPrompt(event.target.value)}
                 maxLength={200}
                 placeholder="the lighthouse keeper"
-                className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-2 text-[var(--text-subheadline-size)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                className="min-w-0 flex-1 rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] px-3 py-2 text-(length:--text-subheadline-size) outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                 data-testid="cutout-prompt"
               />
               <Button
@@ -382,7 +382,7 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
             </div>
             {characters.length > 0 ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label className="text-[var(--text-caption-size)] text-muted-foreground" htmlFor="cutout-character">
+                <label className="text-(length:--text-caption-size) text-muted-foreground" htmlFor="cutout-character">
                   Attach to
                 </label>
                 <NativeSelect
@@ -413,7 +413,7 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
               </div>
             ) : null}
             {cutoutError ? (
-              <p role="alert" className="mt-2 text-[var(--text-caption-size)] text-[var(--destructive-text)]">
+              <p role="alert" className="mt-2 text-(length:--text-caption-size) text-[var(--destructive-text)]">
                 {cutoutError}
               </p>
             ) : null}
@@ -424,7 +424,7 @@ export function IllustrationDialog({ open, bookId, chapter, characters, onClose,
                     key={match.objectId}
                     className="flex items-center justify-between gap-2 rounded-[var(--corner-sm)] bg-[var(--secondary)] px-2 py-1"
                   >
-                    <span className="text-[var(--text-caption-size)]">
+                    <span className="text-(length:--text-caption-size)">
                       Object {match.objectId}
                       {match.confidence !== null ? ` · ${Math.round(match.confidence * 100)}%` : ""}
                     </span>

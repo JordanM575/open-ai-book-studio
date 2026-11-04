@@ -24,7 +24,7 @@ function Shell() {
   if (!restored) {
     return (
       <div className="window-wash flex h-full items-center justify-center">
-        <p className="text-[var(--text-subheadline-size)] text-muted-foreground">Opening your library…</p>
+        <p className="text-(length:--text-subheadline-size) text-muted-foreground">Opening your library…</p>
       </div>
     );
   }

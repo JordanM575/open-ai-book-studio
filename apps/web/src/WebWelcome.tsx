@@ -33,14 +33,14 @@ export function WebWelcome({ libraries, onOpened }: Props) {
       <div className="glass w-full max-w-[520px] rounded-[var(--corner-2xl)] p-6 min-[700px]:p-8">
         <Wordmark subtitle="Library" />
         <h1 className="mt-6 text-[26px] leading-[32px] font-semibold tracking-[-0.3px]">Where should your library live?</h1>
-        <p className="mt-2 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+        <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
           This is the same library the desktop app reads: one folder per book, one Markdown file per chapter. A folder is a real folder on this device. “This browser” keeps it in this browser profile, where you can export an archive to move it.
         </p>
 
         {libraries.pendingFolder ? (
           <div className="mt-5 rounded-[var(--corner-lg)] border border-border p-3">
-            <p className="text-[var(--text-subheadline-size)] font-medium">Reconnect {libraries.pendingFolder.name}</p>
-            <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+            <p className="text-(length:--text-subheadline-size) font-medium">Reconnect {libraries.pendingFolder.name}</p>
+            <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
               The browser needs permission again before it can open this folder.
             </p>
             <Button
@@ -80,23 +80,23 @@ export function WebWelcome({ libraries, onOpened }: Props) {
           ) : null}
         </div>
 
-        <p className="mt-4 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+        <p className="mt-4 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
           {capabilities.folderAccess
             ? "A folder can be opened by the desktop app and other editors. Browser storage cannot: export an archive to move it."
             : "This browser cannot open a folder. The library stays in this browser profile; export an archive to move it."}
         </p>
         {!capabilities.secureContext ? (
-          <p className="mt-2 text-[var(--text-caption-size)] text-[var(--destructive-text)]">
+          <p className="mt-2 text-(length:--text-caption-size) text-[var(--destructive-text)]">
             Open the studio over HTTPS or localhost. Local storage is unavailable on this origin.
           </p>
         ) : null}
         {error ? (
-          <p className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-caption-size)] text-[var(--destructive-text)]" role="alert">
+          <p className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-caption-size) text-[var(--destructive-text)]" role="alert">
             {error}
           </p>
         ) : null}
         {libraries.restoreError ? (
-          <p className="mt-3 text-[var(--text-caption-size)] text-[var(--destructive-text)]">{libraries.restoreError}</p>
+          <p className="mt-3 text-(length:--text-caption-size) text-[var(--destructive-text)]">{libraries.restoreError}</p>
         ) : null}
       </div>
     </main>

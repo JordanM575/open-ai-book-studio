@@ -65,15 +65,15 @@ const STEPS: Record<string, (index: number, last: number) => number> = {
 function LicenseText({ entry, headingId }: { entry: Entry; headingId: string }) {
   return (
     <>
-      <h3 id={headingId} className="text-[var(--text-callout-size)] leading-[var(--text-callout-leading)] font-medium break-words">
+      <h3 id={headingId} className="text-(length:--text-callout-size) leading-[var(--text-callout-leading)] font-medium break-words">
         {entry.name}
       </h3>
-      <p className="tabular mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
+      <p className="tabular mt-0.5 text-(length:--text-caption-size) text-muted-foreground">
         {entry.version} · {entry.license}
         {entry.author ? ` · ${entry.author}` : ""}
       </p>
       {entry.link ? (
-        <p className="mt-1 truncate text-[var(--text-caption-size)]">
+        <p className="mt-1 truncate text-(length:--text-caption-size)">
           <a href={entry.link} target="_blank" rel="noreferrer" className="text-[var(--primary)] underline-offset-2 hover:underline">
             {entry.link.replace(/^https?:\/\//, "")}
           </a>
@@ -82,20 +82,20 @@ function LicenseText({ entry, headingId }: { entry: Entry; headingId: string }) 
       {entry.notes.map((note) => (
         <p
           key={note}
-          className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground"
+          className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground"
         >
           {note}
         </p>
       ))}
       {entry.texts.length === 0 ? (
-        <p className="mt-3 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+        <p className="mt-3 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
           This package ships no license file of its own. It declares {entry.license}.
         </p>
       ) : (
         entry.texts.map((text) => (
           <section key={text.file} className="mt-4">
-            <h4 className="text-[var(--text-caption-size)] font-medium text-muted-foreground">{text.file}</h4>
-            <pre className="mt-1 font-mono text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] break-words whitespace-pre-wrap">
+            <h4 className="text-(length:--text-caption-size) font-medium text-muted-foreground">{text.file}</h4>
+            <pre className="mt-1 font-mono text-(length:--text-caption-size) leading-[var(--text-caption-leading)] break-words whitespace-pre-wrap">
               {text.text}
             </pre>
           </section>
@@ -192,22 +192,22 @@ function LicensesBody({ searchRef }: { searchRef: RefObject<HTMLInputElement | n
           aria-label="Search packages"
           aria-controls={report ? listId : undefined}
           data-testid="licenses-search"
-          className="w-full rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] py-2 pr-3 pl-9 text-[var(--text-subheadline-size)] outline-none focus-visible:border-[var(--ring)]"
+          className="w-full rounded-[var(--corner-md)] border border-[var(--input)] bg-[var(--card)] py-2 pr-3 pl-9 text-(length:--text-subheadline-size) outline-none focus-visible:border-[var(--ring)]"
         />
       </div>
       {error ? (
-        <p role="alert" className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-[var(--destructive-text)]">
+        <p role="alert" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-[var(--destructive-text)]">
           {error}
         </p>
       ) : null}
       {!report && !error ? (
-        <p className="flex items-center gap-2 text-[var(--text-subheadline-size)] text-muted-foreground">
+        <p className="flex items-center gap-2 text-(length:--text-subheadline-size) text-muted-foreground">
           <Loader2 size={14} className="animate-spin" /> Reading the license list…
         </p>
       ) : null}
       {report && current ? (
         <>
-          <p className="tabular shrink-0 text-[var(--text-caption-size)] text-muted-foreground" aria-live="polite" data-testid="licenses-count">
+          <p className="tabular shrink-0 text-(length:--text-caption-size) text-muted-foreground" aria-live="polite" data-testid="licenses-count">
             {query.trim()
               ? matches.length === 0
                 ? `No packages match “${query.trim()}”`
@@ -242,8 +242,8 @@ function LicensesBody({ searchRef }: { searchRef: RefObject<HTMLInputElement | n
                     entry.key === selected ? "bg-[var(--rail-item-selected)]" : "hover:bg-[var(--accent)]"
                   )}
                 >
-                  <span className="block truncate text-[var(--text-subheadline-size)] font-medium">{entry.name}</span>
-                  <span className="tabular block truncate text-[var(--text-caption-size)] text-muted-foreground">
+                  <span className="block truncate text-(length:--text-subheadline-size) font-medium">{entry.name}</span>
+                  <span className="tabular block truncate text-(length:--text-caption-size) text-muted-foreground">
                     {entry.version} · {entry.license}
                   </span>
                 </div>

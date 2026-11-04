@@ -94,7 +94,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
             </DialogFooter>
           }
         >
-          <p data-testid="import-refusal" role="status" className="text-[var(--text-body-size)] text-muted-foreground">
+          <p data-testid="import-refusal" role="status" className="text-(length:--text-body-size) text-muted-foreground">
             {refusal?.message ?? "The selected file could not be read."}
           </p>
         </DialogContent>
@@ -161,7 +161,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
         }
       >
         <label
-          className="block text-[var(--text-subheadline-size)] font-medium"
+          className="block text-(length:--text-subheadline-size) font-medium"
           htmlFor="import-book-title"
         >
           Book title
@@ -169,19 +169,19 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
         <input
           id="import-book-title"
           data-testid="import-book-title"
-          className="w-full rounded-[var(--corner-md)] border border-input bg-background px-3 py-2 text-[var(--text-body-size)]"
+          className="w-full rounded-[var(--corner-md)] border border-input bg-background px-3 py-2 text-(length:--text-body-size)"
           value={bookTitle}
           onChange={(event) => setBookTitle(event.target.value)}
         />
         {note !== null ? (
-          <p data-testid="import-normalization" role="note" className="text-[var(--text-caption-size)] text-muted-foreground">
+          <p data-testid="import-normalization" role="note" className="text-(length:--text-caption-size) text-muted-foreground">
             {note}
           </p>
         ) : null}
         {preview.format === "docx" ? <ImportLossList loss={preview.loss} testId="import-loss" /> : null}
         <div className="flex flex-wrap items-center gap-2">
           <label
-            className="text-[var(--text-subheadline-size)] font-medium"
+            className="text-(length:--text-subheadline-size) font-medium"
             htmlFor="import-new-split"
           >
             Start a new chapter at line
@@ -194,7 +194,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
             max={lineCount}
             value={newSplitLine}
             onChange={(event) => setNewSplitLine(event.target.value)}
-            className="w-20 rounded-[var(--corner-md)] border border-input bg-background px-2 py-1 text-[var(--text-body-size)]"
+            className="w-20 rounded-[var(--corner-md)] border border-input bg-background px-2 py-1 text-(length:--text-body-size)"
           />
           <Button variant="secondary" onClick={addSplit} data-testid="import-add-split">
             Add split
@@ -205,7 +205,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
             <li key={chapter.order} className="rounded-[var(--corner-md)] border border-border p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <label
-                  className="text-[var(--text-subheadline-size)] font-medium"
+                  className="text-(length:--text-subheadline-size) font-medium"
                   htmlFor={`import-chapter-title-${chapter.order}`}
                 >
                   Chapter {chapter.order} title
@@ -213,7 +213,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
                 <input
                   id={`import-chapter-title-${chapter.order}`}
                   data-testid={`import-chapter-title-${chapter.order}`}
-                  className="min-w-40 flex-1 rounded-[var(--corner-md)] border border-input bg-background px-3 py-1.5 text-[var(--text-body-size)]"
+                  className="min-w-40 flex-1 rounded-[var(--corner-md)] border border-input bg-background px-3 py-1.5 text-(length:--text-body-size)"
                   value={chapterTitle(chapter.order)}
                   onChange={(event) => {
                     const next = [...titles];
@@ -223,13 +223,13 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
                 />
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p data-testid={`import-chapter-lines-${chapter.order}`} className="text-[var(--text-caption-size)] text-muted-foreground">
+                <p data-testid={`import-chapter-lines-${chapter.order}`} className="text-(length:--text-caption-size) text-muted-foreground">
                   Lines {chapter.startLine} to {chapter.endLine} · {formatWords(chapter.wordCount)}
                 </p>
                 {chapter.order > 1 ? (
                   <>
                     <label
-                      className="text-[var(--text-caption-size)] text-muted-foreground"
+                      className="text-(length:--text-caption-size) text-muted-foreground"
                       htmlFor={`import-split-${chapter.order}`}
                     >
                       Starts at line
@@ -242,7 +242,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
                       max={lineCount}
                       value={chapter.startLine}
                       onChange={(event) => updateSplits(chapter.order, Number(event.target.value))}
-                      className="w-20 rounded-[var(--corner-md)] border border-input bg-background px-2 py-1 text-[var(--text-body-size)]"
+                      className="w-20 rounded-[var(--corner-md)] border border-input bg-background px-2 py-1 text-(length:--text-body-size)"
                     />
                     <Button
                       variant="ghost"
@@ -256,7 +256,7 @@ export function ImportPreviewDialog({ open, input, onConfirm, onCancel, onOpenCh
               </div>
               <pre
                 data-testid={`import-chapter-body-${chapter.order}`}
-                className="mt-2 max-h-48 overflow-y-auto rounded-[var(--corner-sm)] bg-[var(--secondary)] p-3 text-[var(--text-body-size)] whitespace-pre-wrap"
+                className="mt-2 max-h-48 overflow-y-auto rounded-[var(--corner-sm)] bg-[var(--secondary)] p-3 text-(length:--text-body-size) whitespace-pre-wrap"
               >
                 {chapter.body}
               </pre>

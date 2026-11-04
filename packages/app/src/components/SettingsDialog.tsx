@@ -64,12 +64,12 @@ function ConnectionStatusLine({ check }: { check: ProviderLastCheck | undefined 
   const status = providerStatus({ configured: true, lastCheck: check ?? null });
   return (
     <>
-      <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground" data-testid="connection-status">
+      <p className="mt-0.5 text-(length:--text-caption-size) text-muted-foreground" data-testid="connection-status">
         {status.label}
         {status.checkedAt ? ` · checked ${checkedTime(status.checkedAt)}` : " · not checked yet"}
       </p>
       {check && status.state !== "connected" ? (
-        <p className="mt-0.5 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+        <p className="mt-0.5 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
           {status.message}
         </p>
       ) : null}
@@ -84,7 +84,7 @@ function ConnectionStatusLine({ check }: { check: ProviderLastCheck | undefined 
 function VoiceStatus({ voice }: { voice: { speakers: VoiceSpeakers | null; transcribeConnections: number } | null }) {
   if (voice === null) {
     return (
-      <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground" data-testid="voice-status">
+      <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground" data-testid="voice-status">
         Reading voice…
       </p>
     );
@@ -93,7 +93,7 @@ function VoiceStatus({ voice }: { voice: { speakers: VoiceSpeakers | null; trans
   const input = voice.transcribeConnections > 0;
   return (
     <div data-testid="voice-status">
-      <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground">
+      <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
         {output
           ? `Read-aloud is available${voice.speakers?.connectionLabel ? ` through ${voice.speakers.connectionLabel}` : ""}.`
           : "Read-aloud is not set up."}{" "}
@@ -101,7 +101,7 @@ function VoiceStatus({ voice }: { voice: { speakers: VoiceSpeakers | null; trans
           ? `Dictation is available through ${voice.transcribeConnections} ${voice.transcribeConnections === 1 ? "connection" : "connections"}.`
           : "Dictation is not set up."}
       </p>
-      <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+      <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
         Voice is never tested automatically, so there is no check time here.
       </p>
     </div>
@@ -416,7 +416,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
         }}
       >
         <section>
-          <h3 className="text-[var(--text-callout-size)] font-medium">Appearance</h3>
+          <h3 className="text-(length:--text-callout-size) font-medium">Appearance</h3>
           {/* biome-ignore lint/a11y/useSemanticElements: role="group" is the correct ARIA pattern here; a fieldset would inherit min-inline-size and border styles that change the picker layout */}
           <div className="mt-2 grid grid-cols-3 gap-2" role="group" aria-label="Theme">
             {THEMES.map(({ id, label, icon: Icon }) => (
@@ -433,14 +433,14 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               </Button>
             ))}
           </div>
-          <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
             System follows this computer's light or dark setting.
           </p>
         </section>
 
         <section ref={providersRef} tabIndex={-1} className="mt-6 outline-none">
-          <h3 className="text-[var(--text-callout-size)] font-medium">Provider connections</h3>
-          <p className="mt-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          <h3 className="text-(length:--text-callout-size) font-medium">Provider connections</h3>
+          <p className="mt-1 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
             {build?.target === "web"
               ? "Bring your own account. Keys are kept in this browser's origin storage, never in your book folder."
               : "Bring your own account. Keys are kept on this computer, never in your book folder."}
@@ -448,15 +448,15 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
           {credentialStatus ? (
             <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-[var(--corner-lg)] border border-border bg-card/60 p-3">
               <div className="min-w-0">
-                <p className="text-[var(--text-subheadline-size)] font-medium">
+                <p className="text-(length:--text-subheadline-size) font-medium">
                   {credentialStatus.available ? "Unlocked" : "Locked or unavailable"} · {credentialStatus.backend}
                 </p>
-                <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
+                <p className="mt-0.5 text-(length:--text-caption-size) text-muted-foreground">
                   {credentialStatus.connections} {credentialStatus.connections === 1 ? "connection" : "connections"} · secrets are
                   encrypted before they reach the credential file.
                 </p>
                 {credentialStatus.detail ? (
-                  <p className="mt-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-destructive-text">
+                  <p className="mt-1 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-destructive-text">
                     {credentialStatus.detail}
                   </p>
                 ) : null}
@@ -476,21 +476,21 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
           ) : null}
           <div className="mt-3 flex items-start justify-between gap-4 rounded-[var(--corner-lg)] border border-border bg-card/60 p-4">
             <div className="min-w-0">
-              <h3 className="flex items-center gap-2 text-[var(--text-headline-size)] font-semibold">
+              <h3 className="flex items-center gap-2 text-(length:--text-headline-size) font-semibold">
                 <KeyRound size={16} />
                 OpenRouter
               </h3>
-              <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
                 One sign-in reaches models from many companies. You approve the key in your browser and can revoke it at
                 OpenRouter at any time.
               </p>
               {result.openrouter ? (
-                <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-success-text">
+                <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-success-text">
                   {result.openrouter}
                 </p>
               ) : null}
               {storageAvailable === false ? (
-                <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-destructive-text">
+                <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-destructive-text">
                   {build?.target === "web"
                     ? "Provider connections are not enabled in the browser build yet. When they are, credentials will live in this browser's origin storage, not the operating system keychain."
                     : "This computer's protected storage is locked, so a key cannot be saved. Unlock your keychain or keyring, then reopen this window."}
@@ -514,7 +514,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
             )}
           </div>
           {waiting ? (
-            <p className="mt-2 flex items-center gap-2 text-[var(--text-subheadline-size)] text-muted-foreground" aria-live="polite">
+            <p className="mt-2 flex items-center gap-2 text-(length:--text-subheadline-size) text-muted-foreground" aria-live="polite">
               <Loader2 size={14} className="animate-spin" />
               Finish signing in in your browser. This window will update on its own.
             </p>
@@ -522,11 +522,11 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
         </section>
 
         <section className="mt-6">
-          <h3 className="text-[var(--text-callout-size)] font-medium">Your connections</h3>
+          <h3 className="text-(length:--text-callout-size) font-medium">Your connections</h3>
           {connections === null ? (
-            <p className="mt-2 text-[var(--text-subheadline-size)] text-muted-foreground">Reading connections…</p>
+            <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">Reading connections…</p>
           ) : connections.length === 0 ? (
-            <p className="mt-2 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               No connections yet. Connect OpenRouter above to use the writing agent.
             </p>
           ) : (
@@ -540,8 +540,8 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-[var(--text-body-size)] font-medium">{connection.label}</p>
-                      <p className="mt-0.5 text-[var(--text-caption-size)] text-muted-foreground">
+                      <p className="truncate text-(length:--text-body-size) font-medium">{connection.label}</p>
+                      <p className="mt-0.5 text-(length:--text-caption-size) text-muted-foreground">
                         {connection.kind === "openrouter-oauth" ? "Signed in with OpenRouter" : "API key"}
                         {connection.lastUsedAt ? ` · last used ${new Date(connection.lastUsedAt).toLocaleDateString()}` : ""}
                       </p>
@@ -595,7 +595,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2" data-testid="openrouter-revoke-note">
                       <p
                         id={`revoke-${connection.id}`}
-                        className="min-w-0 flex-1 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground"
+                        className="min-w-0 flex-1 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground"
                       >
                         Remove deletes the key from {build?.target === "web" ? "this browser" : "this computer"}. The key also
                         exists in your OpenRouter account, where you can revoke it.
@@ -613,14 +613,14 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                     </div>
                   ) : null}
                   {result[connection.id] ? (
-                    <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+                    <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
                       {result[connection.id]}
                     </p>
                   ) : null}
                   {models[connection.id]?.length ? (
                     <div className="thin-scroll mt-2 max-h-40 overflow-y-auto rounded-[var(--corner-md)] bg-muted/50 p-2">
                       {models[connection.id]!.slice(0, 30).map((model) => (
-                        <p key={model.id} className="flex items-center justify-between gap-3 py-1 text-[var(--text-caption-size)]">
+                        <p key={model.id} className="flex items-center justify-between gap-3 py-1 text-(length:--text-caption-size)">
                           <span className="truncate">{model.name}</span>
                           <span className="tabular shrink-0 text-muted-foreground">
                             {model.contextLength ? `${Math.round(model.contextLength / 1000)}k` : "—"}
@@ -636,12 +636,12 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
         </section>
 
         <section className="mt-6" aria-label="Voice">
-          <h3 className="text-[var(--text-callout-size)] font-medium">Voice</h3>
+          <h3 className="text-(length:--text-callout-size) font-medium">Voice</h3>
           <VoiceStatus voice={voice} />
         </section>
 
         <section className="mt-6">
-          <h3 className="text-[var(--text-callout-size)] font-medium">Other providers</h3>
+          <h3 className="text-(length:--text-callout-size) font-medium">Other providers</h3>
           <ul className="mt-2 divide-y divide-border rounded-[var(--corner-lg)] border border-border">
             {providers
               .filter((provider) => provider.id !== "openrouter")
@@ -651,8 +651,8 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                   className="flex flex-col items-start gap-2 p-3 min-[520px]:flex-row min-[520px]:justify-between min-[520px]:gap-4"
                 >
                   <div className="min-w-0 min-[520px]:flex-1">
-                    <p className="text-[var(--text-body-size)] font-medium">{provider.name}</p>
-                    <p className="mt-0.5 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+                    <p className="text-(length:--text-body-size) font-medium">{provider.name}</p>
+                    <p className="mt-0.5 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
                       {provider.note}
                     </p>
                   </div>
@@ -665,13 +665,13 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 </li>
               ))}
           </ul>
-          <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground">
+          <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
             A key is checked once with the provider, then stored only on this computer. A rejected key is never saved.
           </p>
         </section>
 
         <section className="mt-6">
-          <h3 className="text-[var(--text-callout-size)] font-medium">Add a key</h3>
+          <h3 className="text-(length:--text-callout-size) font-medium">Add a key</h3>
           <form className="mt-2 space-y-2" onSubmit={(event) => void addKey(event)}>
             <div className="flex flex-wrap gap-2">
               <NativeSelect
@@ -696,7 +696,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 onChange={(event) => setKeyLabel(event.target.value)}
                 placeholder="Label (optional)"
                 maxLength={80}
-                className="h-9 min-w-0 flex-1 rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                className="h-9 min-w-0 flex-1 rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               />
             </div>
             {keyProvider === "meta" ? (
@@ -706,7 +706,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 onChange={(event) => setKeyBaseUrl(event.target.value)}
                 placeholder="Base URL from Meta's developer console"
                 maxLength={500}
-                className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               />
             ) : null}
             <div className="flex gap-2">
@@ -718,7 +718,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 placeholder="Paste the API key"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-9 min-w-0 flex-1 rounded-[var(--corner-md)] bg-card px-3 font-[var(--font-code)] text-[var(--text-caption-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:font-[var(--font-ui)] placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                className="h-9 min-w-0 flex-1 rounded-[var(--corner-md)] bg-card px-3 font-(family-name:--font-code) text-(length:--text-caption-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none placeholder:font-(family-name:--font-ui) placeholder:text-muted-foreground focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               />
               <Button
                 type="submit"
@@ -737,15 +737,15 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
             </div>
           </form>
           {keyResult ? (
-            <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground" aria-live="polite">
+            <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground" aria-live="polite">
               {keyResult}
             </p>
           ) : null}
         </section>
 
         <section className="mt-6">
-          <h3 className="text-[var(--text-callout-size)] font-medium">Library</h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <h3 className="text-(length:--text-callout-size) font-medium">Library</h3>
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Each book is a folder: <span className="font-mono">book.json</span> for the idea and cast,{" "}
             <span className="font-mono">chapters/*.md</span> for the prose. Open them in any editor.
           </p>
@@ -756,7 +756,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
           ) : null}
           {liveStorage ? (
             <>
-              <dl className="mt-3 space-y-1 text-[var(--text-caption-size)]" data-testid="storage-summary">
+              <dl className="mt-3 space-y-1 text-(length:--text-caption-size)" data-testid="storage-summary">
                 <div className="flex flex-wrap justify-between gap-2">
                   <dt className="text-muted-foreground">Storage</dt>
                   <dd>{liveStorage.tier === "browser" ? "This browser" : liveStorage.label}</dd>
@@ -773,7 +773,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
                 ) : null}
               </dl>
               {liveStorage.warning ? (
-                <p className="mt-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-[var(--destructive-text)]">
+                <p className="mt-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-[var(--destructive-text)]">
                   {liveStorage.warning}
                 </p>
               ) : null}
@@ -792,13 +792,13 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
         </section>
 
         <section className="mt-6" data-testid="about">
-          <h3 className="text-[var(--text-callout-size)] font-medium">About</h3>
-          <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+          <h3 className="text-(length:--text-callout-size) font-medium">About</h3>
+          <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             Private preview. The manuscript stays a folder of ordinary files; this build never uploads it.
           </p>
           {build ? (
             <>
-              <dl className="mt-3 space-y-1 text-[var(--text-caption-size)]">
+              <dl className="mt-3 space-y-1 text-(length:--text-caption-size)">
                 <div className="flex flex-wrap justify-between gap-2">
                   <dt className="text-muted-foreground">Build</dt>
                   <dd>{build.target === "desktop" ? "Desktop" : "Web"}</dd>
@@ -840,13 +840,13 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               </dl>
               {build.target === "web" ? (
                 <p
-                  className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-[var(--text-caption-size)] leading-[var(--text-caption-leading)] text-muted-foreground"
+                  className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground"
                   data-testid="browser-credential-disclosure"
                 >
                   {BROWSER_CREDENTIAL_DISCLOSURE}
                 </p>
               ) : null}
-              <ul className="mt-3 space-y-1.5 text-[var(--text-caption-size)]" aria-label="Capabilities">
+              <ul className="mt-3 space-y-1.5 text-(length:--text-caption-size)" aria-label="Capabilities">
                 {build.capabilities.map((capability) => (
                   <li key={capability.id} className="flex flex-wrap items-baseline gap-x-2">
                     <span className={capability.available ? "text-success-text" : "text-muted-foreground"}>
@@ -861,7 +861,7 @@ export function SettingsDialog({ open, onOpenChange, onNotice, theme, libraryRoo
               </ul>
             </>
           ) : (
-            <p className="mt-2 text-[var(--text-caption-size)] text-muted-foreground">
+            <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground">
               Build information is not available.
             </p>
           )}

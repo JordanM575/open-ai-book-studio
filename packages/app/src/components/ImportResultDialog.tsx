@@ -51,7 +51,7 @@ export function ImportResultDialog({ open, report, onClose, onOpenChange }: Prop
           </DialogFooter>
         }
       >
-        <p data-testid="import-result-source" className="text-[var(--text-body-size)] text-muted-foreground">
+        <p data-testid="import-result-source" className="text-(length:--text-body-size) text-muted-foreground">
           From {report.sourceName}
         </p>
         <ol className="mt-3 max-h-[40vh] space-y-2 overflow-y-auto pr-1" data-testid="import-result-chapters">
@@ -61,17 +61,17 @@ export function ImportResultDialog({ open, report, onClose, onOpenChange }: Prop
               className="rounded-[var(--corner-md)] border border-border p-3"
               data-testid={`import-result-chapter-${chapter.order}`}
             >
-              <p className="text-[var(--text-subheadline-size)] font-medium">
+              <p className="text-(length:--text-subheadline-size) font-medium">
                 {chapter.order}. {chapter.title}
               </p>
-              <p className="mt-1 text-[var(--text-caption-size)] text-muted-foreground">
+              <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
                 Lines {chapter.startLine} to {chapter.endLine} · {formatWords(chapter.wordCount)}
               </p>
             </li>
           ))}
         </ol>
         {note !== null ? (
-          <p data-testid="import-result-normalization" role="note" className="mt-3 text-[var(--text-caption-size)] text-muted-foreground">
+          <p data-testid="import-result-normalization" role="note" className="mt-3 text-(length:--text-caption-size) text-muted-foreground">
             {note}
           </p>
         ) : null}
@@ -80,7 +80,7 @@ export function ImportResultDialog({ open, report, onClose, onOpenChange }: Prop
             <ImportLossList loss={report.loss} testId="import-result-loss" />
           </div>
         ) : null}
-        <p data-testid="import-result-not-imported" role="note" className="mt-3 text-[var(--text-caption-size)] text-muted-foreground">
+        <p data-testid="import-result-not-imported" role="note" className="mt-3 text-(length:--text-caption-size) text-muted-foreground">
           {report.notImportedNote}
         </p>
       </DialogContent>

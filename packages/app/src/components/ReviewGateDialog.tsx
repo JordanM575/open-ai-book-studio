@@ -61,7 +61,7 @@ export function ReviewGateDialog({ open, view, onSave, onCancel, onClose, onOpen
       >
         {view.kind === "choice" ? (
           <>
-            <p className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <p className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               You have unsaved changes in this chapter. Save them first, or keep writing and review later.
             </p>
             <DialogFooter>
@@ -77,7 +77,7 @@ export function ReviewGateDialog({ open, view, onSave, onCancel, onClose, onOpen
 
         {view.kind === "saving" ? (
           <p
-            className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground"
+            className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground"
             role="status"
             data-testid="review-status"
           >
@@ -87,9 +87,9 @@ export function ReviewGateDialog({ open, view, onSave, onCancel, onClose, onOpen
 
         {view.kind === "blocked" ? (
           <>
-            <p className="text-[var(--text-callout-size)] font-semibold">{blockedCopy(view.saveStatus).title}</p>
+            <p className="text-(length:--text-callout-size) font-semibold">{blockedCopy(view.saveStatus).title}</p>
             <p
-              className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground"
+              className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground"
               role="status"
               data-testid="review-status"
             >

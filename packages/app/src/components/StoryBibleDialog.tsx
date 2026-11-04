@@ -95,64 +95,64 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
         <div className="space-y-6">
           <section className="space-y-3">
             <label className="block space-y-1.5">
-              <span className="text-[var(--text-subheadline-size)] font-medium">Title</span>
+              <span className="text-(length:--text-subheadline-size) font-medium">Title</span>
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 maxLength={300}
-                className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-[var(--text-subheadline-size)] font-medium">What it is about</span>
+              <span className="text-(length:--text-subheadline-size) font-medium">What it is about</span>
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 rows={3}
                 maxLength={20000}
-                className="w-full resize-none rounded-[var(--corner-md)] bg-card px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                className="w-full resize-none rounded-[var(--corner-md)] bg-card px-3 py-2 text-(length:--text-body-size) leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5">
-                <span className="text-[var(--text-subheadline-size)] font-medium">Genres</span>
+                <span className="text-(length:--text-subheadline-size) font-medium">Genres</span>
                 <input
                   value={genres}
                   onChange={(event) => setGenres(event.target.value)}
                   placeholder="Literary fiction, mystery"
-                  className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                  className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                 />
               </label>
               <label className="block space-y-1.5">
-                <span className="text-[var(--text-subheadline-size)] font-medium">Influences</span>
+                <span className="text-(length:--text-subheadline-size) font-medium">Influences</span>
                 <input
                   value={influences}
                   onChange={(event) => setInfluences(event.target.value)}
                   placeholder="Ursula K. Le Guin"
-                  className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                  className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                 />
               </label>
             </div>
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-[var(--text-callout-size)] font-semibold">Outline</h3>
+            <h3 className="text-(length:--text-callout-size) font-semibold">Outline</h3>
             <textarea
               value={outline}
               onChange={(event) => setOutline(event.target.value)}
               rows={5}
               maxLength={100000}
               placeholder="A crossing at low tide. Two sisters, one letter, and the town that remembers."
-              className="w-full resize-y rounded-[var(--corner-md)] bg-card px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              className="w-full resize-y rounded-[var(--corner-md)] bg-card px-3 py-2 text-(length:--text-body-size) leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
             />
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-[var(--text-callout-size)] font-semibold">Story arc</h3>
+            <h3 className="text-(length:--text-callout-size) font-semibold">Story arc</h3>
             <div className="space-y-2">
               {(["beginning", "middle", "end"] as const).map((key) => (
                 <Collapsible key={key} className="rounded-[var(--corner-md)] bg-card px-3 py-2 shadow-[inset_0_0_0_1px_var(--border)]">
-                  <CollapsibleTrigger className="group/arc flex w-full items-center gap-1.5 rounded-[var(--corner-sm)] text-left text-[var(--text-subheadline-size)] font-medium capitalize">
+                  <CollapsibleTrigger className="group/arc flex w-full items-center gap-1.5 rounded-[var(--corner-sm)] text-left text-(length:--text-subheadline-size) font-medium capitalize">
                     <ChevronRight
                       size={14}
                       aria-hidden
@@ -163,14 +163,14 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
                   <CollapsibleContent className="mt-2 space-y-2">
                     {(["overview", "keyMoments", "openQuestions"] as const).map((field) => (
                       <label key={field} className="block space-y-1">
-                        <span className="text-[var(--text-caption-size)] text-muted-foreground">
+                        <span className="text-(length:--text-caption-size) text-muted-foreground">
                           {field === "keyMoments" ? "Key moments" : field === "openQuestions" ? "Open questions" : "Overview"}
                         </span>
                         <textarea
                           value={arc[key][field]}
                           onChange={(event) => setArcPart(key, field, event.target.value)}
                           rows={2}
-                          className="w-full resize-none rounded-[var(--corner-sm)] bg-background px-2 py-1.5 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                          className="w-full resize-none rounded-[var(--corner-sm)] bg-background px-2 py-1.5 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                         />
                       </label>
                     ))}
@@ -182,14 +182,14 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
 
           <section className="space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-[var(--text-callout-size)] font-semibold">Characters</h3>
+              <h3 className="text-(length:--text-callout-size) font-semibold">Characters</h3>
               <Button variant="ghost" size="sm" onClick={() => setCharacters((current) => [...current, blankCharacter()])}>
                 <Plus size={14} />
                 Add character
               </Button>
             </div>
             {characters.length === 0 ? (
-              <p className="text-[var(--text-subheadline-size)] text-muted-foreground">No one yet. Add the people the agent should remember.</p>
+              <p className="text-(length:--text-subheadline-size) text-muted-foreground">No one yet. Add the people the agent should remember.</p>
             ) : (
               <div className="space-y-2">
                 {characters.map((character, index) => (
@@ -199,13 +199,13 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
                         value={character.name}
                         onChange={(event) => updateCharacter(index, { name: event.target.value }, setCharacters)}
                         placeholder="Name"
-                        className="h-8 min-w-0 flex-1 rounded-[var(--corner-sm)] bg-background px-2 text-[var(--text-subheadline-size)] font-medium shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                        className="h-8 min-w-0 flex-1 rounded-[var(--corner-sm)] bg-background px-2 text-(length:--text-subheadline-size) font-medium shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                       />
                       <input
                         value={character.role}
                         onChange={(event) => updateCharacter(index, { role: event.target.value }, setCharacters)}
                         placeholder="Role"
-                        className="h-8 w-40 rounded-[var(--corner-sm)] bg-background px-2 text-[var(--text-subheadline-size)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                        className="h-8 w-40 rounded-[var(--corner-sm)] bg-background px-2 text-(length:--text-subheadline-size) shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                       />
                       <Button
                         variant="ghost"
@@ -221,7 +221,7 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
                       onChange={(event) => updateCharacter(index, { description: event.target.value }, setCharacters)}
                       placeholder="Who they are, what they want, what they hide"
                       rows={2}
-                      className="mt-2 w-full resize-none rounded-[var(--corner-sm)] bg-background px-2 py-1.5 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                      className="mt-2 w-full resize-none rounded-[var(--corner-sm)] bg-background px-2 py-1.5 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                     />
                   </div>
                 ))}
@@ -231,14 +231,14 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
 
           <section className="space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-[var(--text-callout-size)] font-semibold">Memories</h3>
+              <h3 className="text-(length:--text-callout-size) font-semibold">Memories</h3>
               <Button variant="ghost" size="sm" onClick={() => setMemories((current) => [...current, blankMemory()])}>
                 <Plus size={14} />
                 Add memory
               </Button>
             </div>
             {memories.length === 0 ? (
-              <p className="text-[var(--text-subheadline-size)] text-muted-foreground">
+              <p className="text-(length:--text-subheadline-size) text-muted-foreground">
                 Small facts worth remembering: a nickname, a promise, the weather on the day it happened.
               </p>
             ) : (
@@ -250,7 +250,7 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
                       onChange={(event) => updateMemory(index, { text: event.target.value }, setMemories)}
                       rows={2}
                       maxLength={180}
-                      className="min-w-0 flex-1 resize-none rounded-[var(--corner-sm)] bg-card px-2 py-1.5 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+                      className="min-w-0 flex-1 resize-none rounded-[var(--corner-sm)] bg-card px-2 py-1.5 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] shadow-[inset_0_0_0_1px_var(--input-border)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
                     />
                     <NativeSelect
                       size="sm"

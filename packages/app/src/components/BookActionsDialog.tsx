@@ -132,19 +132,19 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
       >
         <div className="space-y-4">
           <label className="block space-y-1.5">
-            <span className="text-[var(--text-subheadline-size)] font-medium">Title</span>
+            <span className="text-(length:--text-subheadline-size) font-medium">Title</span>
             <input
               autoFocus
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               maxLength={300}
-              className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-[var(--text-body-size)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              className="h-9 w-full rounded-[var(--corner-md)] bg-card px-3 text-(length:--text-body-size) shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               data-testid="book-title"
             />
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-[var(--text-subheadline-size)] font-medium">
+            <span className="text-(length:--text-subheadline-size) font-medium">
               What is it about? <span className="font-normal text-muted-foreground">Optional</span>
             </span>
             <textarea
@@ -152,15 +152,15 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
               onChange={(event) => setDescription(event.target.value)}
               rows={3}
               maxLength={20000}
-              className="w-full resize-none rounded-[var(--corner-md)] bg-card px-3 py-2 text-[var(--text-body-size)] leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
+              className="w-full resize-none rounded-[var(--corner-md)] bg-card px-3 py-2 text-(length:--text-body-size) leading-[var(--text-body-leading)] shadow-[inset_0_0_0_1px_var(--input-border),var(--elevation-1)] outline-none focus:shadow-[inset_0_0_0_2px_var(--input-focus)]"
               data-testid="book-description"
             />
           </label>
 
           {canExportImages ? (
             <section className="rounded-[var(--corner-lg)] border border-border p-4">
-              <h3 className="text-[var(--text-callout-size)] font-medium">Images</h3>
-              <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+              <h3 className="text-(length:--text-callout-size) font-medium">Images</h3>
+              <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
                 Save every picture in this book as a JPEG, in a new folder you choose. The manuscript is not
                 included.
               </p>
@@ -177,7 +177,7 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
               <div
                 role="status"
                 data-testid="export-images-note"
-                className="text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)]"
+                className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]"
               >
                 {exportNote ? (
                   <>
@@ -198,8 +198,8 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
           ) : null}
 
           <section className="rounded-[var(--corner-lg)] border border-border p-4">
-            <h3 className="text-[var(--text-callout-size)] font-medium">Delete this book</h3>
-            <p className="mt-1 text-[var(--text-subheadline-size)] leading-[var(--text-subheadline-leading)] text-muted-foreground">
+            <h3 className="text-(length:--text-callout-size) font-medium">Delete this book</h3>
+            <p className="mt-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
               It moves to <span className="font-mono">.studio/trash/books</span> inside the library. Nothing is erased, and
               you can restore the folder from there.
             </p>

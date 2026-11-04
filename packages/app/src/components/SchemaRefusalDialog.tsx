@@ -85,7 +85,7 @@ export function SchemaRefusalDialog({ detectedSchema, onBack }: Props) {
             it.
           </p>
           {summary ? (
-            <pre data-testid="schema-refusal-summary" className="thin-scroll overflow-x-auto rounded-[var(--corner-lg)] bg-muted p-3 text-[var(--text-caption-1-size)] whitespace-pre-wrap">
+            <pre data-testid="schema-refusal-summary" className="thin-scroll overflow-x-auto rounded-[var(--corner-lg)] bg-muted p-3 text-(length:--text-caption-size) whitespace-pre-wrap">
               {summary}
             </pre>
           ) : (
