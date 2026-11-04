@@ -233,9 +233,8 @@ Rules:
   ChatGPT plan), [012](specs/012-automated-verification/spec.md) verification and
   [013](specs/013-builds-and-deployment/spec.md) builds. They refine 002; where they disagree, the newer
   spec wins and 002 is amended.
-- Every inherited defect (F-001…F-050) has a disposition in
-  [`docs/FEEDBACK-DISPOSITION.md`](docs/FEEDBACK-DISPOSITION.md). When a requirement exists because of
-  a defect, keep the citation; a regression should reopen a named failure, not a generic bug.
+- When a requirement exists because of an inherited defect (F-001…F-050), keep the citation; a
+  regression should reopen a named failure, not a generic bug.
 - Spec Kit is installed (`specify`, `.opencode/commands/speckit.*`, `.specify/`). Use
   `/speckit-specify`, `/speckit-plan`, `/speckit-tasks` and `/speckit-implement` rather than inventing a
   document shape.

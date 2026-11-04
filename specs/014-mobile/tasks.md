@@ -36,6 +36,6 @@
 
 ## Dependencies
 
-- T001–T005 shipped in `eb8cfa2`; T006–T009 completed the touch-target and overflow pass. T018 added the shared Settings surface and the dialog/touch fixes found in the workspace audit. The mobile spec is not complete until T014–T017 run against the real device.
-- T010–T013 are delivered against spec 010's browser adapters and spec 013's web build (`6f90cfd` and later). `bun run ios:iphone`, `bun run ios:ipad` and `scripts/simulator-pair.mjs` drive the devices.
+- T001–T005 shipped in `eb8cfa2` (a pre-event commit); T006–T009 completed the touch-target and overflow pass. T018 added the shared Settings surface and the dialog/touch fixes found in the workspace audit. The mobile spec is not complete until T014–T017 run against the real device.
+- T010–T013 are delivered against spec 010's browser adapters and spec 013's web build (`6f90cfd`, a pre-event commit, and later). `bun run ios:iphone`, `bun run ios:ipad` and `scripts/simulator-pair.mjs` drive the devices.
 - T014–T017 depend on a real Capacitor build; a shell-only placeholder does not count.

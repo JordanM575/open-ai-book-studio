@@ -166,8 +166,6 @@ See [docs/FORMAT.md](docs/FORMAT.md) for the exact schema and the conflict proto
 - [docs/FORMAT.md](docs/FORMAT.md) — the library format, normative
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — processes, save protocol, sync model
 - [docs/DESIGN.md](docs/DESIGN.md) — Liquid Glass rules, type, voice, accessibility
-- [docs/FEEDBACK-DISPOSITION.md](docs/FEEDBACK-DISPOSITION.md) — every inherited defect and what
-  happened to it
 - [docs/DECISIONS.md](docs/DECISIONS.md) — the decision register: what is settled, what is open, what
   each open question blocks
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — environments, artifact names, promotion, rollback and CI

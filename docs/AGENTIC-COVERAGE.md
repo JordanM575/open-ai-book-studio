@@ -1,6 +1,6 @@
 # Agentic coverage audit
 
-**Checked:** 2026-10-26, branch `015-web-target`, commit `5ea08e9`; prompt, context, approval,
+**Checked:** 2026-10-26, branch `015-web-target`, commit `5ea08e9` (a pre-event commit); prompt, context, approval,
 per-turn model and untrusted-data rows updated after that audit.
 **Question:** do the specs cover the full agentic suite?
 

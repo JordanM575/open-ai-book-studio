@@ -38,7 +38,7 @@ No constitution exception is required.
 
 ### Delivered
 
-Commit `eb8cfa2` added responsive library/workspace layouts, compact header, bottom action bar, chapter drawer, full-screen agent sheet, tablet rail, manuscript sizing, responsive dialogs, and the `STUDIO_WINDOW_SIZE`/`STUDIO_CAPTURE` screenshot harness. The screens were manually rendered at iPhone, iPad mini and desktop sizes. The Capacitor shell spike is recorded in `docs/research/capacitor-ios-spike.md`.
+Commit `eb8cfa2` (a pre-event commit) added responsive library/workspace layouts, compact header, bottom action bar, chapter drawer, full-screen agent sheet, tablet rail, manuscript sizing, responsive dialogs, and the `STUDIO_WINDOW_SIZE`/`STUDIO_CAPTURE` screenshot harness. The screens were manually rendered at iPhone, iPad mini and desktop sizes. The Capacitor shell spike is recorded in `docs/research/capacitor-ios-spike.md`.
 
 ### Remaining
 

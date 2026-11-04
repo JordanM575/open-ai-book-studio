@@ -233,6 +233,11 @@ Update the `Unreleased` section before every commit.
   AGENTS.md no longer says specs 009 and 012 have no task list. The agent check's notes in
   `docs/TESTING.md`, spec 012 T034 and its entry above now say that a hidden run logs its
   notifications and that an approval resumes the whole conversation.
+- The docs no longer depend on anything the public repository will not have. The hackathon README
+  states the decisions (Indie, solo, a labelled baseline plus the event commits, a public
+  repository) instead of the planning-stage worktree and mirror plan; the four links to the removed
+  feedback disposition are reworded; commit hashes that will not exist publicly are dropped or
+  marked as pre-event; and the last "legacy port" titles now say earlier-studio import.
 - The film script is approved for recording. The opening motion plates now show only what existed
   before the event (`book.json` and the chapters), so the segment labelled "Built before the event"
   no longer shows the event's image files or a cutout. The retired SAM plate is marked as not in the

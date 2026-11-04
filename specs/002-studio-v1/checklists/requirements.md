@@ -35,6 +35,5 @@
   Assumptions and delegated to ADR 0007, because it constrains planning without changing what the
   author can do. Requirements stay behaviour-only.
 - FR numbers 001–070 are grouped by domain so that plans and tasks can cite a stable subset.
-- Every inherited feedback item F-001…F-050 is dispositioned in `docs/FEEDBACK-DISPOSITION.md`; the
-  requirements above already assume those dispositions, so a requirement existing does not by itself
-  mean the behaviour was inherited unfixed.
+- The requirements above already assume the inherited feedback items F-001…F-050, so a requirement
+  existing does not by itself mean the behaviour was inherited unfixed.

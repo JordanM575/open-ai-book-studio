@@ -20,7 +20,8 @@ able to tell what was created then. So the film:
 Some event shots have older parts on screen, such as the agent loop, the tool lines, checked saves,
 undo and the Word export itself. The film shows those parts but never names them.
 
-The event began at the cut tag `meta-base-2026-10-26` (commit `bb9af11`).
+The event began at the cut tag `meta-base-2026-10-26`; in the public repository the cut is the first
+commit, the labelled baseline.
 
 | Time | Picture | Voiceover | On-screen text | Built | Live |
 | --- | --- | --- | --- | --- | --- |

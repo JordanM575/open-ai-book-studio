@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Legacy Port
+# Specification Quality Checklist: Earlier Studio Import
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 

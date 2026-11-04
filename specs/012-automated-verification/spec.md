@@ -249,7 +249,7 @@ simulate a release with a failing gate and confirm packaging stops.
   that makes an unintended request MUST fail rather than silently pass.
 - **FR-017**: Provider fixtures MUST be recorded from real exchanges with secrets and account identifiers
   removed, and MUST state the date and provider version they came from.
-- **FR-018**: The legacy-port suite MUST generate its own old-format exports, including malformed, huge
+- **FR-018**: The earlier-studio import suite MUST generate its own old-format exports, including malformed, huge
   and partial examples, rather than committing a real export.
 
 ### Live providers

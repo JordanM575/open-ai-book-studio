@@ -23,14 +23,14 @@
 
 - [x] T007 Run `bun run submission:check`, `bun run verify` and `bun run smoke`; record the commit and
   test count in `hackathon/SUBMISSION.md`.
-  Ran 2026-11-03 on the working tree at `d7148ed` and recorded a dated addendum: verify passes
+  Ran 2026-11-03 on the working tree and recorded a dated addendum: verify passes
   (1278 tests, 0 fail), smoke passes 29/29, and the submission check reports not ready for exactly
   one reason — the tree is uncommitted (118 modified, 129 untracked), with no forbidden path,
-  secret or sample problem. The submitted `8a42620` evidence stands unchanged; submitting newer
+  secret or sample problem. The submitted 2026-10-26 evidence stands unchanged; submitting newer
   work needs the author's own review and commit.
 - [x] T008 Clean clone the submitted revision and repeat the install/verify/smoke pass; record the
   result.
-  Recorded in `hackathon/SUBMISSION.md` ("Code verified at" `8a42620`, 2026-10-26): fresh Gitea clone,
+  Recorded in `hackathon/SUBMISSION.md` ("Code verified at" 2026-10-26): fresh clone,
   487 packages, verify (typecheck, 568 tests, desktop/toolkit/web builds), e2e 8/8 and coverage above
   the floor. T007's 2026-11-03 addendum re-confirms verify/smoke on the working tree.
 - [ ] T009 Make the repository public only after the scan passes; fill the repository link and the
@@ -42,5 +42,5 @@
 ## Dependencies
 
 - T001–T006 are unblocked.
-- T007–T010 depend on the film and the Gitea/GitHub visibility decision.
+- T007–T010 depend on the film and the repository visibility decision.
 - T011 is the deadline gate.

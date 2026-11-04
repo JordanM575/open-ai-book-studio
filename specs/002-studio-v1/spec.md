@@ -15,9 +15,8 @@ account, a server, or custody of the author's work.
 
 This specification replaces the earlier prototype's product definition. It is the
 white-room statement of what version 1 must do, written from the author's side of the screen. The
-earlier studio's defect log (F-001…F-050) is treated as evidence about what authors need; every
-item is dispositioned in `docs/FEEDBACK-DISPOSITION.md`, and the requirements below already assume
-those lessons.
+earlier studio's defect log (F-001…F-050) is treated as evidence about what authors need, and the
+requirements below already assume those lessons.
 
 ## Clarifications
 
