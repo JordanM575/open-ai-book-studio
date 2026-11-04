@@ -61,7 +61,7 @@ in a last-minute document on someone's desktop.
 ## Acceptance scenarios
 
 1. **Open the sample.** A judge opens `samples/the-salt-road` in the desktop app; the book, cast,
-  chapters, illustration and cutout are present, with no author data.
+  chapters, illustration and character figure are present, with no author data.
 2. **Clean clone.** A fresh clone of the submitted commit installs and passes the documented verify and
    smoke commands.
 3. **Public scan.** The secret and author-data scan finds no credential, `.env`, personal path or

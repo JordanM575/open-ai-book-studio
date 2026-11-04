@@ -38,7 +38,7 @@ async function setup() {
   cleanups.push(root);
   const library = await Library.open(root);
   const stub = undefined as never;
-  registerIpc({ requireLibrary: () => library } as never, () => null, stub, stub, stub, stub, stub, stub, stub, stub);
+  registerIpc({ requireLibrary: () => library } as never, () => null, stub, stub, stub, stub, stub, stub, stub);
   return { root, library };
 }
 

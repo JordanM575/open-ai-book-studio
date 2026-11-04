@@ -11,7 +11,7 @@ import { runLiveChecks, type LiveResult } from "../src/main/live-checks";
 
 /*
  * The live check proves what the studio can do with a real Meta key: the catalogue, a writing turn
- * that changes a file, dictation against a known phrase, speech, an image and a cutout. Here every
+ * that changes a file, dictation against a known phrase, speech and an image. Here every
  * provider is a fetch stub on `.invalid` hosts, and `say` and `afconvert` are stand-in scripts, so
  * the verdicts are checked without a key, a network or a sound. The library is a copy of the
  * committed sample, as in the real check.
@@ -150,7 +150,7 @@ function detail(results: LiveResult[], name: string): string {
 }
 
 async function leftovers(): Promise<string[]> {
-  return (await readdir(tmpdir())).filter((name) => /^studio-live-(agent|voice|sam)-/.test(name));
+  return (await readdir(tmpdir())).filter((name) => /^studio-live-(agent|voice)-/.test(name));
 }
 
 type Listener = (event: AgentEvent) => void;
@@ -199,9 +199,7 @@ describe("live checks", () => {
         "meta.invalid/v1/asr/transcribe": () => Response.json({ transcript: PHRASE, audioDurationMs: 2400 }),
         "openai.invalid/v1/audio/speech": () => new Response(pcm(true), { headers: { "content-type": "audio/pcm" } }),
         "meta.invalid/v1/images/generations": () =>
-          Response.json({ data: [{ b64_json: Buffer.from(png).toString("base64") }], output_format: "png" }),
-        "meta.invalid/v1/responses": () =>
-          Response.json({ output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "" }] }] })
+          Response.json({ data: [{ b64_json: Buffer.from(png).toString("base64") }], output_format: "png" })
       });
 
       const models = ["muse-spark-1.2-contributor", "muse-spark-1.3-contributor", "muse-spark-1.3"];
@@ -212,15 +210,13 @@ describe("live checks", () => {
         "a real writing turn": "ok",
         dictation: "ok",
         speaking: "ok",
-        "Muse Image": "ok",
-        "SAM 3.1": "blocked"
+        "Muse Image": "ok"
       });
       expect(detail(results, "the model catalogue")).toBe(`3 models: ${models.join(", ")}`);
       expect(detail(results, "a real writing turn")).toMatch(/^the agent replied \(\d+ characters\) and the file on disk changed$/);
       expect(detail(results, "dictation")).toBe(`“${PHRASE}” — 100% of the words (9 of 9), 2400ms of audio`);
       expect(detail(results, "speaking")).toMatch(/^\d+ bytes of audio\/wav in 1 request, .+, level 8000$/);
       expect(detail(results, "Muse Image")).toMatch(new RegExp(`^${png.byteLength} bytes of image/png, model .+, 1024x1024$`));
-      expect(detail(results, "SAM 3.1")).toContain("returned no records and no usage");
 
       // The turn ran on the Contributor model the spec names, not the first one listed.
       const turn = calls.find((call) => call.url.pathname.endsWith("/chat/completions"));
@@ -233,7 +229,7 @@ describe("live checks", () => {
   );
 
   test(
-    "a turn that changes nothing, a missed phrase, silence and a tiny image fail; refused access is blocked",
+    "a turn that changes nothing, a missed phrase, silence and a tiny image fail",
     async () => {
       const { sampleRoot } = await bench();
       network({
@@ -249,8 +245,7 @@ describe("live checks", () => {
               }
             ],
             output_format: "png"
-          }),
-        "meta.invalid/v1/responses": () => new Response("model access denied", { status: 403 })
+          })
       });
 
       const results = await runLiveChecks(providers({ models: ["muse-spark-1.3-contributor"] }) as never, { sampleRoot });
@@ -260,8 +255,7 @@ describe("live checks", () => {
         "a real writing turn": "failed",
         dictation: "failed",
         speaking: "failed",
-        "Muse Image": "failed",
-        "SAM 3.1": "blocked"
+        "Muse Image": "failed"
       });
       expect(detail(results, "the model catalogue")).toBe("1 model: muse-spark-1.3-contributor");
       expect(detail(results, "a real writing turn")).toBe("the agent replied, but the file did not change.");
@@ -284,8 +278,7 @@ describe("live checks", () => {
           }),
         "meta.invalid/v1/asr/transcribe": () => Response.json({ transcript: PHRASE }),
         "openai.invalid/v1/audio/speech": () => new Response(new Uint8Array(6_000).fill(7), { headers: { "content-type": "audio/mpeg" } }),
-        "meta.invalid/v1/images/generations": () => new Response("upstream timeout", { status: 400 }),
-        "meta.invalid/v1/responses": () => new Response("bad gateway", { status: 502 })
+        "meta.invalid/v1/images/generations": () => new Response("upstream timeout", { status: 400 })
       });
 
       const logged = spyOn(console, "error").mockImplementation(() => {});
@@ -301,8 +294,7 @@ describe("live checks", () => {
         "a real writing turn": "failed",
         dictation: "ok",
         speaking: "ok",
-        "Muse Image": "failed",
-        "SAM 3.1": "failed"
+        "Muse Image": "failed"
       });
       expect(detail(results, "a real writing turn")).not.toContain(KEY);
       expect(detail(results, "a real writing turn").length).toBeGreaterThan(0);
@@ -322,8 +314,7 @@ describe("live checks", () => {
       "the model catalogue": "blocked",
       dictation: "failed",
       speaking: "blocked",
-      "Muse Image": "failed",
-      "SAM 3.1": "failed"
+      "Muse Image": "failed"
     });
     expect(detail(results, "the model catalogue")).toBe("There is no Meta connection in the studio.");
     expect(detail(results, "dictation")).toBe("[invalid-request] Connect Meta in Settings before using voice dictation.");

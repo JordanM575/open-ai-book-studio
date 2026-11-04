@@ -265,6 +265,17 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- The SAM 3.1 cutout is removed from the build (D-158), so the app matches the submission, which
+  claims no cutout. The Illustration dialog no longer offers "Cut out a character", its object search
+  or its cast picker when a Meta connection exists; generating an illustration and attaching it to a
+  chapter are unchanged. Gone with it: the `segmentation:segment`, `images:saveCutout` and
+  `images:attachCharacter` channels, the main-process segmentation service, the core prompt rules,
+  the renderer's mask compositing, the live check's SAM step and the `@meta-sam/parser` dependency.
+  The desktop build now ships 129 packages and the web build 49, every one passing the license gate
+  without an exception, so `scripts/license-allow.json` is empty and D-137 is superseded. A book saved
+  by an earlier build keeps its `cutout` image records: they still read, show and export, and the
+  image store can no longer write one (`docs/FORMAT.md`). The sample's 512×512 figure of Mara, drawn
+  in code by the film fixture generator, is now recorded as `imported`, with the same bytes.
 - The GitHub workflow runs only when started by hand, with Bun pinned to 1.4.4, until a Linux run has
   been watched passing. Verification runs locally with `bun run verify`, as the README says.
 - The README is the public front page: the pitch and tagline, a plain account of the pre-event base

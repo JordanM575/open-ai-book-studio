@@ -107,7 +107,6 @@ there, and deletes it, so the author's own book is never opened.
 | Dictation | The check speaks a known phrase and scores the transcript against it — nine of nine words |
 | Speaking | Real audio, measured, not just bytes |
 | Muse Image | A real PNG at 1024×1024 |
-| SAM 3.1 | Blocked on the model's availability for the key, recorded as blocked rather than failed |
 
 A `blocked` result is an account fact, not a defect. The distinction is deliberate: only one of the
 two is the studio's problem.
@@ -126,8 +125,8 @@ lines, and they are the honest answer to "what is not covered":
 
 - `packages/app/src/components/ManuscriptEditor.tsx` — the editor's formatting and paste paths.
   History, debounce and save are covered; the rest needs a real contenteditable.
-- `packages/app/src/components/VoiceButton.tsx` and `packages/app/src/lib/cutout.ts` — both draw on a
-  canvas or an audio element that the test DOM does not provide.
+- `packages/app/src/components/VoiceButton.tsx` — it records through the microphone, which the test
+  DOM does not provide.
 
 Everything else in the product is above 80% of lines, and the workspace as a whole is at 93.0%.
 

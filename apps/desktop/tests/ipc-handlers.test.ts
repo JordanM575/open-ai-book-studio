@@ -174,12 +174,6 @@ async function setup(options: { open?: boolean; window?: object } = {}) {
   const images = {
     generate: mock(async (_input: unknown) => ({ bytes: PNG, model: "muse-image", size: "1024x1024", costUsd: 0.04 }))
   };
-  const segmentation = {
-    segment: mock(async (input: { bytes: Uint8Array; mimeType: string }) => ({
-      matches: [{ score: 0.9 }],
-      received: { bytes: input.bytes.byteLength, mimeType: input.mimeType }
-    }))
-  };
   const toolsBridge = {
     catalog: mock(async () => [
       { name: "read_chapter", description: "Read a chapter.", tier: "read" },
@@ -200,7 +194,6 @@ async function setup(options: { open?: boolean; window?: object } = {}) {
     agent as never,
     voice as never,
     images as never,
-    segmentation as never,
     toolsBridge as never,
     settings as never,
     speech as never,
@@ -208,8 +201,8 @@ async function setup(options: { open?: boolean; window?: object } = {}) {
     bridge as never,
     (bookId) => working.has(bookId)
   );
-  const services = [providers, agent, voice, speech, images, segmentation];
-  return { root, library, studio, saved, providers, agent, voice, speech, images, segmentation, bridge, working, services };
+  const services = [providers, agent, voice, speech, images];
+  return { root, library, studio, saved, providers, agent, voice, speech, images, bridge, working, services };
 }
 
 async function call(channel: string, payload?: unknown): Promise<Result<unknown>> {
@@ -319,10 +312,7 @@ describe("ipc boundary", () => {
       [IPC.images.read, { bookId: id, imageId: "img_" }],
       [IPC.images.generate, { bookId: id, prompt: "A lighthouse.", size: "800x600" }],
       [IPC.images.attach, { bookId: id, imageId: "img_abcdef01", chapterId: "chapter" }],
-      [IPC.images.remove, {}],
-      [IPC.images.saveCutout, { bookId: id, sourceImageId: "img_abcdef01", bytes: PNG, prompt: "Mara", confidence: 2 }],
-      [IPC.images.attachCharacter, { bookId: id, imageId: "img_abcdef01", characterId: "mara" }],
-      [IPC.segmentation.segment, { bookId: id, imageId: "img_abcdef01", prompt: "" }]
+      [IPC.images.remove, {}]
     ];
     for (const [channel, payload] of refused) {
       const result = await call(channel, payload);
@@ -802,8 +792,8 @@ describe("voice and illustrations", () => {
     expect(speech.speak).toHaveBeenCalledWith({ text: "Read this.", voice: "alloy", speed: 1.25 });
   });
 
-  test("an illustration is generated into the book, read back, cut out, attached and removed", async () => {
-    const { root, library, images, segmentation } = await setup();
+  test("an illustration is generated into the book, read back, attached and removed", async () => {
+    const { root, library, images } = await setup();
     const { bookId, one, two } = await book(library);
     const generated = await data<{ id: string; chapterId: string | null; fileName: string }>(IPC.images.generate, {
       bookId,
@@ -821,40 +811,16 @@ describe("voice and illustrations", () => {
     expect(read.dataUrl).toBe(`data:image/png;base64,${Buffer.from(PNG).toString("base64")}`);
     expect(await data(IPC.images.read, { bookId, imageId: "img_missing01" })).toBeNull();
 
-    const segmented = await data(IPC.segmentation.segment, { bookId, imageId: generated.id, prompt: "person" });
-    expect(segmented).toEqual(expect.objectContaining({ received: { bytes: PNG.byteLength, mimeType: "image/png" } }));
-    expect(segmentation.segment).toHaveBeenCalledTimes(1);
-    expect(await call(IPC.segmentation.segment, { bookId, imageId: "img_missing01", prompt: "person" })).toEqual({
-      ok: false,
-      error: { code: "not-found", message: "The source image is missing from this book." }
-    });
-
-    expect(await call(IPC.images.saveCutout, { bookId, sourceImageId: "img_missing01", bytes: PNG, prompt: "Mara" })).toEqual({
-      ok: false,
-      error: { code: "not-found", message: "The source image is missing from this book." }
-    });
-    const cutout = await data<{ id: string; kind: string; cutoutOf: string }>(IPC.images.saveCutout, {
-      bookId,
-      sourceImageId: generated.id,
-      bytes: PNG,
-      prompt: "Mara",
-      confidence: 0.82
-    });
-    expect(cutout).toEqual(expect.objectContaining({ kind: "character", cutoutOf: generated.id }));
-    expect(await data(IPC.images.attachCharacter, { bookId, imageId: cutout.id, characterId: "char_mara0001" })).toEqual(
-      expect.objectContaining({ characterId: "char_mara0001" })
-    );
-    expect(await call(IPC.images.attachCharacter, { bookId, imageId: generated.id, characterId: "char_mara0001" })).toEqual({
-      ok: false,
-      error: { code: "invalid", message: "Only a character image can be attached to a cast member." }
-    });
-
     expect(await data(IPC.images.attach, { bookId, imageId: generated.id, chapterId: two.id })).toEqual(
       expect.objectContaining({ chapterId: two.id })
     );
     expect(await data(IPC.images.remove, { bookId, imageId: loose.id })).toBeNull();
     const listed = await data<{ manifest: { images: Array<{ id: string }> } }>(IPC.images.list, bookId);
-    expect(listed.manifest.images.map((image) => image.id).sort()).toEqual([generated.id, cutout.id].sort());
+    expect(listed.manifest.images.map((image) => image.id)).toEqual([generated.id]);
+    // The SAM cutout was removed from the build (D-158): no channel can segment an image or save a cutout.
+    for (const channel of ["segmentation:segment", "images:saveCutout", "images:attachCharacter"]) {
+      expect(handlers.has(channel)).toBe(false);
+    }
   });
 });
 

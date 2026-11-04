@@ -83,8 +83,8 @@ cut. The public history starts with a labelled baseline commit at that cut, then
 | Dictation and listening | Muse Voice Transcribe 1.0 | Dictation at the caret, and questions spoken to the ambient strip |
 | Spoken replies | OpenRouter text-to-speech | **Not a Meta model.** A partner service that voices the strip's replies |
 
-No cutout feature is claimed. The illustration dialog still offers a SAM 3.1 cutout, but its requests
-return no records ([D-158](docs/DECISIONS.md)).
+The cutout feature is not in the build. SAM 3.1 cutouts were built, but every request returned no
+records, so they were removed ([D-158](docs/DECISIONS.md)).
 
 Keys are encrypted with Electron's safeStorage under a master key in your macOS login keychain. The
 app's profile holds only ciphertext, and no key is written to your library, logs or exports.
@@ -215,5 +215,4 @@ books you write with it remain yours. The sample's text and images are dedicated
 under CC0 1.0; see [samples/README.md](samples/README.md).
 
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) is generated from the build and lists every package
-each build ships, with its license. One is an allowed exception: the desktop build ships Meta's
-`@meta-sam/parser` under the SAM License, not Apache-2.0 ([D-137](docs/DECISIONS.md)).
+each build ships, with its license. Every one passes the license gate without an exception.

@@ -28,8 +28,8 @@ export interface AddImageInput {
   provider: string;
   model: string;
   size?: string;
-  source?: ImageSource;
-  cutoutOf?: string | null;
+  /** `cutout` is legacy: an older manifest may hold one and it still reads, but nothing writes it (D-158). */
+  source?: Exclude<ImageSource, "cutout">;
   costUsd?: number | null;
   revisedPrompt?: string | null;
   confidence?: number | null;
@@ -145,7 +145,7 @@ export class ImageStore {
         size: input.size ?? "",
         source: input.source ?? "generated",
         createdAt: this.env.runtime.now(),
-        cutoutOf: input.cutoutOf ?? null,
+        cutoutOf: null,
         costUsd: input.costUsd ?? null,
         revisedPrompt: input.revisedPrompt ?? null,
         confidence: input.confidence ?? null
@@ -180,7 +180,7 @@ export class ImageStore {
     });
   }
 
-  /** Attach a character image or cutout to a cast member. */
+  /** Attach a character image, including an older library's cutout, to a cast member. */
   async attachCharacter(bookId: string, imageId: string, characterId: string): Promise<ImageRecord> {
     return this.serialize(bookId, async () => {
       const state = await this.readManifest(bookId);

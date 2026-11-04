@@ -181,7 +181,8 @@ profile test.
       Settings → About → Open-source licenses shows the list on desktop (`app:licenses`, read-only)
       and web (a same-origin fetch). `bun run submission:check` fails on no license, an unknown
       license, `UNLICENSED` or copyleft unless `scripts/license-allow.json` allows it with a reason;
-      the one exception is `@meta-sam/parser` on desktop (D-137). Tested against a synthetic
+      it allows none since its one exception, `@meta-sam/parser` on desktop (D-137), left the build
+      with the cutout (D-158). Tested against a synthetic
       Bun-layout install in `licenses.test.ts`, the policy in `license-gate.test.ts`, the view in
       `licenses-dialog.test.tsx`, the web fetch in `apps/web/tests/licenses.test.ts`, the smoke run
       and four axe scans of the view in `bun run a11y`. Not yet proven: that the packaged archive

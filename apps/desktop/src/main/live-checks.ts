@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -8,7 +8,6 @@ import { MUSE_SPARK_CONTRIBUTOR } from "@ai-book-studio/core/providers/compatibi
 import { ProviderError } from "@ai-book-studio/core/providers/types";
 import { AgentRuntime } from "./agent/runtime";
 import { ImageService } from "./images";
-import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
 import { SpeechService } from "./speech";
 import { Library } from "./library/store";
@@ -33,7 +32,7 @@ const PHRASE = "The lighthouse keeper counted the ships that never came.";
  *
  * Every one of these was a blocker until a key arrived, and each is worth proving rather than
  * asserting: the model catalogue, a real writing turn that changes a real file, dictation with a
- * recording whose words are known, an image from Muse Image, and a cutout from SAM 3.1.
+ * recording whose words are known, and an image from Muse Image.
  *
  * The library it writes to is a copy of the committed sample, in a temporary folder, deleted
  * afterwards. The author's own book is never touched.
@@ -233,41 +232,6 @@ export async function runLiveChecks(
     );
   } catch (error) {
     record("Muse Image", "failed", message(error));
-  }
-
-  /* ------------------------------------------------------------- a cutout */
-
-  {
-    const temp = await mkdtemp(join(tmpdir(), "studio-live-sam-"));
-    try {
-      const images = join(options.sampleRoot, "books", "book_6788c2887dc3401e", "images");
-      const files = (await readdir(images)).filter((name) => name.endsWith(".png"));
-      if (files.length === 0) {
-        record("SAM 3.1", "blocked", "The sample has no image to segment.");
-      } else {
-        const bytes = new Uint8Array(await readFile(join(images, files[0]!)));
-        const result = await new SegmentationService(providers).segment({
-          prompt: "person",
-          bytes,
-          mimeType: "image/png"
-        });
-        const matches = result.matches?.length ?? 0;
-        record(
-          "SAM 3.1",
-          matches > 0 ? "ok" : "blocked",
-          matches > 0
-            ? `${matches} match${matches === 1 ? "" : "es"}`
-            : "Meta accepted the request, marked it completed, and returned no records and no usage. The shape is the documented one, so the model is most likely not enabled for this key."
-        );
-      }
-    } catch (error) {
-      const text = message(error);
-      // Access to a model is an account fact, not a defect in the studio.
-      const blocked = /access|not.*found|forbidden|unauthor|permission|entitle/i.test(text);
-      record("SAM 3.1", blocked ? "blocked" : "failed", text);
-    } finally {
-      await rm(temp, { recursive: true, force: true });
-    }
   }
 
   return results;

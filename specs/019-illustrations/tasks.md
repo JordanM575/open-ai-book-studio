@@ -35,7 +35,8 @@
 
 - [x] T009 Add a UI test for the panel states and attachment selection, then run the full verification.
   `manuscript-editor.test.ts` now covers the missing-connection state, an attached image, generation with
-  the chapter id, attaching an existing image and the SAM match list; the full suite is 394 tests.
+  the chapter id and attaching an existing image (the SAM match list it once covered left with D-158);
+  the full suite was 394 tests.
 - [x] T010a Live Muse Image generation: 3.8 MB of PNG at 1024×1024 from `muse-image-1.0`, through the
   app's own image service. Recorded in `docs/research/live-meta-2026-10-26.md`.
 - [x] T010b Export the manuscript to Word with the image embedded, and the library to an archive.
@@ -63,4 +64,4 @@
 
 - T001–T005 need no live key.
 - T010 needs a Meta key and Muse Image access.
-- SAM cutouts (spec 020) reuse the image record and `cutoutOf` field.
+- SAM cutouts (spec 020, removed by D-158) reused the image record and `cutoutOf` field.

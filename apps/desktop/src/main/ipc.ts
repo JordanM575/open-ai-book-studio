@@ -71,7 +71,6 @@ import type { VoiceService } from "./voice";
 import type { SpeechService } from "./speech";
 import { ttsCapability } from "@ai-book-studio/core/providers/tts";
 import type { ImageService } from "./images";
-import type { SegmentationService } from "./segmentation";
 
 const folderInput = z.string().min(1).max(4096);
 const contentInput = z.string().max(20_000_000);
@@ -142,7 +141,6 @@ export function registerIpc(
   agent: AgentRuntime,
   voice: VoiceService,
   images: ImageService,
-  segmentation: SegmentationService,
   toolsBridge: ToolBridge,
   settings: SettingsStore,
   speech: SpeechService,
@@ -961,64 +959,6 @@ export function registerIpc(
     const input = z.object({ bookId: idSchema, imageId: imageIdSchema }).parse(payload);
     await studio.requireLibrary().removeImage(input.bookId, input.imageId);
     return null;
-  });
-
-  handle(IPC.images.saveCutout, async (payload) => {
-    const input = z
-      .object({
-        bookId: idSchema,
-        sourceImageId: imageIdSchema,
-        bytes: z.union([z.instanceof(ArrayBuffer), z.instanceof(Uint8Array)]),
-        prompt: z.string().trim().min(1).max(200),
-        confidence: z.number().min(0).max(1).nullable().optional(),
-        characterId: z.string().regex(/^char_[A-Za-z0-9-]{6,}$/).nullable().optional()
-      })
-      .parse(payload);
-    const library = studio.requireLibrary();
-    const source = await library.readImage(input.bookId, input.sourceImageId);
-    if (!source) throw new ProviderError("not-found", "The source image is missing from this book.");
-    return library.addImage(input.bookId, {
-      bytes: new Uint8Array(input.bytes),
-      kind: "character",
-      prompt: input.prompt,
-      provider: "meta",
-      model: "sam-3.1",
-      size: "",
-      source: "cutout",
-      cutoutOf: input.sourceImageId,
-      confidence: input.confidence ?? null,
-      characterId: input.characterId ?? null
-    });
-  });
-
-  handle(IPC.images.attachCharacter, async (payload) => {
-    const input = z
-      .object({
-        bookId: idSchema,
-        imageId: imageIdSchema,
-        characterId: z.string().regex(/^char_[A-Za-z0-9-]{6,}$/)
-      })
-      .parse(payload);
-    return studio.requireLibrary().attachCharacterImage(input.bookId, input.imageId, input.characterId);
-  });
-
-  handle(IPC.segmentation.segment, async (payload) => {
-    const input = z
-      .object({
-        bookId: idSchema,
-        imageId: imageIdSchema,
-        connectionId: connectionId.optional(),
-        prompt: z.string().trim().min(1).max(200)
-      })
-      .parse(payload);
-    const stored = await studio.requireLibrary().readImage(input.bookId, input.imageId);
-    if (!stored) throw new ProviderError("not-found", "The source image is missing from this book.");
-    return segmentation.segment({
-      ...(input.connectionId ? { connectionId: input.connectionId } : {}),
-      prompt: input.prompt,
-      bytes: stored.bytes,
-      mimeType: stored.record.mimeType
-    });
   });
 
   /* --------------------------------------------------------------------- agent */

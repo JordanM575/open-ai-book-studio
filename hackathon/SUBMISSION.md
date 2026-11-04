@@ -49,9 +49,9 @@ public repository that cut is the first commit, "Baseline: AI Book Studio as it 
 - `bookwriter` CLI, MCP server and the loopback backend with per-run token (spec 018).
 - Image storage (`images.json`), Muse Image generation, illustration UI and DOCX embedding (spec 019),
   and an export of every image in a book as a JPEG from its actions (002 FR-050).
-- ~~SAM 3.1 cutouts~~ — built, then retired (D-158). The request reaches Meta and is accepted, but
-  returns no records and no usage on real and synthetic images alike, so nothing is built on it and
-  this packet does not claim a cutout.
+- ~~SAM 3.1 cutouts~~ — built, then retired (D-158) and removed from the build on 2026-11-04. The
+  request reaches Meta and is accepted, but returns no records and no usage on real and synthetic
+  images alike, so the studio ships no cutout and this packet does not claim one.
 - Product film plan, timed script, storyboard, deterministic fixture and motion plates (spec 021).
 - Provider compatibility seam, Muse Spark 1.3 Contributor presets and book-level training consent
   (spec 022).
@@ -168,7 +168,7 @@ placeholder.
 | Visual | 112/112 baselines |
 | Coverage | 89.69% of functions and 92.63% of lines over the repository's own 190 files, above the 85/92 floor, which is unchanged |
 | Performance | Within SC-009: book open at 1.01× and the web bundle at 1.09× of their baselines, against limits of 2× and 1.2× |
-| Licenses | 98 desktop and 37 web packages pass the license gate, with one allowed exception (D-137) |
+| Licenses | 129 desktop and 49 web packages pass the license gate, with no exception: the SAM parser left with the cutout (D-158) |
 
 An earlier clean-clone pass on 2026-10-26 (568 tests) is superseded by the event commits.
 

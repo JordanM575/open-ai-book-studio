@@ -274,7 +274,7 @@ describe("what the browser build cannot do yet says so plainly", () => {
     expect(value(await agent.stop("book_any"))).toBeNull();
   });
 
-  test("illustrations, cutouts and voice refuse with the reason", async () => {
+  test("illustrations and voice refuse with the reason", async () => {
     const { studio } = await openStudio();
     expect(value(await studio.images.list("book_any")).manifest.images).toEqual([]);
     expect(value(await studio.images.read("book_any", "img_any"))).toBeNull();
@@ -282,9 +282,6 @@ describe("what the browser build cannot do yet says so plainly", () => {
       await studio.images.generate({} as never),
       await studio.images.attach("book_any", "img_any", "ch_any"),
       await studio.images.remove("book_any", "img_any"),
-      await studio.images.saveCutout({} as never),
-      await studio.images.attachCharacter("book_any", "img_any", "char_any"),
-      await studio.segmentation.segment({} as never),
       await studio.voice.transcribe({} as never),
       await studio.voice.speak({} as never)
     ]) {

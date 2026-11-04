@@ -163,16 +163,36 @@ describe("ImageStore", () => {
 
   test("attaches a character image to a cast member and refuses chapter images", async () => {
     const { store } = setup();
-    const cutout = await store.add(
-      BOOK,
-      addInput({ kind: "character", source: "cutout", cutoutOf: "img_source0001", prompt: "the keeper" })
-    );
-    const attached = await store.attachCharacter(BOOK, cutout.id, "char_image001");
+    const portrait = await store.add(BOOK, addInput({ kind: "character", source: "imported", prompt: "the keeper" }));
+    const attached = await store.attachCharacter(BOOK, portrait.id, "char_image001");
     expect(attached.characterId).toBe("char_image001");
 
     const chapterImage = await store.add(BOOK, addInput());
     await expect(store.attachCharacter(BOOK, chapterImage.id, "char_image001")).rejects.toMatchObject({
       code: "invalid"
     });
+  });
+
+  test("an older library's SAM cutout record still lists, reads and attaches (D-158)", async () => {
+    const { port, store } = setup();
+    const source = await store.add(BOOK, addInput());
+    const figure = await store.add(BOOK, addInput({ kind: "character", source: "imported", prompt: "the keeper" }));
+    // Rewrite the second record the way an earlier build saved a SAM cutout.
+    const before = (await port.readFile(imageManifestPath(BOOK)))!;
+    const legacy = JSON.parse(new TextDecoder().decode(before.bytes));
+    legacy.images[1] = { ...legacy.images[1], source: "cutout", cutoutOf: source.id, model: "sam-3.1", confidence: 0.82 };
+    await port.commitFile(imageManifestPath(BOOK), new TextEncoder().encode(JSON.stringify(legacy)), {
+      kind: "sha256",
+      value: before.sha256
+    });
+
+    const listed = await store.list(BOOK);
+    expect(listed.warning).toBeNull();
+    expect(listed.manifest.images[1]).toMatchObject({ id: figure.id, source: "cutout", cutoutOf: source.id, confidence: 0.82 });
+    expect((await store.read(BOOK, figure.id))?.bytes).toEqual(png());
+    expect((await store.attachCharacter(BOOK, figure.id, "char_image001")).characterId).toBe("char_image001");
+    // A new image is never written as a cutout.
+    const added = await store.add(BOOK, addInput({ kind: "character" }));
+    expect(added).toMatchObject({ source: "generated", cutoutOf: null });
   });
 });

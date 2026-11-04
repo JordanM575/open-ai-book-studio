@@ -16,7 +16,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Desktop app
 
 <!-- licenses:desktop:start -->
-130 packages.
+129 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -31,7 +31,6 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `@floating-ui/dom` | 1.8.0 | MIT |
 | `@floating-ui/react-dom` | 2.1.9 | MIT |
 | `@floating-ui/utils` | 0.2.12 | MIT |
-| `@meta-sam/parser` | 0.1.0 | SAM License, not Apache-2.0 |
 | `@openrouter/ai-sdk-provider` | 3.1.0 | Apache-2.0 |
 | `@radix-ui/number` | 1.1.3 | MIT |
 | `@radix-ui/primitive` | 1.2.0 | MIT |

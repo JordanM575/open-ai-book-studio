@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -27,10 +28,30 @@ describe("the committed sample library", () => {
     expect(detail.book.settings.agent.disabledTools).toEqual([]);
     expect(detail.book.settings.cache.prefixMode).toBe("auto");
   });
+
+  test("presents no SAM cutout, and each image record still matches its bytes", async () => {
+    // SAM left the build (D-158), so the sample's drawn figure of Mara is recorded as imported.
+    const root = await mkdtemp(join(tmpdir(), "abs-sample-images-"));
+    cleanups.push(root);
+    await cp(resolve(import.meta.dir, "../../../samples/the-salt-road"), root, { recursive: true });
+    const library = await Library.open(root);
+    const bookId = (await library.listBooks())[0]!.id;
+    const listed = await library.listImages(bookId);
+    expect(listed.warning).toBeNull();
+    expect(listed.manifest.images.map((image) => [image.kind, image.source, image.cutoutOf])).toEqual([
+      ["chapter", "imported", null],
+      ["character", "imported", null]
+    ]);
+    for (const image of listed.manifest.images) {
+      const bytes = (await library.readImage(bookId, image.id))!.bytes;
+      expect(bytes.byteLength).toBe(image.bytes);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(image.sha256);
+    }
+  });
 });
 
 describe("film fixture", () => {
-  test("builds a complete, original book with an illustration and a character cutout", async () => {
+  test("builds a complete, original book with an illustration and a character figure", async () => {
     const root = await mkdtemp(join(tmpdir(), "abs-film-fixture-"));
     cleanups.push(root);
     const result = await buildFilmFixture(root);
@@ -48,7 +69,7 @@ describe("film fixture", () => {
     expect(listed.warning).toBeNull();
     expect(listed.manifest.images).toHaveLength(2);
     const illustration = listed.manifest.images.find((image) => image.id === result.illustrationId)!;
-    const cutout = listed.manifest.images.find((image) => image.id === result.cutoutId)!;
+    const figure = listed.manifest.images.find((image) => image.id === result.figureId)!;
     expect(illustration).toMatchObject({
       kind: "chapter",
       chapterId: result.chapterIds[0],
@@ -56,19 +77,19 @@ describe("film fixture", () => {
       height: 1024,
       source: "imported"
     });
-    expect(cutout).toMatchObject({
+    expect(figure).toMatchObject({
       kind: "character",
       characterId: result.characterId,
-      cutoutOf: result.illustrationId,
+      cutoutOf: null,
       width: 512,
       height: 512,
-      source: "cutout"
+      source: "imported"
     });
 
     const illustrationBytes = (await library.readImage(result.bookId, result.illustrationId))!.bytes;
     expect([...illustrationBytes.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const cutoutBytes = (await library.readImage(result.bookId, result.cutoutId))!.bytes;
-    expect([...cutoutBytes.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const figureBytes = (await library.readImage(result.bookId, result.figureId))!.bytes;
+    expect([...figureBytes.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
     const manifest = await readFile(join(root, "books", result.bookId, "images.json"), "utf8");
     expect(manifest).not.toContain(root);

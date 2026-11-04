@@ -7,9 +7,9 @@ open a complete book without touching their own work.
 - **Story Bible:** outline, three-act arc, Mara Venn, one memory.
 - **Chapters:** two Markdown files with front matter.
 - **Images:** a 1024×1024 chapter illustration and a 512×512 figure of Mara Venn, with
-  `images.json` provenance. Both are drawn in code by the fixture generator, not by a model. The
-  figure's record says `cutout` because the fixture still models the retired SAM cutout flow
-  ([D-158](../docs/DECISIONS.md)); SAM did not make it, and no cutout feature is claimed.
+  `images.json` provenance. Both are drawn in code by the fixture generator, not by a model, and
+  both records say `imported`. SAM did not make the figure, and the studio has no cutout feature
+  ([D-158](../docs/DECISIONS.md)).
 - **No personal data:** no real library, account, key, email, path or author manuscript.
 
 The text and the images are dedicated to the public domain under

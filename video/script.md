@@ -87,7 +87,7 @@ The film makes none of these claims:
 - **A prompt-cache hit rate.** The Agent dialog may show whatever the build really reports, but the
   narration and on-screen text never quote it.
 - **The fixture's images as Muse Image output.** The sample's images are drawn by the fixture
-  generator, and the character image (recorded as a cutout) never appears.
+  generator, and the character figure never appears.
 
 ## Notes for the read
 

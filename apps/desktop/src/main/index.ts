@@ -24,7 +24,6 @@ import glassesPage from "./glasses/index.html?raw";
 import glassesManifest from "./glasses/manifest.json?raw";
 import { AmbientService } from "./agent/ambient";
 import { ImageService } from "./images";
-import { SegmentationService } from "./segmentation";
 import { VoiceService } from "./voice";
 import { SpeechService } from "./speech";
 import { SettingsStore } from "./settings";
@@ -451,7 +450,6 @@ const started = app.whenReady().then(async () => {
   const voice = new VoiceService(providers);
   const speech = new SpeechService(providers);
   const images = new ImageService(providers);
-  const segmentation = new SegmentationService(providers);
   void vault.repairPermissions().then((permissions) => {
     if (permissions === "corrected") {
       console.log("[credentials] Corrected the credential file to owner-only permissions.");
@@ -503,7 +501,6 @@ const started = app.whenReady().then(async () => {
     agentRuntime,
     voice,
     images,
-    segmentation,
     toolsBridge,
     settings,
     speech,

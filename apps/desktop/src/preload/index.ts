@@ -110,13 +110,7 @@ const api: StudioApi = {
     read: (bookId, imageId) => invoke(IPC.images.read, { bookId, imageId }),
     generate: (input) => invoke(IPC.images.generate, input),
     attach: (bookId, imageId, chapterId) => invoke(IPC.images.attach, { bookId, imageId, chapterId }),
-    remove: (bookId, imageId) => invoke(IPC.images.remove, { bookId, imageId }),
-    saveCutout: (input) => invoke(IPC.images.saveCutout, input),
-    attachCharacter: (bookId, imageId, characterId) =>
-      invoke(IPC.images.attachCharacter, { bookId, imageId, characterId })
-  },
-  segmentation: {
-    segment: (input) => invoke(IPC.segmentation.segment, input)
+    remove: (bookId, imageId) => invoke(IPC.images.remove, { bookId, imageId })
   },
   providers: {
     list: () => invoke(IPC.providers.list),

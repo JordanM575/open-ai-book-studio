@@ -16,7 +16,7 @@
 - [x] T004 Add `scripts/submission-check.ts` and `bun run submission:check`: branch/tree, required
   files, forbidden tracked paths, secret patterns, sample integrity and the clean-clone reminder.
 - [x] T005 Add a test for the sample: JSON parses, chapters exist, images match the manifest, no
-  absolute path or key-like string, and the cutout points at the illustration.
+  absolute path or key-like string, and the character figure is recorded as imported, not as a cutout.
 - [x] T006 Add the sample and the check to the README/quickstart and the hackathon plan.
 
 ## Phase 3 — Publication and evidence

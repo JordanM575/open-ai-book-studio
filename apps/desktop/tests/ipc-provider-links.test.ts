@@ -51,7 +51,7 @@ async function setup(answer: () => Response = () => new Response("unexpected", {
   }) as typeof fetch;
   const providers = new ProviderService(vault, async () => {}, fetchImpl);
   const stub = undefined as never;
-  registerIpc(stub, () => null, providers, stub, stub, stub, stub, stub, stub, stub);
+  registerIpc(stub, () => null, providers, stub, stub, stub, stub, stub, stub);
   return { vault, requests };
 }
 

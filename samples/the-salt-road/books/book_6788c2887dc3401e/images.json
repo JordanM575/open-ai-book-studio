@@ -38,9 +38,9 @@
       "provider": "fixture",
       "model": "film-fixture",
       "size": "512x512",
-      "source": "cutout",
+      "source": "imported",
       "createdAt": "2026-10-26T18:32:33.153Z",
-      "cutoutOf": "img_432d838917394915",
+      "cutoutOf": null,
       "costUsd": null,
       "revisedPrompt": null,
       "confidence": null

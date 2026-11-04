@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Build the deterministic film fixture: one original short book, Story Bible, two chapters, a
- * chapter illustration and a transparent character cutout. The library is written through the real
+ * chapter illustration and a transparent character figure. The library is written through the real
  * `Library`/`ImageStore`, so it is the same format the app reads. It is a fixture, not author data.
  *
  *   bun run film:fixture                 # writes video/fixture/library
@@ -18,7 +18,7 @@ export interface FilmFixture {
   bookId: string;
   chapterIds: string[];
   illustrationId: string;
-  cutoutId: string;
+  figureId: string;
   characterId: string;
 }
 
@@ -121,15 +121,15 @@ export async function buildFilmFixture(root: string): Promise<FilmFixture> {
   });
   await library.attachImage(book.id, illustration.id, first.id);
 
-  const cutout = await library.addImage(book.id, {
-    bytes: cutoutPng(),
+  // A figure drawn in code, like the illustration. It is not a cutout: SAM left the build (D-158).
+  const figure = await library.addImage(book.id, {
+    bytes: figurePng(),
     kind: "character",
     prompt: "Mara Venn, lighthouse keeper",
     provider: "fixture",
     model: "film-fixture",
     size: "512x512",
-    source: "cutout",
-    cutoutOf: illustration.id,
+    source: "imported",
     characterId: CHARACTER_ID
   });
 
@@ -138,7 +138,7 @@ export async function buildFilmFixture(root: string): Promise<FilmFixture> {
     bookId: book.id,
     chapterIds: [first.id, second.id],
     illustrationId: illustration.id,
-    cutoutId: cutout.id,
+    figureId: figure.id,
     characterId: CHARACTER_ID
   };
 }
@@ -225,7 +225,7 @@ function illustrationPng(width = 1024, height = 1024): Uint8Array {
   return encodePng(width, height, pixels);
 }
 
-function cutoutPng(width = 512, height = 512): Uint8Array {
+function figurePng(width = 512, height = 512): Uint8Array {
   const pixels = new Uint8Array(width * height * 4);
   const set = (x: number, y: number, r: number, g: number, b: number, a = 255): void => {
     if (x < 0 || y < 0 || x >= width || y >= height) return;
@@ -326,5 +326,5 @@ if (import.meta.main) {
   console.log(`Film fixture written to ${result.root}`);
   console.log(`  book ${result.bookId}`);
   console.log(`  chapters ${result.chapterIds.join(", ")}`);
-  console.log(`  illustration ${result.illustrationId}, cutout ${result.cutoutId}`);
+  console.log(`  illustration ${result.illustrationId}, figure ${result.figureId}`);
 }

@@ -1,12 +1,13 @@
 # Character cutouts with SAM 3.1
 
-**Status:** Superseded (2026-10-26), see D-158
+**Status:** Superseded (2026-10-26) and removed from the build (2026-11-04), see D-158
 
 > **Superseded by D-158.** A live run of this request reaches Meta and is accepted — `200`,
 > `status: completed` — but returns no records and no usage, on real and synthetic images alike,
 > in the shape Meta's own segmenting guide documents. The studio cannot fix that from its side, and
-> the cutout was never on the critical path. The implementation and its tests stay; nothing is
-> built on it, and the submission does not claim a cutout. See
+> the cutout was never on the critical path. The implementation, its tests and the
+> `@meta-sam/parser` dependency were removed from the build on 2026-11-04, and the submission does not
+> claim a cutout. See
 > [`docs/research/live-meta-2026-10-26.md`](../../docs/research/live-meta-2026-10-26.md).
 
 **Number:** 020

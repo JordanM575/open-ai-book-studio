@@ -308,28 +308,19 @@ backend. Remote access is deferred by D-129.
 The image folder and manifest are ordinary author files, included in the portable archive by the
 normal recursive walk. No image is stored in `book.json`, the catalog or the app profile.
 
-## SAM 3.1 cutouts (superseded, D-158)
+## SAM 3.1 cutouts (removed, D-158)
 
-**Retired.** A live request reaches Meta and is accepted — `200`, `status: completed` — and comes
-back with no records and no usage, on real and synthetic images alike, in the shape Meta's own
-segmenting guide documents. The studio cannot fix that from its side, so nothing is built on it and
-the submission does not claim a cutout. The implementation below stays, with its tests, as the
-record of what was tried. See [`research/live-meta-2026-10-26.md`](research/live-meta-2026-10-26.md).
+**Removed from the build on 2026-11-04.** A live request reached Meta and was accepted — `200`,
+`status: completed` — and came back with no records and no usage, on real and synthetic images alike,
+in the shape Meta's own segmenting guide documents. The studio cannot fix that from its side, so the
+cutout was retired and then removed: the Illustration dialog offers no cutout, there is no
+segmentation channel or service, the live check has no SAM step, and the desktop no longer ships
+`@meta-sam/parser`. Spec 020 and [`research/live-meta-2026-10-26.md`](research/live-meta-2026-10-26.md)
+record what was tried.
 
-`apps/desktop/src/main/segmentation.ts` sends one concept prompt and the source image to Meta's
-Responses API as `sam-3.1`, with `metadata.mask_encoding = "one_bit"` and confidence on. The official
-`@meta-sam/parser` turns the returned token text into box and mask records; the service maps them to
-serializable matches with the decoded 0/1 raster. The studio does not reimplement the base85 codec.
-
-The renderer composes the cutout: `applyCutoutMask` copies the source RGBA pixels, maps the mask raster
-over its source bounds and clears alpha outside it; `cutoutPng` draws the result to a canvas and
-returns a PNG blob. The main process saves it through `ImageStore` as a `character` image with
-`cutoutOf` pointing at the source. A cast member can be chosen when saving, or the image can be attached
-later with `images:attachCharacter`; the character id is stored on the image record. The source file and record are never modified.
-
-Concept prompts are validated in `packages/core/src/images/segmentation.ts`: one short noun phrase,
-no lists, negation, questions or commands. Zero matches is a normal result and writes nothing. The web
-build refuses until Meta browser access is verified.
+A book saved by an earlier build may still hold a `cutout` image record with `cutoutOf`. It reads,
+shows and exports like any other character image, and the image store never writes a new one
+(`docs/FORMAT.md`).
 
 ## Provider compatibility and the Contributor model
 

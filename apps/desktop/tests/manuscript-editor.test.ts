@@ -26,14 +26,6 @@ afterAll(async () => {
 });
 
 const BOOK = "book_ui000001";
-const CHARACTER = {
-  id: "char_test0001",
-  name: "Mara",
-  role: "protagonist",
-  description: "",
-  motivations: "",
-  notes: ""
-};
 const CHAPTER: Chapter = {
   id: "ch_ui00000001",
   title: "One",
@@ -426,33 +418,6 @@ function mockIllustrationStudio(options: { connections?: unknown[]; initial?: Il
       data: images.find((entry) => entry.id === imageId) ?? illustrationImage()
     });
   });
-  const attachCharacter = mock((_bookId: string, imageId: string, characterId: string) => {
-    images = images.map((entry) => (entry.id === imageId ? { ...entry, characterId } : entry));
-    return Promise.resolve({
-      ok: true as const,
-      data: images.find((entry) => entry.id === imageId) ?? illustrationImage()
-    });
-  });
-  const segment = mock(() =>
-    Promise.resolve({
-      ok: true as const,
-      data: {
-        prompt: "the keeper",
-        model: "sam-3.1",
-        costUsd: null,
-        matches: [
-          {
-            objectId: "1",
-            confidence: 0.9,
-            width: 1,
-            height: 1,
-            bounds: { left: 0, top: 0, right: 1, bottom: 1 },
-            raster: new Uint8Array([1])
-          }
-        ]
-      }
-    })
-  );
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     connections: {
       list: mock(() =>
@@ -467,15 +432,10 @@ function mockIllustrationStudio(options: { connections?: unknown[]; initial?: Il
       read,
       generate,
       attach,
-      remove: mock(() => Promise.resolve({ ok: true as const, data: null })),
-      saveCutout: mock(() =>
-        Promise.resolve({ ok: true as const, data: illustrationImage({ id: "img_ui000003", kind: "character" }) })
-      ),
-      attachCharacter
-    },
-    segmentation: { segment }
+      remove: mock(() => Promise.resolve({ ok: true as const, data: null }))
+    }
   };
-  return { generate, attach, segment, attachCharacter };
+  return { generate, attach };
 }
 
 function renderIllustration() {
@@ -484,7 +444,6 @@ function renderIllustration() {
       open: true,
       bookId: BOOK,
       chapter: CHAPTER,
-      characters: [CHARACTER],
       onClose: () => {},
       onChanged: () => {},
       onOpenSettings: () => {}
@@ -533,28 +492,12 @@ describe("IllustrationDialog", () => {
     await testing.waitFor(() => testing.within(document.body).getByText("This image is now the chapter illustration."));
   });
 
-  test("shows SAM matches for the selected image", async () => {
-    const studio = mockIllustrationStudio({ initial: [illustrationImage({ chapterId: CHAPTER.id })] });
-    renderIllustration();
-    const prompt = (await testing.within(document.body).findByTestId("cutout-prompt")) as HTMLInputElement;
-    testing.fireEvent.change(prompt, { target: { value: "the keeper" } });
-    testing.fireEvent.click(testing.within(document.body).getByTestId("find-cutouts"));
-    await testing.waitFor(() =>
-      expect(studio.segment).toHaveBeenCalledWith({
-        bookId: BOOK,
-        imageId: "img_ui000001",
-        prompt: "the keeper"
-      })
-    );
-    await testing.waitFor(() => testing.within(document.body).getByText("Object 1 · 90%"));
-    expect(testing.within(document.body).getByTestId("save-cutout-1")).toBeTruthy();
-  });
-});
-
-describe("IllustrationDialog character attachment", () => {
-  test("attaches a saved cutout to a cast member", async () => {
+  test("offers no cutout with a Meta connection, and still generates (D-158)", async () => {
+    // A Meta connection and a selected image: what used to open the SAM 3.1 cutout panel. The book
+    // also holds a cutout record from an older library, which still lists and shows.
     const studio = mockIllustrationStudio({
       initial: [
+        illustrationImage({ chapterId: CHAPTER.id }),
         illustrationImage({
           id: "img_ui000003",
           kind: "character",
@@ -565,16 +508,31 @@ describe("IllustrationDialog character attachment", () => {
       ]
     });
     renderIllustration();
-    await testing.waitFor(() => testing.within(document.body).getByText("No illustration for this chapter yet."));
-    testing.fireEvent.click(testing.within(document.body).getByTitle("the keeper"));
-    await testing.waitFor(() => testing.within(document.body).getByAltText("Illustration: the keeper"));
-    const select = document.getElementById("cutout-character") as HTMLSelectElement;
-    testing.fireEvent.change(select, { target: { value: CHARACTER.id } });
-    testing.fireEvent.click(testing.within(document.body).getByTestId("attach-cutout-character"));
-    await testing.waitFor(() =>
-      expect(studio.attachCharacter).toHaveBeenCalledWith(BOOK, "img_ui000003", CHARACTER.id)
-    );
-    await testing.waitFor(() => testing.within(document.body).getByText("Character image attached to the cast member."));
+    const body = testing.within(document.body);
+    await testing.waitFor(() => body.getByAltText("Illustration: A lighthouse in a storm"));
+    expect(body.queryByText("Connect Meta to generate images")).toBeNull();
+    const dialog = body.getByRole("dialog");
+    const offersNoCutout = () => {
+      expect(dialog.textContent).not.toMatch(/cut ?out|\bSAM\b|find objects/i);
+      expect(testing.within(dialog).getAllByRole("textbox").map((box) => box.id)).toEqual(["illustration-prompt"]);
+    };
+    offersNoCutout();
+
+    testing.fireEvent.click(body.getByTitle("the keeper"));
+    await testing.waitFor(() => body.getByAltText("Illustration: the keeper"));
+    offersNoCutout();
+
+    testing.fireEvent.change(body.getByTestId("illustration-prompt"), { target: { value: "A storm over the harbor" } });
+    testing.fireEvent.click(body.getByTestId("generate-illustration"));
+    await testing.waitFor(() => expect(studio.generate).toHaveBeenCalledTimes(1));
+    expect(studio.generate).toHaveBeenCalledWith({
+      bookId: BOOK,
+      chapterId: CHAPTER.id,
+      prompt: "A storm over the harbor",
+      size: "1024x1024"
+    });
+    await testing.waitFor(() => body.getByText("Illustration saved to this book."));
+    offersNoCutout();
   });
 });
 

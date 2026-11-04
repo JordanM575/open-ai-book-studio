@@ -12,7 +12,7 @@ editor; nothing important lives in a database, in the app's profile, or in an op
       chapters/
         0001-the-door.md       YAML front matter + Markdown prose
         0002-the-lighthouse.md
-      images/                  illustrations and cutouts owned by this book
+      images/                  illustrations and character images owned by this book
         img_….png
       images.json              image provenance and chapter attachments
       conflicts/               versions kept when two writers disagreed
@@ -348,10 +348,12 @@ gallery with a warning, and the image files stay on disk.
 
 - Image bytes are written first, then the manifest, both atomically through the library port. A
   failed manifest write removes the new file when it can and otherwise reports an orphan.
-- `kind` is `chapter`, `character`, `cover` or `other`; `source` is `generated`, `imported` or
-  `cutout`.
+- `kind` is `chapter`, `character`, `cover` or `other`; `source` is `generated` or `imported`.
+  `cutout` is a legacy source: a book saved by an earlier build may hold one, and the studio still
+  reads, shows and exports it, but never writes a new one (D-158).
 - A chapter has at most one attached image. Attaching another clears the previous `chapterId` in the
   same manifest commit.
-- `cutoutOf` points at the source image for a SAM cutout. The source is never modified.
+- `cutoutOf` is legacy too: on an earlier build's SAM cutout it points at the source image, which was
+  never modified. The studio writes `null`.
 - The manifest and every image are author files and travel in the portable archive. No image is stored
   in `book.json`, the catalog or the app profile.

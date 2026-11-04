@@ -1083,7 +1083,6 @@ export function WorkspaceView({
         open={illustrationOpen}
         bookId={bookId}
         chapter={selected}
-        characters={detail?.book.characters ?? []}
         onClose={() => setIllustrationOpen(false)}
         onChanged={() => loadIllustration(selectedId)}
         onOpenSettings={() => openSettings("providers")}

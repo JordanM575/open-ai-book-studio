@@ -1,12 +1,4 @@
 {
   "about": "License exceptions the gate in scripts/license-gate.mjs accepts (D-186). Each names the package, its exact declared license and the builds that ship it, with a reason. A change to the declared license, or a package that stops shipping, fails the gate until this file is reviewed.",
-  "exceptions": [
-    {
-      "name": "@meta-sam/parser",
-      "license": "SEE LICENSE IN LICENSE",
-      "builds": ["desktop"],
-      "label": "SAM License, not Apache-2.0",
-      "reason": "Meta's SAM License, not Apache-2.0. D-137 lets the optional, desktop-only SAM cutout feature ship it in the hackathon build, with the license text in the distribution. Review compatibility or replace the parser with a clean-room implementation before a public release."
-    }
-  ]
+  "exceptions": []
 }

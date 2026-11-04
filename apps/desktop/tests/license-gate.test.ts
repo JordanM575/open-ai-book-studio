@@ -86,13 +86,14 @@ describe("the license gate", () => {
     ]);
   });
 
-  test("the committed allow-list lets the SAM parser ship on desktop only, with D-137 as its reason", () => {
+  test("the committed allow-list has no exception, so the retired SAM parser could not ship again unnoticed", () => {
     const allow = JSON.parse(readFileSync(resolve(import.meta.dir, "../../../scripts/license-allow.json"), "utf8")) as LicenseAllowList;
+    expect(allow.exceptions).toEqual([]);
+    // The parser left the build with the SAM cutout (D-158). Bringing it back fails the gate.
     const parser = pkg("@meta-sam/parser", "SEE LICENSE IN LICENSE", "0.1.0");
-    const exception = findException(allow, "desktop", parser);
-    expect(exception?.label).toBe("SAM License, not Apache-2.0");
-    expect(exception?.reason).toContain("D-137");
-    expect(findException(allow, "web", parser)).toBeUndefined();
-    expect(licenseProblems([{ target: "desktop", packages: [parser] }], allow)).toEqual([]);
+    expect(findException(allow, "desktop", parser)).toBeUndefined();
+    expect(licenseProblems([{ target: "desktop", packages: [parser] }], allow)).toEqual([
+      'desktop ships @meta-sam/parser@0.1.0 under "SEE LICENSE IN LICENSE", which is not a license the gate knows; scripts/license-allow.json must allow it with a reason'
+    ]);
   });
 });

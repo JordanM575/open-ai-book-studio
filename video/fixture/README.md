@@ -16,7 +16,7 @@ generator and this note are committed.
 - Story Bible: outline, three-act arc, one character (Mara Venn), one memory.
 - Two chapters: *The Light That Would Not Turn* and *The Door Under the Stairs*.
 - A 1024×1024 chapter illustration, attached to chapter one.
-- A 512×512 transparent character cutout of Mara, attached to her cast record.
+- A 512×512 transparent figure of Mara, drawn in code and attached to her cast record.
 
 The PNGs are drawn by `scripts/film-fixture.ts` with a small deterministic encoder. No network, no
 image model, no author data.
