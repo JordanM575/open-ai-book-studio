@@ -143,7 +143,7 @@ as a chapter and is not part of `library.json`; a missing or stale catalog never
 | `title` | string | Author-facing label; defaults to "New conversation". |
 | `createdAt`, `updatedAt` | ISO 8601 | `updatedAt` changes on every save. |
 | `messages` | array | Each has `id`, `role`, `parts`, optional `model`, `mode` and `usage`, and `createdAt`. `mode` (`discuss` or `edit`) records the permission level of the turn that produced an assistant message; older messages have none and are shown as unrecorded. |
-| `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation. |
+| `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation, newest last: each turn that changed the book and saved its checkpoint, including one stopped while it waited for approval and one that failed before it stored a reply. Undo takes the book's newest checkpoint, so the chat offers it only on the last of these. An undo removes its turn from every conversation that lists it. A branch copies its source's list when it keeps the newest of these turns, and starts with none otherwise. |
 
 Message parts are `text`, `reasoning`, `tool-call`, `tool-result`, `source`, `file`, `error` and
 `guidance`. Tool calls and results keep their ids, so a resumed conversation can be inspected
@@ -161,7 +161,8 @@ writes use the library port's checked commit, so a failed write leaves the previ
 `<at>` is the time of the turn's first change, with `:` and `.` replaced by `-`. The turn writes the
 file again, whole and atomically, each time it changes a chapter and before the tool answers the
 model. A change made after an approval is covered as fully as one made before it. A turn has at most
-one file; undo restores from the newest file and then removes it.
+one file; undo restores from the newest file, then removes it and takes its turn out of every
+conversation's `checkpointTurns` (see [Conversation files](#conversation-files)).
 
 | Field | Type | Notes |
 | --- | --- | --- |

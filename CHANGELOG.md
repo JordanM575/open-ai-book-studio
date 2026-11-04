@@ -404,6 +404,22 @@ Update the `Unreleased` section before every commit.
 - The header's model button has room for "Muse Spark 1.3 Contributor" and its tooltip names the model;
   the composer names a one-turn model the same way instead of by its raw id.
 - The sync review counts "2 new files" and "3 conflict copies" in the plural.
+- "Undo this turn" no longer undoes a different turn. Undo always takes the book's newest checkpoint,
+  but every turn that changed the book kept the button, so undoing an older turn reverted the newest
+  one and named the wrong turn. Now only the turn that owns the newest checkpoint offers it, and after
+  its undo the turn before it does. No turn offers it while another turn runs, or at or before a turn
+  waiting for approval, as in a chat opened from the approval notification, because either may already
+  own the newest checkpoint. An undo takes its turn out of every conversation's
+  `checkpointTurns`, so a reopened chat no longer offers an undo already used. A turn stopped while it
+  waited for approval, or one that failed before it stored a reply, is now listed there too. A branch
+  that leaves out the newest checkpoint turn lists none, so it never offers an older turn's undo
+  (QA B2).
+- "Branch from here" is hidden while the turn waits for approval, live or reopened, because a branch
+  cannot answer it (QA B13).
+- Allow or Deny pressed from the keyboard leaves focus on the answered card instead of dropping it to
+  the page, since the buttons go away once the question is answered (QA B12).
+- An answered approval card stays with the turn's tool steps, before the reply that followed it,
+  instead of after it, live and in a reopened chat (QA B11).
 - Switching a tool off in the Agent dialog keeps its row, now reading Off, and keyboard focus stays on
   its switch, so the same switch turns it back on. The dialog listed only enabled tools, so the row
   vanished under the pointer and focus fell to the dialog. A tool changed while the dialog is open

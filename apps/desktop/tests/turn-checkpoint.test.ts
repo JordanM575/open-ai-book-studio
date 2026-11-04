@@ -656,6 +656,11 @@ describe("a turn's checkpoint", () => {
     await approval;
     await runtime.stop(started.turnId);
     const event = await stopped;
+    // It owns the newest checkpoint, so its conversation lists it and a reopened chat offers its undo
+    // rather than an earlier turn's (QA B2).
+    const listed = async (): Promise<string[] | undefined> =>
+      (await library.threads.read(book.id, started.threadId))?.checkpointTurns;
+    expect(await listed()).toEqual([started.turnId]);
 
     expect(event.changed).toBe(1);
     expect(event.undoAvailable).toBe(true);
@@ -663,6 +668,107 @@ describe("a turn's checkpoint", () => {
     const undone = await runtime.undoLast(book.id);
     expect(undone).toEqual({ restored: 1, skipped: 0 });
     expect(await text(door.id)).toBe(door.content);
+    expect(await listed()).toEqual([]);
+  });
+});
+
+/*
+ * QA B2: the conversation lists the turns whose checkpoints it holds, newest last, and the chat offers
+ * undo only on the last one. An undo forgets its turn there, so a reopened chat never offers the same
+ * undo twice, and the turn before it owns the newest checkpoint again.
+ */
+describe("undo and the conversation's checkpoint turns", () => {
+  type Failed = Extract<AgentEvent, { type: "error" }>;
+
+  /**
+   * Run one turn of these steps in a conversation, or in a new one, and wait for how it ends. When
+   * the model is asked for a step it does not have, the turn fails, the way a provider error would.
+   */
+  async function turnIn(
+    threadId: string | undefined,
+    steps: StreamResult[]
+  ): Promise<{ runtime: AgentRuntime; turnId: string; threadId: string; ended: Done | Failed }> {
+    const script = [...steps];
+    const model = new MockLanguageModelV4({
+      doStream: (async () => {
+        const next = script.shift();
+        if (!next) throw new Error("The model stopped mid-reply.");
+        return next;
+      }) as MockLanguageModelV4["doStream"]
+    });
+    let resolveEnded!: (event: Done | Failed) => void;
+    const ended = new Promise<Done | Failed>((resolve, reject) => {
+      resolveEnded = resolve;
+      deadline(reject, "The turn did not end.");
+    });
+    const runtime = new AgentRuntime(
+      { library, requireLibrary: () => library } as unknown as Studio,
+      providers(),
+      (event) => {
+        if (event.type === "done" || event.type === "error") resolveEnded(event);
+      },
+      () => model
+    );
+    const started = await runtime.start({
+      mode: "edit",
+      bookId: book.id,
+      prompt: "Work on the book.",
+      ...(threadId ? { threadId } : {})
+    });
+    return { runtime, turnId: started.turnId, threadId: started.threadId, ended: await ended };
+  }
+
+  /** The turns a conversation lists as holding checkpoints, newest last. */
+  async function listed(threadId: string): Promise<string[] | undefined> {
+    return (await library.threads.read(book.id, threadId))?.checkpointTurns;
+  }
+
+  test("an undo forgets its turn, and the turn before it is the next undo", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+    const first = await turnIn(undefined, [
+      step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]),
+      step([], "I added a line to the door.")
+    ]);
+    const second = await turnIn(first.threadId, [
+      step([["append_to_chapter", { chapterId: lamp.id, text: "It smoked a little." }]]),
+      step([], "I added a line to the lamp.")
+    ]);
+    expect([first.ended.type, second.ended.type]).toEqual(["done", "done"]);
+    expect(second.threadId).toBe(first.threadId);
+    expect(await listed(first.threadId)).toEqual([first.turnId, second.turnId]);
+
+    // The newest checkpoint is the lamp's turn. Undo restores the lamp alone and forgets that turn.
+    expect(await second.runtime.undoLast(book.id)).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(lamp.id)).toBe(lamp.content);
+    expect(await text(door.id)).toBe("The door was shut.\n\nWind came under it.\n");
+    expect(await listed(first.threadId)).toEqual([first.turnId]);
+
+    // The door's turn now owns the newest checkpoint, and it undoes once.
+    expect(await second.runtime.undoLast(book.id)).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(door.id)).toBe(door.content);
+    expect(await listed(first.threadId)).toEqual([]);
+    await expect(second.runtime.undoLast(book.id)).rejects.toMatchObject({ code: "not-found" });
+  });
+
+  test("a turn that changed the book and then failed is listed, so no earlier turn offers its undo", async () => {
+    const door = await chapter("The Door", "The door was shut.\n");
+    const lamp = await chapter("The Lamp", "The lamp was lit.\n");
+    const first = await turnIn(undefined, [
+      step([["append_to_chapter", { chapterId: door.id, text: "Wind came under it." }]]),
+      step([], "I added a line to the door.")
+    ]);
+    // The model writes to the lamp, then fails before it replies.
+    const second = await turnIn(first.threadId, [
+      step([["append_to_chapter", { chapterId: lamp.id, text: "It smoked a little." }]])
+    ]);
+    expect(second.ended).toMatchObject({ type: "error", changed: 1, undoAvailable: true });
+    // The failed turn keeps no reply, so Retry can reuse its prompt, but it owns the newest checkpoint.
+    expect(await listed(first.threadId)).toEqual([first.turnId, second.turnId]);
+
+    expect(await second.runtime.undoLast(book.id)).toEqual({ restored: 1, skipped: 0 });
+    expect(await text(lamp.id)).toBe(lamp.content);
+    expect(await listed(first.threadId)).toEqual([first.turnId]);
   });
 });
 

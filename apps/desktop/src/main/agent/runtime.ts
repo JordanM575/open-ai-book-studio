@@ -462,16 +462,32 @@ export class AgentRuntime {
     const pending = turn.pending;
     if (pending) {
       await this.setApprovalStatus(turn, pending.approvalId, "expired");
+      const undoAvailable = checkpointCovers(turn.state);
+      // No stream is left to write the turn's end, so its checkpoint is listed with the conversation
+      // here, on the terms a finished turn's is.
+      if (turn.state.changes.length > 0 && undoAvailable) await this.listCheckpointTurn(turn.bookId, turn.threadId, turnId);
       this.publish({
         type: "stopped",
         turnId,
         changed: turn.state.changes.length,
-        undoAvailable: checkpointCovers(turn.state)
+        undoAvailable
       });
     }
     turn.controller.abort();
     this.active.delete(turnId);
     return null;
+  }
+
+  /** Add a turn to its conversation's checkpoint turns, newest last, so a reload offers its undo. */
+  private async listCheckpointTurn(bookId: string, threadId: string, turnId: string): Promise<void> {
+    try {
+      const threads = this.studio.requireLibrary().threads;
+      const thread = await threads.read(bookId, threadId);
+      if (!thread || thread.checkpointTurns.includes(turnId)) return;
+      await threads.save({ ...thread, checkpointTurns: [...thread.checkpointTurns, turnId] });
+    } catch (error) {
+      console.warn("[agent] Could not record the turn's checkpoint:", redact((error as Error).message));
+    }
   }
 
   /** Continue a turn that paused on a destructive tool call. */
@@ -548,6 +564,13 @@ export class AgentRuntime {
       if (undone.note) notes.push(undone.note);
     }
     await store.remove(bookId, checkpoint.file);
+    try {
+      // The turn is used up, so no conversation may offer its undo again, even after a reload.
+      await library.threads.forgetCheckpointTurn(bookId, checkpoint.turnId);
+    } catch (error) {
+      // The chapters are already back; a conversation that could not be updated must not hide that.
+      console.warn("[agent] Could not update the conversation after undo:", redact((error as Error).message));
+    }
     return { restored, skipped, ...(kept.length > 0 ? { kept } : {}), ...(notes.length > 0 ? { notes } : {}) };
   }
 
@@ -915,6 +938,9 @@ export class AgentRuntime {
           await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, failure), ...state.approvals], {
             checkpoint: state.changes.length > 0 && undoAvailable
           });
+        } else if (state.changes.length > 0 && undoAvailable) {
+          // Still the newest checkpoint: listed, a reload offers no earlier turn's undo in its place.
+          await this.listCheckpointTurn(input.bookId, threadId, turnId);
         }
         this.publish({
           type: "error",

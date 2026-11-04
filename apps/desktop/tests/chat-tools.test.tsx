@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bu
 import React from "react";
 import { mountDom, unmountDom } from "./support/dom";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
+import { agentThreadSchema, type AgentThread } from "@ai-book-studio/core/agent/messages";
 
 let testing!: typeof import("@testing-library/react/pure");
 let ChatPanel!: typeof import("@ai-book-studio/app/components/ChatPanel").ChatPanel;
@@ -26,18 +27,36 @@ afterEach(() => testing.cleanup());
 const BOOK = "book_tls000001";
 const CHAPTER = "ch_tls000001";
 const TURN = "turn_tls000001";
+const TURN_B = "turn_tls000002";
+const AT = "2026-01-01T00:00:00.000Z";
 
-function renderPanel() {
-  const start = mock((_request: unknown) => Promise.resolve({ ok: true, data: { turnId: TURN, threadId: "thread_tls000001" } }));
+interface PanelOptions {
+  /** The turn ids the agent hands out, one per start, in order. */
+  turns?: string[];
+  /** A stored conversation the panel opens with. */
+  seed?: AgentThread;
+}
+
+function renderPanel({ turns = [TURN], seed }: PanelOptions = {}) {
+  let starts = 0;
+  const start = mock((_request: unknown) =>
+    Promise.resolve({
+      ok: true,
+      data: { turnId: turns[Math.min(starts++, turns.length - 1)], threadId: "thread_tls000001" }
+    })
+  );
   const undoLast = mock(() => Promise.resolve({ ok: true, data: { restored: 1, skipped: 0 } }));
   const onChanged = mock(() => {});
   let emit: ((event: AgentEvent) => void) | null = null;
+  const listed = seed
+    ? [{ id: seed.id, title: seed.title, createdAt: AT, updatedAt: AT, messageCount: seed.messages.length, preview: "" }]
+    : [];
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
     agent: {
       threads: {
-        list: mock(() => Promise.resolve({ ok: true, data: [] })),
-        read: mock(() => Promise.resolve({ ok: true, data: null })),
+        list: mock(() => Promise.resolve({ ok: true, data: listed })),
+        read: mock(() => Promise.resolve({ ok: true, data: seed ?? null })),
         fork: mock(() => Promise.resolve({ ok: true, data: null })),
         remove: mock(() => Promise.resolve({ ok: true, data: null })),
         rename: mock(() => Promise.resolve({ ok: true, data: null }))
@@ -77,12 +96,16 @@ function renderPanel() {
   return { start, undoLast, onChanged, fire };
 }
 
-async function send(prompt: string, start: ReturnType<typeof mock>): Promise<ReturnType<typeof testing.within>> {
+async function send(
+  prompt: string,
+  start: ReturnType<typeof mock>,
+  sent = 1
+): Promise<ReturnType<typeof testing.within>> {
   const view = testing.within(document.body);
   const input = await testing.waitFor(() => view.getByTestId("chat-input"));
   testing.fireEvent.change(input, { target: { value: prompt } });
   testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
-  await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+  await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(sent));
   // Let the started turn register itself before its events arrive.
   await testing.act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -167,5 +190,184 @@ describe("chat tool steps", () => {
     await testing.waitFor(() => expect(view.getByText("Restored 1 chapter.")).toBeDefined());
     expect(view.queryByTestId("agent-undo-turn")).toBeNull();
     expect(onChanged).toHaveBeenCalled();
+  });
+});
+
+/** A turn that finished, changing `changed` chapters with its checkpoint saved. */
+function finished(turnId: string, text: string, changed = 1): AgentEvent {
+  return {
+    type: "done",
+    turnId,
+    text,
+    model: { provider: "openrouter", modelId: "test-model", connectionLabel: "Test connection", name: "Test Model" },
+    inputTokens: 300,
+    outputTokens: 40,
+    costUsd: null,
+    costBasis: "unknown",
+    contextLength: null,
+    context: { estimated: true as const, sections: [], conversationTokens: 20, totalTokens: 20 },
+    changed,
+    undoAvailable: true
+  };
+}
+
+/**
+ * A stored conversation of two turns that each changed a chapter, with these checkpoint turns. With
+ * `paused`, the second turn is still waiting for the author to approve a replacement.
+ */
+function storedConversation(checkpointTurns: string[], paused = false): AgentThread {
+  const reply = (id: string, turnId: string, text: string) => ({
+    id,
+    role: "assistant" as const,
+    parts:
+      paused && turnId === TURN_B
+        ? [
+            { type: "tool-call" as const, id: "call_1", name: "overwrite_chapter", input: { chapterId: CHAPTER } },
+            {
+              type: "approval" as const,
+              approvalId: "approval_tls000001",
+              turnId,
+              name: "overwrite_chapter",
+              input: { chapterId: CHAPTER },
+              status: "pending" as const,
+              requestedAt: AT
+            }
+          ]
+        : [{ type: "text" as const, text }],
+    model: { provider: "openrouter" as const, modelId: "test-model", connectionLabel: "Test connection", name: "Test Model" },
+    turnId,
+    createdAt: AT
+  });
+  return agentThreadSchema.parse({
+    schemaVersion: 1,
+    id: "thread_tls000001",
+    bookId: BOOK,
+    title: "Two changes",
+    createdAt: AT,
+    updatedAt: AT,
+    messages: [
+      { id: "msg_tls000001", role: "user", parts: [{ type: "text", text: "Tighten the door." }], createdAt: AT },
+      reply("msg_tls000002", TURN, "I tightened the door."),
+      { id: "msg_tls000003", role: "user", parts: [{ type: "text", text: "Now the lamp." }], createdAt: AT },
+      reply("msg_tls000004", TURN_B, "I tightened the lamp.")
+    ],
+    checkpointTurns
+  });
+}
+
+/** The conversation item an element sits in. */
+function itemOf(element: HTMLElement): HTMLElement {
+  const item = element.closest<HTMLElement>('[data-slot="message-scroller-item"]');
+  if (!item) throw new Error("The element is not inside a conversation item.");
+  return item;
+}
+
+/** The one "Undo this turn" in the conversation, once there is exactly one. */
+async function onlyUndo(view: ReturnType<typeof testing.within>): Promise<HTMLElement> {
+  return testing.waitFor(() => {
+    const offered = view.getAllByTestId("agent-undo-turn");
+    expect(offered).toHaveLength(1);
+    const [only] = offered;
+    if (!only) throw new Error("No undo is offered.");
+    return only;
+  });
+}
+
+/*
+ * QA B2: undo always takes the book's newest checkpoint, so only the turn that owns it may offer
+ * "Undo this turn". An undo uses that turn up, and the turn before it owns the newest checkpoint
+ * again, both in the open chat and in a reopened one.
+ */
+describe("undo this turn", () => {
+  test("only the newest turn with a checkpoint offers its undo, and then the turn before it", async () => {
+    const { start, fire, undoLast } = renderPanel({ turns: [TURN, TURN_B] });
+    const view = await send("Tighten the door.", start);
+    await fire(finished(TURN, "I tightened the door."));
+    await send("Now the lamp.", start, 2);
+    await fire(finished(TURN_B, "I tightened the lamp."));
+
+    const lamp = await onlyUndo(view);
+    expect(itemOf(lamp).textContent).toContain("I tightened the lamp.");
+    await testing.act(async () => {
+      testing.fireEvent.click(lamp);
+    });
+    expect(undoLast).toHaveBeenCalledTimes(1);
+    const restored = await testing.waitFor(() => view.getByText("Restored 1 chapter."));
+    expect(itemOf(restored).textContent).toContain("I tightened the lamp.");
+
+    const door = await onlyUndo(view);
+    expect(itemOf(door).textContent).toContain("I tightened the door.");
+    await testing.act(async () => {
+      testing.fireEvent.click(door);
+    });
+    expect(undoLast).toHaveBeenCalledTimes(2);
+    await testing.waitFor(() => expect(view.getAllByText("Restored 1 chapter.")).toHaveLength(2));
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
+  });
+
+  test("no turn offers undo while another runs, because the running turn may own the newest checkpoint", async () => {
+    const { start, fire } = renderPanel({ turns: [TURN, TURN_B] });
+    const view = await send("Tighten the door.", start);
+    await fire(finished(TURN, "I tightened the door."));
+    await onlyUndo(view);
+
+    await send("Now the lamp.", start, 2);
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
+    await fire({ type: "tool", turnId: TURN_B, id: "call_1", name: "append_to_chapter", status: "start" });
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
+
+    // The lamp's turn ended without a change, so the door's turn owns the newest checkpoint again.
+    await fire(finished(TURN_B, "The lamp needed nothing.", 0));
+    const door = await onlyUndo(view);
+    expect(itemOf(door).textContent).toContain("I tightened the door.");
+  });
+
+  test("a turn that changed nothing leaves the undo with the turn that did", async () => {
+    const { start, fire } = renderPanel({ turns: [TURN, TURN_B] });
+    const view = await send("Tighten the door.", start);
+    await fire(finished(TURN, "I tightened the door."));
+    await send("What happened to the lamp?", start, 2);
+    await fire(finished(TURN_B, "The lamp went out in chapter two.", 0));
+
+    const door = await onlyUndo(view);
+    expect(itemOf(door).textContent).toContain("I tightened the door.");
+  });
+
+  test("a reopened conversation offers undo on its newest checkpoint turn, then on the one before", async () => {
+    const { undoLast } = renderPanel({ seed: storedConversation([TURN, TURN_B]) });
+    const view = testing.within(document.body);
+    const lamp = await onlyUndo(view);
+    expect(itemOf(lamp).textContent).toContain("I tightened the lamp.");
+    await testing.act(async () => {
+      testing.fireEvent.click(lamp);
+    });
+    expect(undoLast).toHaveBeenCalledTimes(1);
+    const door = await onlyUndo(view);
+    expect(itemOf(door).textContent).toContain("I tightened the door.");
+  });
+
+  test("a conversation whose turns were all undone offers no undo when it opens", async () => {
+    renderPanel({ seed: storedConversation([]) });
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getByText("I tightened the lamp.")).toBeDefined());
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
+  });
+
+  // A turn waiting for approval is listed only when it ends, yet what it wrote before the pause already
+  // holds the newest checkpoint. A chat opened during the pause, such as from the approval
+  // notification, must not offer an earlier turn's undo.
+  test("a chat opened while a turn waits for approval offers no earlier turn's undo", async () => {
+    const { fire } = renderPanel({ seed: storedConversation([TURN], true) });
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getByTestId("agent-approval")).toBeDefined());
+    expect(view.getByText("I tightened the door.")).toBeDefined();
+    expect(view.queryByTestId("agent-undo-turn")).toBeNull();
+
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("agent-approve"));
+    });
+    await fire(finished(TURN_B, "I replaced the lamp."));
+    const lamp = await onlyUndo(view);
+    expect(itemOf(lamp).textContent).toContain("I replaced the lamp.");
   });
 });

@@ -173,10 +173,26 @@ export class ThreadStore {
     const messages = source.messages.slice(0, index + 1);
     const branch = await this.create(bookId, `${source.title} (branch)`, messages);
     const keptTurns = new Set(messages.flatMap((message) => (message.turnId ? [message.turnId] : [])));
+    // Undo takes the newest checkpoint first. A branch that leaves the newest turn out could only
+    // offer an older turn's undo while undoing the newer one, so it keeps none.
+    const newest = source.checkpointTurns.at(-1);
     return this.save({
       ...branch,
-      checkpointTurns: source.checkpointTurns.filter((turn) => keptTurns.has(turn))
+      checkpointTurns: newest !== undefined && keptTurns.has(newest) ? source.checkpointTurns : []
     });
+  }
+
+  /**
+   * Forget a turn's checkpoint once undo has used it, in every conversation of the book that names
+   * it (a branch can name its source's turns), so no reopened conversation offers the same undo
+   * twice. Oldest first, so the conversations it touches keep their order in the list.
+   */
+  async forgetCheckpointTurn(bookId: string, turnId: string): Promise<void> {
+    for (const summary of (await this.list(bookId)).reverse()) {
+      const thread = await this.read(bookId, summary.id);
+      if (!thread?.checkpointTurns.includes(turnId)) continue;
+      await this.save({ ...thread, checkpointTurns: thread.checkpointTurns.filter((turn) => turn !== turnId) });
+    }
   }
 
   async remove(bookId: string, threadId: string): Promise<void> {

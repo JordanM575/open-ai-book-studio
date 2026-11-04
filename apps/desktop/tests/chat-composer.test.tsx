@@ -553,6 +553,184 @@ describe("chat composer", () => {
     expect(view.queryByTestId("agent-deny")).toBeNull();
   });
 
+  /** Send a prompt and let the turn pause on a destructive tool. Returns the waiting card. */
+  async function pauseForApproval(
+    fire: (event: AgentEvent) => void,
+    start: ReturnType<typeof mock>
+  ): Promise<{ view: ReturnType<typeof testing.within>; gate: HTMLElement }> {
+    const { input, view } = composer();
+    testing.fireEvent.change(input, { target: { value: "Replace the opening." } });
+    testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    await testing.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await testing.act(async () => {
+      fire({ type: "tool", turnId: "turn_cmp000001", id: "call_1", name: "overwrite_chapter", status: "start" });
+      fire({
+        type: "approval",
+        turnId: "turn_cmp000001",
+        approvalId: "approval_cmp000001",
+        name: "overwrite_chapter",
+        input: { chapterId: CHAPTER }
+      });
+    });
+    return { view, gate: await testing.waitFor(() => view.getByTestId("agent-approval")) };
+  }
+
+  /** The approved turn writes, replies and finishes. */
+  async function finishAfterApproval(fire: (event: AgentEvent) => void, reply: string): Promise<void> {
+    await testing.act(async () => {
+      fire({ type: "tool", turnId: "turn_cmp000001", id: "call_1", name: "overwrite_chapter", status: "end", output: { ok: true } });
+      fire({ type: "text", turnId: "turn_cmp000001", delta: reply });
+      fire({
+        type: "done",
+        turnId: "turn_cmp000001",
+        text: reply,
+        model: { provider: "openrouter", modelId: "test-model", connectionLabel: "Test connection", name: "Test Model" },
+        inputTokens: 100,
+        outputTokens: 12,
+        costUsd: null,
+        costBasis: "unknown",
+        contextLength: null,
+        context: { estimated: true as const, sections: [], conversationTokens: 0, totalTokens: 100 },
+        changed: 1,
+        undoAvailable: true
+      });
+    });
+  }
+
+  // QA B13: a branch copies the conversation, and a waiting approval cannot be answered from a copy.
+  test("a turn waiting for approval offers no branch until it is answered", async () => {
+    const { start, fire } = renderComposer();
+    const { view } = await pauseForApproval(fire, start);
+    expect(view.getByText("Waiting for your approval.")).toBeDefined();
+    expect(view.queryByTestId("agent-branch-turn")).toBeNull();
+
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("agent-approve"));
+    });
+    await finishAfterApproval(fire, "I replaced the opening.");
+    await testing.waitFor(() => expect(view.getByTestId("agent-branch-turn")).toBeDefined());
+  });
+
+  test("a reopened turn still waiting for approval offers no branch", async () => {
+    const seed = agentThreadSchema.parse({
+      schemaVersion: 1,
+      id: "thread_cmp000003",
+      bookId: BOOK,
+      title: "Waiting",
+      createdAt: AT,
+      updatedAt: AT,
+      messages: [
+        { id: "msg_cmp000020", role: "user", parts: [{ type: "text", text: "Replace the opening." }], createdAt: AT },
+        {
+          id: "msg_cmp000021",
+          role: "assistant",
+          parts: [
+            { type: "tool-call", id: "call_1", name: "overwrite_chapter", input: { chapterId: CHAPTER } },
+            {
+              type: "approval",
+              approvalId: "approval_cmp000002",
+              turnId: "turn_cmp000020",
+              name: "overwrite_chapter",
+              input: { chapterId: CHAPTER },
+              status: "pending",
+              requestedAt: AT
+            }
+          ],
+          turnId: "turn_cmp000020",
+          createdAt: AT
+        }
+      ],
+      checkpointTurns: []
+    });
+    renderComposer(null, null, null, seed);
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getByTestId("agent-approval")).toBeDefined());
+    expect(view.getByTestId("agent-approve")).toBeDefined();
+    expect(view.queryByTestId("agent-branch-turn")).toBeNull();
+  });
+
+  // QA B12: the answer buttons leave with the question, so focus goes to the card they were on.
+  for (const [button, answer] of [
+    ["agent-approve", "Allowed"],
+    ["agent-deny", "Denied"]
+  ] as const) {
+    test(`answering ${answer.toLowerCase()} from the keyboard keeps focus on the answered card`, async () => {
+      const { start, fire, approve } = renderComposer();
+      const { view, gate } = await pauseForApproval(fire, start);
+      const pressed = view.getByTestId(button);
+      pressed.focus();
+      expect(document.activeElement === pressed).toBe(true);
+
+      await testing.act(async () => {
+        testing.fireEvent.click(pressed);
+      });
+      expect(approve).toHaveBeenCalledWith("turn_cmp000001", "approval_cmp000001", button === "agent-approve");
+      await testing.waitFor(() => expect(testing.within(gate).getByText(answer)).toBeDefined());
+      expect(pressed.isConnected).toBe(false);
+      expect(gate.isConnected).toBe(true);
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("agent-approval");
+      expect(document.activeElement === gate).toBe(true);
+    });
+  }
+
+  // QA B11: the turn reads in the order it happened, so the answered card comes before the reply.
+  test("an answered card stays before the reply that followed it", async () => {
+    const { start, fire } = renderComposer();
+    const { view, gate } = await pauseForApproval(fire, start);
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("agent-approve"));
+    });
+    await finishAfterApproval(fire, "I replaced the opening.");
+
+    const reply = await testing.waitFor(() => view.getByText("I replaced the opening."));
+    expect(testing.within(gate).getByText("Allowed")).toBeDefined();
+    expect(gate.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("a reopened turn shows its answered card before its reply", async () => {
+    const seed = agentThreadSchema.parse({
+      schemaVersion: 1,
+      id: "thread_cmp000004",
+      bookId: BOOK,
+      title: "Answered",
+      createdAt: AT,
+      updatedAt: AT,
+      messages: [
+        { id: "msg_cmp000030", role: "user", parts: [{ type: "text", text: "Replace the opening." }], createdAt: AT },
+        {
+          id: "msg_cmp000031",
+          role: "assistant",
+          parts: [
+            { type: "tool-call", id: "call_1", name: "overwrite_chapter", input: { chapterId: CHAPTER } },
+            { type: "tool-result", id: "call_1", name: "overwrite_chapter", output: { ok: true } },
+            { type: "text", text: "I replaced the opening." },
+            {
+              type: "approval",
+              approvalId: "approval_cmp000003",
+              turnId: "turn_cmp000030",
+              name: "overwrite_chapter",
+              input: { chapterId: CHAPTER },
+              status: "approved",
+              requestedAt: AT,
+              resolvedAt: AT
+            }
+          ],
+          turnId: "turn_cmp000030",
+          createdAt: AT
+        }
+      ],
+      checkpointTurns: []
+    });
+    renderComposer(null, null, null, seed);
+    const view = testing.within(document.body);
+    const gate = await testing.waitFor(() => view.getByTestId("agent-approval"));
+    const reply = view.getByText("I replaced the opening.");
+    expect(gate.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test("the context share opens on a tap as well as a hover", async () => {
     const { start, fire } = renderComposer();
     const { input, view } = composer();

@@ -131,6 +131,11 @@ export function ChatPanel({
   const [waiting, setWaiting] = useState(false);
   const [background, setBackground] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  /**
+   * The conversation's turns that left a checkpoint, newest last, as the thread file lists them.
+   * Undo always takes the book's newest checkpoint, so only the last of these offers it.
+   */
+  const [checkpointTurns, setCheckpointTurns] = useState<string[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -169,6 +174,7 @@ export function ChatPanel({
     const token = ++loadToken.current;
     setThreadId(null);
     setMessages([]);
+    setCheckpointTurns([]);
     void (async () => {
       try {
         const threads = await must(window.studio.agent.threads.list(bookId));
@@ -178,6 +184,7 @@ export function ChatPanel({
         if (!thread || token !== loadToken.current) return;
         const checkpointTurn = thread.checkpointTurns.at(-1);
         setThreadId(thread.id);
+        setCheckpointTurns(thread.checkpointTurns);
         setMessages(thread.messages.map((message) => toChatMessage(message, checkpointTurn)));
       } catch (error) {
         if (token === loadToken.current) noticeRef.current(error);
@@ -193,6 +200,7 @@ export function ChatPanel({
     loadToken.current += 1;
     setThreadId(null);
     setMessages([]);
+    setCheckpointTurns([]);
     setInput("");
     setHistoryOpen(false);
     retryRequestsRef.current.clear();
@@ -220,6 +228,7 @@ export function ChatPanel({
       if (!thread) return;
       const checkpointTurn = thread.checkpointTurns.at(-1);
       setThreadId(thread.id);
+      setCheckpointTurns(thread.checkpointTurns);
       setMessages(thread.messages.map((message) => toChatMessage(message, checkpointTurn)));
       setHistoryOpen(false);
     } catch (error) {
@@ -258,6 +267,7 @@ export function ChatPanel({
       if (threadId === target.id) {
         setThreadId(null);
         setMessages([]);
+        setCheckpointTurns([]);
       }
       setDeleteTarget(null);
     } catch (error) {
@@ -271,6 +281,7 @@ export function ChatPanel({
       const created = await must(window.studio.agent.threads.fork(bookId, threadId, message.turnId));
       const checkpointTurn = created.checkpointTurns.at(-1);
       setThreadId(created.id);
+      setCheckpointTurns(created.checkpointTurns);
       setMessages(created.messages.map((entry) => toChatMessage(entry, checkpointTurn)));
       setHistoryOpen(false);
     } catch (error) {
@@ -328,6 +339,12 @@ export function ChatPanel({
   useEffect(() => {
     const unsubscribe = window.studio.agent.onEvent((event: AgentEvent) => {
       if (event.turnId !== turnRef.current) return;
+      // A turn that changed the book and saved its checkpoint now owns the newest one, the next undo.
+      // The runtime lists it in the thread file on the same terms.
+      if ((event.type === "done" || event.type === "stopped" || event.type === "error") && event.changed && event.undoAvailable) {
+        const turnId = event.turnId;
+        setCheckpointTurns((current) => (current.includes(turnId) ? current : [...current, turnId]));
+      }
       if (event.type === "text") {
         patchAssistant(event.turnId, (message) => ({ ...message, text: message.text + event.delta }));
       } else if (event.type === "reasoning") {
@@ -470,8 +487,14 @@ export function ChatPanel({
     await startAttempt(assistant.id, request);
   };
 
-  const approve = async (message: Message, approval: Approval, approved: boolean): Promise<void> => {
+  const approve = async (message: Message, approval: Approval, approved: boolean, pressed: HTMLElement): Promise<void> => {
     if (approval.status !== "pending") return;
+    // Allow and Deny leave with the question. Focus still on them moves to their card before they
+    // go, so an answer from the keyboard does not drop focus to the page.
+    const card = pressed.closest<HTMLElement>('[data-slot="confirmation"]');
+    const keepFocus = (): void => {
+      if (card?.contains(document.activeElement)) card.focus();
+    };
     try {
       setWaiting(true);
       setRunning(true);
@@ -486,6 +509,7 @@ export function ChatPanel({
           entry.id === approval.id ? { ...entry, status } : entry
         )
       }));
+      keepFocus();
     } catch (error) {
       const expired = error instanceof Error && /no longer waiting/i.test(error.message);
       if (expired) {
@@ -496,6 +520,7 @@ export function ChatPanel({
             entry.id === approval.id ? { ...entry, status: "expired" } : entry
           )
         }));
+        keepFocus();
         turnRef.current = null;
         assistantRef.current = null;
       } else {
@@ -518,9 +543,11 @@ export function ChatPanel({
 
   // The turn is over by the time its undo runs, so the message is patched by id: the
   // turn-scoped patch no longer matches once the turn is gone.
-  const undo = async (messageId: string): Promise<void> => {
+  const undo = async (messageId: string, turnId: string | undefined): Promise<void> => {
     try {
       const result = await must(window.studio.agent.undoLast(bookId));
+      // The turn is used up. The turn before it, if any, owns the newest checkpoint now.
+      setCheckpointTurns((current) => current.filter((turn) => turn !== turnId));
       // Each note names a chapter that did not simply go back, and where a kept copy is.
       const notes = result.notes?.length ? ` ${result.notes.join(" ")}` : "";
       patchMessage(messageId, (message) => ({
@@ -542,6 +569,11 @@ export function ChatPanel({
     setInput(suggestion);
     inputRef.current?.focus();
   };
+
+  // The last turn still waiting for the author's approval, or -1.
+  const lastPending = messages.findLastIndex((message) =>
+    message.approvals?.some((approval) => approval.status === "pending")
+  );
 
   return (
     <aside
@@ -621,9 +653,21 @@ export function ChatPanel({
               .reverse()
               .find((item) => item.role === "assistant" && item.model)?.model;
             const showModel = message.role === "assistant" && message.model && message.model !== previousModel;
+            // Undo takes the book's newest checkpoint, so only the turn that owns it offers undo. None does
+            // while a turn runs, nor at or before a turn waiting for approval: either may already own the
+            // newest checkpoint before the conversation lists it.
             const canUndo =
-              message.role === "assistant" && Boolean(message.changed) && Boolean(message.turnId) && message.undoAvailable !== false;
-            const canBranch = message.role === "assistant" && Boolean(message.turnId) && !message.failed;
+              !running &&
+              index > lastPending &&
+              message.role === "assistant" &&
+              Boolean(message.turnId) &&
+              message.turnId === checkpointTurns.at(-1);
+            // A branch copies the conversation, and an approval still waiting cannot be answered from a copy.
+            const canBranch =
+              message.role === "assistant" &&
+              Boolean(message.turnId) &&
+              !message.failed &&
+              !message.approvals?.some((approval) => approval.status === "pending");
             return (
               <ConversationItem
                 key={message.id}
@@ -673,15 +717,16 @@ export function ChatPanel({
                             })}
                           </Tools>
                         ) : null}
-                        {message.text ? (
-                          <p className="whitespace-pre-wrap text-(length:--text-body-size) leading-[var(--text-body-leading)]">
-                            {message.text}
-                          </p>
-                        ) : waiting && message.role === "assistant" ? (
-                          <p className="text-(length:--text-subheadline-size) text-muted-foreground">Reading and thinking…</p>
-                        ) : null}
+                        {/* With the tool steps and before the reply: the turn reads in the order it
+                            happened, and the answered card never trails the words that came after it. */}
                         {message.approvals?.map((approval) => (
-                          <Confirmation key={approval.id} state={approval.status} className="mt-2" data-testid="agent-approval">
+                          <Confirmation
+                            key={approval.id}
+                            state={approval.status}
+                            tabIndex={-1}
+                            className="my-2"
+                            data-testid="agent-approval"
+                          >
                             <ConfirmationTitle
                               description={
                                 approval.status === "pending"
@@ -694,14 +739,14 @@ export function ChatPanel({
                             <ConfirmationRequest>
                               <ConfirmationActions>
                                 <ConfirmationAction
-                                  onClick={() => void approve(message, approval, true)}
+                                  onClick={(event) => void approve(message, approval, true, event.currentTarget)}
                                   data-testid="agent-approve"
                                 >
                                   Allow
                                 </ConfirmationAction>
                                 <ConfirmationAction
                                   variant="outline"
-                                  onClick={() => void approve(message, approval, false)}
+                                  onClick={(event) => void approve(message, approval, false, event.currentTarget)}
                                   data-testid="agent-deny"
                                 >
                                   Deny
@@ -710,6 +755,13 @@ export function ChatPanel({
                             </ConfirmationRequest>
                           </Confirmation>
                         ))}
+                        {message.text ? (
+                          <p className="whitespace-pre-wrap text-(length:--text-body-size) leading-[var(--text-body-leading)]">
+                            {message.text}
+                          </p>
+                        ) : waiting && message.role === "assistant" ? (
+                          <p className="text-(length:--text-subheadline-size) text-muted-foreground">Reading and thinking…</p>
+                        ) : null}
                         {message.note ? (
                           <p
                             role={message.failed ? "alert" : undefined}
@@ -834,7 +886,7 @@ export function ChatPanel({
                     <CheckpointIcon>
                       <History />
                     </CheckpointIcon>
-                    <CheckpointTrigger onClick={() => void undo(message.id)} data-testid="agent-undo-turn">
+                    <CheckpointTrigger onClick={() => void undo(message.id, message.turnId)} data-testid="agent-undo-turn">
                       Undo this turn
                     </CheckpointTrigger>
                   </Checkpoint>

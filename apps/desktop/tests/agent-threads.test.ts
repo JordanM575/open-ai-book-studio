@@ -187,9 +187,43 @@ describe("thread store", () => {
     expect(branch.id).not.toBe(source.id);
     expect(branch.title).toBe("Source conversation (branch)");
     expect(branch.messages).toHaveLength(2);
-    expect(branch.checkpointTurns).toEqual(["turn_00000001"]);
+    // Undo takes the newest checkpoint, which this branch left out, so it offers no undo (QA B2).
+    expect(branch.checkpointTurns).toEqual([]);
+    const fromNewest = await store.fork(BOOK, source.id, "turn_00000002");
+    expect(fromNewest.checkpointTurns).toEqual(["turn_00000001", "turn_00000002"]);
     expect((await store.read(BOOK, source.id))?.messages).toHaveLength(4);
     await expect(store.fork(BOOK, source.id, "turn_missing")).rejects.toMatchObject({ code: "not-found" });
+  });
+
+  // QA B2: once undo has used a turn's checkpoint, no conversation may offer that undo again.
+  test("forgets an undone turn in every conversation that names it", async () => {
+    let tick = 0;
+    const clock = new ThreadStore(env.storage, {
+      ...env.runtime,
+      now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString()
+    });
+    const source = await clock.save({
+      ...(await clock.create(BOOK, "Source")),
+      checkpointTurns: ["turn_00000001", "turn_00000002"]
+    });
+    const branch = await clock.save({
+      ...(await clock.create(BOOK, "Source (branch)")),
+      checkpointTurns: ["turn_00000001", "turn_00000002"]
+    });
+    const other = await clock.save({ ...(await clock.create(BOOK, "Other")), checkpointTurns: ["turn_00000003"] });
+
+    await clock.forgetCheckpointTurn(BOOK, "turn_00000002");
+
+    expect((await clock.read(BOOK, source.id))?.checkpointTurns).toEqual(["turn_00000001"]);
+    expect((await clock.read(BOOK, branch.id))?.checkpointTurns).toEqual(["turn_00000001"]);
+    expect(await clock.read(BOOK, other.id)).toEqual(other);
+    // The branch was newer than its source, and still is.
+    const order = (await clock.list(BOOK)).map((thread) => thread.id);
+    expect(order.indexOf(branch.id)).toBeLessThan(order.indexOf(source.id));
+
+    // A turn no conversation names leaves every file as it was.
+    await clock.forgetCheckpointTurn(BOOK, "turn_missing01");
+    expect(await clock.read(BOOK, other.id)).toEqual(other);
   });
 
   test("skips a corrupt file in the list and reports it when opened", async () => {
