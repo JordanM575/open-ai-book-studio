@@ -399,6 +399,19 @@ describe("provider compatibility and the Contributor model", () => {
     expect(modelDisplayName("vendor/some-model")).toBe("some-model");
   });
 
+  test("makes a metadata-free Wonder catalogue entry usable without enabling unverified variants", () => {
+    const listed = base("muse-wonder-1.0");
+    expect(canRunAgent(listed)).toBe(false);
+    const wonder = applyModelPreset("meta", listed);
+    expect(canRunAgent(wonder)).toBe(true);
+    expect(unavailableReason(wonder)).toBeNull();
+    expect(contributorWarning(wonder)).toBeNull();
+    expect(modelDisplayName(listed.id)).toBe("Muse Wonder 1.0");
+    expect(canRunAgent(applyModelPreset("meta", base("muse-wonder-full-1.0")))).toBe(false);
+    expect(canRunAgent(applyModelPreset("meta", base("muse-wonder-1.0-contributor")))).toBe(false);
+    expect(canRunAgent(applyModelPreset("openai", listed))).toBe(false);
+  });
+
   test("keeps Standard non-training and does not touch another provider", () => {
     const standard = applyModelPreset("meta", base(MUSE_SPARK_STANDARD));
     expect(standard).toMatchObject({ trainingOnData: false, inputPricePerMillion: 1.25 });
