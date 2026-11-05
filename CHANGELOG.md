@@ -10,6 +10,13 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Add Draft/Planned specs 039–042 for structured reader/continuity review, Android, book-level
+  covers and audiobook casting, each with decision gates, acceptance scenarios, plan and unchecked
+  tasks. Map all 15 completion requirements and 25 lanes to spec owners, preserve reserved 038,
+  and add a validator for ownership, spec triplets, DAG acyclicity and Mermaid edge agreement.
+  Record the requested OpenCode maximum-effort review and resolve its disclosure, conditional-edge,
+  evidence-date, Android-anchor and reduced-motion/transparency findings without claiming acceptance.
+
 - Distill the researched completion gaps into 15 public requirement IDs with explicit acceptance
   checks and a proposed sequence for new review, Android, cover and audiobook specifications.
 

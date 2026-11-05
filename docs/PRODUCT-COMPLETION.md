@@ -1,10 +1,13 @@
 # Open Book Studio — product completion lanes
 
-Reviewed against public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab` on 2026-11-05.
+Evidence baseline: public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab`.
+Spec/ownership reconciliation dated 2026-11-04; this change is not a fresh runtime audit.
 This is a dependency map for remaining work, not a statement that every proposed capability is
 implemented or approved. The machine-readable graph is [product-completion.json](product-completion.json).
 The [distilled requirements](completion-requirements.json) record stable IDs, current classifications
 and acceptance criteria without including private research provenance.
+The [spec ownership and dependency map](SPEC-DAG.md) links every requirement and lane to its
+existing or new spec, including the four new Draft/Planned proposals 039–042.
 
 ## Two completion milestones
 
@@ -38,9 +41,7 @@ flowchart TD
   L03 --> L14[Routing and spend policy]
   L05 --> L14
   L05 --> L09[Readers and continuity]
-  L06 --> L09
   L08 --> L09
-  L14 --> L09
   L02 --> L10[Illustrations and covers]
   L04 --> L10
   L04 --> L11[Formatting and publishing]
@@ -48,7 +49,6 @@ flowchart TD
   L03 --> L12[Voice and ambient]
   L05 --> L12
   L02 --> L13[Voices and audiobooks]
-  L06 --> L13
   L12 --> L13
   L02 --> L15[CLI and MCP conformance]
   L05 --> L15
@@ -88,7 +88,14 @@ flowchart TD
   L18 --> L24
   L19 --> L24
   L23 --> L24
+  L06 -. optional planning sources .-> L09
+  L14 -. optional accepted routing .-> L09
+  L06 -. optional new character records .-> L13
 ```
+
+Solid arrows are 62 unconditional prerequisite edges. Three dashed edges are conditional contracts
+with explicit scope in `conditionalDependencies`; they do not gate manuscript-only manual review
+or narrator-only audio. The union of both edge types is acyclic.
 
 ## Execution and ownership
 
@@ -119,11 +126,11 @@ cross-device trust, real-device distribution and glasses transport are not impli
 
 ## Current next work
 
-Research reconciliation recommends reusing the existing specs rather than duplicating them. The
-next genuinely new proposals are structured reader/continuity review (039), Android (040),
-dedicated cover design (041), and narrator/character casting with audiobook creation (042).
-These numbers are a proposed sequence, not a claim that those specs or features have landed;
-038 remains owned by the voice-options candidate. Publishing validation extends 035 and depends
+Research reconciliation reuses existing specs rather than duplicating them. New Draft/Planned
+specs now define structured reader/continuity review (039), Android (040), dedicated cover design
+(041), and narrator/character casting with audiobook creation (042), each with a plan, unchecked
+tasks, acceptance scenarios and explicit decision gates. These are proposals, not implemented
+features or accepted decisions. 038 remains owned by the voice-options candidate. Publishing validation extends 035 and depends
 on measured output/rule contracts; conversational review remains distinct under 037.
 
 - Reconcile spec headers/index/task evidence and remove stale claims of missing implementations.

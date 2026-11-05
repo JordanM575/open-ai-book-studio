@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "reviewedBaseline": "f3541f6750e60226ce8490e5ac192f10a1856dab",
-  "date": "2026-11-05",
+  "date": "2026-11-04",
   "scope": "Product requirements distilled from research; classification is evidence-scoped, not release approval.",
   "requirements": [
     {
@@ -53,6 +53,7 @@
       "id": "REQ-REVIEW-003",
       "classification": "missing",
       "public_anchors": [
+        "039",
         "034",
         "037",
         "011",
@@ -111,6 +112,7 @@
       "id": "REQ-ANDROID-001",
       "classification": "missing",
       "public_anchors": [
+        "040",
         "010",
         "013",
         "014",
@@ -128,6 +130,7 @@
       "id": "REQ-COVER-001",
       "classification": "missing",
       "public_anchors": [
+        "041",
         "019",
         "035"
       ],
@@ -142,6 +145,7 @@
       "id": "REQ-AUDIOBOOK-001",
       "classification": "missing",
       "public_anchors": [
+        "042",
         "017",
         "035",
         "038"
@@ -215,6 +219,7 @@
       "id": "REQ-SURFACE-001",
       "classification": "partial",
       "public_anchors": [
+        "040",
         "010",
         "013",
         "014",
