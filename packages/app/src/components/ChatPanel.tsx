@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
-import { Cpu, GitBranch, History, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Cpu, GitBranch, History, Monitor, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
 import type { ThreadSummary } from "@ai-book-studio/core/agent/threads";
 import { modelDisplayName } from "@ai-book-studio/core/providers/compatibility";
@@ -940,25 +940,26 @@ export function ChatPanel({
       </Conversation>
 
       <div className="border-t border-[var(--glass-outline)] p-3">
-        <PromptInput onSubmit={(event) => void send(event)}>
+        <PromptInput onSubmit={(event) => void send(event)} groupClassName="rounded-[var(--corner-lg)]">
           <PromptInputTextarea
             ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            rows={3}
+            rows={4}
+            className="min-h-24 px-3.5 py-3"
             placeholder="What should change?"
             aria-label="Message the writing agent"
             data-testid="chat-input"
           />
-          <PromptInputFooter>
-            <PromptInputTools>
+          <PromptInputFooter className="items-end">
+            <PromptInputTools className="flex-1 flex-wrap gap-1.5">
               <Hint label="Choose a model for the next message only">
                 <InputGroupButton
                   variant="ghost"
                   size="xs"
                   onClick={onChooseTurnModel}
                   data-testid="agent-turn-model"
-                  className="min-w-0 gap-1 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
+                  className="min-w-0 max-w-full gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
                 >
                   <Cpu size={13} className="shrink-0" />
                   <span className="truncate">
@@ -968,7 +969,7 @@ export function ChatPanel({
               </Hint>
               <Hint label="Keep the turn running after the window closes and notify you when it finishes">
                 <label
-                  className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+                  className="relative flex shrink-0 cursor-pointer items-center rounded-[var(--corner-md)] focus-within:ring-2 focus-within:ring-[var(--ring)] has-disabled:cursor-not-allowed"
                 >
                   <input
                     type="checkbox"
@@ -977,9 +978,13 @@ export function ChatPanel({
                     disabled={running}
                     aria-label="Background"
                     data-testid="agent-background"
-                    className="size-4 accent-[var(--primary)]"
+                    className="peer sr-only"
                   />
-                  <span className="hidden min-[520px]:inline">Background</span>
+                  <span className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--corner-md)] border border-[var(--border)] px-2 text-xs text-muted-foreground transition-colors hover:bg-[var(--accent)] peer-checked:border-[var(--primary)] peer-checked:bg-[var(--accent)] peer-checked:text-foreground peer-disabled:opacity-50">
+                    <Monitor size={13} aria-hidden="true" />
+                    Background
+                    <span className="text-[10px] font-medium">{background ? "On" : "Off"}</span>
+                  </span>
                 </label>
               </Hint>
             </PromptInputTools>
