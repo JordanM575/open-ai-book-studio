@@ -1,8 +1,8 @@
-# AI Book Studio
+# Open Book Studio
 
 **Your book. Your files. Your agent.**
 
-AI Book Studio is a local-first desktop writing studio for long-form fiction. Your book is a folder of
+Open Book Studio is a local-first desktop writing studio for long-form fiction. Your book is a folder of
 Markdown and JSON on your own disk, in iCloud Drive, Google Drive, Dropbox or any folder you choose,
 with no account, no server and no database that can quietly disagree with your prose. A writing agent
 works on that folder directly: it reads the Story Bible and the chapters, edits through checked saves
@@ -16,11 +16,58 @@ event. The public history preserves a labelled October 26 implementation baselin
 the event additions. The [submission packet](hackathon/SUBMISSION.md) explains the rewrite,
 the dated baseline, Meta integration and what the demo actually verifies.
 
-<!-- film: link added at submission -->
+[Watch the three-minute hackathon demo](https://www.youtube.com/watch?v=tLFCn9V193E).
+The submitted cut retains the earlier working name; an improved edit is in progress.
 
 ## What it does
 
 [SUBMISSION.md](hackathon/SUBMISSION.md) separates what existed before the event from event work.
+
+### Feature status
+
+**Complete** means implemented in the source with automated coverage. It does not imply a signed
+release, a live-provider check on every platform, or approval by an app store. **In progress** means
+there is a working slice with remaining work; **planned** means it is not available yet.
+
+| Feature | Status | Available today / remaining work |
+| --- | --- | --- |
+| Local library, manuscript editing and autosave | Complete | Markdown and JSON files; checked version/hash saves, conflict copies, trash and recovery |
+| Story Bible, characters and memories | Complete | Book-scoped context used by the writing agent; richer world-building records are planned |
+| Writing agent and tool approvals | Complete | 22 manuscript tools, visible actions, conversation history and one-turn undo |
+| Model choice and usage | Complete | Per-turn provider/model attribution, reported usage/cost and informational spending warnings; unknown cost is not a free turn |
+| Protected desktop credentials | Complete | Electron safeStorage, macOS login Keychain protection, encrypted profile file, explicit keychain status/check and no plaintext fallback |
+| Dictation / speech-to-text (STT) | Complete for Meta | Muse Voice Transcribe inserts text at the caret or transcribes an ambient question; audio stays in memory for the request |
+| Read aloud / text-to-speech (TTS) | Complete for the current adapters | OpenRouter and OpenAI speech output, sentence-based chunking, playback controls and a disclosed device-voice fallback |
+| Voice provider, model and agent-voice preferences | In progress | Existing per-call voice choice is limited; persistent choices and OpenRouter transcription alongside Meta are being added |
+| Character voices, narrator casting and audiobooks | Planned / coming soon | Assign distinct voices to characters and a narrator, then create an audiobook; this is a roadmap item, not current export functionality |
+| Background agent turns | Complete on desktop | Explicit opt-in, reopening the active conversation, and notification when a reply or approval is ready |
+| Illustrations | Complete on desktop | Muse Image generation, chapter attachments and embedded Word illustrations; no SAM cutout claim |
+| Dedicated cover design | Planned | Image records can describe covers, but the current generation interface is for chapter illustrations |
+| Word, Markdown, PDF and EPUB export | Complete on desktop | Formatting and ordered front/back matter; KDP, EPUBCheck and PDF/UA conformance remain unproven |
+| Manuscript and library import | In progress | TXT, Markdown and DOCX manuscript import on macOS; portable archives and earlier-studio migration; other platform conformance remains |
+| External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
+| CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
+| Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
+| Guided/autonomous authoring and task-aware routing | Planned beyond current slices | See specs 036–037; no unattended multi-turn authority or automatic cost-based dispatch is claimed |
+| Named chapter history and library organization | Planned | See specs 032–033 for retained snapshots, collections, goals and source-linked notes |
+| Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
+
+### Delivery mechanisms
+
+| Surface / distribution | Current state | Boundaries |
+| --- | --- | --- |
+| Desktop from source | Working Electron app; macOS is the reference environment | Editing, writing agent, protected credentials, dictation, speech and exports |
+| Desktop packages | macOS DMG/ZIP, Windows NSIS and Linux AppImage targets are configured | Configuration is not proof of signed, notarized or tested installers on every OS |
+| Browser | Working web build with a picked Chromium folder or browser-origin storage | Editing and archive portability; agent, provider dictation and manuscript export remain desktop-only |
+| iPhone / iPad | Responsive layouts and a Capacitor iOS shell, exercised in Simulator | No App Store/TestFlight release or real-device validation is claimed |
+| Android | Planned | No Android app or Play Store release is claimed |
+| CLI / MCP | Standalone `bookwriter` talks to the open desktop studio | Loopback only; no hosted copy of a manuscript and no remote access by default |
+| Glasses / companion | Status surface and integration groundwork | A concept/prototype surface, not a verified glasses release or native cross-device sync |
+
+The [spec roadmap](specs/README.md) records acceptance criteria and unfinished tasks. The
+[voice pipeline](docs/VOICE.md) distinguishes transcription from synthesis, and the
+[keychain runbook](docs/KEYCHAIN.md) explains protected storage and its platform limits.
+App store and release-download links will be posted in this repository when ready.
 
 ### Write
 
@@ -64,6 +111,21 @@ the dated baseline, Meta integration and what the demo actually verifies.
 
 - **`bookwriter`**, a CLI and MCP server, gives other agents the built-in agent's tools over a
   loopback-only backend with a per-run token: read-only by default, writes behind flags.
+- **One tool contract for every agent.** External agents use the same book context, tool policies,
+  checked writes and undo boundary as the studio agent. The CLI never needs its own provider key.
+
+### Speak with the ambient agent
+
+The compact ambient panel provides the voice-first, hands-free reply workflow: start a recording,
+speak your request and stop recording. The transcript appears in the panel and starts an agent turn;
+the completed reply is spoken automatically as well as shown on screen. Read aloud, pause, resume
+and stop keep the manuscript usable without staying in the full chat panel.
+
+Recording is explicitly started and stopped by the author. Continuous listening, wake words and
+speaking over an active reply are not implemented. Transcription and speaking are separate services:
+Meta handles the current dictation adapter, and OpenRouter/OpenAI or the device voice supplies
+read-aloud. Persistent provider/model/voice choices and OpenRouter transcription are being integrated.
+See [docs/VOICE.md](docs/VOICE.md) for the exact supported flow.
 
 ### Trust
 
@@ -96,8 +158,8 @@ You need macOS on Apple Silicon or Intel, [Bun](https://bun.sh) 1.4 or later, an
 for Electron's tooling.
 
 ```bash
-git clone https://github.com/JordanM575/open-ai-book-studio.git
-cd open-ai-book-studio
+git clone https://github.com/JordanM575/open-book-studio.git
+cd open-book-studio
 bun install
 bun run dev
 ```
@@ -197,13 +259,14 @@ The latest results are in [the submission packet](hackathon/SUBMISSION.md#verifi
 - [docs/TESTING.md](docs/TESTING.md) — the test layers and what each proves
 - [docs/DECISIONS.md](docs/DECISIONS.md) and [docs/adr/](docs/adr/) — settled and open decisions
 - [specs/README.md](specs/README.md) — the spec index and roadmap
+- [docs/PRODUCT-COMPLETION.md](docs/PRODUCT-COMPLETION.md) — remaining work, lane dependencies and completion gates
 - [hackathon/SUBMISSION.md](hackathon/SUBMISSION.md) — the submission packet
 - [samples/README.md](samples/README.md) — the sample library
 
 ## Repository
 
 ```bash
-git clone https://github.com/JordanM575/open-ai-book-studio.git
+git clone https://github.com/JordanM575/open-book-studio.git
 ```
 
 Read [AGENTS.md](AGENTS.md) before changing code, [docs/DECISIONS.md](docs/DECISIONS.md) before

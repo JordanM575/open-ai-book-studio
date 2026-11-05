@@ -10,6 +10,29 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Add Draft/Planned specs 039–042 for structured reader/continuity review, Android, book-level
+  covers and audiobook casting, each with decision gates, acceptance scenarios, plan and unchecked
+  tasks. Map all 15 completion requirements and 25 lanes to spec owners, preserve reserved 038,
+  and add a validator for ownership, spec triplets, DAG acyclicity and Mermaid edge agreement.
+  Record the requested OpenCode maximum-effort review and resolve its disclosure, conditional-edge,
+  evidence-date, Android-anchor and reduced-motion/transparency findings without claiming acceptance.
+
+- Distill the researched completion gaps into 15 public requirement IDs with explicit acceptance
+  checks and a proposed sequence for new review, Android, cover and audiobook specifications.
+
+- Add an evidence-scoped product-completion DAG with separate desktop-release and wider-roadmap
+  milestones, explicit lane dependencies and acceptance gates for the researched feature surfaces.
+
+- Rename the public-facing project to Open Book Studio, update repository/demo links and record
+  the successful hackathon submission. Explain the built-in CLI/MCP and ambient spoken-reply flow,
+  including the boundary between author-controlled recording and future continuous listening.
+
+- Record character/narrator voice casting, audiobook creation, dedicated cover design and Android
+  as planned, with future app-store links to be published in the repository when releases are ready.
+
+- Add a README feature-status and delivery matrix covering implemented and planned capabilities,
+  protected key storage, speech input/output, agent voice preferences and release limitations.
+
 - Expand the submission packet with the earlier prototype and fresh-rewrite provenance, Spec Kit
   development workflow, dated implementation baseline, author journey and current demo limitations.
   Link the public repository and distinguish final submission evidence from historical checks.

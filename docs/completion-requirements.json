@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "reviewedBaseline": "f3541f6750e60226ce8490e5ac192f10a1856dab",
+  "date": "2026-11-04",
+  "scope": "Product requirements distilled from research; classification is evidence-scoped, not release approval.",
+  "requirements": [
+    {
+      "id": "REQ-TOOL-001",
+      "classification": "implemented",
+      "public_anchors": [
+        "018",
+        "024",
+        "025"
+      ],
+      "statement": "Keep one studio-owned tool catalog across the built-in agent, loopback backend, CLI, and MCP; preserve checked writes, explicit write/destructive opt-ins, and the desktop library as the only writer.",
+      "acceptance": [
+        "A parity test compares the studio catalog with backend and MCP discovery.",
+        "Writes require explicit opt-in; destructive calls require the separate destructive opt-in and remain undoable.",
+        "The toolkit cannot open a second library or access provider credentials."
+      ]
+    },
+    {
+      "id": "REQ-REVIEW-001",
+      "classification": "partial",
+      "public_anchors": [
+        "034"
+      ],
+      "statement": "Keep deterministic reports local, explicit, read-only, and grounded in saved-source revisions; state coverage and stale evidence honestly.",
+      "acceptance": [
+        "Synthetic fixtures prove saved-only input, shared word-count semantics, cancellation, stale detection, and byte-identical library files.",
+        "The report distinguishes complete, partial, stopped, stale, and insufficient-evidence outcomes.",
+        "The deferred phrase signal and persistence remain absent unless their decisions change."
+      ]
+    },
+    {
+      "id": "REQ-REVIEW-002",
+      "classification": "missing",
+      "public_anchors": [
+        "037",
+        "011",
+        "022",
+        "024",
+        "025"
+      ],
+      "statement": "Keep conversational model review separate from structured reports; disclose provider, model, and exact selected source scope before sending, cite verified revisions, and never edit or silently widen scope.",
+      "acceptance": [
+        "A cancel before the explicit provider-named start produces zero provider requests.",
+        "Only selected source content is sent; each source-backed observation resolves to the captured revision.",
+        "Write, destructive, disabled, and plugin tools are unavailable to the read-only review."
+      ]
+    },
+    {
+      "id": "REQ-REVIEW-003",
+      "classification": "missing",
+      "public_anchors": [
+        "039",
+        "034",
+        "037",
+        "011",
+        "022"
+      ],
+      "statement": "Treat structured critique, reader profiles and rereads, and cross-book analysis as explicitly scoped additions with consent, evidence, retention, and no-write rules.",
+      "acceptance": [
+        "A structured finding is schema-validated and its quotation is verified against the supplied source.",
+        "Reader identity and prior feedback are attributed to the correct run and are not silently relabelled or overwritten.",
+        "Series findings identify every included book and distinguish manuscript evidence from outline or note evidence.",
+        "No report history is persisted before the applicable retention decision is accepted."
+      ]
+    },
+    {
+      "id": "REQ-VOICE-001",
+      "classification": "partial",
+      "public_anchors": [
+        "017",
+        "038"
+      ],
+      "statement": "Distinguish press-to-talk transcription, spoken replies/read-aloud, and any future continuous conversation; do not imply always-on listening or barge-in without a separate verified contract.",
+      "acceptance": [
+        "The interface identifies when recording starts and stops and makes the recognized text visible.",
+        "Voice-service failure has a truthful fallback or refusal and does not silently lose the author's request.",
+        "Persistent preferences remain owned by reserved spec 038; this report does not define or implement them."
+      ]
+    },
+    {
+      "id": "REQ-FORMAT-001",
+      "classification": "partial",
+      "public_anchors": [
+        "035",
+        "019"
+      ],
+      "statement": "Export from a saved immutable snapshot, preserve source files, and label approximate previews and unsupported targets truthfully.",
+      "acceptance": [
+        "A failure-injected export leaves the source and prior destination intact.",
+        "Markdown folder export is tested as an ordinary folder in book order, including ordered matter.",
+        "The UI does not imply measured pagination, print compatibility, or publisher acceptance."
+      ]
+    },
+    {
+      "id": "REQ-PUBLISH-001",
+      "classification": "missing",
+      "public_anchors": [
+        "035"
+      ],
+      "statement": "Claim publishing readiness only for a named target and rule-set version after measurable validation; report actionable errors and unknowns without uploading the manuscript.",
+      "acceptance": [
+        "Print and eBook checks are separate and identify the rule-set version and measured inputs.",
+        "Unknown measurements produce an unknown result, not a passing status.",
+        "A readiness claim is unavailable unless every required target-specific check passes."
+      ]
+    },
+    {
+      "id": "REQ-ANDROID-001",
+      "classification": "missing",
+      "public_anchors": [
+        "040",
+        "010",
+        "013",
+        "014",
+        "016",
+        "029"
+      ],
+      "statement": "Define Android as its own supported target with tested storage, file-picker, credential, import/export, and lifecycle capability gates; do not infer support from iOS or browser behavior.",
+      "acceptance": [
+        "A target matrix names supported Android versions and each available capability.",
+        "Storage, credential, picker, save/conflict, and app lifecycle tests pass on the approved Android target.",
+        "Unsupported import, export, sync, or provider actions are refused before data is captured or written."
+      ]
+    },
+    {
+      "id": "REQ-COVER-001",
+      "classification": "missing",
+      "public_anchors": [
+        "041",
+        "019",
+        "035"
+      ],
+      "statement": "Specify book-level cover composition and output as a distinct capability from chapter illustrations; preserve source assets and validate target-specific dimensions before claiming readiness.",
+      "acceptance": [
+        "Cover assets and layout are book-level and do not alter chapter illustration attachments.",
+        "The author can preview and export a cover without modifying the manuscript or source assets.",
+        "A cover/spine result names its target, required dimensions, inputs, and any unknowns."
+      ]
+    },
+    {
+      "id": "REQ-AUDIOBOOK-001",
+      "classification": "missing",
+      "public_anchors": [
+        "042",
+        "017",
+        "035",
+        "038"
+      ],
+      "statement": "Define narrator and optional character casting, pronunciation/editing controls, per-chapter generation, audio packaging, and disclosure/consent before sending manuscript text to a voice provider.",
+      "acceptance": [
+        "The author reviews the selected text, provider, voices, and output before generation begins.",
+        "Generated audio is traceable to a saved book snapshot and does not modify manuscript files.",
+        "A failed or cancelled chapter does not publish a partial audiobook as complete; successful chapters remain recoverable.",
+        "No voice cloning or third-party voice imitation is implied by narrator or character casting."
+      ]
+    },
+    {
+      "id": "REQ-LIBRARY-001",
+      "classification": "partial",
+      "public_anchors": [
+        "001",
+        "033"
+      ],
+      "statement": "Add collections, recent work, goals, or source-anchored notes only through existing library/file and conflict contracts, with explicit retention and scope.",
+      "acceptance": [
+        "A synthetic multi-book library preserves book identity, search, counts, and recoverable trash behavior.",
+        "Collection and note updates survive reload without dropping unknown book fields or losing conflicting edits.",
+        "Recent-work and goal failures are not presented as successful updates."
+      ]
+    },
+    {
+      "id": "REQ-HISTORY-001",
+      "classification": "decision-blocked",
+      "public_anchors": [
+        "002",
+        "032"
+      ],
+      "statement": "Add named snapshots and restore only after storage, retention, conflict, and undo semantics are accepted; preserve both current and restored text.",
+      "acceptance": [
+        "History storage and retention decisions are accepted before persistence tasks begin.",
+        "A restore against a changed source preserves the current text and reports the conflict instead of overwriting it.",
+        "Restore is attributable and has a tested undo/recovery path."
+      ]
+    },
+    {
+      "id": "REQ-ROUTING-001",
+      "classification": "decision-blocked",
+      "public_anchors": [
+        "011",
+        "022",
+        "036"
+      ],
+      "statement": "Keep task-aware routing advisory until policy is accepted; preserve author-selected dispatch, actual-model attribution, and unknown cost, and do not infer a budget ceiling.",
+      "acceptance": [
+        "Opening or changing the preview causes zero provider calls, credential reads, catalog refreshes, or library writes.",
+        "Unknown capability, context, and price facts remain unknown and are not converted to a rank or zero cost.",
+        "No automatic dispatch, fallback, retry, or enforceable ceiling ships without its own accepted public decision."
+      ]
+    },
+    {
+      "id": "REQ-RELEASE-001",
+      "classification": "decision-blocked",
+      "public_anchors": [
+        "009",
+        "013"
+      ],
+      "statement": "Keep release signing and update claims behind their decisions; identify artifact provenance and unsigned status, and never let an app update modify the author library.",
+      "acceptance": [
+        "Unsigned builds are labelled for informed testing and are not represented as signed public releases.",
+        "Signing, notarization, and update-feed work starts only after D-115 is accepted.",
+        "Any approved install/update test proves library and app-profile preservation and refuses incompatible schema safely."
+      ]
+    },
+    {
+      "id": "REQ-SURFACE-001",
+      "classification": "partial",
+      "public_anchors": [
+        "040",
+        "010",
+        "013",
+        "014",
+        "026"
+      ],
+      "statement": "State capability by product surface and platform; do not infer browser, mobile, glasses, or Android support from desktop behavior.",
+      "acceptance": [
+        "A surface-by-capability matrix is reflected in the UI and release record.",
+        "A refused capability has a specific explanation and does not begin a recording, provider request, or partial file operation."
+      ]
+    }
+  ]
+}

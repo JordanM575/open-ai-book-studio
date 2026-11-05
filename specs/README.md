@@ -41,6 +41,11 @@ every spec must satisfy.
 | [035](035-book-formatting/spec.md) | Book formatting and export ([plan](035-book-formatting/plan.md), [tasks](035-book-formatting/tasks.md)) | In progress — Phase 1 Format journey (target selector, typography binding, approximate preview) implemented and contract-tested; DOCX boundary (T004–T005) done; D-108 accepted, so all four targets export; D-169 and D-170 accepted (2026-11-04), and ordered front and back matter (T007–T013) is edited in the Format dialog and exported by all four targets; the Markdown folder export (T014) and the remaining publication work remain open |
 | [036](036-task-aware-model-routing/spec.md) | Task-aware model routing ([plan](036-task-aware-model-routing/plan.md), [tasks](036-task-aware-model-routing/tasks.md)) | Draft / In progress — the offline preview slice (T007 evaluation, T008 presentation, T009 surface, T010 neutrality, T011 states, T012 call/credential spies, T013 consent regression, T014 access pass) implemented and fixture-tested with no settled taxonomy; totals, selection integration and dispatch remain gated; D-116 is still Proposed, and no dispatch is authorized |
 | [037](037-guided-autonomous-authoring/spec.md) | Guided and autonomous authoring ([plan](037-guided-autonomous-authoring/plan.md), [tasks](037-guided-autonomous-authoring/tasks.md)) | Draft / Planned — foreground read-only review proposed; autonomous authority and lifecycle remain gated; D-126 remains one-turn opt-in only |
+| 038 | Voice preferences | Reserved — owned by the existing voice-options candidate; no accepted spec or integrated implementation asserted here |
+| [039](039-reader-continuity-review/spec.md) | Structured reader and continuity review ([plan](039-reader-continuity-review/plan.md), [tasks](039-reader-continuity-review/tasks.md)) | Draft / Planned — scoped reader profiles, verified findings and explicit rereads; retention and schema decisions open |
+| [040](040-android/spec.md) | Android product target ([plan](040-android/plan.md), [tasks](040-android/tasks.md)) | Draft / Planned — storage, credentials, lifecycle and release matrix need Android-specific decisions/evidence |
+| [041](041-cover-design/spec.md) | Book-level cover design ([plan](041-cover-design/plan.md), [tasks](041-cover-design/tasks.md)) | Draft / Planned — composition, source preservation and measurable target output; storage/output decisions open |
+| [042](042-audiobook-casting/spec.md) | Narrator and character casting with audiobook creation ([plan](042-audiobook-casting/plan.md), [tasks](042-audiobook-casting/tasks.md)) | Draft / Planned — stock casting, explicit chapter generation, recovery and packaging; authority/storage/output decisions open |
 
 Spec numbers 004–008 were reserved in the foundation roadmap and are now requirements inside
 [002](002-studio-v1/spec.md) rather than separate specs, because the white-room specification covers
@@ -71,6 +76,10 @@ commit. It is held to the same standard as any other spec: requirements, accepta
 non-goals, and tasks that actually correspond to the code.
 
 ## Follow-on scope
+
+The [completion spec map and DAG](../docs/SPEC-DAG.md) assign all 15 distilled requirements and all
+25 completion lanes to existing or new specs. New drafts do not accept decisions or prove features.
+038 is reserved, not a broken link or an invitation to recreate the voice-options candidate.
 
 Specs 029–037 record public proposals for additional product capabilities. They remain Draft/Planned
 until their applicable decisions are accepted and implementation and verification are completed.
