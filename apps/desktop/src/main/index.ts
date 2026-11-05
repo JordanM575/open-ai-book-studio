@@ -211,6 +211,8 @@ function createWindow(): BrowserWindow {
 
   window.on("closed", () => {
     mainWindow = null;
+    // A background turn outlives its window: remember where it was, so the next window opens there.
+    noteStudioWindowClosed();
   });
 
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -326,7 +328,7 @@ function createWindow(): BrowserWindow {
 
 /*
  * The notification's click, a second copy and the dock all bring back the one window, or make it
- * again. A window made after a background turn ended with no window open opens on its conversation.
+ * again. A window made after a background turn's window closed opens on its conversation.
  */
 const windows = new StudioWindows({
   current: () => mainWindow,
@@ -337,6 +339,11 @@ const windows = new StudioWindows({
 /** Bring back the existing window, or recreate it after a background notification or a second copy. */
 function showStudioWindow(): void {
   windows.show();
+}
+
+/** The window closed: a background turn still running is remembered for the next window. */
+function noteStudioWindowClosed(): void {
+  windows.noteWindowClosed(agentRuntime?.activeBackgroundTurns() ?? []);
 }
 
 function parseWindowSize(value: string | undefined): { width: number; height: number } | null {  if (!value) return null;

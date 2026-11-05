@@ -271,15 +271,17 @@ export interface DriftEvent {
 export const SECOND_INSTANCE_EVENT_CHANNEL = "app:second-instance";
 
 /**
- * Main process to renderer: a window the studio made after a background turn ended with no window
- * open opens on that turn's conversation (spec 017 FR-012). The main process checks the ids with
- * `agentConversationRefSchema` before it sends them.
+ * Main process to renderer: a window the studio made after a background turn's window closed
+ * opens on that turn's conversation, whether the turn is still running or has ended (spec 017
+ * FR-012). The main process checks the ids with `agentConversationRefSchema` before it sends them.
  */
 export const OPEN_CONVERSATION_EVENT_CHANNEL = "app:open-conversation";
 
 export interface OpenConversationEvent {
   bookId: string;
   threadId: string;
+  /** The chapter that was open when the turn's window closed, when the shell knows it. */
+  chapterId?: string | undefined;
 }
 
 /**
@@ -414,8 +416,9 @@ export interface StudioApi {
      */
     onSecondInstance(callback: () => void): () => void;
     /**
-     * Notifies when this window should open a book's conversation: a background turn finished,
-     * failed or paused while no window was open. Returns an unsubscribe.
+     * Notifies when this window should open a book's conversation: a background turn's window
+     * closed, and the turn is still running or has since finished, failed or paused. Returns an
+     * unsubscribe.
      */
     onOpenConversation(callback: (target: OpenConversationEvent) => void): () => void;
     /** Opens an allow-listed page in the system browser. The main process refuses any other address. */

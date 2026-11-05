@@ -112,12 +112,14 @@ function Studio() {
     []
   );
 
-  // A window made after a background turn opens on the conversation the turn ended in.
+  // A window made after a background turn's window closed opens on that turn's conversation,
+  // and on the chapter that was open when it closed.
   useEffect(
     () =>
-      window.studio.app.onOpenConversation(({ bookId, threadId }) => {
+      window.studio.app.onOpenConversation(({ bookId, threadId, chapterId }) => {
         setScreen({ kind: "workspace", bookId });
         setConversationRequest({ bookId, threadId, nonce: Date.now() });
+        if (chapterId) setChapterRequest({ bookId, chapterId, nonce: Date.now(), revert: false });
       }),
     []
   );

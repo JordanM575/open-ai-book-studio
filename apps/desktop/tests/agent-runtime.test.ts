@@ -10,7 +10,7 @@ import type { StoredCredential } from "@ai-book-studio/core/providers/types";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderService } from "../src/main/providers";
 import type { Studio } from "../src/main/studio";
-import { AgentRuntime } from "../src/main/agent/runtime";
+import { AgentRuntime, type AgentOutcome } from "../src/main/agent/runtime";
 import { createChapterTools } from "../src/main/agent/tools";
 import { Library } from "../src/main/library/store";
 
@@ -809,6 +809,61 @@ describe("agent runtime contract", () => {
       content: [{ type: "tool-result", toolCallId: "call-approval", output: { type: "json", value: { ok: true } } }]
     });
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
+  });
+
+  test("a running background turn names its conversation and open chapter for a reopened window", async () => {
+    const chapter = await createChapter();
+    const model = approvalModel("I left the opening as it was.", "overwrite_chapter", {
+      chapterId: chapter.id,
+      content: "A new opening.\n"
+    });
+    const outcomes: AgentOutcome[] = [];
+    let resolveApproval!: (event: Extract<AgentEvent, { type: "approval" }>) => void;
+    let resolveDone!: (event: Extract<AgentEvent, { type: "done" }>) => void;
+    const approval = new Promise<Extract<AgentEvent, { type: "approval" }>>((resolve, reject) => {
+      resolveApproval = resolve;
+      deadline(reject, "The approval request did not arrive.");
+    });
+    const done = new Promise<Extract<AgentEvent, { type: "done" }>>((resolve, reject) => {
+      resolveDone = resolve;
+      deadline(reject, "The background turn did not finish.");
+    });
+    const runtime = new AgentRuntime(
+      studioFor(),
+      providersFor(),
+      (event) => {
+        if (event.type === "approval") resolveApproval(event);
+        if (event.type === "done") resolveDone(event);
+      },
+      () => model,
+      (outcome) => outcomes.push(outcome)
+    );
+
+    const started = await runtime.start({
+      mode: "edit",
+      bookId: book.id,
+      chapterId: chapter.id,
+      prompt: "Replace the opening.",
+      background: true
+    });
+    const request = await approval;
+
+    // Still running, paused for approval: this is what the shell remembers when the window closes.
+    expect(runtime.activeBackgroundTurns()).toEqual([
+      { bookId: book.id, threadId: started.threadId, chapterId: chapter.id }
+    ]);
+    expect(outcomes).toEqual([
+      expect.objectContaining({ kind: "approval", threadId: started.threadId, chapterId: chapter.id })
+    ]);
+
+    await runtime.approve(started.turnId, request.approvalId, false);
+    await done;
+    expect(outcomes.at(-1)).toMatchObject({ kind: "done", threadId: started.threadId, chapterId: chapter.id });
+    // The turn leaves the running list once its end has been recorded, just after the done event.
+    for (let waited = 0; runtime.activeBackgroundTurns().length > 0 && waited < 100; waited += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(runtime.activeBackgroundTurns()).toEqual([]);
   });
 
   test("a denied resume resends the conversation, writes nothing and reports plainly", async () => {

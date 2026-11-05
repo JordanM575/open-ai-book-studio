@@ -123,7 +123,7 @@
   .chat-sheet {
     position: static;
     z-index: auto;
-    width: 400px;
+    width: clamp(320px, 30vw, 400px);
     height: auto;
     border-radius: var(--corner-xl);
   }

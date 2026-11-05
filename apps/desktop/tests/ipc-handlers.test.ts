@@ -350,6 +350,22 @@ describe("ipc boundary", () => {
     });
   });
 
+  test("a backup the importer refuses is invalid, and is not logged as an internal error", async () => {
+    const { root } = await setup();
+    const backup = join(root, "not-a-backup.json");
+    await writeFile(backup, "this is not a backup");
+    answers.open.push({ canceled: false, filePaths: [backup] });
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await call(IPC.library.importLegacy);
+      expect(result.ok ? null : result.error.code).toBe("invalid");
+      expect(result.ok ? null : result.error.message).toContain("could not be read as a backup");
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   test("with no library open, the library channels say so plainly and the log is redacted", async () => {
     await setup({ open: false });
     expect(await data(IPC.library.current)).toBeNull();

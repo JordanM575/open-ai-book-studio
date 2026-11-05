@@ -13,14 +13,20 @@ const isoDate = z.string().datetime({ offset: true }).or(z.string().datetime());
 const messageId = /^msg_[A-Za-z0-9-]{6,}$/;
 const threadId = /^thread_[A-Za-z0-9-]{6,}$/;
 const bookId = /^book_[A-Za-z0-9-]{6,}$/;
+const chapterId = /^ch_[A-Za-z0-9-]{6,}$/;
 
 export const agentMessageIdSchema = z.string().regex(messageId, "invalid message id").max(200);
 export const agentThreadIdSchema = z.string().regex(threadId, "invalid thread id").max(200);
 export const agentBookIdSchema = z.string().regex(bookId, "invalid book id").max(200);
 
-/** One book's conversation, as the shell asks a window to open it (`OpenConversationEvent`). */
+export const agentChapterIdSchema = z.string().regex(chapterId, "invalid chapter id").max(200);
+
+/**
+ * One book's conversation, as the shell asks a window to open it (`OpenConversationEvent`). The
+ * chapter, when the shell knows it, is the one that was open when the turn's window closed.
+ */
 export const agentConversationRefSchema = z
-  .object({ bookId: agentBookIdSchema, threadId: agentThreadIdSchema })
+  .object({ bookId: agentBookIdSchema, threadId: agentThreadIdSchema, chapterId: agentChapterIdSchema.optional() })
   .strict();
 
 export const agentTextPartSchema = z.object({

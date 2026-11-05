@@ -73,6 +73,8 @@ interface ActiveTurn {
   threadId: string;
   messageId: string;
   background: boolean;
+  /** The chapter the author was looking at when the turn started, so a reopened window can return to it. */
+  chapterId?: string | undefined;
   state: TurnState;
   pending?: PendingApproval | undefined;
 }
@@ -86,6 +88,8 @@ export interface AgentOutcome {
   bookId: string;
   bookTitle: string;
   threadId: string;
+  /** The chapter that was open for the turn, or the last one it changed, for a window reopening on it. */
+  chapterId?: string;
   background: boolean;
   text: string;
   changed: number;
@@ -167,6 +171,20 @@ export class AgentRuntime {
   }
 
   /**
+   * The background turns still running, oldest first, with the chapter each was open on. The shell
+   * remembers the newest when the window closes, so the next window opens on its conversation
+   * while it still runs, not only once it has ended.
+   */
+  activeBackgroundTurns(): Array<{ bookId: string; threadId: string; chapterId?: string }> {
+    return [...this.active.values()]
+      .filter((turn) => turn.background)
+      .map((turn) => {
+        const chapterId = turn.chapterId ?? turn.state.changes.at(-1)?.chapterId;
+        return { bookId: turn.bookId, threadId: turn.threadId, ...(chapterId ? { chapterId } : {}) };
+      });
+  }
+
+  /**
    * Whether the agent is working on a book right now.
    *
    * The ambient status reports it, so the panel's Stop is offered only when there is something to
@@ -222,6 +240,7 @@ export class AgentRuntime {
   ): void {
     const turn = this.active.get(turnId);
     if (!turn) return;
+    const chapterId = turn.chapterId ?? state.changes.at(-1)?.chapterId;
     try {
       this.onOutcome({
         kind,
@@ -229,6 +248,7 @@ export class AgentRuntime {
         bookId: turn.bookId,
         bookTitle: turn.bookTitle,
         threadId: turn.threadId,
+        ...(chapterId ? { chapterId } : {}),
         background: turn.background,
         text: state.text,
         changed: state.changes.length,
@@ -435,6 +455,7 @@ export class AgentRuntime {
       threadId: prepared.thread.id,
       messageId,
       background: input.background === true,
+      chapterId: activeChapter?.id,
       state
     });
 

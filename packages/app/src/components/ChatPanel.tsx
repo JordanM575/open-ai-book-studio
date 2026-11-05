@@ -596,7 +596,7 @@ export function ChatPanel({
 
   return (
     <aside
-      className={cn("glass flex w-[400px] shrink-0 flex-col overflow-hidden rounded-[var(--corner-xl)]", className)}
+      className={cn("glass flex w-[clamp(320px,30vw,400px)] shrink-0 flex-col overflow-hidden rounded-[var(--corner-xl)]", className)}
       aria-label="Writing agent"
       data-testid="chat-panel"
     >

@@ -31,21 +31,21 @@ interface Props {
   onNotice: (error: unknown) => void;
 }
 
-/** Why a book cannot open, in the studio's plain voice. Its folder is never changed (QA D9). */
-const bookIssueCopy: Record<BookReadIssueReason, { headline: string; detail: string }> = {
-  "newer-schema": {
-    headline: "This book was saved by a newer version of the studio",
-    detail: "Update the studio to open it. Nothing in its folder was changed."
-  },
-  syncing: {
-    headline: "This book is still syncing",
-    detail: "It opens once its files finish downloading. Nothing in its folder was changed."
-  },
-  unreadable: {
-    headline: "This book's details could not be read",
-    detail: "Its book.json may be damaged or incomplete. Nothing in its folder was changed."
+/**
+ * Why a book cannot open, in the studio's plain voice. Nothing was changed (QA D9).
+ * Browser storage has no folder, so it is never named as one.
+ */
+function bookIssueCopy(reason: BookReadIssueReason, isBrowserStorage: boolean): { headline: string; detail: string } {
+  const unchanged = isBrowserStorage ? "Nothing was changed." : "Nothing in its folder was changed.";
+  switch (reason) {
+    case "newer-schema":
+      return { headline: "This book was saved by a newer version of the studio", detail: `Update the studio to open it. ${unchanged}` };
+    case "syncing":
+      return { headline: "This book is still syncing", detail: `It opens once its files finish downloading. ${unchanged}` };
+    case "unreadable":
+      return { headline: "This book's details could not be read", detail: `Its book.json may be damaged or incomplete. ${unchanged}` };
   }
-};
+}
 
 export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLibraryImported, onNotice }: Props) {
   const [books, setBooks] = useState<BookSummary[] | null>(null);
@@ -66,6 +66,9 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
   >({ stage: "idle" });
   const isMac = window.studio.platform === "darwin";
   const isWeb = window.studio.platform === "web";
+  // As in Settings: the storage tier, not the target, says whether there is a folder.
+  const isBrowserStorage = library.storage?.tier === "browser";
+  const rootLabel = isBrowserStorage ? (library.storage?.label ?? "This browser") : library.root;
   const canChooseFolder = !isWeb || "showDirectoryPicker" in window;
   // Staged publication needs the desktop atomic rename on the macOS reference target (T004).
   const canImportManuscript = window.studio.platform === "darwin";
@@ -212,7 +215,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
       const summary = await must(window.studio.library.importArchive());
       if (!summary) return;
       setImportNote(
-        `Imported ${formatCount(summary.bookCount)} ${summary.bookCount === 1 ? "book" : "books"} into ${summary.library.root}.`
+        `Imported ${formatCount(summary.bookCount)} ${summary.bookCount === 1 ? "book" : "books"} into ${summary.library.storage?.tier === "browser" ? "this browser" : summary.library.root}.`
       );
       onLibraryImported(summary.library);
     } catch (error) {
@@ -313,10 +316,10 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                 <FolderOpen size={13} className="shrink-0" />
                 <span
                   className="min-w-0 max-w-[62ch] truncate font-mono text-[12px]"
-                  title={library.root}
+                  title={rootLabel}
                   data-testid="library-root"
                 >
-                  {library.root}
+                  {rootLabel}
                 </span>
               </p>
               {health ? (
@@ -431,7 +434,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                 <li key={`folder:${issue.folder}`}>
                   <div data-testid="book-issue-card" className="glass h-full rounded-[var(--corner-lg)] p-5">
                     <h2 className="text-(length:--text-headline-size) leading-[var(--text-headline-leading)] font-semibold">
-                      {bookIssueCopy[issue.reason].headline}
+                      {bookIssueCopy(issue.reason, isBrowserStorage).headline}
                     </h2>
                     {issue.title ? (
                       <p className="mt-1 line-clamp-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] font-medium">
@@ -439,7 +442,7 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
                       </p>
                     ) : null}
                     <p className="mt-1.5 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
-                      {bookIssueCopy[issue.reason].detail}
+                      {bookIssueCopy(issue.reason, isBrowserStorage).detail}
                     </p>
                     <p className="mt-3 truncate font-mono text-(length:--text-caption-size) text-muted-foreground" title={`books/${issue.folder}`}>
                       books/{issue.folder}
@@ -457,9 +460,19 @@ export function LibraryView({ library, theme, onOpenBook, onChooseLibrary, onLib
           )}
 
           <p className="mt-10 text-(length:--text-caption-size) leading-[var(--text-caption-leading)] text-muted-foreground">
-            Each book is a folder: <span className="font-mono">book.json</span> for the idea and cast,{" "}
-            <span className="font-mono">chapters/*.md</span> for the prose. Open them in any editor; the studio will pick up
-            the change.
+            {isBrowserStorage ? (
+              <>
+                Each book is kept in this browser's storage: <span className="font-mono">book.json</span> for the idea and
+                cast, <span className="font-mono">chapters/*.md</span> for the prose. Export an archive to open them in
+                another editor.
+              </>
+            ) : (
+              <>
+                Each book is a folder: <span className="font-mono">book.json</span> for the idea and cast,{" "}
+                <span className="font-mono">chapters/*.md</span> for the prose. Open them in any editor; the studio will pick
+                up the change.
+              </>
+            )}
           </p>
         </div>
       </main>

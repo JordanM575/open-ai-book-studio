@@ -28,6 +28,7 @@ import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { Textarea } from "@ai-book-studio/ui/components/textarea";
+import { exportBlockedMessage } from "../lib/export-save";
 import { must } from "../lib/utils";
 import type { SaveStatus } from "./ManuscriptEditor";
 
@@ -60,17 +61,7 @@ const EXPORTS: Record<FormatTarget, (bookId: string) => Promise<Result<string | 
   Markdown: (bookId) => window.studio.books.exportMarkdown(bookId)
 };
 
-/** Why an export did not start: the open chapter's save did not confirm. */
-function unsavedMessage(status: Exclude<SaveStatus, { kind: "saved" }>): string {
-  switch (status.kind) {
-    case "conflict":
-      return "The chapter could not be saved, so nothing was exported. Your text was kept as a separate copy. Resolve the conflict, then export again.";
-    case "error":
-      return `The chapter could not be saved, so nothing was exported. ${status.message}`;
-    default:
-      return "The chapter has not finished saving, so nothing was exported. Try the export again in a moment.";
-  }
-}
+
 
 type ExportNote = { kind: "saved"; message: string; path: string } | { kind: "error"; message: string };
 
@@ -318,7 +309,7 @@ export function FormatDialog({
         saved = { kind: "error", message: "The chapter could not be saved." };
       }
       if (saved && saved.kind !== "saved") {
-        setNote({ kind: "error", message: unsavedMessage(saved) });
+        setNote({ kind: "error", message: exportBlockedMessage(saved) });
         return;
       }
       if (!(await persist())) {
