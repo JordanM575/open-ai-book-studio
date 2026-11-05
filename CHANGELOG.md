@@ -10,6 +10,16 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Add an evidence-scoped product-completion DAG with separate desktop-release and wider-roadmap
+  milestones, explicit lane dependencies and acceptance gates for the researched feature surfaces.
+
+- Rename the public-facing project to Open Book Studio, update repository/demo links and record
+  the successful hackathon submission. Explain the built-in CLI/MCP and ambient spoken-reply flow,
+  including the boundary between author-controlled recording and future continuous listening.
+
+- Record character/narrator voice casting, audiobook creation, dedicated cover design and Android
+  as planned, with future app-store links to be published in the repository when releases are ready.
+
 - Add a README feature-status and delivery matrix covering implemented and planned capabilities,
   protected key storage, speech input/output, agent voice preferences and release limitations.
 

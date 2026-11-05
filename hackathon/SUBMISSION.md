@@ -1,4 +1,4 @@
-# AI Book Studio — hackathon submission packet
+# Open Book Studio — hackathon submission packet
 
 **Event:** Meta Global AI Developer Hackathon, October 26 – November 4, 2026
 
@@ -7,16 +7,18 @@
 **Entrant:** Jordan McLaughlin (solo)
 **Deadline:** November 4, 2026, 9:00 PM ET
 
-This is the source packet for the submission form. A public repository exists; film upload and
-form submission are separate steps. Unchecked items below are still outstanding.
+The form was submitted before the November 4, 2026, 9:00 PM ET deadline; the portal confirmed
+**Project Submitted**. The public repository was renamed to Open Book Studio and PRs 1–4 were
+merged into `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab`. Film improvements and the
+remaining release checks continue separately; unchecked items below are still outstanding.
 
 ## Submission links
 
 | Field | Value |
 | --- | --- |
-| Project | **AI Book Studio** |
-| Repository | https://github.com/JordanM575/open-ai-book-studio |
-| Demo video | Not uploaded yet |
+| Project | **Open Book Studio** |
+| Repository | https://github.com/JordanM575/open-book-studio |
+| Demo video | https://www.youtube.com/watch?v=tLFCn9V193E — submitted 2:59 cut; earlier working-name branding remains in this version |
 | 30-second film | Not uploaded yet |
 | Runnable sample | `samples/the-salt-road` |
 | License | Apache-2.0 for code; see the sample's own attribution for its text and images |
@@ -30,7 +32,7 @@ outline, continuity, drafts to import, revisions to inspect, and a manuscript to
 all of that between a word processor and disconnected chat sessions loses context and creates
 copy-and-paste work.
 
-AI Book Studio brings that workflow into a local-first writing workspace. Each book is a folder
+Open Book Studio brings that workflow into a local-first writing workspace. Each book is a folder
 of Markdown and JSON, rather than a record locked inside a hosted service. The Story Bible holds
 the premise, outline, characters and memories. The writing agent can read that context, create
 chapters and revise the manuscript through the same checked storage layer the editor uses.
@@ -55,7 +57,7 @@ separate desktop and browser adapters.
 ### The dated baseline is still disclosed
 
 Rewrite provenance and event eligibility are different questions. The public tag
-[`meta-base-2026-10-26`](https://github.com/JordanM575/open-ai-book-studio/tree/meta-base-2026-10-26)
+[`meta-base-2026-10-26`](https://github.com/JordanM575/open-book-studio/tree/meta-base-2026-10-26)
 preserves the implementation already present at the recorded cut. Its original source commit is
 dated October 26 at 09:25 ET, before the documented noon event start. It already contains the
 library format, editor, atomic saves, conflict copies, Story Bible, provider connections, first
@@ -175,8 +177,8 @@ Important boundaries:
   established by responsive screenshots. The 600×600 glasses surface is a software view.
 - A historical synthetic-audio transcription check is not a fresh human-microphone test.
 - Source builds and passing tests do not establish a signed/notarized installer or a published release.
-- The current film cuts are drafts. Temporary synthetic narration is identified as such and still
-  needs the author's final narration/approval under the production plan.
+- The submitted film uses the author's selected HeyGen Weston voice through OpenRouter, not Meta
+  speech synthesis. Its narration/picture alignment and working-name branding are being revised.
 
 ## Why this fits Build for Your World
 
@@ -199,4 +201,4 @@ demonstration should make those benefits visible through a story being written a
 - [ ] Final video links uploaded and checked without authentication.
 - [ ] `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md` and sample attribution checked at submission head.
 - [ ] No credentials, private libraries or internal planning material in submitted tree/history.
-- [ ] Official portal requirements checked; form submitted and confirmation retained.
+- [x] Official form submitted before the deadline; the portal displayed **Project Submitted**.

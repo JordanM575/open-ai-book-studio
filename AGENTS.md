@@ -1,11 +1,11 @@
-# AGENTS.md — AI Book Studio
+# AGENTS.md — Open Book Studio
 
 Read this before changing code. It is short on purpose: the rules below are the ones that keep
 authors' manuscripts safe.
 
 ## What this is
 
-AI Book Studio is a local-first desktop writing studio. An author points it at a folder — iCloud
+Open Book Studio is a local-first desktop writing studio. An author points it at a folder — iCloud
 Drive, Google Drive, Dropbox, or a plain local directory — and the app reads and writes books there
 as ordinary files.
 
@@ -173,7 +173,7 @@ Test what the author sees rather than implementation details.
 
 ## Git and GitHub
 
-- `origin` is `https://github.com/JordanM575/open-ai-book-studio.git`. Use `gh` for issues and
+- `origin` is `https://github.com/JordanM575/open-book-studio.git`. Use `gh` for issues and
   pull requests: `gh issue list`, `gh pr create`.
 - Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 - Every commit includes the `CHANGELOG.md` entry that describes it.
