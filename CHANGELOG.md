@@ -10,6 +10,9 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Add a README feature-status and delivery matrix covering implemented and planned capabilities,
+  protected key storage, speech input/output, agent voice preferences and release limitations.
+
 - Expand the submission packet with the earlier prototype and fresh-rewrite provenance, Spec Kit
   development workflow, dated implementation baseline, author journey and current demo limitations.
   Link the public repository and distinguish final submission evidence from historical checks.

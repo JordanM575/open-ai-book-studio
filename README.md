@@ -22,6 +22,48 @@ the dated baseline, Meta integration and what the demo actually verifies.
 
 [SUBMISSION.md](hackathon/SUBMISSION.md) separates what existed before the event from event work.
 
+### Feature status
+
+**Complete** means implemented in the source with automated coverage. It does not imply a signed
+release, a live-provider check on every platform, or approval by an app store. **In progress** means
+there is a working slice with remaining work; **planned** means it is not available yet.
+
+| Feature | Status | Available today / remaining work |
+| --- | --- | --- |
+| Local library, manuscript editing and autosave | Complete | Markdown and JSON files; checked version/hash saves, conflict copies, trash and recovery |
+| Story Bible, characters and memories | Complete | Book-scoped context used by the writing agent; richer world-building records are planned |
+| Writing agent and tool approvals | Complete | 22 manuscript tools, visible actions, conversation history and one-turn undo |
+| Model choice and usage | Complete | Per-turn provider/model attribution, reported usage/cost and informational spending warnings; unknown cost is not a free turn |
+| Protected desktop credentials | Complete | Electron safeStorage, macOS login Keychain protection, encrypted profile file, explicit keychain status/check and no plaintext fallback |
+| Dictation / speech-to-text (STT) | Complete for Meta | Muse Voice Transcribe inserts text at the caret or transcribes an ambient question; audio stays in memory for the request |
+| Read aloud / text-to-speech (TTS) | Complete for the current adapters | OpenRouter and OpenAI speech output, sentence-based chunking, playback controls and a disclosed device-voice fallback |
+| Voice provider, model and agent-voice preferences | In progress | Existing per-call voice choice is limited; persistent choices and OpenRouter transcription alongside Meta are being added |
+| Background agent turns | Complete on desktop | Explicit opt-in, reopening the active conversation, and notification when a reply or approval is ready |
+| Illustrations | Complete on desktop | Muse Image generation, chapter attachments and embedded Word illustrations; no SAM cutout claim |
+| Word, Markdown, PDF and EPUB export | Complete on desktop | Formatting and ordered front/back matter; KDP, EPUBCheck and PDF/UA conformance remain unproven |
+| Manuscript and library import | In progress | TXT, Markdown and DOCX manuscript import on macOS; portable archives and earlier-studio migration; other platform conformance remains |
+| External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
+| CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
+| Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
+| Guided/autonomous authoring and task-aware routing | Planned beyond current slices | See specs 036–037; no unattended multi-turn authority or automatic cost-based dispatch is claimed |
+| Named chapter history and library organization | Planned | See specs 032–033 for retained snapshots, collections, goals and source-linked notes |
+| Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
+
+### Delivery mechanisms
+
+| Surface / distribution | Current state | Boundaries |
+| --- | --- | --- |
+| Desktop from source | Working Electron app; macOS is the reference environment | Editing, writing agent, protected credentials, dictation, speech and exports |
+| Desktop packages | macOS DMG/ZIP, Windows NSIS and Linux AppImage targets are configured | Configuration is not proof of signed, notarized or tested installers on every OS |
+| Browser | Working web build with a picked Chromium folder or browser-origin storage | Editing and archive portability; agent, provider dictation and manuscript export remain desktop-only |
+| iPhone / iPad | Responsive layouts and a Capacitor iOS shell, exercised in Simulator | No App Store/TestFlight release or real-device validation is claimed |
+| CLI / MCP | Standalone `bookwriter` talks to the open desktop studio | Loopback only; no hosted copy of a manuscript and no remote access by default |
+| Glasses / companion | Status surface and integration groundwork | A concept/prototype surface, not a verified glasses release or native cross-device sync |
+
+The [spec roadmap](specs/README.md) records acceptance criteria and unfinished tasks. The
+[voice pipeline](docs/VOICE.md) distinguishes transcription from synthesis, and the
+[keychain runbook](docs/KEYCHAIN.md) explains protected storage and its platform limits.
+
 ### Write
 
 - **Your library is a folder.** Each book is a folder of `book.json` and one Markdown file per chapter.
