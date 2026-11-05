@@ -16,6 +16,10 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Recognize Meta's listed Muse Wonder 1.0 as a tool-capable writing model using the documented
+  context size and Standard-mode prices when the catalogue omits metadata. Existing turn attribution
+  is preserved; Wonder Full and unverified Contributor variants are not enabled by this preset.
+
 - Give the writing composer more room, let its model/background controls wrap in narrow panels,
   and present Background as a labelled On/Off control with keyboard focus and disabled states.
 

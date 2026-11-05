@@ -14,6 +14,20 @@ export const CONTRIBUTOR_WARNING =
 
 /** Known Meta facts, keyed by the stable model ID from Meta's model list. */
 export const META_MODEL_PRESETS: Record<string, Partial<ModelInfo>> = {
+  // Meta's /models response lists the ID without capability metadata.
+  // Verified against https://dev.meta.ai/docs/models#muse-wonder and
+  // https://dev.meta.ai/models/muse-wonder on 2026-11-05. Full is subscription-only.
+  "muse-wonder-1.0": {
+    name: "Muse Wonder 1.0",
+    contextLength: 1_048_576,
+    supportsTools: true,
+    supportsImages: true,
+    inputPricePerMillion: 4,
+    cachedInputPricePerMillion: 0.2,
+    outputPricePerMillion: 20,
+    trainingOnData: false,
+    note: "Standard mode: prompts and completions are not used to train Meta models."
+  },
   [MUSE_SPARK_CONTRIBUTOR]: {
     name: "Muse Spark 1.3 Contributor",
     contextLength: 1_048_576,
