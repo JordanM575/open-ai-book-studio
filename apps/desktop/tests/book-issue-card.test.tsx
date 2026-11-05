@@ -2,6 +2,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import React from "react";
 import type { BookListing } from "@ai-book-studio/core/schema";
+import type { StorageSummary } from "@ai-book-studio/core/library/storage";
 import { mountDom, unmountDom } from "./support/dom";
 
 let testing!: typeof import("@testing-library/react/pure");
@@ -68,10 +69,13 @@ function stubStudio(platform: string, listing: BookListing, revealResult: unknow
   return { reveal, onNotice, onOpenBook };
 }
 
-function renderLibrary(mocks: { onNotice: ReturnType<typeof mock>; onOpenBook: ReturnType<typeof mock> }) {
+function renderLibrary(
+  mocks: { onNotice: ReturnType<typeof mock>; onOpenBook: ReturnType<typeof mock> },
+  library: { root: string; storage?: StorageSummary } = { root: "/tmp/studio-library" }
+) {
   testing.render(
     React.createElement(LibraryView, {
-      library: { root: "/tmp/studio-library", deviceId: "device_test000001", deviceName: "Test device" },
+      library: { deviceId: "device_test000001", deviceName: "Test device", ...library },
       theme: { choice: "light" as const, set: () => {}, cycle: () => {} },
       onOpenBook: mocks.onOpenBook,
       onChooseLibrary: () => {},
@@ -150,5 +154,48 @@ describe("a book that cannot open", () => {
 
     const cards = await issueCards(view, 3);
     for (const card of cards) expect(testing.within(card).queryByRole("button")).toBeNull();
+  });
+
+  test("browser storage is not described as a folder", async () => {
+    const mocks = stubStudio("web", { books: [HEALTHY], bookReadIssues: ISSUES });
+    const view = renderLibrary(mocks, {
+      root: "browser://lib_test000001",
+      storage: {
+        tier: "browser",
+        label: "This browser",
+        permission: "granted",
+        persistence: "granted",
+        lastCommittedAt: null,
+        warning: null
+      }
+    });
+
+    const cards = await issueCards(view, 3);
+    const text = document.body.textContent ?? "";
+    expect(view.getByTestId("library-root").textContent).toBe("This browser");
+    expect(text).not.toContain("browser://");
+    expect(text).not.toContain("Nothing in its folder was changed.");
+    expect(text).not.toContain("Each book is a folder");
+    expect(text).toContain("this browser's storage");
+    for (const card of cards) expect(card.textContent ?? "").not.toContain("folder was changed");
+  });
+
+  test("a folder chosen in the browser keeps the folder copy", async () => {
+    const mocks = stubStudio("web", { books: [], bookReadIssues: ISSUES.slice(2) });
+    const view = renderLibrary(mocks, {
+      root: "folder://Field notes",
+      storage: {
+        tier: "folder",
+        label: "Field notes",
+        permission: "granted",
+        persistence: "not-supported",
+        lastCommittedAt: null,
+        warning: null
+      }
+    });
+
+    const card = await issueCard(view, 1, 0);
+    expect(card.textContent ?? "").toContain("Nothing in its folder was changed.");
+    expect(document.body.textContent ?? "").toContain("Each book is a folder");
   });
 });

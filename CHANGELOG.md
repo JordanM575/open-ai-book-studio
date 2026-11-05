@@ -10,6 +10,24 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- A library kept in browser storage is no longer described as a folder: the library header names
+  the browser, a book that cannot open no longer says its folder was left unchanged, and the
+  closing note explains the storage instead of inviting the author to open files in an editor. A
+  folder chosen in the browser keeps the folder wording.
+- A backup the legacy importer refuses now reaches the author as `invalid` input instead of an
+  internal error, and is not written to the console as one.
+- The Format dialog and the workspace header export now share one failed-save sentence, from a
+  single source, so an export stopped by a chapter that could not be saved reads the same wherever
+  it was started.
+- Reopening the studio while a background turn is still running opens that turn's conversation and
+  the chapter that was open when its window closed, instead of the library and the first chapter.
+  The window remembers both when it closes, so a turn that finishes after the reopen is already
+  there, and one that finished while no window was open opens on the same chapter.
+- The per-book tone and answer length now travel with every agent turn, as the Agent dialog
+  promises: both are in the turn's system prompt, proven inside the 4,000-token prompt budget at
+  the maximum tone length for every answer length. At 1024×700 with the writing agent open, the
+  chat panel takes a responsive width instead of a fixed 400px, so the manuscript keeps room and
+  the book title ellipsizes.
 - Atomic writes use exclusively created, random sibling temporary files, preserve existing ordinary
   permission bits when no mode is specified, and respect the process umask for new files. Temporary
   files start private; transient rename retries retain the same complete file, and failed cleanup

@@ -235,8 +235,9 @@ describe("format dialog export", () => {
     choose(view, "PDF");
     testing.fireEvent.click(view.getByTestId("format-export"));
     await testing.waitFor(() => {
+      // The same words the workspace header export uses for the same failed save.
       expect(view.getByTestId("format-export-error").textContent).toBe(
-        "The chapter could not be saved, so nothing was exported. The disk is full."
+        "Your latest change couldn't be saved, so nothing was exported. The disk is full."
       );
     });
     expect(mocks.save).toHaveBeenCalled();

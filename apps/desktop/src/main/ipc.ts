@@ -21,6 +21,7 @@ import { imageIdSchema } from "@ai-book-studio/core/images/schema";
 import { ProviderError, connectionIdSchema, providerIdSchema } from "@ai-book-studio/core/providers/types";
 import { redact } from "@ai-book-studio/core/providers/redact";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
+import { LegacyImportError } from "@ai-book-studio/core/legacy";
 import {
   importManuscriptInputSchema,
   type ImportSourcePick
@@ -115,6 +116,10 @@ function ok<T>(data: T): Result<T> {
 function fail(error: unknown): Result<never> {
   if (error instanceof z.ZodError) {
     return { ok: false, error: { code: "invalid", message: error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ") } };
+  }
+  if (error instanceof LegacyImportError) {
+    // A backup the author chose that the importer refuses: their input, not an internal error.
+    return { ok: false, error: { code: "invalid", message: error.message } };
   }
   if (error instanceof LibraryError) {
     return { ok: false, error: { code: error.code, message: error.message } };

@@ -141,9 +141,10 @@ prevent divergence but to make it visible and non-destructive.
    studio open keeps it too; a second quit or close while the question is open waits for it; and the
    window a quit then closes is not flushed a second time.
 6. `StudioWindows` (`windows.ts`) brings the one window back or makes it again, for the notification's
-   click, a second copy and the dock's `activate`. A background turn that finishes, fails or pauses for
-   approval with no window open is remembered, and the next window made opens on its conversation once,
-   through `app:open-conversation` (017 FR-012). A window made with nothing remembered opens on the
+   click, a second copy and the dock's `activate`. When a background turn's window closes, its
+   conversation and the chapter that was open are remembered, and the next window made opens on them
+   once, through `app:open-conversation` (017 FR-012) — whether the turn is still running or has since
+   finished, failed or paused for approval. A window made with nothing remembered opens on the
    library.
 
 The menu is deliberately small: File → Open library…, Close window, Quit; standard Edit, View and

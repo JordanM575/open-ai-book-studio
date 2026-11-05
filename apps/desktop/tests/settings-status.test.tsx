@@ -93,6 +93,18 @@ async function openTestButton(): Promise<void> {
 }
 
 describe("provider and voice status in Settings", () => {
+  test("the keychain check control is named as the timeout detail names it", async () => {
+    mockStudio();
+    renderSettings();
+
+    await testing.waitFor(
+      () => expect(testing.within(document.body).getByTestId("check-keychain")).toBeTruthy(),
+      { timeout: 2000 }
+    );
+    // The vault's timeout detail says "Choose Check keychain to try again."
+    expect(testing.within(document.body).getByTestId("check-keychain").textContent).toContain("Check keychain");
+  });
+
   test("an untested connection reads as saved, with no check time and no warning", async () => {
     mockStudio();
     renderSettings();

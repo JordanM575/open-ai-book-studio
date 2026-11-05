@@ -44,6 +44,7 @@ import {
 import { RecoveryPanel } from "../components/RecoveryPanel";
 import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateDialog";
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
+import { exportBlockedMessage } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
 import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
@@ -532,13 +533,7 @@ export function WorkspaceView({
       // author's newest words out without a word. Stop and say so instead.
       const flushed = await editorRef.current?.flush();
       if (flushed?.kind === "conflict" || flushed?.kind === "error") {
-        onNotice(
-          new Error(
-            flushed.kind === "conflict"
-              ? "This chapter has a conflicting copy, so nothing was exported. Resolve the conflict, then export again."
-              : `Your latest change couldn't be saved, so nothing was exported. ${flushed.message}`
-          )
-        );
+        onNotice(new Error(exportBlockedMessage(flushed)));
         return;
       }
       const path = await must(request());

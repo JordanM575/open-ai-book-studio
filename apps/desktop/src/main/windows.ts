@@ -15,10 +15,11 @@ export interface StudioWindow {
 /**
  * The studio's one window: brought back when it is open, made again when it is not.
  *
- * A background turn keeps running after the author closes the window (spec 017 FR-010). When it
- * finishes, fails or pauses for approval with no window open, its conversation is remembered, and
- * the next window the studio makes, from the notification's click or the dock, opens on it instead
- * of on the library (FR-012). A window made with nothing remembered opens as it always did.
+ * A background turn keeps running after the author closes the window (spec 017 FR-010). When its
+ * window closes, its conversation and the chapter that was open are remembered, and the next
+ * window the studio makes, from the notification's click or the dock, opens on them instead of on
+ * the library (FR-012) — whether the turn is still running or has since finished, failed or
+ * paused for approval. A window made with nothing remembered opens as it always did.
  */
 export class StudioWindows {
   private pending: OpenConversationEvent | null = null;
@@ -34,11 +35,49 @@ export class StudioWindows {
     }
   ) {}
 
-  /** Remember the conversation of a turn that ended with no window open. A stop was the author's own doing. */
+  /**
+   * Remember the conversation of a turn that ended with no window open. A stop was the author's
+   * own doing, so it also forgets a conversation remembered when that turn's window closed. A
+   * window already open on the conversation — reopened while the turn still ran — is left alone.
+   */
   noteOutcome(outcome: AgentOutcome): void {
-    if (outcome.kind === "stopped" || this.options.current()) return;
-    const target = agentConversationRefSchema.safeParse({ bookId: outcome.bookId, threadId: outcome.threadId });
-    if (target.success) this.pending = target.data;
+    if (outcome.kind === "stopped") {
+      if (this.pending?.bookId === outcome.bookId && this.pending.threadId === outcome.threadId) this.pending = null;
+      return;
+    }
+    if (this.options.current()) return;
+    const remembered =
+      this.pending?.bookId === outcome.bookId && this.pending.threadId === outcome.threadId ? this.pending : null;
+    this.remember({
+      bookId: outcome.bookId,
+      threadId: outcome.threadId,
+      chapterId: outcome.chapterId ?? remembered?.chapterId
+    });
+  }
+
+  /**
+   * The window closed while these background turns were still running: remember the newest one's
+   * conversation and open chapter, so the next window opens on them live, not only once the turn
+   * has ended. The runtime names only the turns the author marked background.
+   */
+  noteWindowClosed(turns: Iterable<{ bookId: string; threadId: string; chapterId?: string | undefined }>): void {
+    for (const turn of turns) this.remember(turn);
+  }
+
+  /** Keep one conversation for the next window, checking its ids; an id that is not a chapter is dropped. */
+  private remember(ref: { bookId: string; threadId: string; chapterId?: string | undefined }): void {
+    const target = agentConversationRefSchema.safeParse({
+      bookId: ref.bookId,
+      threadId: ref.threadId,
+      ...(ref.chapterId ? { chapterId: ref.chapterId } : {})
+    });
+    if (target.success) {
+      this.pending = target.data;
+      return;
+    }
+    if (!ref.chapterId) return;
+    const conversation = agentConversationRefSchema.safeParse({ bookId: ref.bookId, threadId: ref.threadId });
+    if (conversation.success) this.pending = conversation.data;
   }
 
   /** Bring back the open window, or make it again, after a notification's click or a second copy. */

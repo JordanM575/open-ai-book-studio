@@ -148,8 +148,10 @@ describe("docx export flush", () => {
       expect(mocks.onNotice).toHaveBeenCalledTimes(1);
     });
     const notice = mocks.onNotice.mock.calls[0]?.[0];
-    expect(notice instanceof Error ? notice.message : String(notice)).toContain("nothing was exported");
-    expect(notice instanceof Error ? notice.message : String(notice)).toContain("The disk is full.");
+    // The same words the Format dialog uses for the same failed save.
+    expect(notice instanceof Error ? notice.message : String(notice)).toBe(
+      "Your latest change couldn't be saved, so nothing was exported. The disk is full."
+    );
     expect(mocks.exportDocx).not.toHaveBeenCalled();
     expect(order).toEqual(["save"]);
     expect(view.queryByText("Saved flushed.docx")).toBeNull();

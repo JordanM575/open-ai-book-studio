@@ -30,6 +30,9 @@ const finished: AgentOutcome = {
 
 const conversation = { bookId: "book_reopen0001", threadId: "thread_reopen0001" };
 
+/** The same turn while it is still running, on the chapter the author had open when they closed the window. */
+const running = { ...conversation, chapterId: "ch_reopen0002" };
+
 interface FakeWindow {
   sent: unknown[][];
   shown: number;
@@ -106,6 +109,11 @@ function shell(headless = false) {
     },
     close() {
       open = null;
+    },
+    /** The window closes while a background turn is still running, as `index.ts` reports it on `closed`. */
+    closeDuring(turn: { bookId: string; threadId: string; chapterId?: string }) {
+      open = null;
+      windows.noteWindowClosed([turn]);
     },
     /** The window made last, which is the one each test is about. */
     newest(): FakeWindow {
@@ -217,6 +225,87 @@ describe("reopening after a background turn", () => {
     expect(window.shown).toBe(1);
     studio.windows.activate();
     expect(studio.made).toHaveLength(1);
+  });
+
+  test("reopening while the turn still runs opens its conversation and its open chapter", () => {
+    const studio = shell();
+    studio.launch();
+    studio.closeDuring(running);
+
+    // The dock, before the turn has finished: no outcome has been noted yet.
+    studio.windows.activate();
+    expect(studio.made).toHaveLength(2);
+    const reopened = studio.newest();
+    reopened.load();
+    expect(reopened.sent).toEqual([[OPEN_CONVERSATION_EVENT_CHANNEL, running]]);
+  });
+
+  test("a turn that finishes after a mid-turn reopen is not sent to that window again", () => {
+    const studio = shell();
+    studio.launch();
+    studio.closeDuring(running);
+    studio.windows.activate();
+    const reopened = studio.newest();
+    reopened.load();
+
+    // The reopened window is already on the conversation when the turn ends, so the outcome
+    // neither routes it a second time nor leaves anything for the next ordinary reopen.
+    studio.outcome({ ...finished, chapterId: running.chapterId });
+    expect(reopened.sent).toEqual([[OPEN_CONVERSATION_EVENT_CHANNEL, running]]);
+    studio.close();
+    studio.windows.activate();
+    studio.newest().load();
+    expect(studio.newest().sent).toEqual([]);
+  });
+
+  test("a turn that finishes after its window closed reopens on the chapter it was open on", () => {
+    const studio = shell();
+    studio.launch();
+    studio.closeDuring(running);
+    // The outcome itself need not name the chapter: the close already remembered it.
+    studio.outcome(finished);
+    studio.windows.activate();
+    studio.newest().load();
+    expect(studio.newest().sent).toEqual([[OPEN_CONVERSATION_EVENT_CHANNEL, running]]);
+  });
+
+  test("a finished turn's own chapter is remembered when nothing was noted at the close", () => {
+    const studio = shell();
+    studio.outcome({ ...finished, chapterId: running.chapterId });
+    studio.windows.activate();
+    studio.newest().load();
+    expect(studio.newest().sent).toEqual([[OPEN_CONVERSATION_EVENT_CHANNEL, running]]);
+  });
+
+  test("closing again while the turn still runs remembers it for the next window too", () => {
+    const studio = shell();
+    studio.launch();
+    studio.closeDuring(running);
+    studio.windows.activate();
+    studio.newest().load();
+    studio.closeDuring(running);
+    studio.windows.activate();
+    studio.newest().load();
+    expect(studio.newest().sent).toEqual([[OPEN_CONVERSATION_EVENT_CHANNEL, running]]);
+  });
+
+  test("an id that is not a chapter is dropped, and the conversation still opens", () => {
+    const studio = shell();
+    studio.launch();
+    studio.closeDuring({ ...conversation, chapterId: "../../etc" });
+    studio.windows.activate();
+    studio.newest().load();
+    expect(studio.newest().sent).toEqual([[OPEN_CONVERSATION_EVENT_CHANNEL, conversation]]);
+  });
+
+  test("a remembered turn the author then stopped leaves nothing to reopen", () => {
+    const studio = shell();
+    studio.launch();
+    studio.closeDuring(running);
+    studio.outcome({ ...finished, kind: "stopped" });
+    studio.windows.activate();
+    studio.newest().load();
+    expect(studio.newest().sent).toEqual([]);
   });
 
   test("a hidden run's window is never shown, though a new one still opens on the conversation", () => {

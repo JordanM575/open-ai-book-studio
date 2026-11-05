@@ -78,6 +78,13 @@ function mockStudio() {
     wordCount: 5,
     hash: "a".repeat(64)
   };
+  const openChapter = {
+    ...chapterMetaSchema.parse({ id: "ch_reopen0002", title: "The Crossing", order: 2, createdAt: NOW, updatedAt: NOW }),
+    content: "The ferry left at dawn.\n",
+    path: "0002-the-crossing.md",
+    wordCount: 5,
+    hash: "b".repeat(64)
+  };
   const ok = <T,>(data: T) => Promise.resolve({ ok: true as const, data });
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
@@ -100,7 +107,7 @@ function mockStudio() {
     books: {
       list: () =>
         ok([{ id: BOOK, title: "The Salt Road", description: "", stage: "drafting", chapterCount: 1, wordCount: 5, updatedAt: NOW }]),
-      open: () => ok({ book, chapters: [chapter], chapterReadIssues: [] })
+      open: () => ok({ book, chapters: [chapter, openChapter], chapterReadIssues: [] })
     },
     chapters: { save: () => ok({ status: "saved", chapter }), updateMeta: () => ok({ status: "saved", chapter }) },
     conflicts: { list: () => ok([]) },
@@ -151,6 +158,21 @@ describe("a window reopened after a background turn", () => {
     expect(testing.within(chat).queryByText("I tightened the paragraph.")).toBeNull();
     expect(bridge.read).toEqual([FINISHED]);
     expect(body.queryByTestId("library-view")).toBeNull();
+  });
+
+  test("opens on the chapter that was open when the window closed, not on the first chapter", async () => {
+    const bridge = mockStudio();
+    testing.render(React.createElement(App));
+    const body = testing.within(document.body);
+    await body.findByTestId("library-view");
+
+    testing.act(() => bridge.reopen({ bookId: BOOK, threadId: FINISHED, chapterId: "ch_reopen0002" }));
+    await body.findByTestId("workspace-view");
+    await testing.waitFor(() =>
+      expect((body.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe("The ferry left at dawn.\n")
+    );
+    const chat = await body.findByTestId("chat-panel");
+    await testing.waitFor(() => expect(testing.within(chat).getByText(REPLY)).toBeTruthy());
   });
 
   test("a turn that paused for approval reopens on its request, and Allow answers that turn", async () => {
