@@ -3,6 +3,8 @@
 Reviewed against public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab` on 2026-11-05.
 This is a dependency map for remaining work, not a statement that every proposed capability is
 implemented or approved. The machine-readable graph is [product-completion.json](product-completion.json).
+The [distilled requirements](completion-requirements.json) record stable IDs, current classifications
+and acceptance criteria without including private research provenance.
 
 ## Two completion milestones
 
@@ -116,6 +118,13 @@ particular, automatic dispatch/fallback, hard spend ceilings, autonomous multi-t
 cross-device trust, real-device distribution and glasses transport are not implied by a graph edge.
 
 ## Current next work
+
+Research reconciliation recommends reusing the existing specs rather than duplicating them. The
+next genuinely new proposals are structured reader/continuity review (039), Android (040),
+dedicated cover design (041), and narrator/character casting with audiobook creation (042).
+These numbers are a proposed sequence, not a claim that those specs or features have landed;
+038 remains owned by the voice-options candidate. Publishing validation extends 035 and depends
+on measured output/rule contracts; conversational review remains distinct under 037.
 
 - Reconcile spec headers/index/task evidence and remove stale claims of missing implementations.
 - Finish the Open Book Studio display rename without changing credential or data identities.

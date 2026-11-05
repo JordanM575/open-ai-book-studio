@@ -10,6 +10,9 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Distill the researched completion gaps into 15 public requirement IDs with explicit acceptance
+  checks and a proposed sequence for new review, Android, cover and audiobook specifications.
+
 - Add an evidence-scoped product-completion DAG with separate desktop-release and wider-roadmap
   milestones, explicit lane dependencies and acceptance gates for the researched feature surfaces.
 
