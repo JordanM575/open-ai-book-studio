@@ -8,6 +8,12 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Documentation
+
+- Expand the submission packet with the earlier prototype and fresh-rewrite provenance, Spec Kit
+  development workflow, dated implementation baseline, author journey and current demo limitations.
+  Link the public repository and distinguish final submission evidence from historical checks.
+
 ### Fixed
 
 - A library kept in browser storage is no longer described as a folder: the library header names
