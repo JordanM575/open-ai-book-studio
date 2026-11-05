@@ -9,11 +9,12 @@ works on that folder directly: it reads the Story Bible and the chapters, edits 
 you can undo, and can keep working after you close the window.
 The agent works on the actual book, and the author keeps the actual files.
 
-Built for the Meta Global AI Developer Hackathon (Indie Developer track, "Build for Your World"),
-starting from a pre-event base: the library format, manuscript editor, atomic saves, conflict copies,
-Story Bible, provider connections, a first writing-agent loop, Word export, backup import from an
-earlier studio, browser storage, the sync detector and the test foundation existed at the October 26
-cut. The public history starts with a labelled baseline commit at that cut, then the event's work.
+Built for the Meta Global AI Developer Hackathon (Indie Developer track, "Build for Your World").
+This local-first studio is a fresh implementation of an earlier cloud/web writing idea, developed
+with Spec Kit's specification-driven workflow. The idea, designs and specifications predated the
+event. The public history preserves a labelled October 26 implementation baseline, followed by
+the event additions. The [submission packet](hackathon/SUBMISSION.md) explains the rewrite,
+the dated baseline, Meta integration and what the demo actually verifies.
 
 <!-- film: link added at submission -->
 

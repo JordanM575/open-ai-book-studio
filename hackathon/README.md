@@ -21,8 +21,9 @@ The submission folder for the Meta Global AI Developer Hackathon, October 26 –
 
 ## The short version
 
-- Build on AI Book Studio, not a new app. It already had a local-first library, a writing agent,
-  Story Bible, DOCX export and a tested desktop/web foundation.
+- A fresh local-first implementation of an earlier cloud/web writing idea, developed with Spec Kit.
+  The idea, designs and specifications predated the event; the dated implementation baseline is
+  disclosed separately from the rewrite and event additions in `SUBMISSION.md`.
 - Add Meta's models where they change the product: Muse Spark for planning and prose, Muse Voice
   Transcribe for dictation, and Muse Image for chapter illustrations. SAM 3.1 cutouts were built and
   then retired (D-158). Meta's open weights were not used.

@@ -1,222 +1,202 @@
-# Hackathon submission packet
+# AI Book Studio — hackathon submission packet
 
 **Event:** Meta Global AI Developer Hackathon, October 26 – November 4, 2026
-**Track:** Indie Developer
-**Theme:** Build for Your World
+
+**Track:** Indie Developer · **Theme:** Build for Your World
+
 **Entrant:** Jordan McLaughlin (solo)
 **Deadline:** November 4, 2026, 9:00 PM ET
 
-> Fill the bracketed fields after the repository and film links exist. Do not submit a placeholder.
+This is the source packet for the submission form. A public repository exists; film upload and
+form submission are separate steps. Unchecked items below are still outstanding.
 
-## Form fields
+## Submission links
 
 | Field | Value |
 | --- | --- |
-| Project name | **AI Book Studio** |
-| Track | **Indie Developer** |
-| Theme | **Build for Your World** |
-| Representative | Jordan McLaughlin |
-| Team | Solo |
-| Repository | `<public repository URL>` |
-| Demo video | `<3:00 master URL>` |
-| Short video | `<0:30 cut URL>` |
-| Sample library | `samples/the-salt-road` in the repository |
-| Licence | Apache-2.0 (code); sample text/images CC0 |
+| Project | **AI Book Studio** |
+| Repository | https://github.com/JordanM575/open-ai-book-studio |
+| Demo video | Not uploaded yet |
+| 30-second film | Not uploaded yet |
+| Runnable sample | `samples/the-salt-road` |
+| License | Apache-2.0 for code; see the sample's own attribution for its text and images |
 
-## What it is
+## The idea
 
-AI Book Studio is a local-first writing studio for long-form fiction. The book is a folder of Markdown
-and JSON the author owns; the agent reads the Story Bible and chapters, edits through tools, makes
-checked saves with undo checkpoints, can keep working after the window closes, and returns a native
-notification. Illustrations are generated with Muse Image and carried into the Word export. The same
-library is available to other agents through the `bookwriter` CLI and MCP server, over a
-loopback-only backend with a per-run token.
+**The agent works on the actual book, and the author keeps the actual files.**
 
-**One line:** the agent works on the actual book, and the author keeps the actual files.
+An author needs more than a chat that produces a page of prose. A book has chapters, a cast, an
+outline, continuity, drafts to import, revisions to inspect, and a manuscript to take away. Moving
+all of that between a word processor and disconnected chat sessions loses context and creates
+copy-and-paste work.
 
-## What existed before the event
+AI Book Studio brings that workflow into a local-first writing workspace. Each book is a folder
+of Markdown and JSON, rather than a record locked inside a hosted service. The Story Bible holds
+the premise, outline, characters and memories. The writing agent can read that context, create
+chapters and revise the manuscript through the same checked storage layer the editor uses.
 
-The local-first library format, manuscript editor, atomic saves, conflict copies, Story Bible, provider
-connections, the first writing-agent loop, Word export, legacy import, browser storage, sync detector
-and the desktop/web test foundation existed at the October 26 cut (`meta-base-2026-10-26`). In the
-public repository that cut is the first commit, "Baseline: AI Book Studio as it stood at the October
-26, 2026 cut, before the event".
+The author can work manually, use the full agent conversation, or use the compact ambient strip.
+Word import, formatting and exports connect the studio to an existing writing practice. The
+`bookwriter` CLI and MCP server let other tools work with the same local library through an
+authenticated loopback interface.
 
-## What was built during the event
+## Where the project came from
 
-- Muse Voice Transcribe dictation with WAV conversion and caret insertion (spec 017).
-- Background agent turns, native notifications, dock badge and approval-pause handling (spec 017).
-- `bookwriter` CLI, MCP server and the loopback backend with per-run token (spec 018).
-- Image storage (`images.json`), Muse Image generation, illustration UI and DOCX embedding (spec 019),
-  and an export of every image in a book as a JPEG from its actions (002 FR-050).
-- ~~SAM 3.1 cutouts~~ — built, then retired (D-158) and removed from the build on 2026-11-04. The
-  request reaches Meta and is accepted, but returns no records and no usage on real and synthetic
-  images alike, so the studio ships no cutout and this packet does not claim one.
-- Product film plan, timed script, storyboard, deterministic fixture and motion plates (spec 021).
-- Provider compatibility seam, Muse Spark 1.3 Contributor presets and book-level training consent
-  (spec 022).
-- The sample library, submission packet and readiness check (spec 023).
-- The studio's own writing tools served over the loopback backend and mirrored in the MCP server, so
-  a third-party agent gets the built-in agent's verbs (spec 024).
-- The agent's own capabilities: a cacheable prompt prefix with its hit rate, per-tool call and success
-  metrics, a per-book switch that withdraws a tool from the model, the backend and the MCP server
-  alike, an optional `SKILLS.md` that gives the agent the author's own house rules, and a folder of
-  TypeScript plugins the author points the app at (spec 025).
-- Approvals and undo for the agent: after the author approves or denies a destructive tool, the model
-  hears the whole conversation again, and one undo restores every chapter a turn changed, including
-  changes made after an approval (ADR 0014).
-- The ambient agent and the minimal mode: a status the studio keeps whether or not anyone is looking
-  — where the author is, what changed, what it would do next — spoken through the voice pipeline and
-  rendered on three surfaces from one pure contract: the desktop strip, the 600×600 glasses page, and
-  the browser build.
-- The voice pipeline (D-159): listening through Muse Voice Transcribe, speaking through a
-  text-to-speech seam, with OpenRouter's free TTS model behind it so a check that runs on every
-  change costs nothing.
-- A bridge from the studio to a phone on the local network, which is the Mac half of the glasses app,
-  proven from a separate process.
-- The sync drift review over the existing detector: a scan when the library opens and when the window
-  regains focus, a review dialog with keep-disk, keep-mine, open-both and export actions, and a
-  Settings section (spec 016, in progress).
-- Integration health: one derived state for each library location and each provider, with
-  plain-language warnings and safe actions (spec 028, in progress).
-- Manuscript import: plain text, Markdown and Word documents into a new book, through a preview and
-  a staged atomic publication. Word documents get heading chapters and a report of what could not
-  come across (spec 029, D-183; Word on macOS).
-- Manuscript review: an evidence-linked report on saved text (spec 034, desktop, in progress).
-- Book formatting: a target selector, typography settings, an approximate preview, a Markdown
-  export beside the Word export, and PDF and EPUB exports from the Format dialog (spec 035, 002
-  FR-051 and D-108; no publisher acceptance, EPUBCheck or PDF/UA is claimed).
-- Agent and provider reporting:
-  - the answering model named in plain words, and capabilities on each model card;
-  - the whole-turn usage line;
-  - offline and rate-limit notes;
-  - checkpoints for a failed turn;
-  - per-turn and monthly spending warnings;
-  - a model id typed by hand, checked with one minimal request before it is kept, and a link to
-    revoke an OpenRouter key at the source;
-  - tone and answer-length settings (specs 011 and 031).
-- Verification added during the event (spec 012), on top of the existing tests and desktop smoke:
-  - one `verify` gate covering lint, typecheck, tests, the quarantine and waiver ledgers and both
-    builds;
-  - component tests;
-  - the coverage ratchet;
-  - the accessibility and visual gates;
-  - end-to-end checks of the `bookwriter` CLI and MCP server against the running app, and of
-    writing, importing and exporting with every outbound connection denied by the operating system;
-  - one real agent turn through the built app against a fake provider on loopback, with connections
-    held in memory rather than in the keychain (D-184);
-  - a second copy of the built app on the same profile, refused before it can write (002 FR-069).
-- One studio per profile: a second copy started on the same profile quits before it reads settings or
-  opens the library, and the open copy tells the author.
-- Open-source licenses generated from the build: Settings → About lists every package each build
-  ships with its license text, `THIRD_PARTY_NOTICES.md` is generated from the same data, and the
-  readiness check fails on a package with no license or an unknown one (D-186).
-- Interface components from shadcn/ui and the AI Elements patterns, themed with the Liquid Glass tokens
-  (D-185): the writing agent's chat is built from Message, Tool, Confirmation, Context, Checkpoint,
-  Prompt Input and Suggestion, with Tooltips on its icon buttons, and the dialogs use Switch, Native
-  Select, Collapsible and Badge.
+### A fresh implementation of an earlier idea
 
-The commit history after the cut is the complete record of event work.
+The author previously had a cloud/web writing prototype. The product idea, design work and
+specifications predated this hackathon. The author describes the current studio as a from-scratch
+rewrite begun around the hackathon kickoff, using specification-driven development with Spec Kit.
+This is the local-first implementation of that idea, rather than a claim that the idea or designs
+were invented during the event. The repository's architecture records the earlier prototype as
+Next.js/localStorage with a single JSON blob; the current studio uses file-based storage and
+separate desktop and browser adapters.
 
-The public repository starts with one labelled baseline commit whose tree is the October 26 cut.
-Every event commit follows it in order, with its original message, author and date. Five commits
-that changed only internal planning files are left out, and nothing from before the cut is presented
-as event work.
+### The dated baseline is still disclosed
 
-## Meta models and partners
+Rewrite provenance and event eligibility are different questions. The public tag
+[`meta-base-2026-10-26`](https://github.com/JordanM575/open-ai-book-studio/tree/meta-base-2026-10-26)
+preserves the implementation already present at the recorded cut. Its original source commit is
+dated October 26 at 09:25 ET, before the documented noon event start. It already contains the
+library format, editor, atomic saves, conflict copies, Story Bible, provider connections, first
+writing-agent loop, Word export, earlier-studio import, browser storage, sync detector and test
+foundation. Those capabilities are disclosed as baseline work even though they belong to the
+rewrite. We do not describe every line in this repository as event-only code.
 
-| Need | Surface |
-| --- | --- |
-| Planning, drafting, revision | Muse Spark 1.3 through the author's own Meta connection (Meta Model API) |
-| Cheap agent testing | Muse Spark 1.3 Contributor, only on the synthetic fixture and only with book consent |
-| Illustration | Muse Image 1.0 |
-| Dictation and captions | Muse Voice Transcribe 1.0 |
-| Spoken replies in the hands-free strip | OpenRouter's text-to-speech model (a partner service, not a Meta model) |
+The public history starts with a labelled baseline snapshot and then replays the retained event
+commits in order. Private planning-only material is excluded. That public history is the reviewable
+record; a fresh rewrite does not erase the baseline or change commit dates. The event additions
+below should be evaluated separately from the earlier product concept, design assets and baseline.
 
-SAM 3.1 is not used: its request returned no records (D-158), so the studio ships no cutout feature.
+## How specification-driven development shaped the build
 
-Contributor mode may train on prompts and outputs. The app defaults it off and refuses a contributor
-turn until the book opts in; the sample and film fixture are the only intended Contributor data.
+Spec Kit organizes each capability into a specification, technical plan and task list under
+`specs/`. The process used here is:
 
-## Verification evidence
+1. **Specify the author's experience.** Define the problem, acceptance criteria, refusal states and
+   what happens to a manuscript when an operation fails.
+2. **Record decisions.** Architecture decisions and open questions live in `docs/adr/` and
+   `docs/DECISIONS.md`; an unfinished decision is not treated as a shipped capability.
+3. **Plan and implement a bounded slice.** Shared behavior goes into the core or shared UI; platform
+   services stay behind their adapters. Only the desktop main process writes local manuscript files.
+4. **Verify the contract.** Storage and agent tests exercise conflicts, approvals, failed writes and
+   recovery; hidden-app checks exercise the real preload bridge, renderer and disk saves.
+5. **Record what is proven.** The changelog, requirement mapping and test evidence distinguish
+   implementation, automated verification and live-provider demonstrations.
 
-Fill every bracketed result from the final clean clone of the submitted commit. Do not submit a
-placeholder.
+See [`specs/README.md`](../specs/README.md), [`docs/FORMAT.md`](../docs/FORMAT.md),
+[`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and
+[`docs/DECISIONS.md`](../docs/DECISIONS.md). A spec or unchecked task describes intent, not proof
+that a feature works. Existing design tokens and third-party UI components are credited separately
+from application code.
 
-| Check | Command | Result at submission |
+## What the event work adds
+
+| Author need | Implementation added or extended | Evidence entry point |
 | --- | --- | --- |
-| Verify | `bun run verify` | `<lint, typecheck, tests, ledgers, desktop and web builds>` |
-| Toolkit | `bun run toolkit:build` | `<result>` |
-| Smoke | `bun run smoke` | `<n/n>` |
-| End to end | `bun run e2e` | `<n/n>` |
-| UI audit | `bun run ui:audit` | `<result>` |
-| Accessibility | `bun run a11y` | `<result>` |
-| Visual | `bun run visual` | `<n/n baselines>` |
-| Coverage | `bun run coverage` | `<functions / lines, against the floor>` |
-| Submission check | `bun run submission:check` | `<ready · commits · tracked files>` |
-| Clean clone | `bun install && bun run verify && bun run e2e && bun run coverage` | `<commit, packages, results>` |
+| Work directly with Meta models | Provider compatibility, model capabilities and Contributor-consent handling | Specs 011, 022; provider and agent tests |
+| Speak a draft or request | Muse Voice Transcribe, audio conversion and insertion; compact voice workflow | Spec 017; `docs/VOICE.md` |
+| Keep writing while a turn finishes | Background execution, approval pauses, notifications and reopening the right conversation | Spec 017; background/reopen tests |
+| Bring an existing manuscript | TXT, Markdown and macOS DOCX import, preview, heading-based chapters and loss report | Spec 029; manuscript-import tests |
+| Illustrate and take the work away | Muse Image, stored illustrations and Word embedding; local formatting and Markdown/PDF/EPUB export | Specs 019, 035; export tests |
+| Use another writing agent | `bookwriter` CLI/MCP and authenticated loopback backend | Specs 018, 024; toolkit e2e |
+| Control the agent's tools | Per-book tool controls, house rules, metrics, plugin seam, approvals and turn undo | Spec 025; ADR 0014 |
+| Understand what happened | Named answering model, whole-turn usage, spending warnings, offline/rate-limit messages, tone and length settings | Specs 011, 031 |
+| Review local changes | Sync-drift review and evidence-linked manuscript review; both remain scoped, in-progress features | Specs 016, 034 |
+| Trust the implementation | Verification command, coverage floor, accessibility/visual checks, license inventory, offline e2e and single-profile enforcement | Spec 012; D-184, D-186 |
 
-**Latest re-check (2026-11-04):**
+The shared interface uses shadcn/ui and AI Elements patterns themed with the existing Liquid Glass
+tokens (D-185). Full chat and the ambient strip are distinct surfaces; they are not evidence of an
+implemented Discuss/Edit mode selector.
 
-| Check | Result |
-| --- | --- |
-| `bun run verify` | Pass: 1,701 tests, 0 failures; lint, typecheck, the quarantine and waiver ledgers, and both builds |
-| Smoke | 38/38 |
-| e2e | 12/12 |
-| `ui:audit` | Pass |
-| Accessibility | No critical or serious findings, and focus order held |
-| Visual | 112/112 baselines |
-| Coverage | 89.69% of functions and 92.63% of lines over the repository's own 190 files, above the 85/92 floor, which is unchanged |
-| Performance | Within SC-009: book open at 1.01× and the web bundle at 1.09× of their baselines, against limits of 2× and 1.2× |
-| Licenses | 129 desktop and 49 web packages pass the license gate, with no exception: the SAM parser left with the cutout (D-158) |
+## How Meta is used
 
-An earlier clean-clone pass on 2026-10-26 (568 tests) is superseded by the event commits.
+| Task | Model/service | Boundary |
+| --- | --- | --- |
+| Planning, drafting and revision | Muse Spark 1.3 via the direct Meta Model API | The selected provider/model is recorded with the turn; tools write the manuscript |
+| Optional Contributor testing | Muse Spark 1.3 Contributor | Requires explicit book-level consent; prompts and outputs may be used for training |
+| Illustration | Muse Image 1.0 | Generation is a separate author action; a sample illustration is not proof of a live generation |
+| Speech recognition | Muse Voice Transcribe 1.0 | Transcription is distinct from writing and from speech synthesis |
+| Spoken replies | TTS provider seam / device voice | Not presented as Meta text-to-speech |
 
-## Demo runbook
+The current successful film capture uses standard **Muse Spark 1.3**, not Contributor. A future
+Muse Wonder demonstration must select and actually run that model; changing an on-screen label
+does not establish a Wonder response.
 
-This runbook follows the film. Step 1 is context from before the event; every later step shows event
-work.
+SAM 3.1 cutouts were explored and retired (D-158) after accepted requests returned no usable records.
+The shipped build does not claim that feature. Meta open weights are not used in this demonstration.
 
-1. **Built before the event.** Open `samples/the-salt-road` in the desktop app with a throwaway
-   profile, and show the book's folder in Finder.
-2. Choose **Muse Spark 1.3 Contributor**. The picker warns that it may train on what you send and
-   refuses until the book opts in. Opt the sample in, ask for the next scene, and the conversation
-   names the model that answered.
-3. Open **Agent** (the bot icon in the header) to show calls and successes per tool. Turn a tool off,
-   and show `bookwriter call` refusing it.
-4. Dictate a sentence; the transcript lands at the caret.
-5. In the strip at the bottom of the workspace, press **Say where you are**, then ask a question out
-   loud. The reply is spoken with OpenRouter's voice.
-6. Tick Background, close the window, show the notification, then reopen on the stored conversation.
-7. Illustrate a chapter with Muse Image (**Generate · $0.01**) and attach the image. Export the Word
-   document, and show the illustration in it.
-8. Run `bookwriter books`, `bookwriter tools` and `bookwriter read` against the same open book, then
-   start `bookwriter mcp`.
-9. Optional:
-   - With Wi-Fi off, show the plain offline note.
-   - Show the 600×600 glasses page at its real size, labelled as not run on glasses.
-10. Close on the book folder (`images/` and `images.json`) and the tagline.
+## The author journey shown in the demo
 
-**Offline fallback:** open the sample, edit and save a chapter, and play the recorded film for model
-features. Never fake a provider response or a save.
+The central story is **The Cartographer's Tide**: a coastal mapmaker finds a vanished street and a
+letter from her missing brother. The demo follows work on the manuscript, rather than a sequence
+of unrelated settings screens:
 
-## Judge rubric map
+1. Connect to Meta with a masked key and choose the writing model on desktop.
+2. Give the story a premise and outline, then submit the opening prompt.
+3. Inspect the model's saved chapter, request a continuation and compare the result.
+4. Make an ordinary author edit and confirm it reaches the manuscript on disk.
+5. Browse the library and export the manuscript.
+6. Show Word import, formatting, the full chat/ambient strip and voice only with matching evidence
+   for the exact operation shown.
 
-| Criterion | Evidence |
-| --- | --- |
-| Impact (30%) | An author's own book, worked on by Meta models, by voice, in the background and by other agents, while the files stay the author's. The sample opens without an account. |
-| Meta AI tooling (25%) | Muse Spark 1.3 with its Contributor consent guard, Muse Image and Muse Voice Transcribe, each behind a capability and consent boundary. |
-| Technical depth (20%) | Provider adapter seam, loopback toolkit token, per-book tool control across the model, the CLI and MCP, per-tool metrics, a cacheable prompt prefix that measures its hit rate when the provider reports one, a plugin seam, and the verification gates. |
-| Demo (25%) | One continuous story from prompt to illustration to a file in Finder; the film and live demo show the app, not a mock. |
+The successful November 4 capture records four drafts and one revision using Muse Spark 1.3,
+an author edit and a Markdown export. It was an isolated Electron run with a disposable library
+and capture-only in-memory credentials; it does not demonstrate keychain persistence. The source
+is timestamped screenshot sampling, not an uninterrupted high-frame-rate screen recording.
 
-## Links and final checklist
+Additional authored stories and the five-book browsing library are sample/fixture content, not
+additional in-product Meta turns. Fixture planning conversations must remain labelled as fixtures.
+Blender books and device shells are presentation assets. Phone/tablet-sized Electron or web views
+are responsive layouts, not proof of native iOS execution or automatic cross-device synchronization.
 
-- [ ] Repository public and links checked in a private window.
-- [ ] `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md` present.
-- [ ] No secret, `.env`, credential file or real library in the tree or history.
-- [ ] Sample opens; two chapters, the Story Bible and the illustration present.
-- [ ] Film: the opening is labelled “Built before the event” and every later segment shows event work.
-- [ ] Film master, 0:30 cut, 0:15 vertical and SRT uploaded; links work privately.
-- [ ] `bun run submission:check` passes.
-- [ ] Clean clone passes install, verify and smoke.
-- [ ] Form submitted before November 4, 9:00 PM ET; confirmation saved.
+## Verification and limits
+
+Record results against the **exact public commit** used for submission. Results from another
+checkout, an earlier commit or a draft film are not interchangeable.
+
+| Check | Reproduction command | Submission status |
+| --- | --- | --- |
+| Lint, types, tests, ledgers and desktop/web builds | `bun run verify` | Final public-head result to record |
+| Real hidden desktop workflow | `bun run smoke` | Final public-head result to record |
+| Toolkit and offline workflows | `bun run e2e` | Final public-head result to record |
+| Accessibility and UI checks | `bun run ui:audit` / `bun run a11y` / `bun run visual` | Final public-head result to record |
+| Coverage and performance | `bun run coverage` / `bun run perf` | Record measured results without changing floors/baselines |
+| Submission artifacts and licenses | `bun run submission:check` | Final public-head result to record |
+| Live Meta | Prompt, model identity, tool result and saved manuscript | Successful November 4 capture exists; retain evidence with final film |
+
+Important boundaries:
+
+- Checked saves and conflict copies reduce lost-work risk; they are not universal compare-and-swap
+  protection against every external writer or a guarantee against every crash.
+- Formatting previews are approximate. PDF/EPUB/DOCX export is not Amazon KDP acceptance,
+  EPUBCheck certification or PDF/UA validation.
+- Native device execution, glasses hardware, mobile agent execution and automatic handoff are not
+  established by responsive screenshots. The 600×600 glasses surface is a software view.
+- A historical synthetic-audio transcription check is not a fresh human-microphone test.
+- Source builds and passing tests do not establish a signed/notarized installer or a published release.
+- The current film cuts are drafts. Temporary synthetic narration is identified as such and still
+  needs the author's final narration/approval under the production plan.
+
+## Why this fits Build for Your World
+
+The intended user is an author who wants assistance without giving up ownership of the manuscript.
+The practical result is editable, inspectable book files. Meta supplies language, image and speech
+capabilities; the studio supplies the context, editing tools and storage boundaries that make those
+capabilities useful in an actual writing workflow.
+
+Technical depth comes from checked file writes, tool approvals and undo, platform adapters,
+provider reporting, and a shared local interface for the built-in agent and external tools. The
+demonstration should make those benefits visible through a story being written and revised.
+
+## Final checklist
+
+- [x] Public repository URL exists.
+- [ ] Exact submission commit recorded; its clean-clone checks attached.
+- [ ] Baseline, earlier idea/designs, third-party assets and event additions disclosed accurately.
+- [ ] Final film reviewed for privacy, captions, model identity and responsive/fixture labels.
+- [ ] Final narration and music approved; music credit/license evidence retained.
+- [ ] Final video links uploaded and checked without authentication.
+- [ ] `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md` and sample attribution checked at submission head.
+- [ ] No credentials, private libraries or internal planning material in submitted tree/history.
+- [ ] Official portal requirements checked; form submitted and confirmation retained.
