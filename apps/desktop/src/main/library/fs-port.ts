@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { watch as watchFiles } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { dirname, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { devicePath } from "@ai-book-studio/core/library/paths";
 import { toLibraryPath, type LibraryPath } from "@ai-book-studio/core/library/path";
@@ -16,7 +16,7 @@ import type {
   LibraryPort
 } from "@ai-book-studio/core/library/port";
 import { writeFileAtomic } from "./atomic";
-import { noteOwnFile, noteOwnRemoval } from "./own-writes";
+import { noteOwnFile, noteOwnRemoval, sha256 } from "./own-writes";
 import { isoNow, safeJoin } from "./paths";
 
 /**
@@ -151,6 +151,14 @@ export class FileSystemLibraryPort implements LibraryPort {
       }
       throw toPortError(error);
     }
+    // Linux reports the new files under their destination paths after a directory rename. Keep
+    // those events from looking like an outside writer by recording each file's bytes as our own.
+    try {
+      await noteOwnFiles(destination);
+    } catch {
+      // The move has already landed; failed bookkeeping must not report the successful move as a
+      // failed delete. Unreadable paths remain visible to the watcher as outside changes.
+    }
     // Noted only once it happened: a failed move must not cover a later outside deletion in the folder.
     noteOwnRemoval(source, true);
   }
@@ -214,6 +222,17 @@ export class FileSystemLibraryPort implements LibraryPort {
     await mkdir(dirname(path), { recursive: true });
     await writeFileAtomic(path, `${JSON.stringify(device, null, 2)}\n`);
     return device;
+  }
+}
+
+async function noteOwnFiles(directory: string): Promise<void> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await noteOwnFiles(path);
+    } else if (entry.isFile()) {
+      noteOwnFile(path, sha256(await readFile(path)));
+    }
   }
 }
 

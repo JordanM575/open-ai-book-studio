@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { BrowserLibraries, browserRuntime } from "../../src/runtime/browser-libraries";
-import { readStorageSetting } from "../../src/storage/indexeddb";
+import { deleteStorageSetting, readStorageSetting } from "../../src/storage/indexeddb";
 import { toLibraryPath } from "@ai-book-studio/core/library/path";
 import { FakeDirectory } from "./support/fake-directory";
 
@@ -15,33 +15,46 @@ import { FakeDirectory } from "./support/fake-directory";
  * archive that is imported into a destination before it is trusted.
  */
 
-type Global = { navigator?: unknown; isSecureContext?: boolean; window?: unknown };
-const globals = globalThis as Global;
-const originalNavigator = globals.navigator;
-const originalWindow = globals.window;
-const originalSecure = Object.getOwnPropertyDescriptor(globalThis, "isSecureContext");
+const original = {
+  navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+  window: Object.getOwnPropertyDescriptor(globalThis, "window"),
+  isSecureContext: Object.getOwnPropertyDescriptor(globalThis, "isSecureContext")
+};
+
+function setGlobal(key: keyof typeof original, value: unknown): void {
+  Object.defineProperty(globalThis, key, { configurable: true, enumerable: true, writable: true, value });
+}
+
+function restore(key: keyof typeof original): void {
+  const descriptor = original[key];
+  if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+  else Reflect.deleteProperty(globalThis, key);
+}
+
+beforeEach(async () => {
+  // Other browser-storage tests use this same origin-scoped database in Bun's shared process.
+  await deleteStorageSetting("library-selection");
+});
 
 afterEach(() => {
-  if (originalNavigator === undefined) delete globals.navigator;
-  else globals.navigator = originalNavigator;
+  restore("navigator");
   // The folder-picker tests below stub `window`; a stub left behind breaks every later file
   // that treats `window` as a real page.
-  if (originalWindow === undefined) delete globals.window;
-  else globals.window = originalWindow;
-  if (originalSecure) Object.defineProperty(globalThis, "isSecureContext", originalSecure);
+  restore("window");
+  restore("isSecureContext");
 });
 
 /** Site storage that actually holds a tree, so a library can be opened and reopened. */
 function withOriginStorage(): FakeDirectory {
   const root = new FakeDirectory("root");
   Object.defineProperty(globalThis, "isSecureContext", { value: true, configurable: true });
-  globals.navigator = {
+  setGlobal("navigator", {
     storage: {
       getDirectory: async () => root,
       persist: async () => true,
       estimate: async () => ({ usage: 0, quota: 1_000_000 })
     }
-  };
+  });
   return root;
 }
 
@@ -102,13 +115,13 @@ describe("choosing site storage", () => {
     const first = new BrowserLibraries();
     await first.openBrowserStorage();
 
-    globals.navigator = {
+    setGlobal("navigator", {
       storage: {
         getDirectory: async () => {
           throw new Error("the browser forgot this origin");
         }
       }
-    };
+    });
     const second = new BrowserLibraries();
     await second.restore();
     // The author gets the same sentence a hanging browser gets, not a DOM error name.

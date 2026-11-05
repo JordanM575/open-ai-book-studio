@@ -519,6 +519,9 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Linux directory-move watcher events now recognize the files the studio just moved to trash as its
+  own writes. Browser-storage tests also restore built-in globals by descriptor and clear the saved
+  library choice between tests, keeping Bun's shared Linux test process isolated.
 - A chapter with no illustration opens the Illustration dialog empty. It used to show another chapter's
   picture with "Use for this chapter"; it now falls back only to a picture no chapter uses yet.
 - A dialog whose first field takes focus as it opens (New book, Book settings, Search) returns focus

@@ -2,22 +2,20 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { detectStorageCapabilities } from "../../src/storage/capabilities";
 import { requestPersistence } from "../../src/storage/opfs";
 
-type GlobalWithBrowser = {
-  window?: unknown;
-  navigator?: unknown;
-  isSecureContext?: unknown;
-};
-const globals = globalThis as GlobalWithBrowser;
 const original = {
-  window: globals.window,
-  navigator: globals.navigator,
-  isSecureContext: globals.isSecureContext
+  window: Object.getOwnPropertyDescriptor(globalThis, "window"),
+  navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+  isSecureContext: Object.getOwnPropertyDescriptor(globalThis, "isSecureContext")
 };
 
 function restore(key: keyof typeof original): void {
-  const value = original[key];
-  if (value === undefined) delete globals[key];
-  else globals[key] = value;
+  const descriptor = original[key];
+  if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+  else Reflect.deleteProperty(globalThis, key);
+}
+
+function setGlobal(key: keyof typeof original, value: unknown): void {
+  Object.defineProperty(globalThis, key, { configurable: true, enumerable: true, writable: true, value });
 }
 
 afterEach(() => {
@@ -28,9 +26,9 @@ afterEach(() => {
 
 describe("browser storage capabilities", () => {
   test("detects each feature without browser-name sniffing", () => {
-    globals.window = { showDirectoryPicker: () => {} };
-    globals.navigator = { storage: { getDirectory: () => {}, persist: () => {} }, locks: {} };
-    globals.isSecureContext = true;
+    setGlobal("window", { showDirectoryPicker: () => {} });
+    setGlobal("navigator", { storage: { getDirectory: () => {}, persist: () => {} }, locks: {} });
+    setGlobal("isSecureContext", true);
 
     expect(detectStorageCapabilities()).toEqual({
       secureContext: true,
@@ -40,33 +38,33 @@ describe("browser storage capabilities", () => {
       locks: true
     });
 
-    globals.isSecureContext = false;
+    setGlobal("isSecureContext", false);
     expect(detectStorageCapabilities().folderAccess).toBe(false);
 
-    globals.window = {};
-    globals.isSecureContext = true;
+    setGlobal("window", {});
+    setGlobal("isSecureContext", true);
     const noPicker = detectStorageCapabilities();
     expect(noPicker.folderAccess).toBe(false);
     expect(noPicker.browserStorage).toBe(true);
   });
 
   test("reports persistence denial, unsupported and failure honestly", async () => {
-    globals.navigator = {};
+    setGlobal("navigator", {});
     expect(await requestPersistence()).toBe("not-supported");
 
-    globals.navigator = { storage: { persist: async () => true } };
+    setGlobal("navigator", { storage: { persist: async () => true } });
     expect(await requestPersistence()).toBe("granted");
 
-    globals.navigator = { storage: { persist: async () => false } };
+    setGlobal("navigator", { storage: { persist: async () => false } });
     expect(await requestPersistence()).toBe("not-granted");
 
-    globals.navigator = {
+    setGlobal("navigator", {
       storage: {
         persist: async () => {
           throw new Error("denied");
         }
       }
-    };
+    });
     expect(await requestPersistence()).toBe("not-granted");
   });
 });
