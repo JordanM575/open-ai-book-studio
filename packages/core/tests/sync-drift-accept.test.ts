@@ -18,6 +18,38 @@ function file(path: string, sha256: string, extra: Record<string, unknown> = {})
 }
 
 describe("acceptDriftPaths", () => {
+  test("an immediate restart recognizes an atomic save if the post-save journal note was interrupted", async () => {
+    const port = new InMemoryLibraryPort();
+    const service = await openService(port);
+    const book = await service.createBook({ title: "The Salt Road" });
+    const created = await service.createChapter(book.id, { content: "The tide was out.\n" });
+    const chapter = await service.readChapter(book.id, created.id);
+    await service.acceptDrift([]);
+
+    const commit = port.commitFile.bind(port);
+    let chapterCommitted = false;
+    port.commitFile = async (path, bytes, expected) => {
+      if (chapterCommitted && path[0] === ".studio" && path[1] === "sync") {
+        throw new Error("simulated process loss before the post-save journal note");
+      }
+      const result = await commit(path, bytes, expected);
+      if (path[0] === "books" && path.includes("chapters")) chapterCommitted = true;
+      return result;
+    };
+
+    const saved = await service.saveChapter(book.id, created.id, "The tide was out, and the road showed.\n", {
+      baseVersion: chapter.version,
+      baseHash: chapter.hash
+    });
+    expect(saved.status).toBe("saved");
+
+    // A new service instance models the next review call after an immediate app restart.
+    const restarted = await openService(port);
+    const report = await restarted.checkDrift();
+    expect(report.clean).toBe(true);
+    expect(report.entries).toEqual([expect.objectContaining({ kind: "local-changed" })]);
+  });
+
   test("accepting one path leaves the rest of the baseline untouched", () => {
     const previous = journalForScan({
       deviceId: "device_accept0001",

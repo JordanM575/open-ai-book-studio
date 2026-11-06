@@ -366,7 +366,10 @@ its `book.json`, chapters, conflicts and checkpoints, so restoring is a move bac
 `.studio/sync/<deviceId>.json` is this device's baseline for drift detection: the last observed hash of
 each author-owned file, the hash this device last wrote, and tombstones for deletions. It is written
 after a reviewed scan, never during one. The chapters, conversations, images and agent checkpoints
-the studio writes or removes are noted in it as this device's own, so a scan does not list them. A
+the studio writes or removes are noted in it as this device's own, so a scan does not list them. For
+an existing file, the intended save hash is recorded before the atomic file commit as well as the
+observed hash after it. If the process stops between those writes, a later scan still recognizes the
+exact committed bytes; a different on-disk hash remains an outside change for review. A
 conflict copy is not, because the save that made it still needs the author's review. Notes take
 turns, so two made at once both land. It contains no prose or credentials, is excluded from portable
 archives, and is safe to delete; the next scan rebuilds it by comparing the files and warns that it had

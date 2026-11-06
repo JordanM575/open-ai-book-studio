@@ -229,6 +229,34 @@ export async function noteWrittenFiles({ storage, deviceId, paths, now }: NoteFi
   await updateSyncJournal(storage, () => noteWritten(storage, deviceId, wanted, now));
 }
 
+/**
+ * Persist the hash a write is about to commit before touching the author file. If the process
+ * stops after the atomic manuscript commit but before `noteWrittenFiles` can update the observed
+ * hash, the next scan can still identify those exact bytes as this device's save. A failed or
+ * raced commit is harmless: drift detection only treats the bytes as local when they match.
+ */
+export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }: NoteFilesInput & { sha256: string }): Promise<void> {
+  const wanted = [...new Set(paths)].filter(isJournaledPath);
+  if (wanted.length === 0) return;
+  await updateSyncJournal(storage, async () => {
+    try {
+      const previous = await readSyncJournal(storage, deviceId);
+      if (!previous) return;
+      const files = { ...previous.files };
+      let changed = false;
+      for (const path of wanted) {
+        const old = files[path];
+        if (!old || old.writtenSha256 === sha256) continue;
+        files[path] = { ...old, writtenSha256: sha256 };
+        changed = true;
+      }
+      if (changed) await writeSyncJournal(storage, { ...previous, generation: previous.generation + 1, scannedAt: now, files });
+    } catch {
+      // Like the post-write note, a failed intent note must never fail or block a manuscript save.
+    }
+  });
+}
+
 async function noteWritten(storage: LibraryPort, deviceId: string, wanted: string[], now: string): Promise<void> {
   try {
     const previous = await readSyncJournal(storage, deviceId);
