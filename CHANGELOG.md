@@ -79,7 +79,9 @@ Update the `Unreleased` section before every commit.
 - Browser OpenRouter sign-in consumes its callback once and no longer trusts a late reply. A duplicate
   callback cannot exchange the same code, a failed exchange cannot be replayed, an expired request or a
   cancelled popup discards an exchange response that arrives afterwards, and a credential written by a
-  sign-in that is cancelled or fails mid-write is removed again. Synthetic regressions cover each case.
+  sign-in that is cancelled or fails mid-write is removed again. A browser that denies site storage now
+  rejects the sign-in instead of leaving Settings waiting, because storage cleanup can no longer throw before
+  the promise settles. Synthetic regressions cover each case.
 
 ### Added
 

@@ -41,6 +41,25 @@ function connectSyntheticOpener() {
   });
 }
 
+/** Make both site-storage objects throw, as a browser that denies storage access does. Returns the restore. */
+function denySiteStorage(error: Error): () => void {
+  const denied = new Proxy({}, { get: () => () => { throw error; } });
+  const targets: object[] = [globalThis, window];
+  const saved: Array<[object, string, PropertyDescriptor | undefined]> = [];
+  for (const target of targets) {
+    for (const name of ["sessionStorage", "localStorage"]) {
+      saved.push([target, name, Object.getOwnPropertyDescriptor(target, name)]);
+      Object.defineProperty(target, name, { configurable: true, get: () => denied });
+    }
+  }
+  return () => {
+    for (const [target, name, descriptor] of saved.reverse()) {
+      if (descriptor) Object.defineProperty(target, name, descriptor);
+      else Reflect.deleteProperty(target, name);
+    }
+  };
+}
+
 async function callbackFixture(createdAt = 1_000) {
   const pkce = await createPkce(createdAt);
   sessionStorage.setItem(OPENROUTER_PKCE_KEY, JSON.stringify(pkce));
@@ -134,6 +153,31 @@ describe("browser OpenRouter sign-in", () => {
     );
 
     await expect(flow).resolves.toEqual(connection);
+  });
+
+  test("a browser that denies site storage rejects the sign-in instead of leaving it waiting", async () => {
+    const denied = Object.assign(new Error("The operation is insecure."), { name: "SecurityError" });
+    const restoreStorage = denySiteStorage(denied);
+    let opened = 0;
+    window.open = (() => { opened += 1; return null; }) as typeof window.open;
+    try {
+      const outcome = await Promise.race([
+        startOpenRouterFlow().then(() => "resolved", (error: unknown) => error),
+        new Promise((resolve) => setTimeout(() => resolve("still waiting"), 1_000))
+      ]);
+      expect(outcome).toBe(denied);
+      expect(opened).toBe(0);
+    } finally {
+      restoreStorage();
+    }
+
+    // The failed start released its slot: the next sign-in is not told one is already waiting.
+    const popup = { closed: false, close: mock(() => { popup.closed = true; }) };
+    window.open = (() => popup as unknown as Window) as typeof window.open;
+    const next = startOpenRouterFlow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    cancelOpenRouterFlow();
+    await expect(next).rejects.toMatchObject({ message: "Sign-in cancelled." });
   });
 
   test("cancelling the popup rejects the pending flow", async () => {

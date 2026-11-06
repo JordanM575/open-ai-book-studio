@@ -51,8 +51,13 @@ export function startOpenRouterFlow(): Promise<ConnectionSummary> {
       if (closedPoll !== undefined) window.clearInterval(closedPoll);
       window.removeEventListener("message", onMessage);
       if (active === session) active = null;
-      sessionStorage.removeItem(OPENROUTER_PKCE_KEY);
-      if (pkce) localStorage.removeItem(`${ACTIVE_PREFIX}${pkce.state}`);
+      try {
+        sessionStorage.removeItem(OPENROUTER_PKCE_KEY);
+        if (pkce) localStorage.removeItem(`${ACTIVE_PREFIX}${pkce.state}`);
+      } catch {
+        // A browser that denies site storage can throw here too. Cleanup is best effort, so it can
+        // never keep the sign-in promise from settling.
+      }
       if (error) reject(error);
       else if (connection) resolve(connection);
     };
@@ -81,7 +86,12 @@ export function startOpenRouterFlow(): Promise<ConnectionSummary> {
     const session: ActivePopup = {
       cancel: () => {
         if (cancelling) return;
-        const status = pkce ? localStorage.getItem(`${ACTIVE_PREFIX}${pkce.state}`) : null;
+        let status: string | null = null;
+        try {
+          status = pkce ? localStorage.getItem(`${ACTIVE_PREFIX}${pkce.state}`) : null;
+        } catch {
+          // Storage is unavailable, so no callback can have claimed this request; treat it as pending.
+        }
         // Once the callback has committed, wait for its already-sent success message.
         if (status === "completed") return;
         if (status === "exchanging" && pkce) {
