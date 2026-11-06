@@ -49,6 +49,11 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- The bridge end-to-end probe no longer fails after its checks have passed. It killed the app with SIGKILL and removed
+  the throwaway profile at once; the dying app could still be writing into the profile, so the removal threw
+  `ENOTEMPTY` as an uncaught exception and the stage exited 1 on one Linux run in four. It now waits for the app to
+  exit, retries the removal, and reports a cleanup failure on stderr without failing a probe whose checks passed.
+
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
   the cause could not be seen without those files.

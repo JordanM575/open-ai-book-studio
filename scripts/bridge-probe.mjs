@@ -105,6 +105,23 @@ child.stdout.on("data", (chunk) => {
   }
 });
 
+/**
+ * Stop the app and remove its throwaway folder. SIGKILL is not instant, and the dying app (or its GPU
+ * process) can still be writing into the profile while the folder is removed, which made the removal
+ * fail with ENOTEMPTY after every check had already passed. So wait for the exit, retry the removal,
+ * and never let a cleanup failure turn a passing probe into a failing one.
+ */
+async function stopApp() {
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise((resolveExit) => child.once("exit", resolveExit));
+    child.kill("SIGKILL");
+    await Promise.race([exited, new Promise((resolveWait) => setTimeout(resolveWait, 5_000))]);
+  }
+  await rm(temp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }).catch((error) => {
+    console.error(`[bridge] could not remove ${temp}: ${error.code ?? error.message}`);
+  });
+}
+
 /** Wait for something the app prints, or give up. */
 async function waitFor(read, ms = 20_000) {
   const deadline = Date.now() + ms;
@@ -126,16 +143,14 @@ const locator = await waitFor(async () => {
 
 if (!locator) {
   console.error("[bridge] the backend never started");
-  child.kill("SIGKILL");
-  await rm(temp, { recursive: true, force: true });
+  await stopApp();
   process.exit(1);
 }
 
 const url = await waitFor(async () => bridgeUrl);
 if (!url) {
   console.error("[bridge] the bridge never reported an address");
-  child.kill("SIGKILL");
-  await rm(temp, { recursive: true, force: true });
+  await stopApp();
   process.exit(1);
 }
 
@@ -221,8 +236,7 @@ try {
   problems.push(`the probe crashed: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-child.kill("SIGKILL");
-await rm(temp, { recursive: true, force: true });
+await stopApp();
 
 for (const line of notes) console.log(`[bridge] ok    ${line}`);
 for (const line of problems) console.log(`[bridge] fix   ${line}`);
