@@ -2,7 +2,7 @@
   "name": "@ai-book-studio/mobile",
   "version": "0.1.0",
   "private": true,
-  "description": "Capacitor iOS shell for AI Book Studio",
+  "description": "Capacitor iOS shell for Open Book Studio",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

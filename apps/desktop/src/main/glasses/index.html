@@ -8,8 +8,8 @@
     />
     <!-- Lets the glasses know this page is built for their display and input. -->
     <meta name="mrbd-web-app-capable" content="yes" />
-    <meta name="description" content="AI Book Studio, on your glasses." />
-    <title>AI Book Studio</title>
+    <meta name="description" content="Open Book Studio, on your glasses." />
+    <title>Open Book Studio</title>
     <link rel="manifest" href="manifest.json" />
     <style>
       /*
@@ -197,7 +197,7 @@
   </head>
   <body>
     <header>
-      <h1 id="book">AI Book Studio</h1>
+      <h1 id="book">Open Book Studio</h1>
       <span id="status">connecting…</span>
     </header>
 
@@ -232,7 +232,7 @@
 
     <script>
       /*
-       * AI Book Studio, on Meta Ray-Ban Display glasses.
+       * Open Book Studio, on Meta Ray-Ban Display glasses.
        *
        * The page is written to the glasses' rules, not to a browser's:
        *
@@ -652,7 +652,7 @@
         } catch (error) {
           el.status.textContent = "not reachable";
           showPassage(
-            "The studio is not reachable. Open AI Book Studio with a library, then try again."
+            "The studio is not reachable. Open Open Book Studio with a library, then try again."
           );
           say(error?.message || "The studio is not reachable.", true);
         }

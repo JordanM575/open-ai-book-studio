@@ -256,7 +256,7 @@ export class ImageStore {
     }
     const version = (parsed as { schemaVersion?: unknown } | null)?.schemaVersion;
     if (typeof version === "number" && version > IMAGE_SCHEMA_VERSION) {
-      throw new LibraryError("newer-schema", "This book's image manifest was written by a newer version of AI Book Studio.");
+      throw new LibraryError("newer-schema", "This book's image manifest was written by a newer version of Open Book Studio.");
     }
     const result = imageManifestSchema.safeParse(parsed);
     if (!result.success) {

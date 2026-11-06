@@ -1,12 +1,18 @@
 # Changelog
 
-All notable changes to AI Book Studio are recorded here. The format follows
+All notable changes to Open Book Studio are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Changed
+- Rename the product to Open Book Studio everywhere an author, a command line or a file reader sees the name: the library header, the
+  window title, error and refusal messages, the `bookwriter` usage banner and MCP server text, the sign-in loopback page, the glasses page,
+  open/save dialog filters, the exported EPUB creator fallback, the licenses dialog and the microphone permission text. Identifiers stay as
+  they are: package names, the `studio.aibook.app` bundle id, storage keys, the `.ai-book-studio` locator directory and the packaged
+  `productName` (it names the packaged app's data folder, so changing it needs a migration decision first).
 
 ### Documentation
 

@@ -286,7 +286,7 @@ export function OpenSourceLicenses() {
       </DialogTrigger>
       <DialogContent
         title="Open-source licenses"
-        description="AI Book Studio and the open-source packages this build ships. Select one to read its license."
+        description="Open Book Studio and the open-source packages this build ships. Select one to read its license."
         className="w-[calc(100vw-48px)] max-w-[880px]"
         data-testid="licenses-dialog"
         onOpenAutoFocus={(event) => {

@@ -468,7 +468,7 @@ describe("a backend that refuses", () => {
 
   test("tells the author to reopen the app when the token has gone stale", async () => {
     const result = await run(["books"], { error: new BackendError("Unauthorized.", 401) });
-    expect(result.err).toContain("Quit and reopen AI Book Studio");
+    expect(result.err).toContain("Quit and reopen Open Book Studio");
   });
 
   test("does not print the token hint for an ordinary failure", async () => {

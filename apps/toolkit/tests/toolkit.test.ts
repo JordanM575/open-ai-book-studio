@@ -191,9 +191,9 @@ describe("bookwriter CLI", () => {
     const refused = streams();
     expect(
       await runCli(["books"], refused.io, async () => {
-        throw new BackendError("No AI Book Studio backend found.");
+        throw new BackendError("No Open Book Studio backend found.");
       })
     ).toBe(1);
-    expect(refused.err()).toContain("No AI Book Studio backend");
+    expect(refused.err()).toContain("No Open Book Studio backend");
   });
 });

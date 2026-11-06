@@ -181,12 +181,12 @@ export class ProviderService {
             const { code } = readCallback(url.toString(), pkce.state, this.now(), pkce.createdAt);
             response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
             response.end(
-              "<!doctype html><meta charset=\"utf-8\"><title>AI Book Studio</title><body style=\"font:15px -apple-system,system-ui,sans-serif;padding:3rem;max-width:32rem;margin:auto\"><h1 style=\"font-size:1.25rem\">You are signed in</h1><p>You can close this tab and return to AI Book Studio.</p></body>"
+              "<!doctype html><meta charset=\"utf-8\"><title>Open Book Studio</title><body style=\"font:15px -apple-system,system-ui,sans-serif;padding:3rem;max-width:32rem;margin:auto\"><h1 style=\"font-size:1.25rem\">You are signed in</h1><p>You can close this tab and return to Open Book Studio.</p></body>"
             );
             finish(null, code);
           } catch (error) {
             response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-            response.end("This sign-in link is not valid. Return to AI Book Studio and try again.");
+            response.end("This sign-in link is not valid. Return to Open Book Studio and try again.");
             finish(error instanceof Error ? error : new Error(String(error)));
           }
         });
@@ -341,7 +341,7 @@ export class ProviderService {
             headers: {
               authorization: `Bearer ${credential.secret}`,
               "http-referer": "https://ai-book-studio.local",
-              "x-title": "AI Book Studio"
+              "x-title": "Open Book Studio"
             }
           }
         : endpointFor(credential.provider, credential.secret, credential.metadata?.baseUrl);

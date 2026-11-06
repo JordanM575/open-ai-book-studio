@@ -194,7 +194,7 @@ export class McpServer {
     const libraryTools: ToolDefinition[] = [
       {
         name: "library_info",
-        description: "Show the open AI Book Studio library and device.",
+        description: "Show the open Open Book Studio library and device.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         run: () => this.client.library()
       },
