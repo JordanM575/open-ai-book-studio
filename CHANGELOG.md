@@ -61,7 +61,7 @@ Update the `Unreleased` section before every commit.
   there, and one that finished while no window was open opens on the same chapter.
 - Editing a book's details no longer discards the author's change when the book file was changed outside the
   studio while the update was saving. The update is kept as a conflict copy, the outside edit stays in place and
-  the studio says so, instead of failing with nothing saved.
+  the studio says so, instead of failing with nothing saved. Two such conflicts in the same instant each keep their own copy.
 - The per-book tone and answer length now travel with every agent turn, as the Agent dialog
   promises: both are in the turn's system prompt, proven inside the 4,000-token prompt budget at
   the maximum tone length for every answer length. At 1024×700 with the writing agent open, the

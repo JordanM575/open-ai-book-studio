@@ -321,8 +321,14 @@ export class LibraryService {
   private async keepBookMetadataCopy(bookId: string, book: BookMeta): Promise<void> {
     await this.ensureBookLayout(bookId);
     const stamp = this.env.runtime.now().replace(/[:.]/g, "-");
-    const savedName = `book-metadata.conflict-external-edit.${this.device.id}.${stamp}.json`;
-    await this.commitText(conflictPath(bookId, savedName), `${JSON.stringify({ book }, null, 2)}\n`, { kind: "absent" });
+    // The shared helper retries an occupied name and verifies the saved bytes, so the copy is only
+    // reported as kept when it was written; it throws otherwise.
+    await this.writeConflictCopy(
+      bookId,
+      `book-metadata.conflict-external-edit.${this.device.id}.${stamp}`,
+      ".json",
+      `${JSON.stringify({ book }, null, 2)}\n`
+    );
   }
 
   /**

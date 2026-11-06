@@ -51,6 +51,53 @@ describe("library lifecycle", () => {
     expect(updated.updatedAt >= book.updatedAt).toBe(true);
   });
 
+  it("keeps every metadata conflict copy even when two conflicts share a clock timestamp", async () => {
+    const testRoot = await mkdtemp(join(tmpdir(), "studio-book-metadata-same-stamp-"));
+    try {
+      const environment = createFileSystemEnvironment(testRoot);
+      class RacingPort extends FileSystemLibraryPort {
+        racePath: LibraryPath | null = null;
+        override async commitFile(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
+          if (this.racePath && path.join("/") === this.racePath.join("/")) {
+            const target = this.racePath;
+            this.racePath = null;
+            const absolute = join(testRoot, ...target);
+            const outside = JSON.parse(await readFile(absolute, "utf8")) as Record<string, unknown>;
+            outside.description = `Outside description ${Math.random()}`;
+            await writeFile(absolute, `${JSON.stringify(outside, null, 2)}\n`);
+          }
+          return super.commitFile(path, bytes, expected);
+        }
+      }
+      const port = new RacingPort(testRoot);
+      const frozen = "2026-11-06T00:00:00.000Z";
+      const service = await LibraryService.open({
+        ...environment,
+        runtime: { ...environment.runtime, now: () => frozen },
+        storage: port
+      });
+      const book = await service.createBook({ title: "Original", description: "Original description" });
+      for (const title of ["First studio title", "Second studio title"]) {
+        port.racePath = toLibraryPath(["books", book.id, "book.json"]);
+        await expect(service.updateBook(book.id, { title })).rejects.toMatchObject({
+          code: "io",
+          message: expect.stringContaining("conflict copy")
+        });
+      }
+      const conflictDir = join(testRoot, "books", book.id, "conflicts");
+      const files = (await readdir(conflictDir)).sort();
+      expect(files).toHaveLength(2);
+      const titles: string[] = [];
+      for (const file of files) {
+        const copy = JSON.parse(await readFile(join(conflictDir, file), "utf8")) as { book: { title: string } };
+        titles.push(copy.book.title);
+      }
+      expect(titles.sort()).toEqual(["First studio title", "Second studio title"]);
+    } finally {
+      await rm(testRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps outside book metadata edits and saves the studio patch as a conflict copy", async () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const testRoot = await mkdtemp(join(tmpdir(), "studio-book-metadata-race-"));
