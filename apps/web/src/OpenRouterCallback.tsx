@@ -18,11 +18,6 @@ export function OpenRouterCallback() {
       .catch((error) => {
         const detail = error instanceof Error ? error.message : String(error);
         setMessage(detail);
-        const opener = window.opener as Window | null;
-        const state = new URLSearchParams(window.location.search).get("state") ?? "";
-        if (opener && !opener.closed) {
-          opener.postMessage({ type: "openrouter-error", state, message: detail }, window.location.origin);
-        }
       });
   }, []);
 
