@@ -38,8 +38,9 @@ jobs:
   e2e:
     # The end-to-end checks drive a real Electron window, so they need a display.
     #
-    # This job has only been run on macOS. It is here so the gap is visible rather than forgotten,
-    # and it is allowed to fail until someone has watched it pass on Linux and said so.
+    # This job passed on macOS first. Its first Linux runs failed at launch on Electron's sandbox
+    # helper, which the step below now sets up. It stays allowed to fail until someone has watched it
+    # pass on Linux and said so.
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -55,6 +56,18 @@ jobs:
 
       - name: Install the browser the checks drive
         run: bunx playwright install --with-deps chromium firefox webkit
+
+      # Electron refuses to start when its sandbox helper is not owned by root with the setuid bit,
+      # which is how a fresh runner leaves it. Give it the helper's required owner and mode instead of
+      # turning the sandbox off.
+      - name: Fetch Electron and set up its sandbox helper
+        run: |
+          node apps/desktop/node_modules/electron/install.js
+          sandbox="$(find node_modules -path '*/electron/dist/chrome-sandbox' -type f | head -n 1)"
+          test -n "$sandbox"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+          ls -l "$sandbox"
 
       - name: Run the end-to-end checks under a virtual display
         run: xvfb-run --auto-servernum --server-args="-screen 0 1600x1000x24" bun run e2e
