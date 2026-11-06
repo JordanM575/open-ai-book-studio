@@ -23,6 +23,8 @@ interface Check {
   name: string;
   ok: boolean;
   detail?: string;
+  /** Not run on this platform: counted as neither passed nor failed. */
+  skipped?: true;
 }
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -157,6 +159,16 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       checks.push({ name, ok: false, detail });
       console.error(`[smoke] FAIL  ${name} — ${detail}`);
     }
+  };
+
+  // The manuscript import is a macOS-only journey (spec 029): the library only offers it there, so off macOS
+  // these checks are reported as skipped instead of failing on a button that is deliberately absent.
+  const importAvailable = process.platform === "darwin";
+  const checkImport = async (name: string, run: () => Promise<string | void>): Promise<void> => {
+    if (importAvailable) return check(name, run);
+    const detail = `manuscript import is offered on macOS only (this is ${process.platform})`;
+    checks.push({ name, ok: true, skipped: true, detail });
+    console.log(`[smoke] skip  ${name} — ${detail}`);
   };
 
   const rendererErrors: string[] = [];
@@ -756,7 +768,19 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return `${listed.names.length} packages with react, docx and electron; docx shows its MIT text; focus returned to the button`;
     });
 
-    await check("a failed turn keeps its request for retry", async () => {
+    // A check that opens the agent panel must not leave it open when it fails: the next check toggles it.
+    const closeAgentPanelOnFailure = async <T>(run: () => Promise<T>): Promise<T> => {
+      try {
+        return await run();
+      } catch (error) {
+        await evaluate<boolean>(
+          win,
+          `(() => { const button = document.querySelector('[aria-label="Close the writing agent"]'); if (button) button.click(); return true; })()`
+        ).catch(() => false);
+        throw error;
+      }
+    };
+    await check("a failed turn keeps its request for retry", () => closeAgentPanelOnFailure(async () => {
       const opened = await evaluate<boolean>(
         win,
         `(() => {
@@ -810,7 +834,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       const copy = await evaluate<string>(
         win,
-        `document.querySelector('[data-testid="chat-panel"]')?.innerText ?? ""`
+        `document.querySelector('[data-testid="chat-panel"]')?.textContent ?? ""`
       );
       if (!copy.includes(marker)) {
         throw new Error(`the failed request was not preserved: ${JSON.stringify(copy.slice(0, 160))}`);
@@ -829,7 +853,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       await delay(2000);
       const after = await evaluate<string>(
         win,
-        `document.querySelector('[data-testid="chat-panel"]')?.innerText ?? ""`
+        `document.querySelector('[data-testid="chat-panel"]')?.textContent ?? ""`
       );
       if (!after.includes(marker)) throw new Error("retry dropped the original request");
       if (!after.includes("Retry request")) throw new Error("retry was not offered again after the second failure");
@@ -845,7 +869,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       );
       if (!closed) throw new Error("the agent panel had no close button");
       return "prompt preserved; retry stays available";
-    });
+    }));
 
     await check("the chat can start a new conversation and show history", async () => {
       const opened = await evaluate<boolean>(
@@ -1971,7 +1995,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
     let fixtureBefore = "";
     let cardsBefore = 0;
 
-    await check("manuscript import previews the synthetic fixture without publishing", async () => {
+    await checkImport("manuscript import previews the synthetic fixture without publishing", async () => {
       if (!fixturePath) throw new Error("STUDIO_IMPORT_PATH is not set for the hidden run");
       const library = studio.library;
       if (!library) throw new Error("no library is open for the import journey");
@@ -2021,7 +2045,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "full fixture text, source name and line range; no book, no writes";
     });
 
-    await check("confirming the preview publishes exactly one complete book", async () => {
+    await checkImport("confirming the preview publishes exactly one complete book", async () => {
       const edited = await evaluate<boolean>(
         win,
         `(() => {
@@ -2073,7 +2097,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "report, then one new card for Smoke Import";
     });
 
-    await check("the published book matches the confirmed mapping on disk", async () => {
+    await checkImport("the published book matches the confirmed mapping on disk", async () => {
       const published = await evaluate<{ ok: boolean; error?: string } | null>(
         win,
         `(async () => {
@@ -2106,7 +2130,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "two chapters with the confirmed titles and bodies";
     });
 
-    await check("the fixture and the rest of the library are unchanged", async () => {
+    await checkImport("the fixture and the rest of the library are unchanged", async () => {
       const library = studio.library;
       const before = libraryBefore;
       if (!library || !before) throw new Error("no library snapshot to compare against");
@@ -2142,7 +2166,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
     let wordFixtureBefore = "";
     let wordCardsBefore = 0;
 
-    await check("a Word manuscript previews heading chapters and its losses without publishing", async () => {
+    await checkImport("a Word manuscript previews heading chapters and its losses without publishing", async () => {
       if (!docxPath) throw new Error("STUDIO_IMPORT_DOCX_PATH is not set for the hidden run");
       const library = studio.library;
       if (!library) throw new Error("no library is open for the Word import journey");
@@ -2192,7 +2216,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "two heading chapters with exact bodies; table, image and footnote listed; no writes";
     });
 
-    await check("confirming the Word preview publishes exactly those chapters", async () => {
+    await checkImport("confirming the Word preview publishes exactly those chapters", async () => {
       await evaluate(win, `document.querySelector('[data-testid="import-confirm"]').click()`);
       await waitUntil(
         () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="import-result-dialog"]')`)),
@@ -2236,7 +2260,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "result report with the loss list, one new card, the previewed bodies on disk";
     });
 
-    await check("the Word fixture and the rest of the library are unchanged", async () => {
+    await checkImport("the Word fixture and the rest of the library are unchanged", async () => {
       const library = studio.library;
       const before = wordLibraryBefore;
       if (!library || !before) throw new Error("no library snapshot to compare against");
@@ -2264,9 +2288,11 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
 }
 
 async function finish(win: BrowserWindow, checks: Check[], rendererErrors: string[]): Promise<void> {
-  const passed = checks.filter((entry) => entry.ok).length;
-  const ok = passed === checks.length && checks.length > 0;
-  console.log(`[smoke] ${passed}/${checks.length} checks passed`);
+  const skipped = checks.filter((entry) => entry.skipped).length;
+  const ran = checks.length - skipped;
+  const passed = checks.filter((entry) => entry.ok && !entry.skipped).length;
+  const ok = passed === ran && ran > 0;
+  console.log(`[smoke] ${passed}/${ran} checks passed${skipped ? `, ${skipped} skipped on this platform` : ""}`);
   if (!ok) {
     try {
       const runDir = join(tmpdir(), `ai-book-studio-smoke-${process.pid}`);
