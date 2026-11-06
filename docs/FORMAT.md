@@ -147,7 +147,7 @@ The door had been shut when he went to bed.
 - `version` increments on every save the studio performs. It is how the app detects that another
   writer (another device, another editor, a sync provider) changed the file.
 - Front matter is written by the `yaml` package and is stable across saves; only the fields above
-  are canonical, and unknown keys are preserved.
+  are canonical, and unknown keys are preserved. Whitespace at the end of a value, including blank lines at the end of a block scalar, is part of the value and is kept.
 - The body is Markdown. Line breaks are preserved as typed.
 
 Files with **no** front matter are readable: the app derives an id from the file name, takes the

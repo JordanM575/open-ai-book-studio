@@ -206,17 +206,16 @@ describe("LibraryService over the in-memory port", () => {
     const chapter = await service.createChapter(book.id, { title: "One", content: "Original.\n" });
     const disk = await port.readFile(chapterPath(book.id, chapter.path));
 
-    const external = serializeChapter(
-      {
-        id: chapter.id,
-        title: chapter.title,
-        order: chapter.order,
-        version: chapter.version,
-        createdAt: chapter.createdAt,
-        updatedAt: new Date().toISOString()
-      },
-      "Edited in another editor.\n"
-    );
+    // An external editor can write partial front matter without using the studio serializer.
+    const externalMeta = {
+      id: chapter.id,
+      title: chapter.title,
+      order: chapter.order,
+      version: chapter.version,
+      createdAt: chapter.createdAt,
+      updatedAt: "2026-10-24T00:00:00.000Z"
+    };
+    const external = `---\n${JSON.stringify(externalMeta)}\n---\n\nEdited in another editor.\n`;
     await port.commitFile(chapterPath(book.id, chapter.path), bytes(external), {
       kind: "sha256",
       value: disk!.sha256
