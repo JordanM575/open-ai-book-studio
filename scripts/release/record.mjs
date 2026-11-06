@@ -256,16 +256,23 @@ export function buildRecordObject({ version, commit, schema, platform, arch, art
  * earlier record is refused rather than overwritten, and `out` only ever appears complete. If the
  * file system cannot hard-link, nothing is published: there is no portable way to create a file
  * atomically without replacing, and a record written in place could be left half-written.
- * `ops.link` is injectable so the refusal can be tested.
+ * `overrides.link` and `overrides.open` are injectable so the refusals and failures can be tested.
  */
-export async function publishRecord(out, text, ops = { link }) {
+export async function publishRecord(out, text, overrides = {}) {
+  const ops = { link, open, ...overrides };
   const temp = join(dirname(out), `.${basename(out)}.${process.pid}.tmp`);
-  const handle = await open(temp, "wx", 0o644);
+  const handle = await ops.open(temp, "wx", 0o644);
   try {
-    await handle.writeFile(text);
-    await handle.sync();
-  } finally {
-    await handle.close();
+    try {
+      await handle.writeFile(text);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    // The temporary exists as soon as it is created: a failed write or sync must not leave it behind.
+    await unlink(temp).catch(() => {});
+    throw error;
   }
   try {
     await ops.link(temp, out);

@@ -52,9 +52,9 @@ Update the `Unreleased` section before every commit.
 - The release record script no longer replaces a record that already exists: a second run for the same path is
   refused (exit 3) and the earlier record is left as it was. A new record is written to a temporary file beside the
   target and hard-linked into place, so the final path never holds a half-written record. On a file system that
-  cannot hard-link, nothing is published and the script says so, rather than writing the record in place. Four
-  tests cover the refusal, the absence of a leftover temporary file, the new `publishRecord` helper and the
-  fail-closed case.
+  cannot hard-link, nothing is published and the script says so, rather than writing the record in place. Five
+  tests cover the refusal, the absence of a leftover temporary file, the new `publishRecord` helper, the
+  fail-closed case and a failed write or sync, which also removes its temporary file.
 
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and

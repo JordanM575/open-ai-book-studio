@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -203,6 +203,26 @@ describe("release record", () => {
     };
     await expect(publishRecord(out, "record\n", { link: unsupported })).rejects.toThrow("cannot publish the record atomically");
     expect(await readdir(folder)).toEqual([]);
+  });
+
+  test("publishRecord removes its temporary file when writing or syncing fails", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    const failing = (stage: "writeFile" | "sync") => async (path: string, flags: string, mode: number) => {
+      const real = await open(path, flags, mode);
+      return {
+        writeFile: stage === "writeFile" ? async () => { throw Object.assign(new Error("no space left"), { code: "ENOSPC" }); } : (data: string) => real.writeFile(data),
+        sync: stage === "sync" ? async () => { throw Object.assign(new Error("sync refused"), { code: "EIO" }); } : () => real.sync(),
+        close: () => real.close()
+      };
+    };
+    await expect(publishRecord(out, "record\n", { open: failing("writeFile") })).rejects.toThrow("no space left");
+    expect(await readdir(folder)).toEqual([]);
+    await expect(publishRecord(out, "record\n", { open: failing("sync") })).rejects.toThrow("sync refused");
+    expect(await readdir(folder)).toEqual([]);
+    await publishRecord(out, "record\n");
+    expect(await readdir(folder)).toEqual(["record.json"]);
   });
 
   test("hashArtifacts sorts by name with sizes", async () => {

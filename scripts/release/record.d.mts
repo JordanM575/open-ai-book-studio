@@ -41,5 +41,12 @@ export declare function buildRecordObject(input: {
 export declare function publishRecord(
   out: string,
   text: string,
-  ops?: { link: (existing: string, next: string) => Promise<void> }
+  overrides?: {
+    link?: (existing: string, next: string) => Promise<void>;
+    open?: (path: string, flags: string, mode: number) => Promise<{
+      writeFile(data: string): Promise<void>;
+      sync(): Promise<void>;
+      close(): Promise<void>;
+    }>;
+  }
 ): Promise<void>;
