@@ -253,10 +253,12 @@ export function buildRecordObject({ version, commit, schema, platform, arch, art
 /**
  * Publish `text` at `out` without replacing anything that is already there. The text goes to a
  * temporary file in the same folder first; hard-linking it to `out` fails if `out` exists, so an
- * earlier record is refused rather than overwritten. Where hard links are unavailable, an
- * exclusive create is used instead (still no replacement, but not atomic).
+ * earlier record is refused rather than overwritten, and `out` only ever appears complete. If the
+ * file system cannot hard-link, nothing is published: there is no portable way to create a file
+ * atomically without replacing, and a record written in place could be left half-written.
+ * `ops.link` is injectable so the refusal can be tested.
  */
-export async function publishRecord(out, text) {
+export async function publishRecord(out, text, ops = { link }) {
   const temp = join(dirname(out), `.${basename(out)}.${process.pid}.tmp`);
   const handle = await open(temp, "wx", 0o644);
   try {
@@ -266,24 +268,16 @@ export async function publishRecord(out, text) {
     await handle.close();
   }
   try {
-    await link(temp, out);
+    await ops.link(temp, out);
   } catch (error) {
     await unlink(temp).catch(() => {});
     if (error?.code === "EEXIST") {
       throw new Error(`refusing to replace the existing record ${out}; remove it first or choose another --out`);
     }
-    if (!["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"].includes(error?.code)) throw error;
-    const exclusive = await open(out, "wx", 0o644).catch((openError) => {
-      if (openError?.code === "EEXIST") throw new Error(`refusing to replace the existing record ${out}; remove it first or choose another --out`);
-      throw openError;
-    });
-    try {
-      await exclusive.writeFile(text);
-      await exclusive.sync();
-    } finally {
-      await exclusive.close();
+    if (["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"].includes(error?.code)) {
+      throw new Error(`cannot publish the record atomically in ${dirname(out)}: this file system does not support hard links, so nothing was written; choose another --out folder`);
     }
-    return;
+    throw error;
   }
   await unlink(temp).catch(() => {});
 }
@@ -342,7 +336,7 @@ async function main() {
   if (problems.length > 0) fail(4, `the record failed its own schema check: ${problems.join("; ")}`);
   const out = resolve(args.out);
   await mkdir(dirname(out), { recursive: true }).catch((error) => fail(3, `cannot create ${dirname(out)}: ${error.message}`));
-  await publishRecord(out, `${JSON.stringify(record, null, 2)}\n`).catch((error) => fail(3, error.message.startsWith("refusing") ? error.message : `cannot write ${out}: ${error.message}`));
+  await publishRecord(out, `${JSON.stringify(record, null, 2)}\n`).catch((error) => fail(3, /^(refusing|cannot publish)/.test(error.message) ? error.message : `cannot write ${out}: ${error.message}`));
   for (const artifact of artifacts) {
     process.stdout.write(`[record] ${artifact.name} sha256 ${artifact.sha256}\n`);
   }

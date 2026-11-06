@@ -16,7 +16,7 @@ intended order; they are not approval to sign, notarise or enable updates.
       SHA-256 (names, sizes and hashes only — never contents), refusing empty/missing/nested
       directories, `--expect` mismatches and bare `signed` claims without an identity. It also refuses to replace an existing record and publishes the new one
       atomically (`publishRecord`).
-      `apps/desktop/tests/release-record.test.ts` (10 pass) covers the valid record, refusals,
+      `apps/desktop/tests/release-record.test.ts` (11 pass) covers the valid record, refusals,
       schema validation, secret non-disclosure and hash ordering.
 - [x] T002 Audit the existing unsigned path against spec 013: About, download page and release notes
       must all say unsigned before an informed tester opens the build. Record the exact surfaces.

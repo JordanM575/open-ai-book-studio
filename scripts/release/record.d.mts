@@ -38,4 +38,8 @@ export declare function buildRecordObject(input: {
   gates: string[];
   signing: RecordSigning;
 }): RecordObject;
-export declare function publishRecord(out: string, text: string): Promise<void>;
+export declare function publishRecord(
+  out: string,
+  text: string,
+  ops?: { link: (existing: string, next: string) => Promise<void> }
+): Promise<void>;

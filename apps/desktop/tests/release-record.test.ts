@@ -194,6 +194,17 @@ describe("release record", () => {
     expect(await readdir(folder)).toEqual(["record.json"]);
   });
 
+  test("publishRecord fails closed when the file system cannot hard-link", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    const unsupported = async () => {
+      throw Object.assign(new Error("not supported"), { code: "ENOTSUP" });
+    };
+    await expect(publishRecord(out, "record\n", { link: unsupported })).rejects.toThrow("cannot publish the record atomically");
+    expect(await readdir(folder)).toEqual([]);
+  });
+
   test("hashArtifacts sorts by name with sizes", async () => {
     const dir = await artifactDir({ "b.zip": "22", "a.zip": "1" });
     const artifacts = await hashArtifacts(dir);
