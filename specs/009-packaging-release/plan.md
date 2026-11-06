@@ -88,6 +88,10 @@ those operations.
 }
 ```
 
+A record that already exists is never replaced. The script writes the new record to a temporary
+file beside the target and hard-links it into place, so an existing record is refused (exit 3) and
+left as it was, and the final path never holds a half-written file.
+
 The record is input to the release notes and the update manifest. It must be produced from the bytes
 that are actually served; a rebuild after the record is written is a release failure.
 

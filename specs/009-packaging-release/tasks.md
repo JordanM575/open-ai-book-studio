@@ -14,8 +14,9 @@ intended order; they are not approval to sign, notarise or enable updates.
       `--dir/--out/--version/--commit/--schema/--gates/--expect/--signing-status`) writes the
       plan's JSON shape, hashing every regular file in a flat artifact directory with streaming
       SHA-256 (names, sizes and hashes only — never contents), refusing empty/missing/nested
-      directories, `--expect` mismatches and bare `signed` claims without an identity.
-      `apps/desktop/tests/release-record.test.ts` (7 pass) covers the valid record, refusals,
+      directories, `--expect` mismatches and bare `signed` claims without an identity. It also refuses to replace an existing record and publishes the new one
+      atomically (`publishRecord`).
+      `apps/desktop/tests/release-record.test.ts` (10 pass) covers the valid record, refusals,
       schema validation, secret non-disclosure and hash ordering.
 - [x] T002 Audit the existing unsigned path against spec 013: About, download page and release notes
       must all say unsigned before an informed tester opens the build. Record the exact surfaces.

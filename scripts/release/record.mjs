@@ -10,11 +10,15 @@
  *   node scripts/release/record.mjs --dir release --out releases/record.json \
  *     --version 0.1.0 --commit abc123 --schema 1 --gates typecheck,test,smoke
  *
- * Exit codes: 0 wrote the record; 2 the arguments are unusable; 3 the artifact directory or
- * its file set is refused; 4 the record failed its own schema check.
+ * A record that already exists is never replaced: the run is refused and the old record is left
+ * as it was. A new record is written to a temporary file next to it and linked into place, so the
+ * final path never holds a half-written record.
+ *
+ * Exit codes: 0 wrote the record; 2 the arguments are unusable; 3 the artifact directory, its
+ * file set or the output path is refused; 4 the record failed its own schema check.
  */
 import { createHash } from "node:crypto";
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, open, readdir, stat, unlink } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -246,6 +250,44 @@ export function buildRecordObject({ version, commit, schema, platform, arch, art
   return record;
 }
 
+/**
+ * Publish `text` at `out` without replacing anything that is already there. The text goes to a
+ * temporary file in the same folder first; hard-linking it to `out` fails if `out` exists, so an
+ * earlier record is refused rather than overwritten. Where hard links are unavailable, an
+ * exclusive create is used instead (still no replacement, but not atomic).
+ */
+export async function publishRecord(out, text) {
+  const temp = join(dirname(out), `.${basename(out)}.${process.pid}.tmp`);
+  const handle = await open(temp, "wx", 0o644);
+  try {
+    await handle.writeFile(text);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await link(temp, out);
+  } catch (error) {
+    await unlink(temp).catch(() => {});
+    if (error?.code === "EEXIST") {
+      throw new Error(`refusing to replace the existing record ${out}; remove it first or choose another --out`);
+    }
+    if (!["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"].includes(error?.code)) throw error;
+    const exclusive = await open(out, "wx", 0o644).catch((openError) => {
+      if (openError?.code === "EEXIST") throw new Error(`refusing to replace the existing record ${out}; remove it first or choose another --out`);
+      throw openError;
+    });
+    try {
+      await exclusive.writeFile(text);
+      await exclusive.sync();
+    } finally {
+      await exclusive.close();
+    }
+    return;
+  }
+  await unlink(temp).catch(() => {});
+}
+
 async function main() {
   let args;
   try {
@@ -300,7 +342,7 @@ async function main() {
   if (problems.length > 0) fail(4, `the record failed its own schema check: ${problems.join("; ")}`);
   const out = resolve(args.out);
   await mkdir(dirname(out), { recursive: true }).catch((error) => fail(3, `cannot create ${dirname(out)}: ${error.message}`));
-  await writeFile(out, `${JSON.stringify(record, null, 2)}\n`).catch((error) => fail(3, `cannot write ${out}: ${error.message}`));
+  await publishRecord(out, `${JSON.stringify(record, null, 2)}\n`).catch((error) => fail(3, error.message.startsWith("refusing") ? error.message : `cannot write ${out}: ${error.message}`));
   for (const artifact of artifacts) {
     process.stdout.write(`[record] ${artifact.name} sha256 ${artifact.sha256}\n`);
   }

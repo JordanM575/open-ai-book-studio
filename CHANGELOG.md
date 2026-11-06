@@ -49,6 +49,11 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- The release record script no longer replaces a record that already exists: a second run for the same path is
+  refused (exit 3) and the earlier record is left as it was. A new record is written to a temporary file beside the
+  target and hard-linked into place, so the final path never holds a half-written record. Three tests cover the
+  refusal, the absence of a leftover temporary file and the new `publishRecord` helper.
+
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
   the cause could not be seen without those files.
