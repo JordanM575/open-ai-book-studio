@@ -49,6 +49,20 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- A book that another device upgraded to a newer schema while it was open is no longer written by this
+  build (QA D6). Every write into a book now reads `book.json` first and refuses a newer `schemaVersion`
+  with "was written by a newer version of Open Book Studio" before anything changes: a chapter save, a
+  new, moved, deleted, restored, merged or split chapter, a kept conflict copy, the book's details and
+  settings, an image, a conversation, moving the book to the trash, the agent's tools and the toolkit's
+  saves. The schema was checked only when the book was opened, so a build that did not know the new
+  fields kept writing into the upgraded book.
+- A field a newer build adds to `book.json` survives a save at every level (QA D7). A character, a
+  memory, the story arc and its three parts, the chapter range and every settings section lost any
+  field this build did not know the next time the book was saved; they are now kept and written back
+  as they were read, as `docs/FORMAT.md` already promised.
+- A book whose story arc was written the way `docs/FORMAT.md` used to describe it, with `keyMoments`
+  and `openQuestions` as lists of strings, opens again, one line per item. It used to fail the book
+  schema, so the book showed as unreadable. `docs/FORMAT.md` now describes the text shape the app writes.
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
   the cause could not be seen without those files.

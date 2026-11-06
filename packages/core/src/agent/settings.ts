@@ -10,7 +10,7 @@ export const ANSWER_LENGTHS = ["brief", "standard", "detailed"] as const;
 export type AgentAnswerLength = (typeof ANSWER_LENGTHS)[number];
 
 export const agentSettingsSchema = z
-  .object({
+  .looseObject({
     /**
      * The built-in tools the author has withdrawn from this book. A withdrawn tool is never offered
      * to the model and cannot be reached through the loopback backend or the MCP server.
@@ -55,7 +55,7 @@ export type CachePrefixMode = (typeof CACHE_PREFIX_MODES)[number];
  * to turn it off for one of them.
  */
 export const cacheSettingsSchema = z
-  .object({
+  .looseObject({
     /** `auto` marks the stable prefix where the provider supports it. `off` never does. */
     prefixMode: z.enum(CACHE_PREFIX_MODES).default("auto")
   })

@@ -20,19 +20,27 @@ const isoDate = z.string().datetime({ offset: true }).or(z.string().datetime());
 
 /* ------------------------------------------------------------------ chapters */
 
-const storyArcNotesSchema = z.object({
+/*
+ * Every object in `book.json` is loose: a field this build does not know is kept and written back,
+ * so a newer build can add one without this build dropping it (FORMAT.md).
+ */
+
+/** Text, one line per item. FORMAT.md once documented these as arrays, so an array still opens. */
+const arcTextSchema = z.union([z.string(), z.array(z.string()).transform((items) => items.join("\n"))]).default("");
+
+const storyArcNotesSchema = z.looseObject({
   overview: z.string().default(""),
-  keyMoments: z.string().default(""),
-  openQuestions: z.string().default("")
+  keyMoments: arcTextSchema,
+  openQuestions: arcTextSchema
 });
 
-export const storyArcSchema = z.object({
+export const storyArcSchema = z.looseObject({
   beginning: storyArcNotesSchema.default({ overview: "", keyMoments: "", openQuestions: "" }),
   middle: storyArcNotesSchema.default({ overview: "", keyMoments: "", openQuestions: "" }),
   end: storyArcNotesSchema.default({ overview: "", keyMoments: "", openQuestions: "" })
 });
 
-export const characterSchema = z.object({
+export const characterSchema = z.looseObject({
   id: idSchema,
   name: z.string().min(1),
   role: z.string().default(""),
@@ -42,7 +50,7 @@ export const characterSchema = z.object({
   notes: z.string().default("")
 });
 
-export const memorySchema = z.object({
+export const memorySchema = z.looseObject({
   id: idSchema,
   text: z.string().min(1),
   importance: z.enum(IMPORTANCE_VALUES).default("medium"),
@@ -51,7 +59,7 @@ export const memorySchema = z.object({
 });
 
 export const manuscriptSettingsSchema = z
-  .object({
+  .looseObject({
     bodyFont: z
       .enum([
         "Times New Roman",
@@ -94,7 +102,7 @@ export const bookSchema = z.looseObject({
   influences: z.array(z.string()).default([]),
   isErotica: z.boolean().default(false),
   chapterRange: z
-    .object({
+    .looseObject({
       minimum: z.number().int().nonnegative().nullable().default(null),
       maximum: z.number().int().nonnegative().nullable().default(null)
     })
@@ -114,7 +122,7 @@ export const bookSchema = z.looseObject({
    */
   allowContributorTraining: z.boolean().default(false),
   settings: z
-    .object({
+    .looseObject({
       manuscript: manuscriptSettingsSchema,
       /** Which built-in tools the author has withdrawn, and whether the skills file is used. */
       agent: agentSettingsSchema,

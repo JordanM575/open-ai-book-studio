@@ -371,6 +371,7 @@ enforcement, and the D-124 device-identity question stands.
 | **Recommendation** | As decided. Per book keeps every export rebuildable from the files and gives the author one place to change the book's look, and the matter is content rather than an export option. |
 | **Rejected** | Per-export settings: an export could no longer be rebuilt from the files, the author would make the same choices again for each export, and matter in particular is the book's content. Persisting per-target profiles now: no renderer reads them, so they would be dead settings that look live. Nesting profiles under `settings`: proven to be stripped on every save. Trim, margin or page-size controls: D-108 makes no measurement claim and no renderer could honour them. |
 | **Evidence** | `specs/035-book-formatting/research/format-profiles.md`; `packages/core/tests/format-profile-premises.test.ts`; `apps/desktop/tests/export-renderers-premises.test.ts`; `apps/desktop/tests/format-dialog.test.tsx` (target transient, typography bound to `settings.manuscript`). |
+| **Update** | 2026-11-06 (D-190): the settings object no longer strips unknown nested sections, because every object in `book.json` is loose, and the premise test now pins that a nested section survives a supported save. Keeping `formatProfiles` top-level still works and is still the reserved shape; the reasons above that say `settings` strips unknown sections, and that nesting profiles is stripped on every save, no longer hold. The decision is otherwise unchanged. |
 | **Unblocks** | spec 035 T008. Persistent target-specific settings and physical-size controls still need a new decision. |
 | **Owner** | spec 035 |
 
@@ -594,6 +595,17 @@ enforcement, and the D-124 device-identity question stands.
 | **Decision** | Into `userData/recovery/`: one owner-only JSON file per refused draft, written atomically, with its book and chapter ids, the version and hash it was typed against, the reason and the time. The author is asked before the app goes: stay, or leave with the words kept. The next time the book opens, the workspace offers each copy. Restoring goes only through the checked save, so a chapter that changed since keeps the words as a conflict copy; discarding is an explicit, confirmed choice, and nothing removes a copy automatically. The library stays the only source of truth: a kept copy is a disposable draft, never read as the chapter. Rejected: writing beside the chapter (the folder is what failed, and a sync service would spread the copy); keeping the words only in memory (lost at quit); restoring them at launch without asking (a silent overwrite risk); deleting a copy after a later save of the chapter (the editor reloads from disk, so that would delete the only copy). |
 | **Evidence** | `apps/desktop/src/main/recovery.ts`, `exit-guard.ts`, `packages/app/src/components/RecoveryPanel.tsx`; `apps/desktop/tests/recovery.test.ts`, `failed-save.test.tsx`; `docs/FORMAT.md` ("Words kept after a failed close or quit"); the QA stress audit's D2. |
 | **Owner** | spec 002 (FR-013) |
+
+### D-190 · Every write into a book refuses a newer schema; every object in `book.json` is loose
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-06, on the author's approval of the file-safety fixes) |
+| **Question** | What may a write do to a book another device has upgraded to a newer schema while the book is open? And what happens to a field this build does not know inside a character, a memory, the story arc or a settings section? |
+| **Decision** | Every write into a book first reads `book.json` and refuses a newer `schemaVersion` with the standard message, before anything is written (`library/schema-guard.ts`, called from `serializeWrite`, the image store's writes and the thread store's writes). A missing or unreadable `book.json` is left to the write's own checks, so a half-synced file never blocks a save. Every object in `book.json` is loose, so a field this build does not know is kept and written back at every level. `storyArc` notes are text; the array shape FORMAT.md once described is read as one line per item. |
+| **Rejected** | Checking the schema only when the book is opened: another device can upgrade `book.json` while the book is open, and a save would then write into a book this build does not understand. Refusing the documented arrays: one unknown shape would hide the whole book. Stripping unknown nested keys: silent data loss for whatever a newer build added. |
+| **Evidence** | `packages/core/src/library/schema-guard.ts`; `apps/desktop/tests/book-json-safety.test.ts` (unknown fields at every level through the studio's own saves and the agent's tools, the documented arrays, and a schema-2 refusal on every write path with the bytes unchanged); `packages/core/tests/format-profile-premises.test.ts`. |
+| **Owner** | spec 002 FR-008 |
 
 ## Resolved browser decisions
 
