@@ -57,7 +57,10 @@ Update the `Unreleased` section before every commit.
   macOS reference journey; the library only shows that button on macOS) are reported as skipped off macOS and counted
   as neither passed nor failed. The failed-turn check reads the chat panel's text without depending on rendering and
   closes the agent panel when it fails, so one failure no longer takes the next check down with it. macOS still runs
-  all 44 checks. The Linux job stays allowed to fail until it has been watched passing.
+  all 44 checks. The second-instance check also leaves Chromium's Linux GPU caches (GPUPersistentCache, GPUCache)
+  out of its profile comparison, as it already did for macOS's GraphiteDawnCache, and the agent check says what
+  output it had captured when its startup log line is missing. The Linux job stays allowed to fail until it has
+  been watched passing.
 - A library kept in browser storage is no longer described as a folder: the library header names
   the browser, a book that cannot open no longer says its folder was left unchanged, and the
   closing note explains the storage instead of inviting the author to open files in an editor. A

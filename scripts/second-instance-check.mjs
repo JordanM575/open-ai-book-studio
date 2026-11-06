@@ -62,11 +62,12 @@ const EXIT_GIVE_UP_MS = 30_000;
  */
 const QUIET_MS = 12_000;
 /**
- * Chromium's GPU shader cache. A rewrites it whenever it paints something new, such as the notice,
- * with no second copy involved; B quits before it has a window and paints nothing. It is left out of
- * the comparison, and the run says when it changed.
+ * Chromium's GPU shader caches: GraphiteDawnCache on macOS, GPUPersistentCache and GPUCache on Linux.
+ * A rewrites them whenever it paints something new, such as the notice, with no second copy involved;
+ * B quits before it has a window and paints nothing. They are left out of the comparison, and the run
+ * says when they changed.
  */
-const PAINT_CACHE = "GraphiteDawnCache";
+const PAINT_CACHES = ["GraphiteDawnCache", "GPUPersistentCache", "GPUCache"];
 const NOTICE = "AI Book Studio is already open. The second copy closed without opening your library.";
 /** What the refused copy prints before it exits, and what the open copy prints when it hears of it. */
 const REFUSED_LINE = "already open in another copy";
@@ -159,7 +160,10 @@ try {
 
   await step("the second copy wrote nothing to the library, the profile or the locator", async () => {
     if (!before || !afterSecond) throw new Error("there is no snapshot from before or after copy B");
-    const painted = (change) => change.slice(change.indexOf(" ") + 1).startsWith(`${PAINT_CACHE}/`);
+    const painted = (change) => {
+      const path = change.slice(change.indexOf(" ") + 1);
+      return PAINT_CACHES.some((cache) => path.startsWith(`${cache}/`));
+    };
     const profileChanges = diff(before.profile, afterSecond.profile);
     const changes = [
       ...diff(before.library, afterSecond.library).map((change) => `library: ${change}`),
@@ -168,7 +172,7 @@ try {
     ];
     if (changes.length > 0) throw new Error(`${changes.length} change(s): ${changes.slice(0, 12).join("; ")}`);
     const repainted = profileChanges.filter(painted).length;
-    const cache = repainted > 0 ? `; A's ${PAINT_CACHE} changed in ${repainted} place(s) as it painted, and is left out` : `; ${PAINT_CACHE} unchanged too`;
+    const cache = repainted > 0 ? `; A's GPU caches changed in ${repainted} place(s) as it painted, and are left out` : "; the GPU caches unchanged too";
     return `${before.library.size} library entries, ${before.profile.size} profile entries and the locator unchanged (bytes, size, mtime, inode)${cache}`;
   });
 

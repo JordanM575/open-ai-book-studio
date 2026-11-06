@@ -568,9 +568,13 @@ async function journey() {
     status?.backend === "In-memory test vault" && status.available === true,
     status?.backend
   );
+  // The output is read from the moment the launch returned, so say what was captured when the line is missing:
+  // a startup line printed before that point would look the same as a line that was never printed.
+  const vaultLine = appOutput.includes("[credentials] This test run keeps connections in memory only");
   check(
     "the app says so in one line of its log",
-    appOutput.includes("[credentials] This test run keeps connections in memory only")
+    vaultLine,
+    vaultLine ? undefined : `not in the ${appOutput.length} characters captured since launch returned, which begin ${JSON.stringify(redact(appOutput).slice(0, 200))}`
   );
   const connection = await studio("connections.addKey", {
     provider: "meta",
