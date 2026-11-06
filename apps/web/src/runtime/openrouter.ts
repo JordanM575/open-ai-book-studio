@@ -1,4 +1,4 @@
-import { connectionLabel, newConnectionId } from "@ai-book-studio/core/providers/credentials";
+import { connectionLabel, newConnectionId, type CredentialVault } from "@ai-book-studio/core/providers/credentials";
 import { normalizeProviderError } from "@ai-book-studio/core/providers/errors";
 import {
   authorizeUrl,
@@ -16,9 +16,9 @@ import { BrowserCredentialVault } from "../storage/credentials";
 export const OPENROUTER_PKCE_KEY = "ai-book-studio.openrouter.pkce";
 const POPUP_NAME = "ai-book-studio-openrouter";
 const EXCHANGE_TIMEOUT_MS = 15_000;
+const ACTIVE_PREFIX = "ai-book-studio.openrouter.active.";
 
 interface ActivePopup {
-  popup: Window;
   cancel: () => void;
 }
 
@@ -32,38 +32,27 @@ let active: ActivePopup | null = null;
  * posts the connection summary back. No secret reaches the library, the parent page or a studio
  * server. A browser that blocks the popup gets a clear recovery message instead of a dead button.
  */
-export async function startOpenRouterFlow(): Promise<ConnectionSummary> {
+export function startOpenRouterFlow(): Promise<ConnectionSummary> {
   if (active) {
-    throw new ProviderError("invalid-request", "A sign-in is already waiting in this browser. Finish it or cancel it first.");
-  }
-
-  const pkce = await createPkce();
-  const challenge = await challengeFor(pkce.verifier);
-  sessionStorage.setItem(OPENROUTER_PKCE_KEY, JSON.stringify(pkce));
-
-  const callbackUrl = new URL(window.location.href);
-  callbackUrl.search = "?openrouter=callback";
-  callbackUrl.hash = "";
-  const authUrl = authorizeUrl({ callbackUrl: callbackUrl.toString(), challenge, state: pkce.state });
-  const popup = window.open(authUrl, POPUP_NAME, "popup,width=520,height=720");
-  if (!popup) {
-    sessionStorage.removeItem(OPENROUTER_PKCE_KEY);
-    throw new ProviderError(
-      "unknown",
-      "The browser blocked the sign-in window. Allow pop-ups for this site and try again."
-    );
+    return Promise.reject(new ProviderError("invalid-request", "A sign-in is already waiting in this browser. Finish it or cancel it first."));
   }
 
   return new Promise<ConnectionSummary>((resolve, reject) => {
     let settled = false;
+    let cancelling = false;
+    let pkce: PkceState | null = null;
+    let popup: Window | null = null;
+    let timer: number | undefined;
+    let closedPoll: number | undefined;
     const finish = (error: Error | null, connection?: ConnectionSummary): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
-      clearInterval(closedPoll);
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (closedPoll !== undefined) window.clearInterval(closedPoll);
       window.removeEventListener("message", onMessage);
-      active = null;
+      if (active === session) active = null;
       sessionStorage.removeItem(OPENROUTER_PKCE_KEY);
+      if (pkce) localStorage.removeItem(`${ACTIVE_PREFIX}${pkce.state}`);
       if (error) reject(error);
       else if (connection) resolve(connection);
     };
@@ -76,10 +65,10 @@ export async function startOpenRouterFlow(): Promise<ConnectionSummary> {
         connection?: ConnectionSummary;
         message?: string;
       };
-      if (!data || data.state !== pkce.state) return;
+      if (!data || !pkce || data.state !== pkce.state) return;
       if (data.type === "openrouter" && data.connection) {
         try {
-          popup.close();
+          popup?.close();
         } catch {
           // The popup may already be closing itself.
         }
@@ -89,25 +78,55 @@ export async function startOpenRouterFlow(): Promise<ConnectionSummary> {
       }
     };
 
-    const timer = setTimeout(() => {
-      finish(new ProviderError("auth", "Sign-in timed out. Start again when you are ready."));
-    }, PKCE_TIMEOUT_MS);
-    const closedPoll = setInterval(() => {
-      if (popup.closed) finish(new ProviderError("auth", "Sign-in cancelled."));
-    }, 500);
-
-    window.addEventListener("message", onMessage);
-    active = {
-      popup,
+    const session: ActivePopup = {
       cancel: () => {
+        if (cancelling) return;
+        const status = pkce ? localStorage.getItem(`${ACTIVE_PREFIX}${pkce.state}`) : null;
+        // Once the callback has committed, wait for its already-sent success message.
+        if (status === "completed") return;
+        if (status === "exchanging" && pkce) {
+          // Wait for the popup's failure message after it has aborted or rolled back its write.
+          cancelling = true;
+          localStorage.removeItem(`${ACTIVE_PREFIX}${pkce.state}`);
+          return;
+        }
         try {
-          popup.close();
+          popup?.close();
         } catch {
           // Closing is best effort; the rejection below is what matters.
         }
         finish(new ProviderError("auth", "Sign-in cancelled."));
       }
     };
+    active = session;
+
+    void (async () => {
+      pkce = await createPkce();
+      if (settled) return;
+      const challenge = await challengeFor(pkce.verifier);
+      if (settled) return;
+      sessionStorage.setItem(OPENROUTER_PKCE_KEY, JSON.stringify(pkce));
+      // The callback's sessionStorage is a copy. This non-secret marker is shared with its opener,
+      // so cancellation is visible even while a provider response is in flight.
+      localStorage.setItem(`${ACTIVE_PREFIX}${pkce.state}`, "pending");
+
+      const callbackUrl = new URL(window.location.href);
+      callbackUrl.search = "?openrouter=callback";
+      callbackUrl.hash = "";
+      const authUrl = authorizeUrl({ callbackUrl: callbackUrl.toString(), challenge, state: pkce.state });
+      popup = window.open(authUrl, POPUP_NAME, "popup,width=520,height=720");
+      if (!popup) {
+        finish(new ProviderError("unknown", "The browser blocked the sign-in window. Allow pop-ups for this site and try again."));
+        return;
+      }
+      timer = window.setTimeout(() => {
+        finish(new ProviderError("auth", "Sign-in timed out. Start again when you are ready."));
+      }, PKCE_TIMEOUT_MS);
+      closedPoll = window.setInterval(() => {
+        if (popup?.closed) finish(new ProviderError("auth", "Sign-in cancelled."));
+      }, 500);
+      window.addEventListener("message", onMessage);
+    })().catch((error: unknown) => finish(error instanceof Error ? error : new Error(String(error))));
   });
 }
 
@@ -119,54 +138,113 @@ export function cancelOpenRouterFlow(): void {
  * Finish the popup's callback. Returns null when the page is not an OpenRouter callback. The popup
  * closes after posting to the opener; a full-page callback still shows a readable result.
  */
-export async function handleOpenRouterCallback(): Promise<ConnectionSummary | null> {
+export async function handleOpenRouterCallback(vault: CredentialVault = new BrowserCredentialVault()): Promise<ConnectionSummary | null> {
   const params = new URLSearchParams(window.location.search);
   if (params.get("openrouter") !== "callback") return null;
-
+  const callbackUrl = window.location.href;
   const raw = sessionStorage.getItem(OPENROUTER_PKCE_KEY);
-  if (!raw) {
-    throw new ProviderError("auth", "The sign-in request was not found in this tab. Start again from Settings.");
-  }
-  let pkce: PkceState;
-  try {
-    pkce = JSON.parse(raw) as PkceState;
-  } catch {
-    throw new ProviderError("auth", "The sign-in request was damaged. Start again from Settings.");
-  }
-
-  const { code } = readCallback(window.location.href, pkce.state, Date.now(), pkce.createdAt);
-  const key = await exchangeCode(code, pkce.verifier);
-  const vault = new BrowserCredentialVault();
-  const existing = (await vault.list()).filter((connection) => connection.provider === "openrouter");
-  const connection: ConnectionSummary = {
-    id: newConnectionId(),
-    provider: "openrouter",
-    label: connectionLabel("openrouter", existing.length),
-    kind: "openrouter-oauth",
-    createdAt: new Date().toISOString()
-  };
-  await vault.set({ ...connection, secret: key });
-
+  // Consume the verifier and remove the authorization code from history before any async work.
   sessionStorage.removeItem(OPENROUTER_PKCE_KEY);
   window.history.replaceState({}, "", window.location.pathname);
-  const opener = window.opener as Window | null;
-  if (opener && !opener.closed) {
-    opener.postMessage({ type: "openrouter", state: pkce.state, connection }, window.location.origin);
-    window.setTimeout(() => window.close(), 50);
+
+  let state = params.get("state") ?? "";
+  let marker = `${ACTIVE_PREFIX}${state}`;
+  let claimed = false;
+  let keepCompleted = false;
+  let onStorage: ((event: StorageEvent) => void) | null = null;
+  try {
+    if (!raw) {
+      throw new ProviderError("auth", "The sign-in request was not found in this tab. Start again from Settings.");
+    }
+    let pkce: PkceState;
+    try {
+      pkce = JSON.parse(raw) as PkceState;
+      if (typeof pkce.state !== "string" || typeof pkce.verifier !== "string" || typeof pkce.createdAt !== "number") {
+        throw new Error("Invalid sign-in request");
+      }
+    } catch {
+      throw new ProviderError("auth", "The sign-in request was damaged. Start again from Settings.");
+    }
+    state = pkce.state;
+    marker = `${ACTIVE_PREFIX}${state}`;
+    if (localStorage.getItem(marker) !== "pending") {
+      throw new ProviderError("auth", "Sign-in was cancelled or this callback was already used.");
+    }
+    localStorage.setItem(marker, "exchanging");
+    claimed = true;
+    const abort = new AbortController();
+    onStorage = (event: StorageEvent): void => {
+      if (event.key === marker && event.newValue !== "exchanging") abort.abort();
+    };
+    window.addEventListener("storage", onStorage);
+    const ensureActive = (): void => {
+      if (Date.now() - pkce.createdAt > PKCE_TIMEOUT_MS) {
+        throw new ProviderError("auth", "The sign-in request expired. Start again.");
+      }
+      if (localStorage.getItem(marker) !== "exchanging") {
+        throw new ProviderError("auth", "Sign-in cancelled.");
+      }
+    };
+    const { code } = readCallback(callbackUrl, pkce.state, Date.now(), pkce.createdAt);
+    const key = await exchangeCode(code, pkce.verifier, abort.signal);
+    ensureActive();
+    const existing = (await vault.list()).filter((connection) => connection.provider === "openrouter");
+    ensureActive();
+    const connection: ConnectionSummary = {
+      id: newConnectionId(),
+      provider: "openrouter",
+      label: connectionLabel("openrouter", existing.length),
+      kind: "openrouter-oauth",
+      createdAt: new Date().toISOString()
+    };
+    try {
+      await vault.set({ ...connection, secret: key });
+      ensureActive();
+      const opener = window.opener as Window | null;
+      if (opener && !opener.closed) {
+        localStorage.setItem(marker, "completed");
+        opener.postMessage({ type: "openrouter", state: pkce.state, connection }, window.location.origin);
+        window.setTimeout(() => window.close(), 50);
+        keepCompleted = true;
+      }
+    } catch (error) {
+      await vault.remove(connection.id);
+      throw error;
+    }
+    return connection;
+  } catch (error) {
+    const opener = window.opener as Window | null;
+    const unclaimedRequest = !claimed && localStorage.getItem(marker) === "pending";
+    if (unclaimedRequest) localStorage.removeItem(marker);
+    const cancelled = claimed && localStorage.getItem(marker) === null;
+    const failure = cancelled ? new ProviderError("auth", "Sign-in cancelled.") : error;
+    if ((claimed || unclaimedRequest) && opener && !opener.closed) {
+      const message = failure instanceof Error ? failure.message : "OpenRouter sign-in failed.";
+      try {
+        opener.postMessage({ type: "openrouter-error", state, message }, window.location.origin);
+      } catch {
+        // The opener may have closed; the callback still reports the original error.
+      }
+    }
+    if (cancelled && opener) window.setTimeout(() => window.close(), 50);
+    throw failure;
+  } finally {
+    if (onStorage) window.removeEventListener("storage", onStorage);
+    if (claimed && !keepCompleted) localStorage.removeItem(marker);
   }
-  return connection;
 }
 
-async function exchangeCode(code: string, verifier: string): Promise<string> {
+async function exchangeCode(code: string, verifier: string, signal: AbortSignal): Promise<string> {
   let response: Response;
   try {
     response = await fetch(OPENROUTER_KEY_EXCHANGE_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: "S256" }),
-      signal: AbortSignal.timeout(EXCHANGE_TIMEOUT_MS)
+      signal: AbortSignal.any([signal, AbortSignal.timeout(EXCHANGE_TIMEOUT_MS)])
     });
   } catch (error) {
+    if (signal.aborted) throw new ProviderError("auth", "Sign-in cancelled.");
     throw new ProviderError("offline", "Could not reach OpenRouter to finish sign-in. Check your connection and try again.", {
       provider: "openrouter",
       cause: error
