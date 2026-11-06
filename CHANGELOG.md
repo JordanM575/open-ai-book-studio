@@ -38,6 +38,10 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
+  fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
+  the cause could not be seen without those files.
+
 - Saving a chapter keeps trailing whitespace in front-matter values written by another editor or by an
   older version, such as a block scalar ending in spaces or blank lines. The studio used to trim it
   on write and not restore the final newline on read, so a save could change text it did not own.
