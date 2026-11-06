@@ -251,7 +251,7 @@ export function registerIpc(
       title: "Export the whole library",
       buttonLabel: "Export archive",
       defaultPath: join(dirname(library.root), `${basename(library.root) || "library"}.zip`),
-      filters: [{ name: "AI Book Studio library", extensions: ["zip"] }]
+      filters: [{ name: "Open Book Studio library", extensions: ["zip"] }]
     };
     const picked = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
     if (picked.canceled || !picked.filePath) return null;
@@ -263,7 +263,7 @@ export function registerIpc(
     const archiveOptions = {
       title: "Import a library archive",
       buttonLabel: "Choose archive",
-      filters: [{ name: "AI Book Studio library", extensions: ["zip"] }],
+      filters: [{ name: "Open Book Studio library", extensions: ["zip"] }],
       properties: ["openFile"] as Array<"openFile">
     };
     const pickedArchive = window

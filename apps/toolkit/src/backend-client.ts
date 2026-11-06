@@ -62,7 +62,7 @@ export async function resolveBackend(overrides: BackendOverrides = {}): Promise<
     raw = await readFile(path, "utf8");
   } catch {
     throw new BackendError(
-      "No AI Book Studio backend found. Open the desktop app and a library, then try again."
+      "No Open Book Studio backend found. Open the desktop app and a library, then try again."
     );
   }
   let parsed: { version?: unknown; url?: unknown; token?: unknown };
@@ -70,12 +70,12 @@ export async function resolveBackend(overrides: BackendOverrides = {}): Promise<
     parsed = JSON.parse(raw) as { version?: unknown; url?: unknown; token?: unknown };
   } catch {
     throw new BackendError(
-      `The backend locator at ${path} is not valid JSON. Quit and reopen AI Book Studio.`
+      `The backend locator at ${path} is not valid JSON. Quit and reopen Open Book Studio.`
     );
   }
   if (parsed.version !== 1 || typeof parsed.url !== "string" || typeof parsed.token !== "string") {
     throw new BackendError(
-      `The backend locator at ${path} has an unknown shape. Quit and reopen AI Book Studio.`
+      `The backend locator at ${path} has an unknown shape. Quit and reopen Open Book Studio.`
     );
   }
   return validateTarget({ url: parsed.url, token: parsed.token });
@@ -86,7 +86,7 @@ function validateTarget(target: BackendTarget): BackendTarget {
   try {
     url = new URL(target.url);
   } catch {
-    throw new BackendError("The studio backend URL is not valid. Quit and reopen AI Book Studio.");
+    throw new BackendError("The studio backend URL is not valid. Quit and reopen Open Book Studio.");
   }
   const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
   if (url.protocol !== "http:" || !loopback) {
@@ -251,7 +251,7 @@ export class BackendClient {
       });
     } catch (error) {
       throw new BackendError(
-        "Could not reach the studio backend. Open AI Book Studio and keep it running.",
+        "Could not reach the studio backend. Open Open Book Studio and keep it running.",
         undefined,
         "offline"
       );

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "studio.aibook.app",
-  appName: "AI Book Studio",
+  appName: "Open Book Studio",
   webDir: "../web/dist",
   ios: {
     contentInset: "never",

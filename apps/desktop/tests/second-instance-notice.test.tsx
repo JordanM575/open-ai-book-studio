@@ -16,7 +16,7 @@ afterAll(async () => {
 
 afterEach(() => testing.cleanup());
 
-const NOTICE = "AI Book Studio is already open. The second copy closed without opening your library.";
+const NOTICE = "Open Book Studio is already open. The second copy closed without opening your library.";
 
 /** Just enough bridge for the shell to reach the welcome screen, with the second-copy signal in hand. */
 function mockStudio() {

@@ -10,7 +10,7 @@ import { fetchLicenses } from "../src/runtime/licenses";
 const REPORT: LicenseReport = {
   schemaVersion: 1,
   target: "web",
-  project: { name: "AI Book Studio", version: "0.1.0", license: "Apache-2.0", texts: [{ file: "LICENSE", text: "Studio license." }] },
+  project: { name: "Open Book Studio", version: "0.1.0", license: "Apache-2.0", texts: [{ file: "LICENSE", text: "Studio license." }] },
   packages: [
     {
       name: "react",

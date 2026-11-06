@@ -41,7 +41,7 @@ const REPORT: LicenseReport = {
   schemaVersion: 1,
   target: "desktop",
   project: {
-    name: "AI Book Studio",
+    name: "Open Book Studio",
     version: "0.1.0",
     license: "Apache-2.0",
     texts: [
@@ -85,7 +85,7 @@ describe("open-source licenses view", () => {
     expect(licenses).toHaveBeenCalledTimes(1);
     expect(listed(view)).toEqual(["(studio)", "alpha", "beta", "bundled-parser", "no-file"]);
     const text = view.getByTestId("licenses-text").textContent ?? "";
-    expect(text).toContain("AI Book Studio");
+    expect(text).toContain("Open Book Studio");
     expect(text).toContain("Studio license fixture.");
     expect(text).toContain("Studio notice fixture.");
     expect(view.getByTestId("licenses-count").textContent).toBe("4 packages");

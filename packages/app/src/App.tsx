@@ -107,7 +107,7 @@ function Studio() {
   useEffect(
     () =>
       window.studio.app.onSecondInstance(() => {
-        setNotice("AI Book Studio is already open. The second copy closed without opening your library.");
+        setNotice("Open Book Studio is already open. The second copy closed without opening your library.");
       }),
     []
   );

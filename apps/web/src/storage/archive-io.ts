@@ -39,7 +39,7 @@ export async function exportBrowserArchive(
   if (picker && saveFilePickerAvailable()) {
     const handle = await picker.call(window, {
       suggestedName: fileName,
-      types: [{ description: "AI Book Studio library", accept: { "application/zip": [".zip"] } }]
+      types: [{ description: "Open Book Studio library", accept: { "application/zip": [".zip"] } }]
     });
     const writable = await handle.createWritable();
     try {

@@ -2,7 +2,7 @@
   "name": "@ai-book-studio/toolkit",
   "version": "0.1.0",
   "private": true,
-  "description": "Standalone CLI and MCP server for an open AI Book Studio library",
+  "description": "Standalone CLI and MCP server for an open Open Book Studio library",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {

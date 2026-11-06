@@ -135,9 +135,9 @@ export interface ConnectorManifest {
 
 export function connectorManifest(catalog: ToolDescriptor[]): ConnectorManifest {
   return {
-    name: "AI Book Studio",
+    name: "Open Book Studio",
     description:
-      "Read and write the author's book in AI Book Studio: the chapters, the Story Bible and the agent's own writing tools, with an undo checkpoint for every change.",
+      "Read and write the author's book in Open Book Studio: the chapters, the Story Bible and the agent's own writing tools, with an undo checkpoint for every change.",
     tools: connectorTools(catalog),
     authentication:
       "OAuth 2.0 account linking. The connector never holds a provider key and never sees the author's other books.",

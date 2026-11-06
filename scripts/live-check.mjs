@@ -45,7 +45,7 @@ if (existsSync(credentials)) {
 } else {
   console.error("[live] There is no stored Meta connection, and no key in the environment.");
   console.error("[live] Either:");
-  console.error("[live]   open AI Book Studio and add the Meta connection in Settings, then run this again;");
+  console.error("[live]   start Open Book Studio and add the Meta connection in Settings, then run this again;");
   console.error("[live]   or put META_API_KEY and META_API_BASE_URL in .env and run it again.");
   console.error("[live] The stored connection is the better way: a shell history may keep the other.");
   await rm(temp, { recursive: true, force: true });

@@ -170,7 +170,7 @@ describe("the license collector", () => {
       repoRoot: root
     });
     expect(report.packages.map((pkg) => `${pkg.name}@${pkg.version}`)).toEqual(["alpha@1.0.0", "beta@2.0.0", "delta@1.0.0"]);
-    expect(report.project).toMatchObject({ name: "AI Book Studio", version: "1.2.3", license: "Apache-2.0" });
+    expect(report.project).toMatchObject({ name: "Open Book Studio", version: "1.2.3", license: "Apache-2.0" });
     expect(report.project.texts.map((entry) => entry.file)).toEqual(["LICENSE", "NOTICE"]);
     const serialized = JSON.stringify(report);
     expect(serialized).not.toContain(root);

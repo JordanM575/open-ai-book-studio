@@ -99,7 +99,7 @@ describe("the connector surface", () => {
 
   test("names the scopes and the account link a reviewer asks for", () => {
     const manifest = connectorManifest(catalog);
-    expect(manifest.name).toBe("AI Book Studio");
+    expect(manifest.name).toBe("Open Book Studio");
     expect(manifest.tools).toHaveLength(3);
     expect(manifest.accountLinking).toMatch(/links their own studio/i);
     expect(manifest.scopes.join(" ")).toMatch(/undo checkpoint/i);

@@ -50,7 +50,7 @@ export async function mustCompatible<T>(promise: Promise<Result<T>>): Promise<T>
  */
 export function buildSupportSummary(build: BuildMetadata, detectedSchema: number | null): string {
   return [
-    "AI Book Studio support summary",
+    "Open Book Studio support summary",
     "This summary stays on this device. Nothing is sent anywhere.",
     `App version: ${build.version} (commit ${build.commit})`,
     `Build: ${build.target}, ${build.platform}, ${build.arch}`,
