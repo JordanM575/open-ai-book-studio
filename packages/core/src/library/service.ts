@@ -1406,12 +1406,12 @@ function parseBookJson(raw: string, path: string): BookMeta {
 
 function assertSchemaVersion(version: unknown, path: string): void {
   if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
-    throw new LibraryError("invalid", `${path} has no schemaVersion. It may not be an AI Book Studio file.`);
+    throw new LibraryError("invalid", `${path} has no schemaVersion. It may not be an Open Book Studio file.`);
   }
   if (version > SCHEMA_VERSION) {
     throw new LibraryError(
       "newer-schema",
-      `${path} was written by a newer version of AI Book Studio (schema ${version}). Update the app before opening this library, so no fields are dropped.`
+      `${path} was written by a newer version of Open Book Studio (schema ${version}). Update the app before opening this library, so no fields are dropped.`
     );
   }
 }

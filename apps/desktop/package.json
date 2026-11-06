@@ -2,7 +2,7 @@
   "name": "@ai-book-studio/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "AI Book Studio desktop application",
+  "description": "Open Book Studio desktop application",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./out/main/index.cjs",

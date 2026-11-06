@@ -705,7 +705,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       if (listed.names.length <= 50) throw new Error(`the view listed ${listed.names.length} packages`);
       const absent = ["react", "docx", "electron"].filter((name) => !listed.names.includes(name));
       if (absent.length) throw new Error(`the view does not list ${absent.join(", ")}`);
-      if (!listed.first.includes("AI Book Studio") || !listed.studio) {
+      if (!listed.first.includes("Open Book Studio") || !listed.studio) {
         throw new Error("the studio's own license did not come first");
       }
       // docx ships as a dependency the main process loads, outside the renderer bundle.

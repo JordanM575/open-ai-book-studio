@@ -92,7 +92,7 @@ const tools: BackendToolRunner = {
 };
 
 const PAGE = "<!doctype html><title>glasses</title><p>the page</p>";
-const MANIFEST = JSON.stringify({ name: "AI Book Studio" });
+const MANIFEST = JSON.stringify({ name: "Open Book Studio" });
 
 let directory = "";
 let backend: LocalBackend;
@@ -148,7 +148,7 @@ describe("the glasses page", () => {
     const response = await call("/glasses/manifest.json", {}, null);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toMatch(/application\/manifest\+json/);
-    expect(await response.json()).toEqual({ name: "AI Book Studio" });
+    expect(await response.json()).toEqual({ name: "Open Book Studio" });
   });
 
   test("is not there when the studio was built without it", async () => {

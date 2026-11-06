@@ -203,7 +203,7 @@ export async function buildDocx(detail: BookDetail, illustrations: Map<string, D
 
   return Packer.toBuffer(
     new Document({
-      creator: plan.author || "AI Book Studio",
+      creator: plan.author || "Open Book Studio",
       title: book.title,
       description: book.description,
       // A title page with nothing after it is the whole document, with no empty page behind it.

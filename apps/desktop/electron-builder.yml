@@ -19,7 +19,7 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: AI Book Studio uses the microphone only while you dictate. The recording is sent to your selected model provider and is not saved.
+    NSMicrophoneUsageDescription: Open Book Studio uses the microphone only while you dictate. The recording is sent to your selected model provider and is not saved.
 win:
   target:
     - nsis

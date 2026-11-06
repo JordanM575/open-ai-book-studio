@@ -55,7 +55,7 @@ export function parseArchiveManifest(value: unknown, limits = ARCHIVE_LIMITS): A
   if (typeof version === "number" && version > ARCHIVE_FORMAT_VERSION) {
     throw new ArchiveError(
       "unsupported-version",
-      "This archive was written by a newer version of AI Book Studio. Update the app before importing it."
+      "This archive was written by a newer version of Open Book Studio. Update the app before importing it."
     );
   }
 

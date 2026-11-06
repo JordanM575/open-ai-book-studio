@@ -16,7 +16,7 @@ interface Parsed {
   flags: Map<string, string | true>;
 }
 
-const USAGE = `bookwriter — AI Book Studio agent toolkit
+const USAGE = `bookwriter — Open Book Studio agent toolkit
 
 Usage: bookwriter [options] <command> [arguments]
 
@@ -272,7 +272,7 @@ export async function runCli(
       case "mcp": {
         const server = new McpServer(client, { allowWrites: writes, allowDestructive: destructive });
         io.stderr.write(
-          `AI Book Studio MCP server on stdio${
+          `Open Book Studio MCP server on stdio${
             destructive ? " (destructive tools enabled)" : writes ? " (writes enabled)" : " (read-only)"
           }.\n`
         );
@@ -287,7 +287,7 @@ export async function runCli(
     if (error instanceof BackendError) {
       io.stderr.write(`${error.message}\n`);
       if (error.status === 401 || error.status === 403) {
-        io.stderr.write("Quit and reopen AI Book Studio so the toolkit receives a fresh token.\n");
+        io.stderr.write("Quit and reopen Open Book Studio so the toolkit receives a fresh token.\n");
       }
       return 1;
     }

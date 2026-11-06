@@ -29,7 +29,7 @@ const newerSchemaError = (message: string): StudioError => ({ code: "newer-schem
 describe("schema refusal contract", () => {
   test("a newer-schema failure maps to a refusal carrying only the detected schema", () => {
     const refusal = asSchemaRefusal(
-      newerSchemaError("books/demo/book.json was written by a newer version of AI Book Studio (schema 2). Update the app.")
+      newerSchemaError("books/demo/book.json was written by a newer version of Open Book Studio (schema 2). Update the app.")
     );
     expect(refusal).toEqual({ detectedSchema: 2 });
   });

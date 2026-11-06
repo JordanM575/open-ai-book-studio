@@ -21,7 +21,7 @@ export function Wordmark({ subtitle }: { subtitle?: string }) {
     <div className="flex items-center gap-2.5">
       <Logo />
       <div className="leading-tight">
-        <div className="text-(length:--text-headline-size) font-semibold tracking-[-0.2px]">AI Book Studio</div>
+        <div className="text-(length:--text-headline-size) font-semibold tracking-[-0.2px]">Open Book Studio</div>
         {subtitle ? <div className="text-(length:--text-caption-size) text-muted-foreground">{subtitle}</div> : null}
       </div>
     </div>

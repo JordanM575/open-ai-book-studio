@@ -67,7 +67,7 @@ const QUIET_MS = 12_000;
  * the comparison, and the run says when it changed.
  */
 const PAINT_CACHE = "GraphiteDawnCache";
-const NOTICE = "AI Book Studio is already open. The second copy closed without opening your library.";
+const NOTICE = "Open Book Studio is already open. The second copy closed without opening your library.";
 /** What the refused copy prints before it exits, and what the open copy prints when it hears of it. */
 const REFUSED_LINE = "already open in another copy";
 const HEARD_LINE = "second copy started with this profile";

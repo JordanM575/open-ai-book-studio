@@ -108,7 +108,7 @@ const glassesUrl = `${locator.url}/glasses#token=${locator.token}`;
 await page.goto(glassesUrl, { waitUntil: "networkidle" });
 await page.waitForTimeout(700);
 
-check("the page loads", (await page.title()) === "AI Book Studio");
+check("the page loads", (await page.title()) === "Open Book Studio");
 check("the book is on the display", (await page.textContent("#book"))?.includes("The Salt Road") === true);
 // The page opens where the status line says the author is. With no chapter open on the desktop,
 // that is the last chapter, which is how far through the book the writing has got.

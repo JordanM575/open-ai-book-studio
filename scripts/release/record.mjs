@@ -27,7 +27,7 @@ export const RECORD_SCHEMA_VERSION = 1;
  */
 export const RECORD_JSON_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  title: "AI Book Studio release record",
+  title: "Open Book Studio release record",
   type: "object",
   required: ["schemaVersion", "version", "commit", "schema", "platform", "arch", "artifacts", "gates", "signing", "unsigned"],
   properties: {
