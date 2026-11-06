@@ -61,15 +61,18 @@ Update the `Unreleased` section before every commit.
   workspace does the same before it saves your unsaved words, and remounts the editor only when the
   turn changed the chapter's words or title. A move that meets an outside edit and is put back
   leaves the editor on the right base too.
-- Moving a chapter keeps the order numbers where they were and rewrites only the chapters it
-  shifts (QA D10). The chapters between the two places share out the numbers those places had, so
-  a drag from 120th to 118th in a 300-chapter book rewrites three files and the library catalog
-  once, also after a chapter was deleted and left a gap. A merge across a deleted chapter is no
-  longer refused, because the agent's split and merge now go by place in the book. A move cut
-  short, for example by a crash, leaves at most the moved chapter and its new neighbour on one
-  number; the book still reads in one order, ties broken by file name as `docs/FORMAT.md` says,
-  and the next move, from the buttons as well as a drag, gives each chapter its own number instead
-  of refusing with "Two chapters share the same order".
+- Moving a chapter in a long book no longer renumbers the chapters behind a gap (QA D10). After a
+  chapter had been deleted, dragging a chapter two places in a 300-chapter book rewrote 295 files,
+  and a move rebuilt the library catalog once for every file it wrote, 300 times for a drag from
+  first to last, all while the book's saves waited. Now the chapters between the two places share
+  out the numbers those places had and keep the gap, so that drag rewrites three files and every
+  move rebuilds the catalog once. A merge across a deleted chapter is no longer refused, and the
+  agent's split puts the new half right after its chapter in a book with a gap, because both now go
+  by place in the book. A move cut short, for example by a crash, leaves at most the moved chapter
+  and its new neighbour on one number; the book reads in one order, ties broken by file name as
+  `docs/FORMAT.md` says, with every other chapter in place, and the next move, from the buttons as
+  well as a drag, gives each chapter its own number instead of refusing with "Two chapters share
+  the same order".
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
   the cause could not be seen without those files.
