@@ -17,7 +17,28 @@ the event additions. The [submission packet](hackathon/SUBMISSION.md) explains t
 the dated baseline, Meta integration and what the demo actually verifies.
 
 [Watch the three-minute hackathon demo](https://www.youtube.com/watch?v=tLFCn9V193E).
-The submitted cut retains the earlier working name; an improved edit is in progress.
+
+## Current state
+
+Open Book Studio is a working desktop writing studio; macOS is the reference environment. The
+Feature status table below says what is complete, in progress and planned.
+
+- **Name.** The product is Open Book Studio wherever an author or a tool sees it. The packaged
+  app bundle, its profile folder, the bundle identifier and the stored keys keep their earlier
+  internal names on purpose, so existing profiles and installs keep working.
+- **Hardening since the hackathon.** A save whose journal note was interrupted is still recognised
+  as this device's own save; a book-details update that races an outside edit is kept as a
+  conflict copy; trailing whitespace in front-matter values survives a save; and the OpenRouter
+  sign-in is guarded against replay, expiry and cancellation races in both the desktop and the
+  browser builds.
+- **Models.** Muse Wonder 1.0 is recognised as a tool-capable writing model alongside Muse
+  Spark 1.3.
+- **Checks.** 2,081 unit and component tests; a 44-check smoke of the built app, a 55-check agent
+  turn against a fake provider and a 7-check second-copy test, all on macOS; and a Linux
+  workflow (see [Verification](#verification)).
+- **Still ahead.** Signed and notarised releases, Android, character voices and audiobooks,
+  dedicated cover design, and the guided-authoring and review work in specs 036 to 042 are
+  planned, not built.
 
 ## What it does
 
@@ -141,6 +162,7 @@ See [docs/VOICE.md](docs/VOICE.md) for the exact supported flow.
 | Need | Model | How the studio uses it |
 | --- | --- | --- |
 | Planning, drafting, revision | Muse Spark 1.3 | The writing agent, through your own Meta connection (Meta Model API) |
+| Larger writing model | Muse Wonder 1.0 | Recognised as a tool-capable writing model, using its documented context size and Standard-mode prices when the catalogue omits them; Wonder Full and unverified Contributor variants are not enabled |
 | Cheap agent testing | Muse Spark 1.3 Contributor | Off by default and refused until the book opts in, because it may train on prompts and outputs; intended for the sample only |
 | Illustration | Muse Image 1.0 | Chapter illustrations, priced on the button before you generate |
 | Dictation and listening | Muse Voice Transcribe 1.0 | Dictation at the caret, and questions spoken to the ambient strip |
@@ -235,8 +257,12 @@ build keeps an OpenRouter sign-in in that browser's own storage and does not run
 
 ## Verification
 
-There is no public CI yet. Verification runs locally with these commands, and none of them needs a
-provider key:
+The checks run locally, and none needs a provider key. The repository also has a manually started
+GitHub Actions workflow, `verify`: one job runs `bun run verify` and the coverage floor on Linux,
+and an end-to-end job drives the built app under a virtual display. That end-to-end job is still
+allowed to fail until it has been watched passing on Linux. Its smoke skips the manuscript-import
+checks off macOS, because only macOS offers the import, and when a smoke check fails there the job
+keeps its screenshot and console log for seven days.
 
 | Command | What it proves |
 | --- | --- |
