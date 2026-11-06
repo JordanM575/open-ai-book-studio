@@ -16,6 +16,11 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Update the README's current state: a short status section (the name, hardening since the hackathon,
+  models, checks and what is still ahead), a Verification section that describes the manual GitHub Actions
+  workflow instead of saying there is no public CI, Muse Wonder 1.0 in the Meta models table, and one stale
+  note removed.
+
 - Add Draft/Planned specs 039–042 for structured reader/continuity review, Android, book-level
   covers and audiobook casting, each with decision gates, acceptance scenarios, plan and unchecked
   tasks. Map all 15 completion requirements and 25 lanes to spec owners, preserve reserved 038,
