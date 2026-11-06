@@ -57,6 +57,15 @@ Update the `Unreleased` section before every commit.
 - The manual Linux workflow's end-to-end job now fetches Electron and gives its sandbox helper the owner and mode it
   requires before running, so the app can launch there with the sandbox on. Before, the smoke, web, bridge and
   second-instance checks aborted at launch. The job is still allowed to fail until it has been watched passing.
+- The smoke no longer fails on Linux for what Linux does not offer. The seven manuscript-import checks (spec 029's
+  macOS reference journey; the library only shows that button on macOS) are reported as skipped off macOS and counted
+  as neither passed nor failed. The failed-turn check reads the chat panel's text without depending on rendering and
+  closes the agent panel when it fails, so one failure no longer takes the next check down with it. macOS still runs
+  all 44 checks. The second-instance check also leaves Chromium's Linux GPU caches (GPUPersistentCache, GPUCache)
+  out of its profile comparison, as it already did for macOS's GraphiteDawnCache, and the agent check
+  no longer asks Linux to see the startup line about the in-memory test vault: the app prints it before the check's
+  output is attached there, so it stays a real check on macOS and is asserted by the unit test everywhere else. The
+  Linux job stays allowed to fail until it has been watched passing.
 - A library kept in browser storage is no longer described as a folder: the library header names
   the browser, a book that cannot open no longer says its folder was left unchanged, and the
   closing note explains the storage instead of inviting the author to open files in an editor. A
