@@ -1,19 +1,60 @@
 import { describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
+import type { Server } from "node:http";
 import { MemoryVault } from "@ai-book-studio/core/providers/credentials";
-import { OPENROUTER_KEY_EXCHANGE_URL, OPENROUTER_MODELS_URL } from "@ai-book-studio/core/providers/openrouter";
+import { OPENROUTER_KEY_EXCHANGE_URL, OPENROUTER_MODELS_URL, PKCE_TIMEOUT_MS } from "@ai-book-studio/core/providers/openrouter";
 import type { StoredCredential } from "@ai-book-studio/core/providers/types";
 import { ProviderService } from "../src/main/providers";
 
 const KEY = "sk-or-v1-1234567890abcdef1234567890abcdef";
 
-function callbackDriver() {
+class FakeCallbackServer extends EventEmitter {
+  closed = false;
+
+  listen(): this {
+    queueMicrotask(() => this.emit("listening"));
+    return this;
+  }
+
+  address() {
+    return { address: "127.0.0.1", family: "IPv4", port: 12345 };
+  }
+
+  close(): this {
+    this.closed = true;
+    return this;
+  }
+
+  callback(url: string): number {
+    let status = 0;
+    const response = {
+      writeHead: (code: number) => { status = code; },
+      end: () => {}
+    };
+    this.emit("request", { url: new URL(url).pathname + new URL(url).search }, response);
+    return status;
+  }
+}
+
+function callbackUrl(authUrl: string, state?: string): string {
+  const url = new URL(authUrl);
+  const callback = url.searchParams.get("callback_url");
+  const returnedState = state ?? url.searchParams.get("state");
+  if (!callback || !returnedState) throw new Error("missing callback parameters");
+  return `${callback}?code=test-code&state=${encodeURIComponent(returnedState)}`;
+}
+
+function callbackDriver(server: FakeCallbackServer) {
   return async (authUrl: string): Promise<void> => {
-    const url = new URL(authUrl);
-    const callback = url.searchParams.get("callback_url");
-    const state = url.searchParams.get("state");
-    if (!callback || !state) throw new Error("missing callback parameters");
-    await fetch(`${callback}?code=test-code&state=${encodeURIComponent(state)}`);
+    server.callback(callbackUrl(authUrl));
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((complete, fail) => { resolve = complete; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 function credential(): StoredCredential {
@@ -30,6 +71,7 @@ function credential(): StoredCredential {
 describe("OpenRouter connection flow", () => {
   test("stores a connection and returns only a summary", async () => {
     const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
     let exchangeBody: Record<string, string> | null = null;
     const fetchImpl = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       if (String(input) === OPENROUTER_KEY_EXCHANGE_URL) {
@@ -37,63 +79,243 @@ describe("OpenRouter connection flow", () => {
         return Response.json({ key: KEY });
       }
       return new Response("not found", { status: 404 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
-    const service = new ProviderService(vault, callbackDriver(), fetchImpl);
+    const service = new ProviderService(vault, callbackDriver(server), fetchImpl, () => server as unknown as Server);
     const summary = await service.startOpenRouter();
 
     expect(summary.provider).toBe("openrouter");
     expect(summary.label).toBe("OpenRouter");
     expect(summary).not.toHaveProperty("secret");
-    expect((await vault.get(summary.id))?.secret).toBe(KEY);
+    expect((await vault.get(summary.id))?.secret === KEY).toBe(true);
     expect(exchangeBody).toMatchObject({ code: "test-code", code_challenge_method: "S256" });
     expect(exchangeBody).toHaveProperty("code_verifier");
   });
 
   test("rejects a callback with the wrong state and saves nothing", async () => {
     const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
+    let exchanges = 0;
     const service = new ProviderService(
       vault,
       async (authUrl) => {
-        const url = new URL(authUrl);
-        await fetch(`${url.searchParams.get("callback_url")}?code=test-code&state=wrong`);
+        expect(server.callback(callbackUrl(authUrl, "wrong"))).toBe(400);
       },
-      (async () => Response.json({ key: KEY })) as unknown as typeof fetch
+      (async () => { exchanges += 1; return Response.json({ key: KEY }); }) as unknown as typeof fetch,
+      () => server as unknown as Server
     );
 
     await expect(service.startOpenRouter()).rejects.toThrow(/did not match/);
+    expect(exchanges).toBe(0);
     expect(await vault.list()).toEqual([]);
   });
 
   test("cancel closes the flow without writing a connection", async () => {
     const vault = new MemoryVault();
-    const service = new ProviderService(vault, async () => {}, (async () => {
+    const server = new FakeCallbackServer();
+    const opened = deferred<void>();
+    const service = new ProviderService(vault, async () => { opened.resolve(); }, (async () => {
       throw new Error("must not exchange");
-    }) as unknown as typeof fetch);
+    }) as unknown as typeof fetch, () => server as unknown as Server);
 
     const pending = service.startOpenRouter();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await service.cancelOpenRouter();
+    await opened.promise;
+    service.cancelOpenRouter();
 
     await expect(pending).rejects.toThrow(/cancelled/);
+    expect(server.closed).toBe(true);
     expect(await vault.list()).toEqual([]);
   });
 
   test("a failed exchange surfaces the provider error and saves nothing", async () => {
     const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
     const service = new ProviderService(
       vault,
-      callbackDriver(),
+      callbackDriver(server),
       (async (input: Parameters<typeof fetch>[0]) => {
         if (String(input) === OPENROUTER_KEY_EXCHANGE_URL) {
           return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
         }
         return new Response("not found", { status: 404 });
-      }) as typeof fetch
+      }) as unknown as typeof fetch,
+      () => server as unknown as Server
     );
 
     await expect(service.startOpenRouter()).rejects.toMatchObject({ code: "unknown" });
     expect(await vault.list()).toEqual([]);
+  });
+
+  test("rejects an expired callback before exchanging it", async () => {
+    const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
+    let now = 1_000;
+    let exchanges = 0;
+    const service = new ProviderService(vault, async (authUrl) => {
+      now += PKCE_TIMEOUT_MS + 1;
+      expect(server.callback(callbackUrl(authUrl))).toBe(400);
+    }, (async () => { exchanges += 1; return Response.json({ key: KEY }); }) as unknown as typeof fetch,
+    () => server as unknown as Server, () => now);
+
+    await expect(service.startOpenRouter()).rejects.toThrow(/expired/);
+    expect(exchanges).toBe(0);
+    expect(await vault.list()).toEqual([]);
+  });
+
+  test("rejects a duplicate callback and a second start while the exchange is pending", async () => {
+    const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
+    const exchange = deferred<Response>();
+    const started = deferred<void>();
+    let exchanges = 0;
+    let duplicateStatus = 0;
+    const service = new ProviderService(vault, async (authUrl) => {
+      const url = callbackUrl(authUrl);
+      expect(server.callback(url)).toBe(200);
+      duplicateStatus = server.callback(url);
+    }, (async () => {
+      exchanges += 1;
+      started.resolve();
+      return exchange.promise;
+    }) as unknown as typeof fetch, () => server as unknown as Server);
+
+    const pending = service.startOpenRouter();
+    await started.promise;
+    const second = service.startOpenRouter();
+    void second.catch(() => {});
+    exchange.resolve(Response.json({ key: KEY }));
+    await pending;
+    await expect(second).rejects.toMatchObject({ code: "invalid-request" });
+    expect(duplicateStatus).toBe(410);
+    expect(exchanges).toBe(1);
+    expect(await vault.list()).toHaveLength(1);
+  });
+
+  test("cancellation during setup prevents a late callback and credential write", async () => {
+    const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
+    let exchanges = 0;
+    const service = new ProviderService(vault, callbackDriver(server), (async () => {
+      exchanges += 1;
+      return Response.json({ key: KEY });
+    }) as unknown as typeof fetch, () => server as unknown as Server);
+
+    const pending = service.startOpenRouter();
+    service.cancelOpenRouter();
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(exchanges).toBe(0);
+    expect(await vault.list()).toEqual([]);
+  });
+
+  test("cancellation during the exchange ignores a late successful response", async () => {
+    const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
+    const exchange = deferred<Response>();
+    const started = deferred<void>();
+    const service = new ProviderService(vault, callbackDriver(server), (async () => {
+      started.resolve();
+      return exchange.promise;
+    }) as unknown as typeof fetch, () => server as unknown as Server);
+
+    const pending = service.startOpenRouter();
+    void pending.catch(() => {});
+    await started.promise;
+    service.cancelOpenRouter();
+    exchange.resolve(Response.json({ key: KEY }));
+
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(await vault.list()).toEqual([]);
+  });
+
+  test("an exchange response arriving after expiry cannot write a credential", async () => {
+    const vault = new MemoryVault();
+    const server = new FakeCallbackServer();
+    const exchange = deferred<Response>();
+    const started = deferred<void>();
+    let now = 1_000;
+    const service = new ProviderService(vault, callbackDriver(server), (async () => {
+      started.resolve();
+      return exchange.promise;
+    }) as unknown as typeof fetch, () => server as unknown as Server, () => now);
+
+    const pending = service.startOpenRouter();
+    void pending.catch(() => {});
+    await started.promise;
+    now += PKCE_TIMEOUT_MS + 1;
+    exchange.resolve(Response.json({ key: KEY }));
+
+    await expect(pending).rejects.toThrow(/expired/);
+    expect(await vault.list()).toEqual([]);
+  });
+
+  test("cancellation during a vault write removes the new credential before failing", async () => {
+    const writing = deferred<void>();
+    const resume = deferred<void>();
+    class DelayedVault extends MemoryVault {
+      override async set(value: StoredCredential): Promise<void> {
+        writing.resolve();
+        await resume.promise;
+        await super.set(value);
+      }
+    }
+    const vault = new DelayedVault();
+    const server = new FakeCallbackServer();
+    const service = new ProviderService(vault, callbackDriver(server),
+      (async () => Response.json({ key: KEY })) as unknown as typeof fetch, () => server as unknown as Server);
+    const pending = service.startOpenRouter();
+    void pending.catch(() => {});
+    await writing.promise;
+    service.cancelOpenRouter();
+    resume.resolve();
+
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(await vault.list()).toEqual([]);
+  });
+
+  test("a vault write that fails after storing is rolled back", async () => {
+    class FailingVault extends MemoryVault {
+      override async set(value: StoredCredential): Promise<void> {
+        await super.set(value);
+        throw new Error("synthetic vault failure");
+      }
+    }
+    const vault = new FailingVault();
+    const server = new FakeCallbackServer();
+    const service = new ProviderService(vault, callbackDriver(server),
+      (async () => Response.json({ key: KEY })) as unknown as typeof fetch, () => server as unknown as Server);
+
+    await expect(service.startOpenRouter()).rejects.toThrow(/vault failure/);
+    expect(await vault.list()).toEqual([]);
+  });
+
+  test("a late failure from a cancelled browser launch does not cancel the next sign-in", async () => {
+    const vault = new MemoryVault();
+    const firstServer = new FakeCallbackServer();
+    const nextServer = new FakeCallbackServer();
+    const firstOpened = deferred<void>();
+    const lateLaunch = deferred<void>();
+    let launches = 0;
+    const service = new ProviderService(vault, async (authUrl) => {
+      launches += 1;
+      if (launches === 1) {
+        firstOpened.resolve();
+        await lateLaunch.promise;
+      } else {
+        nextServer.callback(callbackUrl(authUrl));
+      }
+    }, (async () => Response.json({ key: KEY })) as unknown as typeof fetch,
+    () => (launches === 0 ? firstServer : nextServer) as unknown as Server);
+
+    const first = service.startOpenRouter();
+    void first.catch(() => {});
+    await firstOpened.promise;
+    service.cancelOpenRouter();
+    await expect(first).rejects.toThrow(/cancelled/);
+    const next = service.startOpenRouter();
+    lateLaunch.reject(new Error("synthetic late launch failure"));
+
+    await expect(next).resolves.toMatchObject({ provider: "openrouter" });
+    expect(await vault.list()).toHaveLength(1);
   });
 
   test("lists models, keeps a cache and reports prices per million", async () => {
@@ -134,7 +356,9 @@ describe("OpenRouter connection flow", () => {
   });
 
   test("testing an unknown connection says to connect again", async () => {
-    const service = new ProviderService(new MemoryVault(), async () => {}, fetch as typeof fetch);
+    const service = new ProviderService(new MemoryVault(), async () => {}, (async () => {
+      throw new Error("unexpected provider request");
+    }) as unknown as typeof fetch);
     await expect(service.test("conn_missing000001")).rejects.toThrow(/no longer exists/);
   });
 });
