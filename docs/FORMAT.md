@@ -143,7 +143,14 @@ The door had been shut when he went to bed.
 
 - `id` is stable for the life of the chapter. Renaming the file or the title never changes it. One
   file is the chapter for an `id`; a sync tool's copy is not (see [Copies of a chapter](#copies-of-a-chapter)).
-- `order` is an integer ≥ 1; the rail sorts by it, then by file name.
+- `order` is an integer ≥ 1; the book reads in its order, and chapters on the same number by file
+  name, so every device shows one order. The numbers need not run without gaps: deleting a chapter
+  leaves one, and a move keeps them. A move gives the chapters it shifts the numbers those places
+  had and rewrites only their files, so moving a chapter from 120th to 118th rewrites three files
+  however long the book is. Each of those files is an atomic write checked against its hash, and
+  `version` moves on. A move cut short, for example by a crash, can leave the moved chapter and its
+  new neighbour on one number; the book still reads in one order, with every other chapter in its
+  place, and the next move gives each chapter a number of its own.
 - `version` increments on every save the studio performs. It is how the app detects that another
   writer (another device, another editor, a sync provider) changed the file.
 - Front matter is written by the `yaml` package and is stable across saves; only the fields above
