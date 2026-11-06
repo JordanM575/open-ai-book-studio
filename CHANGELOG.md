@@ -50,12 +50,12 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
-  build (QA D6). Every write into a book now reads `book.json` first and refuses a newer `schemaVersion`
-  with "was written by a newer version of Open Book Studio" before anything changes: a chapter save, a
-  new, moved, deleted, restored, merged or split chapter, a kept conflict copy, the book's details and
-  settings, an image, a conversation, moving the book to the trash, the agent's tools and the toolkit's
-  saves. The schema was checked only when the book was opened, so a build that did not know the new
-  fields kept writing into the upgraded book.
+  build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
+  chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict
+  copy, moving the book to the trash, an image, a conversation, the agent's chapter tools and the
+  toolkit's saves all went ahead in a book whose new fields this build does not know. Now every write
+  into a book reads `book.json` first and refuses a newer `schemaVersion` with "was written by a newer
+  version of Open Book Studio" before anything changes, and leaves every byte as it was.
 - A field a newer build adds to `book.json` survives a save at every level (QA D7). A character, a
   memory, the story arc and its three parts, the chapter range and every settings section lost any
   field this build did not know the next time the book was saved; they are now kept and written back
