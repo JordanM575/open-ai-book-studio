@@ -80,7 +80,7 @@ describe("release record helpers", () => {
   });
 
   test("finds the packaged desktop bundle, else the newest directory", () => {
-    expect(findDesktopArtifact(["Open Book Studio.app", "mac-arm64", "latest.yml"])).toBe("Open Book Studio.app");
+    expect(findDesktopArtifact(["AI Book Studio.app", "mac-arm64", "latest.yml"])).toBe("AI Book Studio.app");
     expect(findDesktopArtifact(["linux-unpacked", "latest.yml"])).toBe("linux-unpacked");
     expect(findDesktopArtifact(["latest.yml"])).toBeNull();
     expect(findDesktopArtifact([])).toBeNull();

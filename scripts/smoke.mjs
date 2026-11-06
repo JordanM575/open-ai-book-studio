@@ -33,7 +33,7 @@ function packagedBinary() {
   const release = join(root, "release");
   if (!existsSync(release)) return null;
   for (const entry of readdirSync(release)) {
-    const candidate = join(release, entry, "Open Book Studio.app", "Contents", "MacOS", "Open Book Studio");
+    const candidate = join(release, entry, "AI Book Studio.app", "Contents", "MacOS", "AI Book Studio");
     if (existsSync(candidate)) return candidate;
   }
   return null;

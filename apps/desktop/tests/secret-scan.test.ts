@@ -123,7 +123,7 @@ describe("secret and manuscript scan", () => {
   test("only the root release folder is a forbidden build output", () => {
     // The release scripts live in scripts/release/ and must be committed; a nested name is not
     // the packager's output folder.
-    expect(forbiddenTrackedPath("release/Open Book Studio.dmg")).toBe(true);
+    expect(forbiddenTrackedPath("release/AI Book Studio.dmg")).toBe(true);
     expect(forbiddenTrackedPath("scripts/release/check.mjs")).toBe(false);
     expect(forbiddenTrackedPath("scripts/release/record.mjs")).toBe(false);
   });
