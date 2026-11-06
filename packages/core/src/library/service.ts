@@ -306,11 +306,30 @@ export class LibraryService {
         createdAt: current.createdAt,
         updatedAt: this.env.runtime.now()
       });
-      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, { kind: "sha256", value: snapshot.sha256 });
-      if (result.status === "changed") throw new LibraryError("io", "The book changed while saving. Nothing was saved; try again with your changes.");
+      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, {
+        kind: "sha256",
+        value: snapshot.sha256
+      });
+      if (result.status === "changed") {
+        await this.keepBookMetadataCopy(bookId, next);
+        throw new LibraryError("io", "The book changed while saving. Your metadata update was kept as a conflict copy.");
+      }
       await this.rebuildCatalog();
       return next;
     });
+  }
+
+  private async keepBookMetadataCopy(bookId: string, book: BookMeta): Promise<void> {
+    await this.ensureBookLayout(bookId);
+    const stamp = this.env.runtime.now().replace(/[:.]/g, "-");
+    // The shared helper retries an occupied name and verifies the saved bytes, so the copy is only
+    // reported as kept when it was written; it throws otherwise.
+    await this.writeConflictCopy(
+      bookId,
+      `book-metadata.conflict-external-edit.${this.device.id}.${stamp}`,
+      ".json",
+      `${JSON.stringify({ book }, null, 2)}\n`
+    );
   }
 
   /**
