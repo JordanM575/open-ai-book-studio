@@ -3,6 +3,10 @@ import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Library, LibraryError } from "../src/main/library/store";
+import { FileSystemLibraryPort, createFileSystemEnvironment } from "../src/main/library/fs-port";
+import { LibraryService } from "@ai-book-studio/core/library/service";
+import type { CommitFileResult, FileExpectation, LibraryPath } from "@ai-book-studio/core/library/port";
+import { toLibraryPath } from "@ai-book-studio/core/library/path";
 import { parseChapterFile, serializeChapter, slugify, chapterFileName } from "@ai-book-studio/core/markdown";
 import { safeJoin, chaptersDir, bookFile } from "../src/main/library/paths";
 
@@ -45,6 +49,49 @@ describe("library lifecycle", () => {
     const updated = await library.updateBook(book.id, { title: "The Salt Road, revised" });
     expect(updated.createdAt).toBe(book.createdAt);
     expect(updated.updatedAt >= book.updatedAt).toBe(true);
+  });
+
+  it("keeps outside book metadata edits and saves the studio patch as a conflict copy", async () => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const testRoot = await mkdtemp(join(tmpdir(), "studio-book-metadata-race-"));
+      try {
+        const environment = createFileSystemEnvironment(testRoot);
+        class RacingPort extends FileSystemLibraryPort {
+          racePath: LibraryPath | null = null;
+          override async commitFile(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
+            if (this.racePath && path.join("/") === this.racePath.join("/")) {
+              const target = this.racePath;
+              this.racePath = null;
+              const absolute = join(testRoot, ...target);
+              const outside = JSON.parse(await readFile(absolute, "utf8")) as Record<string, unknown>;
+              outside.description = "Outside description";
+              await writeFile(absolute, `${JSON.stringify(outside, null, 2)}\n`);
+            }
+            return super.commitFile(path, bytes, expected);
+          }
+        }
+        const port = new RacingPort(testRoot);
+        const service = await LibraryService.open({ ...environment, storage: port });
+        const book = await service.createBook({ title: "Original", description: "Original description" });
+        port.racePath = toLibraryPath(["books", book.id, "book.json"]);
+
+        await expect(service.updateBook(book.id, { title: "Studio title" })).rejects.toMatchObject({
+          code: "io",
+          message: expect.stringContaining("conflict copy")
+        });
+
+        const diskBook = JSON.parse(await readFile(bookFile(testRoot, book.id), "utf8")) as Record<string, unknown>;
+        expect(diskBook).toMatchObject({ title: "Original", description: "Outside description" });
+        const conflictDir = join(testRoot, "books", book.id, "conflicts");
+        const conflictFiles = await readdir(conflictDir);
+        expect(conflictFiles).toHaveLength(1);
+        expect(conflictFiles[0]).toMatch(/^book-metadata\.conflict-external-edit\..+\.json$/);
+        const conflict = JSON.parse(await readFile(join(conflictDir, conflictFiles[0]!), "utf8")) as { book: Record<string, unknown> };
+        expect(conflict.book).toMatchObject({ title: "Studio title", description: "Original description" });
+      } finally {
+        await rm(testRoot, { recursive: true, force: true });
+      }
+    }
   });
 
   it("moves a deleted book to the library trash and keeps its files", async () => {

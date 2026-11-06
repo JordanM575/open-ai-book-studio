@@ -303,6 +303,11 @@ on disk, nothing is written over it: the author's matter is kept as
 copy's name and a *Show the saved copy* action. A `book.json` that another writer replaces while the matter is saving is refused, and the
 author's change is saved again on their next change or when the dialog closes.
 
+Ordinary book metadata updates also commit against the SHA-256 of the `book.json` snapshot they
+read. If another writer changes that file before the commit, the newer bytes stay in place and the
+studio's proposed book is kept as `conflicts/book-metadata.conflict-external-edit.<deviceId>.<timestamp>.json`
+with shape `{ "book": … }`. The update reports the conflict instead of claiming it was saved.
+
 Undo of an agent turn uses the same folder and naming with the reason `undo`. Before it restores a
 chapter that someone else wrote in during the turn, it keeps the chapter's file exactly as it is, and
 keeps nothing if the file changed since undo read it.
