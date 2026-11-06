@@ -198,6 +198,41 @@ describe("usage", () => {
 });
 
 describe("reading", () => {
+  for (const chapters of [[chapter], []]) {
+    test(`a partial ${chapters.length}-chapter text list names the unreadable files and returns nonzero without mutation`, async () => {
+      const fileName = "0002-damaged\u001b[31m.md";
+      const result = await run(["read", BOOK], { overrides: { book: async () => ({
+        book: { id: BOOK, title: "Synthetic book", description: "" } as never,
+        chapters, chapterReadIssues: [{ fileName, order: 2, reason: "invalid-format" as const }]
+      }) } });
+      expect(result.code).toBe(1);
+      expect(result.out).toContain("Chapters (readable files only):");
+      expect(result.err).toContain("Some chapter files could not be read");
+      expect(result.err).toContain(JSON.stringify(fileName));
+      expect(result.err).toContain("invalid-format");
+      expect(result.err).not.toContain("\u001b");
+      expect(result.calls).toEqual([{ method: "book", args: [BOOK] }]);
+    });
+  }
+
+  test("JSON book reads keep the explicit unreadable-file report and the same payload", async () => {
+    const detail = {
+      book: { id: BOOK, title: "Synthetic book" } as never,
+      chapters: [chapter],
+      chapterReadIssues: [{ fileName: "damaged.md", order: null, reason: "unreadable" as const }]
+    };
+    const result = await run(["read", BOOK, "--json"], { overrides: { book: async () => detail } });
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out)).toEqual(detail);
+    expect(result.err).toBe("");
+  });
+
+  test("a backend that sends no read-issue list is read as a complete book", async () => {
+    const result = await run(["read", BOOK], { overrides: { book: async () => ({ book: { id: BOOK, title: "Synthetic book", description: "" } as never, chapters: [chapter] }) as never } });
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("Chapters:");
+  });
+
   test("describes the open library", async () => {
     const result = await run(["info"]);
     expect(result.code).toBe(0);

@@ -64,7 +64,7 @@ there is a working slice with remaining work; **planned** means it is not availa
 | Background agent turns | Complete on desktop | Explicit opt-in, reopening the active conversation, and notification when a reply or approval is ready |
 | Illustrations | Complete on desktop | Muse Image generation, chapter attachments and embedded Word illustrations; no SAM cutout claim |
 | Dedicated cover design | Planned | Image records can describe covers, but the current generation interface is for chapter illustrations |
-| Word, Markdown, PDF and EPUB export | Complete on desktop | Formatting and ordered front/back matter; KDP, EPUBCheck and PDF/UA conformance remain unproven |
+| Word, Markdown, PDF and EPUB export | Complete on desktop | Formatting and ordered front/back matter; an export refuses a book that has unreadable chapter files rather than leave them out; KDP, EPUBCheck and PDF/UA conformance remain unproven |
 | Manuscript and library import | In progress | TXT, Markdown and DOCX manuscript import on macOS; portable archives and earlier-studio migration; other platform conformance remains |
 | External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
 | CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |

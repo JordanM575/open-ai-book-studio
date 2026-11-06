@@ -49,6 +49,14 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- An export no longer hands over a book with chapters missing. When some chapter files cannot be read (the workspace
+  already reports them), the Word, Markdown, PDF and EPUB exports now refuse before asking for a destination, building
+  a file or writing anything, and say "The manuscript was not exported because some chapter files could not be read.
+  Reopen the book and review the affected files." Source files and any earlier export stay exactly as they were. The
+  plain `bookwriter read` chapter list now says "(readable files only)" for such a book, names the affected files on
+  stderr and exits 1; `--json` keeps its payload. Eight export tests (two kinds of damaged front matter across the four
+  exports, each checking that nothing was asked or written) and three toolkit tests cover it.
+
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
   the cause could not be seen without those files.
