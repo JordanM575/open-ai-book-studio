@@ -38,6 +38,10 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- Saving a chapter keeps trailing whitespace in front-matter values written by another editor or by an
+  older version, such as a block scalar ending in spaces or blank lines. The studio used to trim it
+  on write and not restore the final newline on read, so a save could change text it did not own.
+  Seeded round-trip tests cover the serializer, the parser, CRLF headers and a save through the library service.
 
 - Recognize Meta's listed Muse Wonder 1.0 as a tool-capable writing model using the documented
   context size and Standard-mode prices when the catalogue omits metadata. Existing turn attribution

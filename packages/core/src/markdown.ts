@@ -27,7 +27,8 @@ export function normalizeBody(content: string): string {
 }
 
 export function serializeChapter(meta: ChapterMeta, content: string): string {
-  const front = stringifyYaml(meta, { lineWidth: 0 }).trimEnd();
+  // The separator supplies the final line break; other trailing whitespace may belong to a scalar.
+  const front = stringifyYaml(meta, { lineWidth: 0 }).replace(/\n$/, "");
   return `---\n${front}\n---\n\n${normalizeBody(content)}`;
 }
 
@@ -43,7 +44,8 @@ export function parseChapterFile(raw: string, path: string, fallback: ChapterMet
 
   let data: unknown;
   try {
-    data = parseYaml(match[1] ?? "");
+    // The delimiter's preceding newline also terminates the YAML document (including block scalars).
+    data = parseYaml(`${match[1] ?? ""}\n`);
   } catch (error) {
     throw new FormatError(`Front matter is not valid YAML: ${(error as Error).message}`, path);
   }
