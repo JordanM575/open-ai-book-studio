@@ -37,7 +37,6 @@ import { newConnectionId } from "./credential-file";
 import { checkModel } from "./agent/transport";
 
 interface ActiveSignIn {
-  server: Server;
   cancel: () => void;
 }
 
@@ -54,7 +53,9 @@ export class ProviderService {
   constructor(
     private readonly vault: CredentialVault,
     private readonly openExternal: (url: string) => Promise<void>,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly makeCallbackServer: () => Server = createServer,
+    private readonly now: () => number = Date.now
   ) {}
 
   async list(): Promise<ConnectionSummary[]> {
@@ -96,95 +97,141 @@ export class ProviderService {
   }
 
   async startOpenRouter(): Promise<ConnectionSummary> {
-    const active = this.active;
-    if (active) {
+    if (this.active) {
       throw new ProviderError("invalid-request", "A sign-in is already waiting in your browser. Finish it or cancel it first.");
     }
-    const pkce = await createPkce();
-    const challenge = await challengeFor(pkce.verifier);
-    const server = createServer();
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      server.close();
-      throw new ProviderError("unknown", "Could not open a local port for sign-in.");
-    }
-    const callbackUrl = `http://127.0.0.1:${address.port}/callback`;
-    const authUrl = authorizeUrl({ callbackUrl, challenge, state: pkce.state });
-
-    const outcome = new Promise<string>((resolve, reject) => {
-      let settled = false;
-      const finish = (error: Error | null, code?: string): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        this.active = null;
+    let server: Server | null = null;
+    let listening = false;
+    let stopped: Error | null = null;
+    const abort = new AbortController();
+    let rejectStop!: (error: Error) => void;
+    const stop = new Promise<never>((_resolve, reject) => { rejectStop = reject; });
+    void stop.catch(() => {});
+    const closeServer = (): void => {
+      if (server && listening) {
+        listening = false;
         server.close();
-        if (error) reject(error);
-        else resolve(code ?? "");
-      };
-      const timer = setTimeout(() => {
-        finish(new ProviderError("auth", "Sign-in timed out. Start again when you are ready."));
-      }, PKCE_TIMEOUT_MS);
-      timer.unref?.();
-
-      this.active = {
-        server,
-        cancel: () => finish(new ProviderError("auth", "Sign-in cancelled."))
-      };
-
-      server.on("request", (request, response) => {
-        const url = new URL(request.url ?? "/", callbackUrl);
-        if (url.pathname !== "/callback") {
-          response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-          response.end("Not found");
-          return;
-        }
-        try {
-          const { code } = readCallback(url.toString(), pkce.state, Date.now(), pkce.createdAt);
-          response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-          response.end(
-            "<!doctype html><meta charset=\"utf-8\"><title>AI Book Studio</title><body style=\"font:15px -apple-system,system-ui,sans-serif;padding:3rem;max-width:32rem;margin:auto\"><h1 style=\"font-size:1.25rem\">You are signed in</h1><p>You can close this tab and return to AI Book Studio.</p></body>"
-          );
-          finish(null, code);
-        } catch (error) {
-          response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-          response.end("This sign-in link is not valid. Return to AI Book Studio and try again.");
-          finish(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
-      server.on("error", (error) => finish(error));
-    });
-    // If opening the browser or the exchange fails before this promise settles, cancel it here so a
-    // rejection is never left unobserved. `finish` is idempotent.
-    void outcome.catch(() => {});
+      }
+    };
+    const terminate = (error: Error): void => {
+      if (stopped) return;
+      stopped = error;
+      rejectStop(error);
+      abort.abort();
+      closeServer();
+    };
+    const session: ActiveSignIn = { cancel: () => terminate(new ProviderError("auth", "Sign-in cancelled.")) };
+    this.active = session;
+    const timer = setTimeout(() => {
+      terminate(new ProviderError("auth", "Sign-in timed out. Start again when you are ready."));
+    }, PKCE_TIMEOUT_MS);
+    timer.unref?.();
+    const wait = <T>(promise: Promise<T>): Promise<T> => Promise.race([promise, stop]);
+    const ensureRunning = (): void => { if (stopped) throw stopped; };
 
     try {
-      await this.openExternal(authUrl);
-      const code = await outcome;
-      const key = await this.exchangeCode(code, pkce.verifier);
+      const pkce = await wait(createPkce(this.now()));
+      const ensureCurrent = (): void => {
+        if (this.now() - pkce.createdAt > PKCE_TIMEOUT_MS) {
+          terminate(new ProviderError("auth", "The sign-in request expired. Start again."));
+        }
+        ensureRunning();
+      };
+      ensureCurrent();
+      const challenge = await wait(challengeFor(pkce.verifier));
+      ensureCurrent();
+      server = this.makeCallbackServer();
+      const callbackServer = server;
+      const ready = once(callbackServer, "listening").then(() => {
+        listening = true;
+        if (stopped) closeServer();
+      });
+      callbackServer.listen(0, "127.0.0.1");
+      await wait(ready);
+      ensureCurrent();
+      const address = callbackServer.address();
+      if (!address || typeof address === "string") {
+        throw new ProviderError("unknown", "Could not open a local port for sign-in.");
+      }
+      const callbackUrl = `http://127.0.0.1:${address.port}/callback`;
+      const authUrl = authorizeUrl({ callbackUrl, challenge, state: pkce.state });
+
+      const outcome = new Promise<string>((resolve, reject) => {
+        let settled = false;
+        const finish = (error: Error | null, code?: string): void => {
+          if (settled) return;
+          settled = true;
+          closeServer();
+          if (error) reject(error);
+          else resolve(code ?? "");
+        };
+        callbackServer.on("request", (request, response) => {
+          if (settled || stopped) {
+            response.writeHead(410, { "content-type": "text/plain; charset=utf-8" });
+            response.end("This sign-in link has already been used or cancelled.");
+            return;
+          }
+          const url = new URL(request.url ?? "/", callbackUrl);
+          if (url.pathname !== "/callback") {
+            response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+            response.end("Not found");
+            return;
+          }
+          try {
+            const { code } = readCallback(url.toString(), pkce.state, this.now(), pkce.createdAt);
+            response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+            response.end(
+              "<!doctype html><meta charset=\"utf-8\"><title>AI Book Studio</title><body style=\"font:15px -apple-system,system-ui,sans-serif;padding:3rem;max-width:32rem;margin:auto\"><h1 style=\"font-size:1.25rem\">You are signed in</h1><p>You can close this tab and return to AI Book Studio.</p></body>"
+            );
+            finish(null, code);
+          } catch (error) {
+            response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+            response.end("This sign-in link is not valid. Return to AI Book Studio and try again.");
+            finish(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+        callbackServer.on("error", (error) => finish(error));
+      });
+      void outcome.catch(() => {});
+
+      await wait(this.openExternal(authUrl));
+      ensureCurrent();
+      const code = await wait(outcome);
+      ensureCurrent();
+      const key = await wait(this.exchangeCode(code, pkce.verifier, abort.signal));
+      ensureCurrent();
       const id = newConnectionId();
       const createdAt = new Date().toISOString();
-      const existing = (await this.vault.list()).filter((connection) => connection.provider === "openrouter");
-      await this.vault.set({
+      const existing = (await wait(this.vault.list())).filter((connection) => connection.provider === "openrouter");
+      ensureCurrent();
+      const credential = {
         id,
-        provider: "openrouter",
+        provider: "openrouter" as const,
         label: existing.length === 0 ? "OpenRouter" : `OpenRouter (${existing.length + 1})`,
-        kind: "openrouter-oauth",
+        kind: "openrouter-oauth" as const,
         createdAt,
         secret: key
-      });
-      return {
-        id,
-        provider: "openrouter",
-        label: existing.length === 0 ? "OpenRouter" : `OpenRouter (${existing.length + 1})`,
-        kind: "openrouter-oauth",
-        createdAt
       };
-    } catch (error) {
-      this.active?.cancel();
-      throw error;
+      // A cancellation racing the vault write waits for it to finish and removes this new record.
+      try {
+        await this.vault.set(credential);
+      } catch (error) {
+        await this.vault.remove(id);
+        throw error;
+      }
+      if (this.now() - pkce.createdAt > PKCE_TIMEOUT_MS) {
+        terminate(new ProviderError("auth", "The sign-in request expired. Start again."));
+      }
+      if (stopped) {
+        await this.vault.remove(id);
+        throw stopped;
+      }
+      const { secret: _secret, ...summary } = credential;
+      return summary;
+    } finally {
+      clearTimeout(timer);
+      closeServer();
+      if (this.active === session) this.active = null;
     }
   }
 
@@ -307,14 +354,14 @@ export class ProviderService {
     return models.map((model) => applyModelPreset(credential.provider, model));
   }
 
-  private async exchangeCode(code: string, verifier: string): Promise<string> {
+  private async exchangeCode(code: string, verifier: string, signal: AbortSignal): Promise<string> {
     let response: Response;
     try {
       response = await this.fetchImpl(OPENROUTER_KEY_EXCHANGE_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: "S256" }),
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+        signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
       });
     } catch (error) {
       throw new ProviderError("offline", "Could not reach OpenRouter to finish sign-in. Check your connection and try again.", {

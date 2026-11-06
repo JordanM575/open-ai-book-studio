@@ -55,6 +55,12 @@ Update the `Unreleased` section before every commit.
 - The Format dialog and the workspace header export now share one failed-save sentence, from a
   single source, so an export stopped by a chapter that could not be saved reads the same wherever
   it was started.
+- Desktop OpenRouter sign-in consumes its loopback callback once and no longer trusts a late reply. A
+  reused or cancelled sign-in link now answers that it has already been used, an expired request or a
+  cancelled sign-in aborts an in-flight key exchange and discards its response, and a credential written
+  by a sign-in that is cancelled or expires during the vault write is removed again. The providers
+  service tests cover duplicate callbacks, late responses, cancellation at each await and a write that races
+  cancellation.
 - Reopening the studio while a background turn is still running opens that turn's conversation and
   the chapter that was open when its window closed, instead of the library and the first chapter.
   The window remembers both when it closes, so a turn that finishes after the reopen is already
