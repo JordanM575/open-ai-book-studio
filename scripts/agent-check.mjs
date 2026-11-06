@@ -568,14 +568,6 @@ async function journey() {
     status?.backend === "In-memory test vault" && status.available === true,
     status?.backend
   );
-  // The output is read from the moment the launch returned, so say what was captured when the line is missing:
-  // a startup line printed before that point would look the same as a line that was never printed.
-  const vaultLine = appOutput.includes("[credentials] This test run keeps connections in memory only");
-  check(
-    "the app says so in one line of its log",
-    vaultLine,
-    vaultLine ? undefined : `not in the ${appOutput.length} characters captured since launch returned, which begin ${JSON.stringify(redact(appOutput).slice(0, 200))}`
-  );
   const connection = await studio("connections.addKey", {
     provider: "meta",
     secret: KEY,
@@ -884,6 +876,15 @@ await closeApp();
 const leaks = await keyLeaks(temp);
 check("the key is in no file in the profile, the library or the backend file", leaks.length === 0, leaks.join(", "));
 check("no credentials.json was written", !existsSync(join(profile, "credentials.json")));
+// Read late, and waited for: stdout reaches this process through a pipe, and on a slower Linux start nothing had been
+// captured yet when this check used to run right after the launch. If it is still missing, say what was captured:
+// a startup line printed before the launch returned would look the same as a line that was never printed.
+const vaultLine = await waitFor(() => appOutput.includes("[credentials] This test run keeps connections in memory only"), 10_000);
+check(
+  "the app says so in one line of its log",
+  vaultLine === true,
+  vaultLine === true ? undefined : `not in the ${appOutput.length} characters captured since launch returned, which begin ${JSON.stringify(redact(appOutput).slice(0, 200))}`
+);
 check("the key is in no line the app printed", appOutput.length > 0 && !appOutput.includes(KEY));
 
 console.log("[agent] requests the fake provider received:");
