@@ -50,6 +50,9 @@ Update the `Unreleased` section before every commit.
 - Give the writing composer more room, let its model/background controls wrap in narrow panels,
   and present Background as a labelled On/Off control with keyboard focus and disabled states.
 
+- The manual Linux workflow's end-to-end job now fetches Electron and gives its sandbox helper the owner and mode it
+  requires before running, so the app can launch there with the sandbox on. Before, the smoke, web, bridge and
+  second-instance checks aborted at launch. The job is still allowed to fail until it has been watched passing.
 - A library kept in browser storage is no longer described as a folder: the library header names
   the browser, a book that cannot open no longer says its folder was left unchanged, and the
   closing note explains the storage instead of inviting the author to open files in an editor. A
