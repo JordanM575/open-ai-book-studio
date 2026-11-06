@@ -72,6 +72,7 @@ import {
   acceptDriftPaths,
   journalForScan,
   noteMovedPrefix,
+  notePlannedWrite,
   noteRemovedFiles,
   noteWrittenFiles,
   readSyncJournal,
@@ -1019,7 +1020,15 @@ export class LibraryService {
     text: string,
     expected: FileExpectation
   ): Promise<CommitFileResult> {
-    const result = await this.env.storage.commitFile(path, textEncoder.encode(text), expected);
+    const bytes = textEncoder.encode(text);
+    await notePlannedWrite({
+      storage: this.env.storage,
+      deviceId: this.device.id,
+      paths: [libraryPathToArchivePath(path)],
+      sha256: await this.env.runtime.sha256(bytes),
+      now: this.env.runtime.now()
+    });
+    const result = await this.env.storage.commitFile(path, bytes, expected);
     if (result.status === "written") {
       // The journal records what this device wrote, so the next scan reads it as local, not
       // remote. After the prose commit, never before; best-effort so a note failure cannot fail

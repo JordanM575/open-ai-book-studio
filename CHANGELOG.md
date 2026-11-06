@@ -54,6 +54,10 @@ Update the `Unreleased` section before every commit.
   the browser, a book that cannot open no longer says its folder was left unchanged, and the
   closing note explains the storage instead of inviting the author to open files in an editor. A
   folder chosen in the browser keeps the folder wording.
+- A save now records the hash it is about to commit in the sync journal before the atomic file commit, as well as
+  the observed hash after it. If the process stops between the commit and the post-save journal update, the next
+  scan still recognises the exact committed bytes as this device's own save instead of reporting an outside
+  change. A different on-disk hash remains an outside change for review.
 - A backup the legacy importer refuses now reaches the author as `invalid` input instead of an
   internal error, and is not written to the console as one.
 - The Format dialog and the workspace header export now share one failed-save sentence, from a
