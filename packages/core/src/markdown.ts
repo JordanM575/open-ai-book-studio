@@ -27,6 +27,11 @@ export function normalizeBody(content: string): string {
 }
 
 export function serializeChapter(meta: ChapterMeta, content: string): string {
+  return serializeChapterEnvelope(meta, content);
+}
+
+/** Serialize a separately validated raw envelope without inserting runtime defaults/fallbacks. */
+export function serializeChapterEnvelope(meta: Record<string, unknown>, content: string): string {
   // The separator supplies the final line break; other trailing whitespace may belong to a scalar.
   const front = stringifyYaml(meta, { lineWidth: 0 }).replace(/\n$/, "");
   return `---\n${front}\n---\n\n${normalizeBody(content)}`;

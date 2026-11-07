@@ -77,12 +77,14 @@ function HistorySession({ target: suppliedTarget, chapterTitle, state, api, onCl
   const [captureSource, setCaptureSource] = useState<ChapterHistoryState["saved"]>(null);
   const [needsReview, setNeedsReview] = useState(false);
   const live = useRef(false);
+  const closing = useRef(false);
   const generation = useRef(0);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const detailMode = useRef<Detail["mode"] | null>(null);
   const capturing = useRef(false);
   const reviewRequired = useRef(false);
+  const recoveryEpoch = useRef(0);
   const lastCapturedLabel = useRef<string | null>(null);
   const sourceRevision = useRef(0);
   const latestState = useRef(state);
@@ -119,6 +121,7 @@ function HistorySession({ target: suppliedTarget, chapterTitle, state, api, onCl
     if (!live.current) return;
     const request = ++listRequest.current;
     const lifetime = generation.current;
+    const reviewEpoch = reviewed && reviewRequired.current ? recoveryEpoch.current : null;
     const current = () => live.current && generation.current === lifetime && listRequest.current === request;
     detailRequest.current += 1;
     detailMode.current = null;
@@ -134,7 +137,7 @@ function HistorySession({ target: suppliedTarget, chapterTitle, state, api, onCl
         fileName: record.fileName, code: "identity" as const, message: "This record belongs to another book or chapter and cannot be opened here."
       }))];
       setListing({ records: [...records].sort((a, b) => compareText(b.meta.capturedAt, a.meta.capturedAt) || compareText(a.fileName, b.fileName)), issues });
-      if (reviewed) {
+      if (reviewEpoch !== null && reviewEpoch === recoveryEpoch.current) {
         reviewRequired.current = false;
         setNeedsReview(false);
       }
@@ -205,6 +208,7 @@ function HistorySession({ target: suppliedTarget, chapterTitle, state, api, onCl
     } catch (error) {
       if (current()) {
         setCaptureError(`Capture could not be confirmed. ${errorText(error)} Review the records with Refresh history before trying again; a complete snapshot may already exist.`);
+        recoveryEpoch.current += 1;
         reviewRequired.current = true;
         setNeedsReview(true);
       }
@@ -217,10 +221,13 @@ function HistorySession({ target: suppliedTarget, chapterTitle, state, api, onCl
   }
 
   function close() {
+    if (!live.current || closing.current) return;
+    closing.current = true;
     live.current = false;
     generation.current += 1;
     setClosed(true);
-    onClose();
+    // Closing the leaf is final for this lifetime even if its host notification fails.
+    try { onClose(); } catch { /* Never duplicate close or revive a dispatched capture. */ }
   }
 
   const gate = captureGate(state);

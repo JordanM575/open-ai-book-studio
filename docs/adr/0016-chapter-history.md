@@ -80,6 +80,11 @@ History skips the ordinary post-save disposable catalog rebuild, which scans unr
 through the legacy diagnostic parser. It returns the committed chapter directly; the catalog is
 never read as truth. This keeps successful restore/undo on the same quiet boundary as capture.
 
+The raw persisted envelope and the successful runtime `Chapter` are distinct: supported partial
+front matter retains its omitted fields on disk, while the returned view combines its checked saved
+fallbacks with validated new metadata. Serialization never inserts the runtime projection merely
+to satisfy the success type. This applies equally to restore and restore-specific undo.
+
 ### Codec review correction, November 7
 
 The first codec accepted YAML-native Set/Date values and a reserved key that its serializer/schema

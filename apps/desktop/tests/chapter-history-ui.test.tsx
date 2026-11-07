@@ -190,6 +190,70 @@ describe("isolated saved chapter history UI", () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
+  test.each(["success", "failure"] as const)("pre-capture refresh %s cannot unlock an uncertain capture", async (outcome) => {
+    const oldList = deferred<HistoryListing>();
+    const pendingCapture = deferred<StoredHistoryRecord>();
+    const capture = mock<ChapterHistoryDialogProps["api"]["capture"]>(() => pendingCapture.promise);
+    const list = mock<ChapterHistoryDialogProps["api"]["list"]>()
+      .mockImplementationOnce(async () => listing(record()))
+      .mockImplementationOnce(() => oldList.promise)
+      .mockImplementationOnce(async () => { throw new Error("New review failed"); })
+      .mockImplementation(async () => listing(record(), record("possibly-kept")));
+    const host = setup({ api: { ...setupApi(), capture, list } });
+    await host.loaded();
+    host.label("Uncertain snapshot");
+    host.click("Refresh history");
+    host.click("Keep snapshot");
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(capture).toHaveBeenCalledTimes(1);
+    await settle(() => pendingCapture.reject(new Error("Lost capture acknowledgment")));
+    const button = () => host.view.getByRole("button", { name: "Keep snapshot" }) as HTMLButtonElement;
+    expect(button().disabled).toBe(true);
+    await settle(() => {
+      if (outcome === "success") oldList.resolve(listing(record()));
+      else oldList.reject(new Error("Older review failed"));
+    });
+    expect(button().disabled).toBe(true);
+    expect(host.view.getByText(/Lost capture acknowledgment/)).toBeDefined();
+    const label = host.view.getByLabelText("Snapshot label") as HTMLTextAreaElement;
+    expect(label.value).toBe("Uncertain snapshot");
+    testing.fireEvent.submit(required(label.closest("form")));
+    expect(capture).toHaveBeenCalledTimes(1);
+    host.click("Refresh history");
+    await testing.waitFor(() => expect(host.view.getByText(/New review failed/)).toBeDefined());
+    expect(button().disabled).toBe(true);
+    host.click("Refresh history");
+    await testing.waitFor(() => expect(button().disabled).toBe(false));
+    expect(host.view.getByText("possibly-kept")).toBeDefined();
+    expect(list).toHaveBeenCalledTimes(4);
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([false, true])("same-batch close is idempotent with a pending capture (callback throws %s)", async (throws) => {
+    const pending = deferred<StoredHistoryRecord>();
+    const api = { ...setupApi(), capture: mock<ChapterHistoryDialogProps["api"]["capture"]>(() => pending.promise) };
+    const onClose = mock(() => { if (throws) throw new Error("Synthetic close notification failure"); });
+    const host = setup({ api, onClose });
+    await host.loaded();
+    host.label("Closing snapshot");
+    host.click("Keep snapshot");
+    const close = host.view.getByRole("button", { name: "Close" });
+    testing.act(() => { testing.fireEvent.click(close); testing.fireEvent.click(close); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(host.view.queryByRole("dialog")).toBeNull();
+    const kept = record("Closing snapshot");
+    kept.meta.sourceVersion = 8;
+    kept.meta.sourceHash = "b".repeat(64);
+    await settle(() => pending.resolve(kept));
+    expect(api.list).toHaveBeenCalledTimes(1);
+    expect(api.capture).toHaveBeenCalledTimes(1);
+    host.update({ open: false });
+    host.update({ open: true });
+    await host.loaded();
+    expect(host.view.queryByText(/kept from saved version/)).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   test("list failure is distinct from an empty history and is explicitly retryable", async () => {
     const list = mock<ChapterHistoryDialogProps["api"]["list"]>(async () => { throw new Error("Cannot read history."); });
     const host = setup({ api: { ...setupApi(), list } });

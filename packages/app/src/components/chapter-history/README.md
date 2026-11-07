@@ -47,7 +47,10 @@ Capture callbacks must resolve only a confirmed kept record. They must preserve 
 never retry automatically, and keep any host-level outcome notification attributed to its original
 target after this dialog closes. Closing does not cancel an already dispatched capture. Reopening
 lists storage afresh; delayed old receipts/errors cannot update the new session. A failed capture
-requires an explicit successful Refresh history before another attempt.
+requires an explicit successful Refresh history started after that failure before another attempt.
+The recovery epoch must still match at completion; an earlier pending refresh cannot release a new
+uncertainty gate. Failed refreshes never release it. Close is latched synchronously for the lifetime,
+including re-entrant events or a throwing host notification, and cannot revive a late capture.
 
 ## Later extension seam
 

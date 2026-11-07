@@ -11,6 +11,7 @@ import type { LibraryRuntime } from "./port";
 /** An internal prepared call to the existing checked chapter writer, never renderer input. */
 export interface HistoryChapterWrite {
   base: Chapter;
+  /** Complete runtime projection. Only `text` contains the raw persisted envelope. */
   meta: ChapterMeta;
   content: string;
   text: string;

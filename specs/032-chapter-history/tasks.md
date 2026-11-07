@@ -159,6 +159,21 @@ integration, cleanup and end-to-end acceptance remain open.
   acceptance. T005/T006/T014 remain open; parent owns mounting and integrated gates. Restore/undo,
   retention cleanup and book-level size totals are not delivered by this UI leaf.
 
+### W02 review correction evidence (2026-11-07)
+
+- Corrected partial-front-matter restore/undo results: raw omitted/unknown fields stay intact, while
+  successful runtime Chapters retain validated fallbacks. Added restore/reopen/undo regressions for
+  distinct and same-body operations, including unknown fields named after runtime properties.
+- Bound capture-retry release to an explicit successful refresh begun after the uncertainty. Both
+  older success/failure replies keep retry blocked. Close is synchronously idempotent, including a
+  throwing or re-entrant callback and a pending capture.
+- **175 focused tests passed, 0 failed, 1,146 assertions across ten files**. All workspace typechecks
+  and the strict core/desktop restore-test closure passed. Focused lint has one existing Library
+  watch non-null warning. Five native Chromium scenarios passed: both stale-refresh outcomes,
+  normal/throwing re-entrant close, and native Enter/focus trapping/Escape return.
+- This combined candidate still requires fresh independent review and integrated gates. Host/API/
+  workspace mounting, restoration controls, recovery/deletion journeys and T006–T009 remain open.
+
 ### W01 validation evidence (2026-11-07)
 
 - Focused command: `bun test packages/core/tests/chapter-history.test.ts packages/core/tests/chapter-history-storage-premises.test.ts packages/core/tests/chapter-history-retention-premises.test.ts packages/core/tests/library-service.test.ts packages/core/tests/archive.test.ts apps/desktop/tests/chapter-history.test.ts apps/desktop/tests/library.test.ts`.

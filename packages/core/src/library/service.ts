@@ -28,7 +28,8 @@ import {
   normalizeBody,
   parseChapterFile,
   parseOrderFromFileName,
-  serializeChapter
+  serializeChapter,
+  serializeChapterEnvelope
 } from "../markdown";
 import {
   matterHash,
@@ -536,11 +537,15 @@ export class LibraryService {
         if (!Number.isSafeInteger(base.version + 1)) throw new HistoryError("invalid", "The chapter version cannot be incremented safely.");
         // Use raw metadata, not the Chapter view: unknown keys may be named content/path/hash.
         const envelope = readHistoryEnvelope(new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes));
-        const meta = { ...(envelope.metadata as ChapterMeta), version: base.version + 1, updatedAt: this.env.runtime.now() };
-        const text = serializeChapter(meta, content);
+        const rawMeta = { ...(envelope.metadata as Record<string, unknown>), version: base.version + 1, updatedAt: this.env.runtime.now() };
+        // The on-disk envelope may omit fields supplied by the saved reader. Return a complete
+        // validated view while leaving those omissions and unknown raw values intact on disk.
+        const projection = chapterMetaSchema.safeParse({ ...base, ...rawMeta });
+        if (!projection.success) throw new HistoryError("saved-source-required", "History needs readable saved chapter metadata.");
+        const text = serializeChapterEnvelope(rawMeta, content);
         // Keep the quiet, lossless codec domain at the new writer boundary too.
         readHistoryEnvelope(text);
-        return { base, meta, content, text, result: { version: meta.version,
+        return { base, meta: projection.data, content, text, result: { version: projection.data.version,
           hash: await this.env.runtime.sha256(textEncoder.encode(text)) } };
       },
       async (owner, prepared) => {

@@ -5,6 +5,7 @@ import { historyDirectory, historyFilePath, readHistoryEnvelope, serializeHistor
 import { historyReference, type HistoryMutationResult } from "../src/library/history-restore";
 import { chapterPath } from "../src/library/paths";
 import { LibraryService } from "../src/library/service";
+import { chapterMetaSchema } from "../src/schema";
 import { InMemoryLibraryPort } from "./support/in-memory-port";
 
 const encoder = new TextEncoder();
@@ -42,6 +43,40 @@ async function fixture(sameBody = false) {
 }
 
 describe("checked history restore and undo", () => {
+  test.each([false, true])("partial front matter returns valid Chapters through restore, reopen and undo (same body %s)", async (sameBody) => {
+    const f = await fixture(sameBody);
+    const raw = `---\nid: ${f.scope.chapterId}\nversion: ${f.current.version}\ncustom: {nested: [true, null, 0.1]}\ncontent: metadata content\npath: metadata path\nhash: metadata hash\nwordCount: 777\n---\n\n${f.current.content}`;
+    await f.port.commitFile(f.path, encoder.encode(raw), { kind: "any" });
+    const initial = await f.service.readChapter(f.scope.bookId, f.scope.chapterId);
+    expect(chapterMetaSchema.safeParse(initial).success).toBe(true);
+    const originalMeta = readHistoryEnvelope(raw).metadata as Record<string, unknown>;
+    const restored = saved(await f.service.restoreChapterHistory({ ...f.input, source: savedSource(initial) }));
+    const reopened = await f.reopen();
+    const readAfterRestore = await reopened.readChapter(f.scope.bookId, f.scope.chapterId);
+    const restoredRaw = readHistoryEnvelope(decoder.decode((await f.port.readFile(f.path))?.bytes));
+    expect(restoredRaw.metadata).toEqual({ ...originalMeta, version: restored.chapter.version, updatedAt: restored.chapter.updatedAt });
+    const undone = saved(await reopened.undoChapterHistory({ ...f.scope, intent: historyReference(restored.intent), source: savedSource(readAfterRestore) }));
+    const readAfterUndo = await (await f.reopen()).readChapter(f.scope.bookId, f.scope.chapterId);
+    for (const chapter of [restored.chapter, readAfterRestore, undone.chapter, readAfterUndo]) {
+      expect(chapterMetaSchema.safeParse(chapter).success).toBe(true);
+      expect(chapter.title).toBe(initial.title);
+      expect(chapter.order).toBe(initial.order);
+      expect(chapter.createdAt).toBeDefined();
+      expect(chapter.path).toBe(initial.path);
+      expect(chapter.custom).toEqual(originalMeta.custom);
+      expect(chapter.hash).toMatch(/^[a-f0-9]{64}$/);
+    }
+    expect(restored.chapter.content).toBe(f.selected.content);
+    expect(undone.chapter.content).toBe(initial.content);
+    expect(undone.chapter.version).toBe(restored.chapter.version + 1);
+    const persisted = readHistoryEnvelope(decoder.decode((await f.port.readFile(f.path))?.bytes));
+    expect(persisted.metadata).toEqual({ ...originalMeta, version: undone.chapter.version, updatedAt: undone.chapter.updatedAt });
+    expect(persisted.metadata).not.toHaveProperty("title");
+    expect(persisted.metadata).not.toHaveProperty("order");
+    expect(persisted.metadata).not.toHaveProperty("createdAt");
+    expect(persisted.content).toBe(initial.content);
+  });
+
   test("restores only body, persists exact identities, reopens and undoes through journaled writes", async () => {
     const f = await fixture();
     const commit = f.port.commitFile.bind(f.port);

@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Keep history restore/undo success results complete for partial saved front matter without adding
+  runtime defaults to the file. Require a post-failure history refresh to unlock uncertain capture,
+  and make close notifications idempotent even when the host callback fails.
 - Invalidate Format dialog export continuations after close, navigation or unmount; delayed
   chapter/matter saves cannot submit an obsolete export, and late replies cannot update a new visit.
 - Bind header export receipts, errors, preflight and busy state to the originating book view;
