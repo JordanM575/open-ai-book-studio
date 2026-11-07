@@ -5,6 +5,21 @@
 Tasks are ordered. D-163–D-165 and ADR 0017 are accepted; the first checked-sidecar implementation
 may proceed. All implementation tasks remain unchecked until their actual evidence exists.
 
+### W08 first core slice — November 7, 2026
+
+The isolated core slice now supplies `packages/core/src/planning/{schema,checked-sidecar,service}.ts`:
+bounded loose schemas for all four planning shapes; worldbuilding create/read/edit/current-no-op;
+exact raw baseline plus strict typed draft; host-assigned IDs; owner equality; single-attempt checked
+publication; full verified conflict copies; and explicit uncertain outcomes. Detailed planning/goal
+schemas were added to FORMAT before the writer. Tests live in `packages/core/tests/planning/`.
+
+This is partial T002/T003/T009/T011 evidence, not completion of the spec or its author-facing tasks.
+The parent still must connect the leaf to LibraryService's existing per-book queue and journal-aware
+commit boundary, add exports/API/IPC and view-bound draft handling, and schedule integrated adapter
+acceptance. T004 archive/restore and timeline/notes/beat mutation remain subsequent slices; their
+schemas preserve retained records now. The implementation does not change global writers or expose
+a renderer write path. Preserve the unchecked task states until those complete journeys are verified.
+
 ## Phase 1 — Resolve public format and save decisions
 
 - [x] T001 Compare ordinary-file storage alternatives and decide the versioning, backward-compatibility,

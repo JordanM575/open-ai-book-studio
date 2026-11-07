@@ -5,6 +5,22 @@
 Tasks are ordered. D-166–D-168 and ADR 0017 are accepted; dependent implementation may proceed.
 Implementation and acceptance tasks remain open. Tests use synthetic isolated fixtures.
 
+### W08 first core slice — November 7, 2026
+
+`packages/core/src/organization/goals.ts` now supplies a bounded loose goal schema and Library-owned
+set/clear/read/current-no-op policy over the shared checked sidecar engine. Saved progress rechecks
+complete saved chapter enumeration/identity/version/hash/body and issue sets plus the goal token;
+results distinguish complete, incomplete and unavailable. Focused tests are in
+`packages/core/tests/organization/goals.test.ts`; planning tests exercise the common write/failure
+boundary. FORMAT documents both sidecars, raw baseline/typed-draft requests and recovery copies.
+
+This is partial T004/T007/T012 core evidence. Parent-owned LibraryService queue/commit/saved-read
+hooks, package exports, API/IPC, goal UI and integrated adapter checks remain required. The next
+vertical slice can expose one explicitly saved goal and last-confirmed saved progress with dirty,
+pending and conflict labels. Collections/recents are unimplemented here. Annotation persistence and
+navigation wait for W10's shared saved-body-span verifier; no duplicate verifier was introduced.
+All broad tasks remain unchecked because this leaf delivery does not complete their full scope.
+
 ## Phase 1 — Resolve dependent decisions
 
 - [x] T001 Resolve OD-033-01 with a per-data-type storage/versioning matrix for collections, recent

@@ -42,6 +42,130 @@ The directory-handle adapter writes through a swap file and re-checks the whole-
 commit point; if another writer changed the file, the old bytes stay and the author's text is preserved
 in `conflicts/`. Browser storage can be cleared by the browser; export a portable archive to keep a copy.
 
+## Checked planning and goal sidecars
+
+D-163–D-168 / [ADR 0017](adr/0017-planning-and-organization.md) define these optional
+book-owned files. The first core slice supplies worldbuilding create/read/edit and goal set/clear;
+host Library integration and author-facing controls are separate delivery work.
+
+### `books/<bookId>/planning.json` (schema 1)
+
+All listed fields are required except `storyNotes`. Objects are loose: supported unknown JSON
+fields at every depth survive known-field edits literally, including whitespace inside strings.
+Validation never inserts defaults into an existing document. No trimming or Unicode normalization
+is applied. The following is a complete minimal saved example:
+
+```json
+{
+  "schemaVersion": 1,
+  "bookId": "book_1f4c8a2b9d3e5a71",
+  "revision": 1,
+  "worldbuilding": [
+    {
+      "id": "wb_1234567890abcdef",
+      "kind": "worldbuilding",
+      "bookId": "book_1f4c8a2b9d3e5a71",
+      "revision": 1,
+      "archived": false,
+      "name": "The salt road",
+      "category": "Place",
+      "description": "A road beside the sea.",
+      "notes": ""
+    }
+  ],
+  "timeline": [],
+  "timelineOrder": [],
+  "beats": [],
+  "beatOrder": []
+}
+```
+
+Every record has immutable `id`, `kind`, `bookId`, positive safe-integer `revision`, and boolean
+`archived`. In addition to the worldbuilding shape above:
+
+| Field | Record kind / ID prefix | Required authored fields |
+| --- | --- | --- |
+| `timeline[]` | `timeline` / `tl_` | `title`, `when`, `description`, `notes` |
+| `beats[]` | `beat` / `beat_` | `title`, `summary`, `notes` |
+| `storyNotes` (optional single object) | `story-notes` / `sn_` | `workingNotes`, `styleNotes`, `synopsis` |
+
+`timelineOrder` and `beatOrder` each contain exactly the corresponding retained record IDs once,
+including archived records; hiding archived entries never destroys their position. Lists retain
+at most 200 records each, active and archived combined. Names/titles must be nonblank; names,
+titles, categories and literal `when` labels have at most 200 **UTF-16 code units**. All other
+authored text fields have at most 20,000 code units. IDs have prefix-specific suffixes matching
+`[A-Za-z0-9-]{6,40}`; hosts generate them, never the editor. IDs are unique across all retained
+records. Every record owner equals the file owner and the actual owning `book.json` ID.
+
+### `books/<bookId>/goals.json` (schema 1)
+
+```json
+{
+  "schemaVersion": 1,
+  "bookId": "book_1f4c8a2b9d3e5a71",
+  "revision": 1,
+  "targetWords": 50000
+}
+```
+
+`targetWords` is a positive safe integer or `null`. Clearing an existing goal saves `null`,
+preserving unknown fields; it does not delete the file. Clearing an absent goal is a no-write
+operation. Counts are derived, never stored here: complete verified saved chapter snapshots yield
+`savedWords` and `remaining` (null without a target, otherwise floored at zero). Unreadable chapters
+yield `incomplete` with an issue count and no total/remaining; changed or unverifiable sources yield
+`unavailable`. Two saved reads must agree on book identity, chapter enumeration, IDs, paths,
+versions, raw hashes, bodies and read issues; the goal token is rechecked too. Empty books are a
+complete zero. This is a point-in-time verification, not a filesystem transaction or draft count.
+
+### Sidecar mutation and recovery
+
+Both files have an exact **2,500,000 UTF-8 byte** budget, including unknown fields, two-space
+indentation and a final newline in new serialized output. Reads check stat and actual returned
+bytes; writes check the baseline input and complete proposed output separately. Unknown fields
+are never dropped to make room. Missing means empty without creating directories or files.
+Malformed, over-budget, foreign-owner, newer-schema and copy-only documents in an active location
+are unavailable and write-refused. An invalid sidecar does not invalidate the rest of the book.
+
+The core save envelope is `{bookId, source, baselineJson, draft}`. `source` is exactly
+`{kind:"absent", revision:0}` with `baselineJson:null`, or
+`{kind:"sha256", value:<64 lowercase hex>, revision:<positive safe integer>}` with the exact raw
+UTF-8 JSON string returned by read. The service checks that string's hash/revision/owner. `draft`
+is a strict typed intent: `create-worldbuilding` with `{name,category,description,notes}` fields,
+`edit-worldbuilding` with an existing `id` and those fields, or (for goals) `set-goal` with
+`targetWords`. No path, generated ID, revision, owner, arbitrary document replacement or unrelated
+field patch is accepted in a draft. The full intended document is constructed from that bounded
+baseline plus draft; this preserves unknown/unrelated fields without trusting an editor to resend
+them correctly. The request carries only one full baseline and bounded authored fields, within
+the ADR's two-document allowance: the raw baseline and serialized `{bookId,draft}` are each capped
+at 2,500,000 bytes. Strict control validation rejects additional keys. JSON numeric exponents that
+overflow a finite JavaScript number are refused rather than silently changed to null on save.
+
+Under the owning Library's existing book queue, validate the actual book and independently
+supported sidecar, then compare exact absence/hash **and** revision. Only a current semantic
+no-op writes nothing. A real operation increments the file revision once and its edited record
+revision once; host-created records start at 1. Incrementing `Number.MAX_SAFE_INTEGER` is refused.
+One checked absent/SHA commit is allowed, through the Library's existing journal-aware commit
+hook. There is no retry, rebase, merge, catalog update or book timestamp change.
+A current semantic no-op keeps even a compact source whose pretty-printed form would exceed the
+budget: it does not reserialize or publish that form.
+
+A stale request (even a same-content request), missing-after-read or commit race preserves its
+complete intended document under
+`books/<bookId>/conflicts/<planning|goals>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
+The copy adds a reserved `conflictMetadata` object with `reason`, original `baseline` token and
+observed token. Recovery copies are bounded to 5,000,000 bytes. Colliding names use absent-only
+suffix attempts; returned bytes and their hash must verify before reporting `conflict`/`savedAs`.
+Only conflict-copy names may be retried, never the active-file commit. A copy cannot be loaded as
+an active baseline; eventual explicit recovery must remove the copy-only context and create a
+fresh reviewed edit. Both the active write and copy publication can be uncertain after an adapter
+error or mismatching readback: report `uncertain`, keep the editor draft and reread storage; never
+replay automatically or remove a possibly published file. Copy failure never claims a durable copy.
+Owner/schema checks run again before copy creation and each publication attempt.
+
+Book-side files and their conflict copies travel in folder copies, portable archives and whole-book
+trash/restore. Collection and annotation file writers, recents and annotation navigation are not
+part of this first slice; their accepted contracts remain in ADR 0017.
+
 ## `book.json`
 
 | Field | Type | Notes |

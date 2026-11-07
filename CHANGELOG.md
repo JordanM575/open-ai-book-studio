@@ -54,6 +54,12 @@ Update the `Unreleased` section before every commit.
   unavailable files, and survive archive/trash journeys without changing chapters or flushing drafts.
   Document the format and ADR 0016; retain every snapshot, safety record and intent without automatic
   pruning. IPC/UI, restoration, undo and explicit cleanup remain separate follow-through.
+- Add the first Library-owned planning/organization core slice: bounded loose planning and goal
+  schemas, worldbuilding create/read/edit and goal set/clear with exact raw baselines, no-write
+  current no-ops, owner checks, one checked commit attempt and verified complete conflict copies.
+  Saved goal progress distinguishes complete, incomplete and unavailable sources. Document the
+  sidecar/recovery format and add synthetic boundary/failure tests; host/API/UI integration remains
+  a separate delivery slice.
 
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at
