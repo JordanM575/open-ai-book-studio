@@ -13,6 +13,20 @@ Update the `Unreleased` section before every commit.
   file in its notice, the readable chapters stay readable, a Word export and a Markdown export through the real bridge
   are refused with the fixed message, the exports already in the folder are byte for byte unchanged, and no source file
   changes. It then removes the file and takes the removal in. With the export refusal switched off the check fails.
+- The hidden smoke run no longer asks the operating system for protected storage. An unpackaged run started with both
+  `STUDIO_TEST=1` and `STUDIO_NO_KEYCHAIN=1` uses a cipher that reports storage as unavailable and refuses to encrypt or
+  decrypt before the system is asked, including the status read Settings makes on open (D-191). It is a refusal and
+  not a fallback: nothing is written, either flag alone changes nothing, and a packaged build ignores it. The smoke run
+  also starts the app with an allowlisted environment, so a provider key or a STUDIO_ flag in the caller's shell never
+  reaches it.
+- The browser smoke check waits for the page the way an author would: it polls for the screen it expects, up to ten
+  seconds, instead of sleeping 1.2 seconds after each load and looking once. After a reload it waits for whichever
+  first screen the page draws, the welcome or the library, chooses browser storage only if it is the welcome, and
+  then waits for the book's card, because the library draws at once and its cards when the listing comes back.
+  When a wait times out, the failure now says what the page showed and how many page errors there were, so a failure
+  on a slow runner can be told from a broken page. One Linux run failed the welcome check two seconds after the
+  load, on a commit whose other runs passed; the cause was not reproduced locally, so this makes the check
+  tolerant of a slow first draw and its next failure self-explanatory.
 - Rename the product to Open Book Studio everywhere an author, a command line or a file reader sees the name: the library header, the
   window title, error and refusal messages, the `bookwriter` usage banner and MCP server text, the sign-in loopback page, the glasses page,
   open/save dialog filters, the exported EPUB creator fallback, the licenses dialog and the microphone permission text. Identifiers stay as
@@ -529,6 +543,11 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- Restoring a chapter from the trash checks whether that chapter is already in the book inside the book's write
+  lock, before it reads the trash file. A restore that races another one, or an undo that finds the chapter
+  already returned, now gets "that chapter is already in the book" and nothing is moved, instead of a missing-file
+  error. A test also covers a merge whose first save conflicts: the second chapter comes back from the trash
+  with its id, synopsis and notes, and the author's combined text is kept as a conflict copy.
 - The film script's 0:00 capture note also removes the copy's empty `checkpoints/`, `conflicts/` and
   `threads/` folders, so Finder shows only what existed before the event.
 - The web build leaves out code the browser never runs, so the SC-009 perf gate has room again
