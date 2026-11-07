@@ -9,6 +9,10 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Hands-free pure core
 
+- Keep Pause/Stop work inhibition through late permission success. Retain exact bounded failed
+  receipts across stop/reactivation until explicit acknowledgement, without reviving old content.
+  Separate admitted playback from display status so genuine completion releases its exact TTS slot
+  after work settlement, pause or correction. Add cross-transition pure regression tests.
 - Add an unmounted, platform-independent voice-session reducer with explicit activation, pinned
   scope/routes, exact named confirmations, correction/interruption, distinct stop controls and
   request/chunk gates that retain uncertain external settlement. Add trusted-frame audio-grant
