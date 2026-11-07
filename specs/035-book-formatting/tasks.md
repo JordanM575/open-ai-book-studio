@@ -46,8 +46,9 @@ manuscripts, credentials, live providers, paid services or devices.
   destination recheck, staged output, and preservation of any prior output on injected failure or
   cancellation. This task must not require a new book schema or a new renderer choice.
   Implemented as `exportManuscriptDocx` (`apps/desktop/src/main/export.ts`) with injectable
-  picker/consent/stat/writer seams; the IPC handler keeps its `string | null` contract, dialog
-  copy and headless hook, so no renderer change was needed. Covered by 10 boundary tests in
+  picker/consent/stat/writer seams; the initial handler retained its `string | null` contract,
+  dialog copy and headless hook. The November 7 integration replaces the result with a shared
+  `{ path, warnings } | null` receipt for all four formats. Initial coverage was 10 boundary tests in
   `apps/desktop/tests/export.test.ts` (cancel, in-library alias refusal, decline/accept consent,
   post-consent change and post-consent creation refusal, injected failure preserving prior bytes,
   default atomic staging with no temp debris, name suggestion, root-prefix check).
@@ -164,9 +165,11 @@ manuscripts, credentials, live providers, paid services or devices.
   render and write failures and prior-output preservation in temporary folders. The Format dialog
   exports only after the open chapter's save confirms. The header also blocks a failed
   or conflicted flush (`WorkspaceView.exportBook`, with an IO-failure regression in
-  `docx-export-flush.test.tsx`); the earlier missing-header-guard note was stale. Open: cleanup
-  reporting that names a leftover temporary path, and canonical destination-alias rejection across
-  all manuscript formats. Lexical path checks do not prevent an outside parent symlink into the library.
+  `docx-export-flush.test.tsx`); the earlier missing-header-guard note was stale. W05 adds canonical
+  destination-alias rejection, publication-time rechecks and cleanup diagnostics for all four
+  formats, exercised in `export-safety.test.ts`. The shared underlying filesystem adapter's separate
+  containment issue remains tracked with history. Independent integrated review and full verification
+  are still required before this task closes.
 - [ ] **T017** Complete synthetic end-to-end journeys for DOCX, PDF, EPUB and Markdown as each renderer
   becomes available. Verify the author-visible destination/status, source hashes, matter order,
   optional-image warning, save conflict, cancel and failure behavior. Unsupported targets must remain
@@ -174,8 +177,11 @@ manuscripts, credentials, live providers, paid services or devices.
   Partly done under D-108: the hidden smoke exports a PDF twice in one session and an EPUB from the
   Format dialog and reads them back (`%PDF-` with the illustration embedded, the stored `mimetype`
   entry, the chapter text in the XHTML), next to its Word and Markdown checks; `format-dialog-export.test.tsx` covers the saved-file note, cancel, refusal
-  and a failed save. Matter order is covered by unit tests (T013). Open: an author-visible warning for a
-  skipped illustration (today it is only logged, as in the Word export).
+  and a failed save. Matter order is covered by unit tests (T013). W05 and the November 7 integration
+  deliver image-snapshot warnings through all four real IPC handlers to the Format and workspace
+  receipt displays. `ipc-handlers.test.ts` covers receipts, cancellation, refusal and source bytes;
+  the extended hidden smoke asserts the visible Markdown omission warning. The new built-app checks
+  and independent review remain pending on the combined candidate.
 
 ## Phase 5 — Public format and acceptance record
 

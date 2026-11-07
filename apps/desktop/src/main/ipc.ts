@@ -33,7 +33,7 @@ import { LibraryError } from "./library/store";
 import { safeJoin } from "./library/paths";
 import { recoveryIdSchema, restoreKept } from "./recovery";
 import {
-  collectDocxImages,
+  collectManuscriptImages,
   exportBookImages,
   exportManuscriptDocx,
   exportManuscriptEpub,
@@ -418,8 +418,8 @@ export function registerIpc(
     const bookId = idSchema.parse(payload);
     const library = studio.requireLibrary();
     const detail = await library.readBook(bookId);
-    const illustrations = await collectDocxImages(detail, library);
-    return exportManuscriptDocx(detail, illustrations, library.root, {
+    const { illustrations, warnings } = await collectManuscriptImages(detail, library);
+    const path = await exportManuscriptDocx(detail, illustrations, library.root, {
       /*
        * A headless run cannot answer a save dialog, so it names the folder instead. The hook
        * only exists for the checks: otherwise the export is never exercised end to end, and the
@@ -460,13 +460,15 @@ export function registerIpc(
           .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
           .catch(() => null)
     });
+    return path === null ? null : { path, warnings };
   });
 
   handle(IPC.books.exportMarkdown, async (payload) => {
     const bookId = idSchema.parse(payload);
     const library = studio.requireLibrary();
     const detail = await library.readBook(bookId);
-    return exportManuscriptMarkdown(detail, library.root, {
+    const { warnings } = await collectManuscriptImages(detail, library, "markdown");
+    const path = await exportManuscriptMarkdown(detail, library.root, {
       pickDestination: async (suggestedName) => {
         const forced = process.env.STUDIO_EXPORT_PATH;
         if (forced) return join(forced, suggestedName);
@@ -502,6 +504,7 @@ export function registerIpc(
           .then((snapshot) => ({ mtimeMs: snapshot.mtimeMs, size: snapshot.size }))
           .catch(() => null)
     });
+    return path === null ? null : { path, warnings };
   });
 
   /** The save dialog, replace prompt and file check behind the PDF and EPUB exports. */
@@ -539,24 +542,26 @@ export function registerIpc(
     const bookId = idSchema.parse(payload);
     const library = studio.requireLibrary();
     const detail = await library.readBook(bookId);
-    const illustrations = await collectDocxImages(detail, library);
-    return exportManuscriptPdf(detail, illustrations, library.root, {
+    const { illustrations, warnings } = await collectManuscriptImages(detail, library);
+    const path = await exportManuscriptPdf(detail, illustrations, library.root, {
       ...manuscriptExportDeps({ name: "PDF document", extensions: ["pdf"] }),
       renderPdf: renderPdfInHiddenWindow
     });
+    return path === null ? null : { path, warnings };
   });
 
   handle(IPC.books.exportEpub, async (payload) => {
     const bookId = idSchema.parse(payload);
     const library = studio.requireLibrary();
     const detail = await library.readBook(bookId);
-    const illustrations = await collectDocxImages(detail, library);
-    return exportManuscriptEpub(
+    const { illustrations, warnings } = await collectManuscriptImages(detail, library);
+    const path = await exportManuscriptEpub(
       detail,
       illustrations,
       library.root,
       manuscriptExportDeps({ name: "EPUB e-book", extensions: ["epub"] })
     );
+    return path === null ? null : { path, warnings };
   });
 
   handle(IPC.books.exportImages, async (payload) => {

@@ -34,18 +34,18 @@ plus optional one-turn guidance, help authors shape responses without changing t
 permissions or the existing tool protocol.
 
 The plan lifecycle remains planned; the mode/guidance source candidate still requires integrated
-acceptance and the matching film/script/runbook condition below.
+acceptance and the matching interaction runbook below.
 
 ## Accepted decisions and delivery conditions
 
-The public register accepted D-177–D-179 on November 3, 2026. Their research remains the rationale;
-it is not a claim that the runtime controls exist. The decisions retain a matching demo re-shoot,
-script and runbook condition for delivering the changed interaction. The November 7 video URL does
-not by itself prove that condition for an implementation not yet built.
+The public register accepted D-177–D-179 on November 3. Its November 7 delivery update replaces
+the event-only re-shoot hold with exact-candidate runtime/UI checks, independent review and a matching
+interaction runbook. Film work remains separately tracked; the earlier video does not prove the
+new controls. The substantive mode, continuation and no-live-steering decisions are unchanged.
 
 | Decision | Accepted behavior | Remaining implementation |
 | --- | --- | --- |
-| D-177 · Discuss default and tools | Discuss is the new-turn default; exactly the six read-tier built-ins, subject to author-disabled tools, are offered. Writes, destructive/unclassified/future tools and plugins are withheld and denied at the bridge. The mode is fixed for the turn. | W03 implements the mode part of T006 and T007–T009; integrated and matching-film acceptance remain. |
+| D-177 · Discuss default and tools | Discuss is the new-turn default; exactly the six read-tier built-ins, subject to author-disabled tools, are offered. Writes, destructive/unclassified/future tools and plugins are withheld and denied at the bridge. The mode is fixed for the turn. | W03 implements the mode part of T006 and T007–T009; integrated runtime/UI and review acceptance remain. |
 | D-178 · Pause and continuation | Show Stopping until the terminal `stopped` event, then Paused with actual changes/undo availability. Start/Resume creates a new explicit turn; approvals never carry over. Non-background close stops; restart expires plans. | Plan state and runtime/control tasks, including T005–T006 and T013–T018. |
 | D-179 · Guidance | No live steering. Edit guidance before sending or while a plan is proposed; a running/paused turn needs stop and a new explicit turn for revised guidance. | W03 implements T011; T012 and plan lifecycle wiring remain. No in-flight guidance queue. |
 

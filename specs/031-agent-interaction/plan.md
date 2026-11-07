@@ -56,7 +56,8 @@ and checked Library writer.
 ## Accepted decisions and remaining sequence
 
 D-177–D-179 are accepted in `docs/DECISIONS.md`. Reuse their decisions rather than reopening them as
-missing research. Their matching demo/script/runbook delivery condition still applies.
+missing research. Their November 7 delivery update requires exact-candidate runtime/UI checks,
+independent review and a matching interaction runbook; film updates remain separately tracked.
 
 1. Deliver the mode portion of T006 with T007–T009: default Discuss, the exact six read-tier tools,
    bridge denial and excluded plugins. Do not expose the toggle ahead of enforcement. Verify ordinary
@@ -67,7 +68,7 @@ missing research. Their matching demo/script/runbook delivery condition still ap
    only at terminal `stopped`; continuation is a new explicit turn with fresh approvals. Persist
    actual partial outcomes and expire plans on runtime loss; never auto-resume.
 4. Complete T019–T021 accessibility, end-to-end synthetic journeys and exact-candidate evidence,
-   including the matching feature description and film/runbook update.
+   including the matching feature description and interaction runbook. Record later film updates in L22.
 
 D-179 excludes live steering. New guidance for running/paused work travels by stop plus a new turn;
 it does not authorize a guidance queue, a scheduler or a larger autonomy scope under 037.

@@ -852,6 +852,19 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         "the writing agent panel"
       );
 
+      const selectedEdit = await evaluate<boolean>(win, `(() => {
+        const mode = document.querySelector('[data-testid="agent-mode"]');
+        if (!mode || mode.value !== "discuss") return false;
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(mode, "edit");
+        mode.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      })()`);
+      if (!selectedEdit) throw new Error("a new conversation did not default to Discuss with an available mode control");
+      await waitUntil(
+        () => evaluate<boolean>(win, `document.querySelector('[data-testid="agent-mode"]')?.value === "edit"`),
+        "the explicit Edit selection"
+      );
+
       const marker = `Retry this request ${Date.now()}.`;
       const typed = await evaluate<boolean>(
         win,
@@ -895,6 +908,8 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       if (!copy.includes(marker)) {
         throw new Error(`the failed request was not preserved: ${JSON.stringify(copy.slice(0, 160))}`);
       }
+      const nextMode = await evaluate<string>(win, `document.querySelector('[data-testid="agent-mode"]')?.value ?? ""`);
+      if (nextMode !== "discuss") throw new Error("the next new request did not reset to Discuss");
 
       const retried = await evaluate<boolean>(
         win,
@@ -924,7 +939,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         })()`
       );
       if (!closed) throw new Error("the agent panel had no close button");
-      return "prompt preserved; retry stays available";
+      return "Discuss default and explicit Edit control; prompt preserved and retry stays available";
     }));
 
     await check("the chat can start a new conversation and show history", async () => {
@@ -1619,7 +1634,11 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       const text = await readFile(file, "utf8");
       const chapters = (text.match(/^## /gm) ?? []).length;
       if (chapters === 0) throw new Error("the Markdown file has no chapter headings");
-      return `${chapters} chapter heading${chapters === 1 ? "" : "s"}, ${text.length} characters`;
+      await waitUntil(
+        () => evaluate<boolean>(win, `Boolean(document.querySelector('[aria-label="Export warnings"]')?.textContent?.includes("text only"))`),
+        "the published Markdown receipt to disclose its omitted illustration"
+      );
+      return `${chapters} chapter heading${chapters === 1 ? "" : "s"}, ${text.length} characters, visible illustration warning`;
     });
 
     await check("a damaged chapter file is reported, the rest stays readable, and a manuscript export is refused", async () => {

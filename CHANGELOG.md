@@ -7,6 +7,17 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Integration
+
+- Connect the existing manuscript export channels to typed published-path/warning receipts, using
+  the same image snapshot for rendering and omission notices. Add real-handler coverage for all
+  four formats, cancellation and refusal, plus a hidden-app check of the visible Markdown warning.
+- Integrate Discuss/Edit and bounded guidance with export safety; document actual user/assistant
+  mode persistence while preserving legacy unrecorded turns.
+- Replace the expired event-film integration hold with exact-candidate runtime/UI checks, independent
+  review and the matching interaction runbook under delegated feature-first authority. Film updates
+  remain tracked separately and the older demo is not evidence of the new controls.
+
 ### Agent interaction
 
 - Add the first Discuss/Edit interaction slice: new composer requests default to Discuss,
@@ -15,8 +26,8 @@ Update the `Unreleased` section before every commit.
   and outcome; older conversations remain explicitly unrecorded.
 - Add inspectable, bounded one-turn guidance with no silent truncation or later-turn reuse,
   fixed retry attribution, and runtime validation before provider access. Preserve book
-  tone/answer-length guidance and the system-prompt budget. This candidate retains spec 031's
-  matching demo re-shoot, script/runbook and integrated acceptance conditions.
+  tone/answer-length guidance and the system-prompt budget. The initial candidate retained spec 031's
+  demo/script condition; the subsequent delivery update above replaces its event-only re-shoot hold.
 
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at

@@ -45,11 +45,11 @@ writer, checkpoint and undo behavior remain in use.
   of the static system prompt. Research and alternatives are recorded in
   [the implementation decision](research/first-slice-implementation.md).
 
-## Required matching script/runbook and film acceptance
+## Required interaction runbook and integrated acceptance
 
-This is a source/test candidate, not a replacement recording. D-177–D-179 still
-require a matching re-shoot, script and runbook before delivery. The coordinator
-must update existing writing journeys to select Edit before each write request;
+This is a source/test candidate, not a replacement recording. D-177–D-179's November 7
+delivery update requires exact-candidate runtime/UI checks, independent review and this runbook.
+The coordinator must update existing writing journeys to select Edit before each write request;
 otherwise those requests now correctly remain read-only. Use this script for the
 new interaction portion, with synthetic data and the isolated mock provider:
 

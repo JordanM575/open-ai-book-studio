@@ -107,7 +107,8 @@ authorized; no task requires a live provider, credential, paid service, real man
   composer and runtime reject over 2,000 characters. Existing book tone/length prompt
   wiring is retained, with pre-provider refusal of invalid saved guidance. See
   [implementation evidence and delivery runbook](implementation.md). These source/test
-  completions do not close the accepted film/script/runbook delivery condition.
+  completions do not close integrated runtime/UI verification and independent review. The November 7
+  decision update replaces the event-only re-shoot hold; film work remains separately tracked.
 - [ ] T012 Add guidance to a proposed plan and require a refreshed visible proposal before **Start
   plan**. No tool may write during this refresh. Keep live steering disabled under D-179.
 
