@@ -29,6 +29,7 @@
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",
     "tests/story-bible-dialog.test.tsx",
+    "tests/planning-dialogs.test.tsx",
     "tests/settings-status.test.tsx",
     "tests/voice-settings.test.tsx",
     "tests/dictation-hook.test.ts",

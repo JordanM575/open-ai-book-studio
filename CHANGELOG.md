@@ -54,6 +54,11 @@ Update the `Unreleased` section before every commit.
   unavailable files, and survive archive/trash journeys without changing chapters or flushing drafts.
   Document the format and ADR 0016; retain every snapshot, safety record and intent without automatic
   pruning. IPC/UI, restoration, undo and explicit cleanup remain separate follow-through.
+- Add isolated, callback-driven worldbuilding create/edit and saved-word goal set/clear/progress
+  components. Retain exact drafts and original baselines across refusals; distinguish checked
+  current no-ops, verified conflict copies and uncertain outcomes, with explicit compare/reload/
+  discard choices and view-bound replies. Add focused synthetic component coverage and narrow
+  planning/goal type exports. Product mounting and the reviewed core corrections remain separate.
 - Add the first Library-owned planning/organization core slice: bounded loose planning and goal
   schemas, worldbuilding create/read/edit and goal set/clear with exact raw baselines, no-write
   current no-ops, owner checks, one checked commit attempt and verified complete conflict copies.
