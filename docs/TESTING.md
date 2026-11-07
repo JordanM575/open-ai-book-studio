@@ -54,7 +54,7 @@ order:
 
 | Check | What it drives |
 | --- | --- |
-| `smoke` | The built app through its own renderer: the preload bridge, the library, editing, autosave, undo, chapter moves, **a Word export with its illustration**, a Markdown export, a rename and a delete. |
+| `smoke` | The built app through its own renderer: the preload bridge, the library, editing, autosave, undo, chapter moves, **a Word export with its illustration**, a Markdown export, a damaged chapter file (named in a notice, the rest still readable, both manuscript exports refused and earlier exports untouched), a rename and a delete. |
 | `web` | The browser build over its own storage: create, save, reopen, conflict copies, a portable archive, reduced motion. |
 | `audit` | The real window at 1440×900 for dead ends, missing controls, console errors, and the accessibility basics: every control named, big enough to hit, every image with an `alt`, one `h1`, and a keyboard that reaches something with a visible focus ring. |
 | `phone` | The same walk at 390×844, because the phone layout is a surface people use and it has its own ways to strand someone. |
@@ -81,6 +81,15 @@ with both flags keeps connections in memory only (D-184): nothing calls safeStor
 written to disk. A packaged build, or a run without `STUDIO_TEST`, refuses the flag and logs one line.
 A computer without protected storage still refuses to save a key. `apps/desktop/tests/memory-vault.test.ts`
 proves each case with the shared Electron mock.
+
+### Hidden checks without the keychain
+
+The `smoke` run starts the app with `STUDIO_TEST=1 STUDIO_NO_KEYCHAIN=1` and an allowlisted
+environment. An unpackaged run with both flags refuses protected storage without asking the
+operating system (D-191), so the check never reaches the author's keychain; Settings shows storage
+as unavailable and a save is refused, with nothing written. Either flag alone, or a packaged build,
+keeps protected storage. `apps/desktop/tests/credential-isolation.test.ts` proves each case with the
+shared Electron mock, and `apps/desktop/tests/headless-environment.test.ts` covers the allowlist.
 
 A hidden window is never visible, so the studio treats every finished turn as one to notify about.
 A hidden run now logs those notifications instead of posting them

@@ -608,6 +608,17 @@ enforcement, and the D-124 device-identity question stands.
 | **Evidence** | `packages/core/src/library/book-merge.ts`, `packages/core/src/library/schema-guard.ts`; `packages/core/tests/book-merge.test.ts`; `apps/desktop/tests/story-bible-dialog.test.tsx` (real IPC over a temp library: another device's character, the toolkit's `add_memory`, an overlap with its copy); `apps/desktop/tests/book-json-safety.test.ts` (unknown nested fields, documented arrays, the agent's tools when another writer changed the same details, and a schema-2 refusal on every write path with the bytes unchanged). |
 | **Owner** | spec 002 FR-005, FR-008, FR-019 |
 
+### D-191 · A no-keychain mode for hidden interface checks
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-07, on the author's approval of the file-safety fixes) |
+| **Question** | How can a hidden interface check run the real app without it ever asking the operating system's protected storage, which on macOS can reach the author's keychain? |
+| **Decision** | An unpackaged run started with both `STUDIO_TEST=1` and `STUDIO_NO_KEYCHAIN=1` uses a cipher that reports protected storage as unavailable and refuses to encrypt or decrypt, before the operating system is asked (`selectTestCipher`, chosen by the desktop vault's constructor, so its availability and status reads never reach `safeStorage` either). It is a refusal and not a fallback: nothing is written, no plaintext file exists, and the interface says protected storage is unavailable as it would on a machine without it. Either flag alone, or a packaged build, keeps protected storage. `scripts/smoke.mjs` sets both flags and starts the app with an allowlisted environment (`scripts/headless-environment.mjs`), so a provider key or STUDIO_ flag from the caller's shell never reaches it. |
+| **Rejected** | Reusing D-184's in-memory vault for the smoke run: it reports storage as available and holds keys, which the interface checks have no use for. A single flag: a STUDIO_TEST left in a shell would then switch protected storage off for an ordinary run. |
+| **Evidence** | `apps/desktop/tests/credential-isolation.test.ts`, `apps/desktop/tests/credentials.test.ts`, `apps/desktop/tests/headless-environment.test.ts`; AGENTS.md "Credentials". |
+| **Owner** | spec 012 |
+
 ### D-192 · Voice provider, model and voice choices
 
 | | |
