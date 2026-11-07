@@ -37,7 +37,9 @@ concurrent actions synchronously. The runtime still owns authoritative single-us
    (Alpha, Beta or author identity/version). After an IPC round trip the host must use the core
    validating parser before supplying it. Each book needs matching `termsRevision`, nonempty
    `dataUse` and `training` text from the existing provider policy service. Terms text is detached
-   and frozen; it does not grant consent. The UI requires the bound consent/capability facts too.
+    and frozen; it does not grant consent. The UI requires the bound consent/capability facts too.
+    A sparse/inherited/accessor terms entry is invalid. Callback data is checked before reading
+    discriminants; unknown/prototype-name refusal reasons select a fixed local string.
 3. `onStart({ envelope, signal })`: immediately re-resolve selected saved revisions/values and
    revalidate destination, capabilities, price facts, each book's consent and applicable terms after
    asynchronous boundaries. A change returns `blocked`, with zero sends; never dispatch a replacement
@@ -52,7 +54,10 @@ concurrent actions synchronously. The runtime still owns authoritative single-us
 5. `onStop({ requestId })`: best-effort cancellation. Signals are aborted immediately; late results
    are ignored regardless of whether the host honors cancellation. Stop is invoked for active Starts
    on explicit stop/close, book/view changes, disclosure changes, unsupported-host changes and unmount.
-   Already-sent text cannot be recalled. Stop failure says confirmation failed, not that dispatch ceased.
+    Already-sent text cannot be recalled. Stop failure says confirmation failed, not that dispatch ceased.
+    Same-view disclosure/support invalidation retains pending or failed stop confirmation across
+    further passive fact changes. Beginning a new explicit operation or closing retires that notice's
+    ownership, so an older stop reply cannot replace new progress or revive a closed view.
 6. `onNavigate({ run, citation, signal })`: revalidate exact saved identity/version/hash/quote and the
    actual clean destination editor **immediately before selection**, including after awaits. Honor
    abort before touching a new view. Return `selected`, `stale` or `unavailable`; never fuzzy-search
@@ -70,11 +75,12 @@ profile guidance/request/feedback, cost facts (including known zero), unknown co
 consent readiness are inspectable before Start. Historical runs retain attribution and quotes;
 comparison separates source/profile/destination/request changes from interpretation changes and
 labels same-input model variation without improvement scores. Runs remain in memory until close or
-book/view change; this does not authorize saved profile/report history (D-171/U-039-03).
+book/view change. D-199/D-171 select separate explicit saved-review files; this volatile leaf implements
+no writer and does not implicitly authorize retention.
 
 The leaf uses shared tokens/Button and native controls, with no custom motion, blur, CSS or theme
 state. Shared base styles own reduced-motion/transparency behavior. Focused DOM tests cover injected
 callback behavior and synthetic failures/races. Actual host keyboard navigation, focus return,
 light/dark/reduced-preference rendering, supported-platform serialization, transport/writer spies
-and integrated acceptance remain coordinator-owned. Core public-boundary issues reported in the
-W10 review remain a separate coordinator-owned prerequisite; this UI does not certify that core.
+and integrated acceptance remain coordinator-owned. The scoped-core/UI correction needs fresh
+independent exact-head acceptance before mounting; this leaf does not certify host dispatch or storage.

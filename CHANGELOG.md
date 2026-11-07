@@ -23,6 +23,11 @@ Update the `Unreleased` section before every commit.
 
 ### Integration
 
+- Harden scoped-review input and evidence boundaries: require validated immutable envelopes for
+  citations, refuse lossy/foreign/accessor/cyclic data before schemas or digests, validate current
+  Start/editor facts, and reject oversized quotes even with malformed Unicode. Preserve complete
+  terms disclosure, bounded callback failure copy and attributable same-view stop confirmation.
+  Add regressions for review findings; host execution/storage and independent acceptance remain open.
 - Accept individually researched full-book authoring, inline editorial-review and hands-free
   contracts (D-194–D-200 / ADRs 0019–0021), with the bounded workflow/session authority amendment,
   checked conversation policy, explicit cost modes and recoverable saved-review ownership.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { digestJson, freeze, hashSchema, idSchema, requireContract, REVIEW_LIMITS, textSchema, versionSchema, withinScalarLimit, type Immutable } from "./contract";
+import { assertReviewData, digestJson, freeze, hashSchema, idSchema, requireContract, REVIEW_LIMITS, textSchema, versionSchema, withinScalarLimit, type Immutable } from "./contract";
 
 export const categorySchema = z.enum(["reader-impression", "clarity", "pacing", "character-motivation", "continuity"]);
 const profileContentSchema = z.strictObject({
@@ -33,6 +33,7 @@ async function buildProfile(input: Omit<z.infer<typeof profileSchema>, "digest">
 }
 
 export async function validateReaderProfile(input: unknown): Promise<ReaderProfile> {
+  assertReviewData(input);
   const profile = profileSchema.parse(input);
   const { digest, ...rest } = profile;
   requireContract((await buildProfile(rest)).digest === digest, "profile-digest");
@@ -46,8 +47,9 @@ export async function validateReaderProfile(input: unknown): Promise<ReaderProfi
 
 /** Built-in edits fork to a host-generated author ID. Author edits retain lineage and increment. */
 export async function editReaderProfile(previousInput: ReaderProfile, content: ProfileContent, authorId?: string): Promise<ReaderProfile> {
-  const previous = await validateReaderProfile(previousInput);
+  assertReviewData(content);
   const parsed = profileContentSchema.parse(content);
+  const previous = await validateReaderProfile(previousInput);
   const id = previous.origin === "builtin" ? idSchema.parse(authorId) : previous.id;
   requireContract(!id.startsWith("reader-"), "reserved-reader-id");
   if (previous.origin === "author") requireContract(authorId === undefined || authorId === previous.id, "profile-lineage");

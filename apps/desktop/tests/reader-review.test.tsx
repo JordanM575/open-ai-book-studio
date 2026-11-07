@@ -63,6 +63,89 @@ async function complete() {
 }
 function statusText() { return body().getByRole("status").textContent ?? ""; }
 
+describe("reviewed disclosure and cancellation regressions", () => {
+  test("sparse and inherited terms never expose Start", async () => {
+    const value = await envelope();
+    const data = prepared(value);
+    const term = data.terms[0];
+    if (!term) throw new Error("Missing fixture terms");
+    for (const terms of [Array(1), [Object.create(term)]]) {
+      const view = render(value, { onPrepare: async () => ({ kind: "ready", prepared: { ...data, terms } }) });
+      click("Prepare review");
+      await testing.waitFor(() => expect(statusText()).toContain("disclosure could not be validated"));
+      expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+      expect(view.onStart).not.toHaveBeenCalled();
+      view.unmount();
+    }
+  });
+
+  test.each(["__proto__", "constructor", "toString", "unknown-category"])("malformed reason %s keeps every outcome renderable", async (reason) => {
+    const value = await envelope();
+    for (const stage of ["prepare", "blocked", "failed"]) {
+      const malformed = { kind: stage === "failed" ? "failed" : "blocked", reason } as never;
+      const view = render(value, stage === "prepare" ? { onPrepare: async () => malformed } : { onStart: async () => malformed });
+      if (stage === "prepare") click("Prepare review");
+      else { await disclose(); click("Start with Synthetic provider"); }
+      await testing.waitFor(() => expect(statusText()).toContain(stage === "failed" ? "provider request failed" : "unavailable"));
+      expect(body().getByRole("button", { name: "Prepare review" })).toBeTruthy();
+      expect(body().queryByRole("article")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  test("accessor outcome is refused without invoking callback getters", async () => {
+    let reads = 0;
+    const result = Object.defineProperty({}, "kind", { enumerable: true, get() { reads++; return "blocked"; } });
+    render(await envelope(), { onPrepare: async () => result as PreparationOutcome });
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("disclosure could not be validated"));
+    expect(reads).toBe(0);
+  });
+
+  test.each(["facts", "support"])("%s invalidation retains pending and failed stop through repeated passive changes", async (kind) => {
+    const value = await envelope();
+    const pending = deferred<StartOutcome>();
+    const stopResult = deferred<void>();
+    const onStart = mock((_request: Parameters<ReaderReviewProps["onStart"]>[0]) => pending.promise);
+    const onStop = mock(() => stopResult.promise);
+    const view = render(value, { onStart, onStop });
+    await disclose(); click("Start with Synthetic provider");
+    view.update(kind === "facts" ? { disclosureRevision: "facts-2" } : { supported: false });
+    expect(onStart.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(statusText()).toContain("Awaiting stop confirmation");
+    view.update({ disclosureRevision: "facts-3", supported: true });
+    await testing.act(async () => stopResult.reject(new Error("PRIVATE_STOP_FAILURE")));
+    expect(statusText()).toContain("Stop could not be confirmed");
+    view.update({ disclosureRevision: "facts-1" });
+    expect(statusText()).toContain("provider may still be processing");
+    await testing.act(async () => pending.resolve({ kind: "completed", run: await run(value) }));
+    expect(body().queryByRole("article")).toBeNull();
+    expect(document.body.textContent).not.toContain("PRIVATE_STOP_FAILURE");
+  });
+
+  test("old automatic stop and completion cannot overwrite a newer running request", async () => {
+    const first = await envelope();
+    const second = await envelope("request-2");
+    const oldStart = deferred<StartOutcome>();
+    const oldStop = deferred<void>();
+    const newStart = deferred<StartOutcome>();
+    const view = render(first, { onStart: () => oldStart.promise, onStop: () => oldStop.promise });
+    await disclose(); click("Start with Synthetic provider");
+    view.update({ disclosureRevision: "facts-2", onPrepare: async () => ({ kind: "ready", prepared: prepared(second) }), onStart: () => newStart.promise });
+    await disclose(); click("Start with Synthetic provider");
+    await testing.act(async () => {
+      oldStop.reject(new Error("old stop failure"));
+      oldStart.resolve({ kind: "completed", run: await run(first) });
+    });
+    expect(statusText()).toContain("Review in progress");
+    expect(body().queryByRole("article")).toBeNull();
+    await testing.act(async () => newStart.resolve({ kind: "completed", run: await run(second) }));
+    await testing.waitFor(() => expect(body().getByRole("article", { name: "Reader run request-2" })).toBeTruthy());
+    expect(body().queryByRole("article", { name: "Reader run request-1" })).toBeNull();
+  });
+});
+
 describe("reader disclosure and explicit authority", () => {
   test("open, rerender, close and reopen never prepare or start automatically", async () => {
     const view = render(await envelope());

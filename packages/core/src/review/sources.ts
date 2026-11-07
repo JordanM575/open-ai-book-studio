@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  bookIdSchema, chapterIdSchema, digestJson, freeze, hashSchema, idSchema, integerSchema,
+  assertReviewData, bookIdSchema, chapterIdSchema, digestJson, freeze, hashSchema, idSchema, integerSchema, isReviewData,
   requireContract, spanSchema, textSchema, timestampSchema, validSpan, versionSchema,
   type Immutable, type Span
 } from "./contract";
@@ -52,6 +52,7 @@ export function captureChapterSource(input: {
   sourceId: string; saved: SavedBody; bookTitle: string; title: string; position: number;
   capturedAt: string; ranges: readonly Span[];
 }): ChapterSource {
+  assertReviewData(input);
   const saved = savedBodySchema.parse(input.saved);
   const ranges = z.array(spanSchema).min(1).parse(input.ranges).sort((a, b) => a.start - b.start);
   const merged: Span[] = [];
@@ -72,6 +73,7 @@ export function captureChapterSource(input: {
 }
 
 export async function captureBibleSource(input: Omit<z.infer<typeof bibleSourceSchema>, "kind" | "valueDigest">): Promise<BibleSource> {
+  assertReviewData(input);
   const selected = bibleSourceSchema.omit({ valueDigest: true }).parse({ ...input, kind: "story-bible" });
   return freeze({ ...selected, valueDigest: await digestJson(selected.text) });
 }
@@ -91,6 +93,10 @@ export type QuoteCheck = { status: "verified"; firstLine: number; lastLine: numb
 
 /** Generic exact verifier for saved-body anchors, including future annotations. No review quote cap. */
 export function verifySavedBodyQuote(savedInput: unknown, quoteInput: unknown, selected?: readonly Span[]): QuoteCheck {
+  if (!isReviewData(savedInput) || !isReviewData(quoteInput)) return { status: "invalid", reason: "shape" };
+  if (selected !== undefined && (!isReviewData(selected) || !z.array(spanSchema).safeParse(selected).success)) {
+    return { status: "invalid", reason: "outside-selection" };
+  }
   const saved = savedBodySchema.safeParse(savedInput);
   const quote = savedQuoteSchema.safeParse(quoteInput);
   if (!saved.success || !quote.success) return { status: "invalid", reason: "shape" };
@@ -108,12 +114,20 @@ export function verifySavedBodyQuote(savedInput: unknown, quoteInput: unknown, s
 }
 
 /** Host must supply fresh, uniquely resolved candidates and the actual editor's saved identity. */
+export const savedEditorSchema = z.strictObject({ clean: z.boolean(), identity: z.union([savedIdentitySchema, savedBodySchema]) });
 export function checkSavedQuoteNavigation(anchor: SavedQuote, candidates: readonly SavedBody[], editor: {
   clean: boolean; identity: SavedIdentity;
 }): "ready" | "stale" | "unavailable" {
-  const matches = candidates.filter((body) => body.bookId === anchor.bookId && body.chapterId === anchor.chapterId);
+  if (!isReviewData(anchor) || !isReviewData(candidates)) return "unavailable";
+  const quote = savedQuoteSchema.safeParse(anchor);
+  const bodies = z.array(savedBodySchema).safeParse(candidates);
+  if (!quote.success || !bodies.success) return "unavailable";
+  if (!isReviewData(editor)) return "stale";
+  const destination = savedEditorSchema.safeParse(editor);
+  if (!destination.success || destination.data.clean !== true) return "stale";
+  const matches = bodies.data.filter((body) => body.bookId === quote.data.bookId && body.chapterId === quote.data.chapterId);
   const source = matches[0];
   if (matches.length !== 1 || !source) return "unavailable";
-  if (!editor.clean || !sameSavedIdentity(anchor, editor.identity) || verifySavedBodyQuote(source, anchor).status !== "verified") return "stale";
+  if (!sameSavedIdentity(quote.data, destination.data.identity) || verifySavedBodyQuote(source, quote.data).status !== "verified") return "stale";
   return "ready";
 }

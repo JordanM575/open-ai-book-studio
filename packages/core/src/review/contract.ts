@@ -60,12 +60,81 @@ export function checkBytes(text: string, limit: number, code: string): void {
   requireContract(utf8Bytes(text) <= limit, code);
 }
 
-/** Sorted object keys; array/selection order and literal strings are never normalized. */
+function dataEntries(value: object): [string, unknown][] {
+  const array = Array.isArray(value);
+  const prototype = Object.getPrototypeOf(value);
+  requireContract(array ? prototype === Array.prototype : prototype === Object.prototype || prototype === null, "non-json-prototype");
+  const keys = Reflect.ownKeys(value);
+  requireContract(!array || keys.length === value.length + 1, "non-json-array");
+  const entries: [string, unknown][] = [];
+  for (const key of keys) {
+    if (array && key === "length") continue;
+    requireContract(typeof key === "string", "non-json-property");
+    requireContract(!array || (/^(0|[1-9]\d*)$/.test(key) && Number(key) < value.length), "non-json-array");
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    requireContract(descriptor?.enumerable && "value" in descriptor, "non-json-property");
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
+/** Lossless in-memory JSON domain, checked before a schema can discard object shape.
+ * Dense ordinary arrays and plain/null-prototype own enumerable data only; no getters/toJSON.
+ * Shared subvalues are permitted, cycles are not. Text schemas separately enforce Unicode.
+ * This is not a raw JSON numeric/duplicate-key or persisted-file reader.
+ */
+export function assertReviewData(value: unknown): void {
+  const active = new Set<object>();
+  const pending: { value: unknown; exit?: boolean }[] = [{ value }];
+  while (pending.length) {
+    const frame = pending.pop();
+    if (!frame) break;
+    const item = frame.value;
+    if (item === null || typeof item === "string" || typeof item === "boolean") continue;
+    if (typeof item === "number") {
+      requireContract(Number.isFinite(item) && !Object.is(item, -0) &&
+        (!Number.isInteger(item) || Number.isSafeInteger(item)), "non-json-number");
+      continue;
+    }
+    requireContract(typeof item === "object", "non-json-value");
+    if (frame.exit) { active.delete(item); continue; }
+    requireContract(!active.has(item), "cyclic-json");
+    const entries = dataEntries(item);
+    active.add(item);
+    pending.push({ value: item, exit: true });
+    for (let index = entries.length - 1; index >= 0; index--) pending.push({ value: entries[index]?.[1] });
+  }
+}
+
+export function isReviewData(value: unknown): boolean {
+  try { assertReviewData(value); return true; } catch { return false; }
+}
+
+/** Sorted object keys; array order and literal strings survive without normalization or hooks. */
 export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+  assertReviewData(value);
+  const output: string[] = [];
+  const pending: ({ kind: "value"; value: unknown } | { kind: "text"; text: string })[] = [{ kind: "value", value }];
+  while (pending.length) {
+    const frame = pending.pop();
+    if (!frame) break;
+    if (frame.kind === "text") { output.push(frame.text); continue; }
+    const item = frame.value;
+    if (item === null || typeof item !== "object") { output.push(JSON.stringify(item)); continue; }
+    const array = Array.isArray(item);
+    const entries = dataEntries(item);
+    entries.sort(([a], [b]) => array ? Number(a) - Number(b) : a < b ? -1 : a > b ? 1 : 0);
+    output.push(array ? "[" : "{");
+    pending.push({ kind: "text", text: array ? "]" : "}" });
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const entry = entries[index];
+      if (!entry) continue;
+      if (index < entries.length - 1) pending.push({ kind: "text", text: "," });
+      pending.push({ kind: "value", value: entry[1] });
+      if (!array) pending.push({ kind: "text", text: `${JSON.stringify(entry[0])}:` });
+    }
+  }
+  return output.join("");
 }
 
 export async function digestJson(value: unknown): Promise<string> {

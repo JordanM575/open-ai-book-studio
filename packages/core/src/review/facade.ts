@@ -1,5 +1,5 @@
 import { countWords } from "../words";
-import { canonicalJson, freeze, requireContract, validSpan } from "./contract";
+import { assertReviewData, canonicalJson, freeze, requireContract, validSpan } from "./contract";
 import { offeredReviewTools, validateReviewEnvelope, type ReviewEnvelope, type ReviewToolName } from "./envelope";
 import type { ChapterSource } from "./sources";
 import { reviewToolSchemas } from "./wire-schema";
@@ -35,6 +35,7 @@ export async function createReviewReadFacade(input: ReviewEnvelope) {
   }
   function execute(name: string, args: unknown): unknown {
     requireContract(tools.includes(name as ReviewToolName), "tool-unavailable");
+    assertReviewData(args);
     switch (name) {
       case "table_of_contents": {
         reviewToolSchemas.table_of_contents.parse(args);
