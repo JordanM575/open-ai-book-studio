@@ -13,6 +13,10 @@ Define studio-owned finding/profile/run contracts in `packages/core`; provider o
 and validated at the runtime edge. `packages/app` owns scope selection, findings, citation navigation,
 stale/incomplete states and rerun comparison. Confirm concrete modules during implementation.
 
+Reuse 037's source/execution contracts, not its persistence policy. Structured 039 runs keep their
+snapshots, profiles and results volatile and write no conversation payloads. Their first volatile
+slice does not depend on 037's thread-safety work; only durable 037 integration needs that prerequisite.
+
 Capture immutable selected-source snapshots through existing library reads. Bind quotations to that
 snapshot, then compare revisions before declaring currency. No additional read tool may escape the
 approved scope. Credentials remain in the provider service; no renderer access or new network route.

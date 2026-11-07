@@ -178,6 +178,9 @@ the all-roadmap milestone. `workLanes` ties each package to its stream's lane sc
 stream lane needs assigned work. These are scope references, not proof of disjoint file writes:
 the coordinator's exact-file dispatch ledger still governs shared seams. These structural checks do not establish implementation or release
 acceptance; the work-package gates and exact-candidate evidence remain required.
-As a feature moves from Draft/Planned to In progress, its owning spec must say so before checking
-implemented tasks. The validator still rejects completed tasks in a wholly planned spec; new-spec
+For the 039–042 family listed in `newSpecs`, the exact status token is Draft / Planned, In progress
+or Implemented, optionally followed by ` — ` and a description. The owning spec must explicitly
+move to In progress before checking implemented tasks. The validator rejects completed tasks in
+a wholly planned new spec; older specs need task-aware review because decision tasks can be complete.
+New-spec
 ownership is permanent provenance, not a rule that these features must remain unbuilt forever.
