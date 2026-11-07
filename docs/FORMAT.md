@@ -42,6 +42,30 @@ The directory-handle adapter writes through a swap file and re-checks the whole-
 commit point; if another writer changed the file, the old bytes stay and the author's text is preserved
 in `conflicts/`. Browser storage can be cleared by the browser; export a portable archive to keep a copy.
 
+## Accepted reservations awaiting detailed schemas
+
+ADRs [0019](adr/0019-bounded-autonomous-authoring.md) and
+[0020](adr/0020-inline-editorial-review.md) reserve the following locations. **These are not yet
+writable formats.** Pure graph/permission/editor contracts can proceed; no writer may infer a wire
+schema from these directory names or from an unchecked TypeScript object.
+
+| Reserved location | Accepted ownership / prerequisite |
+| --- | --- |
+| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/plans/directions/tasks/attempts/effects/questions/artifacts; field-level schema, exact identity/hash references, bounded streaming, intent/receipt and related-file recovery matrix before writers |
+| `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies |
+| `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records; full/segmented continuation and related-report trash/restore rules before writers |
+| Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration, checked whole-document revisions/raw hashes, lossless supported unknown fields and future/unknown-semantic read-only behavior before new semantic parts |
+| Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
+
+Each detailed format must name every field and optional/default rule; schema/kind/owner/host-issued ID;
+safe revisions/generations; raw-byte and semantic limits (including unknown fields); supported JSON/
+Unicode/number domain; absent/current/stale no-op semantics; exact publication/readback and failure
+receipts; issue-bearing list/read; conflict preservation; explicit migration; archive/sync and recoverable
+trash/restore. Cross-file operations are recoverable sequences. No automatic pruning or replay of
+uncertain dispatch/publication. Adopt the ADR-specific byte bounds without inventing eviction.
+Changing a reservation requires updating its ADR and owning spec. Existing v1 thread behavior below
+is current format evidence, not a claim that checked-write migration is complete.
+
 ## Checked planning and goal sidecars
 
 D-163–D-168 / [ADR 0017](adr/0017-planning-and-organization.md) define these optional

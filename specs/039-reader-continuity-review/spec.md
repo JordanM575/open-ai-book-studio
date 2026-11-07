@@ -1,8 +1,8 @@
 # Structured reader and continuity review
 
-**Status:** Draft / Planned — initial contracts accepted under D-193; implementation and full acceptance pending
+**Status:** In progress — D-193 and D-197–D-199 accepted; isolated candidates need correction and host integration
 **Number:** 039
-**Requirement:** REQ-REVIEW-003
+**Requirement:** REQ-REVIEW-003, REQ-REVIEW-004
 **Depends on:** 034 saved-source evidence contracts; 037 scoped read-only provider review;
 011/022 provider consent and capability contracts; 030 for optional series records.
 **Completion lane:** L09. These are contract dependencies, not a requirement to finish every task
@@ -34,7 +34,8 @@ model reports must not masquerade as deterministic metrics (034) or conversation
   fallback, additional book reads or background rereads are permitted.
 - **FR-002** The boundary MUST enforce selected-source reads and exclude write, destructive,
   disabled and plugin tools. Manuscripts, profiles and earlier feedback are untrusted data and
-  cannot widen permissions. All manuscript bytes MUST remain unchanged on every outcome.
+  cannot widen permissions. All manuscript bytes MUST remain unchanged on every generation outcome.
+  FR-012's separate explicit author application command does not give the review executor writes.
 - **FR-003** A schema-validated finding MUST identify its category, reader/run, interpretation,
   source kind, book/chapter, captured revision and resolvable location. Quoted text MUST match the
   supplied snapshot; invalid citations MUST be withheld as unverified rather than fabricated.
@@ -48,12 +49,25 @@ model reports must not masquerade as deterministic metrics (034) or conversation
 - **FR-007** Stop, malformed output, refusal, context overflow and provider failure MUST end with an
   honest incomplete/failed state and retryable scope. Already sent data cannot be recalled; retries
   need a fresh author action and may incur cost. Unknown cost stays unknown; D-116 is not a hard cap.
-- **FR-008** Reports are volatile until the retention/storage decision below and D-171's applicability
-  are settled. No separate history, export or profile store is authorized by this draft. Any approved
-  persistence MUST use ordinary recoverable files, Library-only atomic version/hash-checked writes,
-  preservation of unknown fields and an explicit deletion/retention contract.
+- **FR-008** Reports MUST default to volatile with no conversation writes. Explicit Save review and
+  separately disclosed workflow retention follow D-199/D-171/ADR 0020: ordinary recoverable files,
+  immutable report and checked disposition/profile/campaign state, unknown preservation, no pruning,
+  truthful archive/sync quotations and safe export. Detailed formats precede their writers.
 - **FR-009** Unsupported hosts MUST refuse before reading private content or calling a provider.
   The UI MUST support keyboard use, light/dark and reduced-motion/transparency preferences.
+- **FR-010** Exact-current underlines MUST use D-197's verified source/editor snapshot and complete
+  overlap membership. Edits immediately suspend current marks; historical quotes remain available.
+  Filtering/inspection MUST NOT start providers, save records or delete findings.
+- **FR-011** D-198's versioned editorial groups MUST distinguish concerns, strengths and questions,
+  optional lenses, subjective triage and deterministic indicators. Disposition/freshness are separate;
+  absence on rereview is not automatic resolution or measured improvement.
+- **FR-012** Explicit Preview/Apply suggestion MUST show one exact replacement, recheck clean source
+  and composition state, use one editor undo unit and normal checked save. Failed/conflicted saves
+  retain drafts and cannot claim applied/resolved. No provider retry is caused by persistence failure.
+- **FR-013** Explicit full-book campaigns MUST plan every selected primary range within existing
+  per-call bounds, account for overlap/boundary context and synthesis, retain per-source/category
+  coverage and attribute derived summaries. Ordinary one-run overflow still refuses; campaign data
+  cannot grant execution authority. 037 owns authorized scheduling and question dependencies.
 
 ## Acceptance scenarios
 
@@ -76,18 +90,19 @@ Use isolated synthetic books and mocked transports, not paid calls or real manus
 
 ## Non-goals
 
-Applying suggestions; autonomous edits or background agents; objective literary rankings; a new
-provider runtime; automatic routing; real-reader impersonation; settling 030's series storage.
+Unrequested application, objective literary rankings, a new provider runtime, implicit routing,
+real-reader impersonation or implicit 030 series scope. Read-only generation remains separate from
+the author-invoked checked application and 037's independently authorized workflow.
 
 ## Open decisions
 
 D-193 / [ADR 0018](../../docs/adr/0018-scoped-review-contracts.md) resolves the initial source, quote,
-profile and overflow contracts. Persistence remains a separate decision. Accepted policy is not
-implemented behavior; amendments are required if constitutional boundaries change.
+profile and overflow contracts. D-197–D-199 / ADR 0020 select the inline/application/campaign and
+explicit-retention extensions. Accepted policy is not implemented behavior.
 
 | ID | Question / required evidence | Blocks |
 | --- | --- | --- |
 | U-039-01 | Accepted D-193: exact selected-source UTF-16 spans/quotes, no normalization/fuzzy matching, derived verification and bounded subjective findings. | T002/T004 implementation remains |
 | U-039-02 | Accepted D-193: fictional Alpha/Beta lenses, immutable IDs/versioned edits, full per-run snapshots and separate source/profile/provider change attribution. No completed user study is claimed. | T002/T005 implementation remains |
-| U-039-03 | Volatile versus saved report/profile history, retention, export and deletion; reconcile D-171 before defining any layout. | Persistence only; T007 decision work |
+| U-039-03 | Accepted D-199/D-171: volatile default; explicit immutable save, checked dispositions/profiles, recoverable trash, no auto-pruning and ordinary archive/sync inclusion. | T007 decision resolved; T014–T015 formats/storage and acceptance remain |
 | U-039-04 | Accepted D-193: four books/64 items, 65,536 source-text bytes, 131,072 combined content bytes, 262,144 complete request/output bytes. Bounds are not token-fit claims; overflow refuses without clipping/splitting/fallback. Single-book work uses the same policy. | Remains prerequisite for T003/T006 implementation; no single-book exemption |

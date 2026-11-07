@@ -1,18 +1,19 @@
 # Guided and autonomous authoring
 
-**Status:** Draft (Planned; not started)
+**Status:** In progress — foreground and full-book contracts accepted; runtime journey not implemented
 **Number:** 037
 **Depends on:** [002](../002-studio-v1/spec.md) agent and library contracts; [011](../011-model-access/spec.md) provider and model selection; [024](../024-agent-tool-parity/spec.md) tool tiers; [025](../025-agent-capabilities/spec.md) per-book tool controls and plugins; [012](../012-automated-verification/spec.md) verification approach.
 
 U-037-01/02 were accepted November 7 as D-193 / [ADR 0018](../../docs/adr/0018-scoped-review-contracts.md).
 Pure source-envelope/citation work can proceed; runtime/UI and the prerequisite shared thread-safety
-implementation remain open. Later autonomy decisions remain separate work.
+implementation remain open. D-194–D-196 / [ADR 0019](../../docs/adr/0019-bounded-autonomous-authoring.md)
+now resolve the separate full-book authority, ownership, recovery, admission and evidence contracts.
 
 **Expanded author direction, November 7:** REQ-AUTO-001/002 explicitly retain short-brief onboarding
 toward a full ~70,000-word book, asynchronous multi-agent background work, revision cycles and human
 check-ins for character direction. See [the requirement expansion](../../docs/EXPANDED-AUTHORING-REQUIREMENTS.md).
-The foreground slice below is not the completion boundary; detailed autonomy contracts are the next
-decision packet under delegated delivery authority.
+The foreground slice below is not the completion boundary. The accepted full-book requirements and
+implementation tasks below preserve the entire journey.
 
 ## Why
 
@@ -29,9 +30,8 @@ later.
 - Specs 024 and 025 define the shared tool catalog, read/write/destructive tiers, per-book tool
   controls, and author-selected TypeScript plugins. Plugins run in the app process and may access the
   open book through the library surface.
-- Public decision D-126 permits a background turn only when the author opts in for that turn. It does
-  not grant standing authorization. The existing quit and notification behavior is unchanged by this
-  spec.
+- Current ordinary D-126 behavior remains per-turn opt-in. Its new 037 exception requires a separate
+  bounded workflow grant and implementation; an ordinary background checkbox never supplies one.
 - The public contracts do not define the guided, read-only review flow below. It is separate from
   spec 034's deterministic structured report; it does not replace that report with a model-generated
   score, metrics sheet or export.
@@ -52,13 +52,13 @@ cancel before that action sends nothing. No unselected content may enter the exe
 result or request. Local identity/permission resolution may inspect container metadata and chapter
 candidates under existing Library rules; this is not a promise of zero other local filesystem reads.
 
-### Later direction — verified autonomous workflows
+### Phase 2 onward — bounded full-book workflows
 
-The eventual goal is to let an author request a bounded workflow and inspect evidence about its
-results. This is a direction, not an implementation contract: this draft does not authorize candidate
-creation, background workers, standing permissions, schedules, automatic publication, notifications,
-restart or recovery behavior, budgets, or remote delivery. Each remains gated by the public decisions
-and contracts listed below. A gate blocks only the dependent future work, not Phase 1.
+ADR 0019 selects the durable host-coordinated graph, ordinary candidate files, narrowly authorized
+automatic publication, independent editorial attempts and recurring human direction. Defaults and
+failure contracts in that ADR are normative. The implementation sequence is T017–T042; only its
+connected final journey establishes REQ-AUTO-001/002. Field-level formats and independently reviewed
+storage/runtime boundaries precede enabling their writers/dispatch. Pure reducers can proceed now.
 
 ## User stories
 
@@ -69,8 +69,12 @@ and contracts listed below. A gate blocks only the dependent future work, not Ph
    as current.
 3. **Stop safely.** I can stop a foreground review. No manuscript file changes; the request is marked
    incomplete, and I can retry the retained prompt and scope.
-4. **Review future work deliberately.** Only after the open authority, verification, ownership and
-   recovery questions are resolved may a later spec define autonomous workflows and their evidence.
+4. **Develop a book.** Start from a short brief, choose a visible target/agreement, approve outline/cast
+   direction, and inspect saved chapters, independent reviews and revisions as work advances.
+5. **Steer characters.** Answer an attributable character question; dependent work pauses while
+   independent authorized work may continue. Correct direction without losing old drafts or edits.
+6. **Resume truthfully.** Reopen the project with retained work and unresolved outcomes; continue safe
+   remaining tasks without repeating uncertain requests or publications.
 
 ## Requirements
 
@@ -116,19 +120,43 @@ and contracts listed below. A gate blocks only the dependent future work, not Ph
   app MUST NOT silently widen the source scope or switch tools, providers or models. Existing provider
   consent and capability checks MUST remain in force; review MUST NOT bypass them.
 
-### Autonomy gates
+### Full-book workflow requirements
 
-- **FR-011** No autonomous implementation is authorized by this draft. Before any such implementation,
-  the dependent public decisions MUST be accepted and recorded, the verification criteria MUST be
-  agreed, and a reviewed ownership/recovery contract MUST define who owns work and its artifacts,
-  cancellation, failure, conflict and recovery behavior.
-- **FR-012** If a future autonomous capability changes a constitutional principle or an AGENTS.md
-  non-negotiable, its required ADR and reviewed amendment to both documents MUST be accepted before
-  implementation. D-126 authorizes one explicitly opted-in background turn only; it MUST NOT be
-  treated as authority for standing permissions, schedules or unattended workflows.
-- **FR-013** Any later spec MUST state its allowed tools, data scope, permission lifetime and
-  revocation path; candidate ownership and publication rules; lifecycle and recovery; and measurable
-  verification evidence. Unresolved decisions block only the tasks that depend on them.
+- **FR-011** Implement autonomous work only under D-194–D-196/ADR 0019; shared checked storage,
+  truthful settlement and real host ownership MUST precede enabled execution/publication.
+- **FR-012** The accompanying constitution/AGENTS amendment limits network authority to explicit
+  actions or active bounded revocable sessions/workflows. Ordinary D-126 opt-in MUST NOT mint a grant.
+- **FR-013** Permission, source scope, destination, limits, candidate/publication ownership and
+  recovery MUST remain independently inspectable; worker text or copied files cannot extend them.
+- **FR-014** Optional small onboarding MUST retain the exact brief and narrative choices, expose a
+  configurable default 70,000 saved-word target using 033, and offer local setup with zero sends.
+- **FR-015** Distinct asynchronous specialist attempts MUST have immutable scoped context, separate
+  output/usage lineage and declared dependencies. A multi-role prompt is not asynchronous execution.
+- **FR-016** Planning, incremental scenes/chapters, independent developmental and line/continuity
+  review, bounded revision/recheck and whole-book synthesis MUST form the actual execution graph.
+- **FR-017** Only the Library publisher may adopt exact candidates under current grant, direction,
+  review and editor/base checks. Automatic revision is restricted to opted-in run-created unchanged
+  clean targets; existing/manual/external text requires a new exact action authorization.
+- **FR-018** Durable questions MUST name character/source/run identity, consequences and affected
+  work. Confirmed answers become versioned direction; silence chooses nothing. Old-epoch outputs
+  remain historical and cannot publish; provably independent work may continue.
+- **FR-019** Pause/cancel MUST close gates before awaits and report terminal state only after actual
+  settlement. Quota/failure/uncertain charging parks work with no automatic retry or fallback.
+- **FR-020** Window/renderer lifetime MUST NOT own jobs. Quit/sleep stops execution; restart locally
+  reconciles intents/receipts and requires Continue unless a valid same-host resume grant permits
+  safe fresh work. No uncertain provider call/write is automatically replayed.
+- **FR-021** Artifacts, safety, directions and effect/accounting receipts MUST be ordinary retained
+  files with checked mutations, issue-bearing reads, archive/trash preservation and no auto-pruning.
+  Host permission MUST stay separate and non-exported. Cross-file changes are not a transaction.
+- **FR-022** Admission MUST enforce finite call/output/time/concurrency/revision limits and distinguish
+  known subtotal/unknown charges. Strict-money mode requires qualified enforcement, never an estimate.
+- **FR-023** Progress MUST use complete verified saved text; candidates/tokens are separately labelled.
+  Draft complete, editorial pass complete, needs direction and final author review are distinct states.
+- **FR-024** Hands-free check-ins MUST consume the same typed identities/intents under ADR 0021;
+  starting a book workflow MUST NOT open a microphone or authorize unrequested speech.
+- **FR-025** Full-book protocol, synthetic scale, literary quality, usability, actual host/device and
+  release evidence MUST be recorded separately. A preseeded novel or short demo cannot close the
+  integrated brief-to-book journey.
 
 ## Acceptance scenarios for Phase 1
 
@@ -154,26 +182,35 @@ and contracts listed below. A gate blocks only the dependent future work, not Ph
 All verification uses synthetic isolated fixtures and mocked provider/tool boundaries. Live-provider
 requests and real manuscripts are outside this spec's acceptance work.
 
+## Full-book acceptance
+
+Use actual small onboarding, mocked independent transports and real checked storage to develop a
+28-chapter reference around 70k saved words (63k–77k), including independent concurrent reviews,
+revisions and character answers, manual edits, fresh-process restart and uncertain-dispatch recovery.
+No direct fixture seeding after Start substitutes for the pipeline. Require exact request/output
+provenance, no duplicate chapter publication, complete declared coverage and a resolved ending.
+Short completion needs an explicit author decision. Live quality and acoustic/device checks require
+their separately authorized evidence; no current approval for paid runs or microphone use follows.
+
 ## Non-goals
 
 - The deterministic structured report defined separately by spec 034.
-- Editing, applying, staging or publishing review suggestions.
+- Editing, staging or publishing from the Phase 1 foreground review itself.
 - Plugin tools, toolkit/MCP calls, remote agents or a new provider route in Phase 1.
-- Standing permissions, unattended/background workers, schedules, notifications, automatic
-  publication, restart/recovery, budgets or remote delivery until their gates are resolved.
-- Changes to current D-126 one-turn opt-in, notification, window-close or application-quit behavior.
+- Unbounded permission, daemon/after-quit execution, remote delivery, automatic provider fallback or
+  blanket write/destructive authority. Ordinary turns retain their existing policy.
 
 ## Open decisions
 
-The table retains local IDs. D-193 resolves U-037-01/02; remaining autonomy questions need their own
-evidenced outcomes under delegated authority. No decision alone proves runtime implementation.
+The table retains local IDs. D-193 resolves U-037-01/02; D-194–D-196 resolve U-037-03–07.
+No decision alone proves runtime implementation.
 
 | ID | Question and evidence needed | Blocks |
 | --- | --- | --- |
 | U-037-01 | Accepted D-193 / ADR 0018: one immutable, exactly disclosed source envelope; captured-source facade only, explicit start/rerun, no implicit history/SKILLS. Selected request text is retained in the existing conversation after its shared safety prerequisite. A user study is not claimed. | Policy resolved; T004–T005/T010 implementation and conversation-safety integration remain |
 | U-037-02 | Accepted D-193 / ADR 0018: exact identity/version/raw hash plus in-scope UTF-16 span and literal quote; derived author-facing line labels, strict stale/clean-editor checks before selection. | Policy resolved; T006–T007/T010 implementation remains |
-| U-037-03 | What authority, scope, lifetime, revocation and tool/plugin policy could any autonomous workflow have? Resolve through public decisions and a reviewed constitution/AGENTS amendment if required. | T016 and dependent autonomous implementation only |
-| U-037-04 | Who owns autonomous work and candidates, how are they stored/versioned/recovered, and what author review, conflict and publication steps apply? Include whether any automatic publication is permitted. | T016 and dependent candidate/publication implementation only |
-| U-037-05 | Who owns background execution, cancellation, failures, restart/recovery, close/quit, notifications and schedules? D-126 answers only the single explicitly opted-in turn. | T016 and dependent background/scheduled implementation only |
-| U-037-06 | What evidence qualifies as “verified” autonomous work, including synthetic/adversarial cases, measurable thresholds and regression policy? | T016 and dependent verified-workflow implementation only |
-| U-037-07 | What limits govern multi-step spend, duration and remote delivery? D-116 is Proposed, and D-129 is Deferred; neither authorizes autonomous budgets or remote delivery. | T016 and dependent budgeted/remote implementation only |
+| U-037-03 | Accepted D-194: explicit bounded host-local grant, selected sources/roles/destinations, revocation and candidate-only workers; constitution/AGENTS amended. | T019–T025 implementation/integration |
+| U-037-04 | Accepted D-195: ordinary immutable candidates, checked state/effects, safety and narrowly opted-in run-created target adoption; no blind replay. | T018/T023/T029 formats and publisher evidence |
+| U-037-05 | Accepted D-195: deterministic pinned host, branch blocking/inbox, truthful settlement, no after-quit work, default explicit restart Continue. | T020/T025/T032–T035 |
+| U-037-06 | Accepted D-196: separately scoped protocol, actual synthetic full-length, live quality, usability, host/device and release gates. | T039–T042; quality rubric before evaluation |
+| U-037-07 | Accepted D-196/D-116: finite request/time/output/revision admission, bounded-operation versus qualified strict-money mode. D-129 remote delivery remains deferred. | T022/T024/T025; no live strict-cap adapter certified |

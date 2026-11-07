@@ -159,11 +159,12 @@ needed and the spec or task it blocks.
 
 | | |
 | --- | --- |
-| **Status** | Open |
+| **Status** | Accepted for shared conversation safety (2026-11-07, delegated authority); checkpoint scale qualification remains open |
+| **Decision** | [ADR 0019](adr/0019-bounded-autonomous-authoring.md#shared-conversation-prerequisite-d-113): exact raw-hash checked whole-document writes in the same Library queue; lossless v1 reads, explicit backed-up v2 migration, issue-bearing/future-read-only behavior, recoverable trash/restore and no automatic pruning. Migrate all callers; replay allowlists precede compaction. Linked bounded attempt threads replace a monolithic full-book conversation. Existing checkpoint compatibility remains; no whole-book Undo claim. |
 | **Question** | One JSONL file per thread, plus per-turn checkpoints as patch files? What are the retention and size limits for a 250k-word book? |
 | **Tension** | Full snapshots are simple but huge; patches are small but fragile if a later turn rewrites the same lines. |
 | **Known** | Today a turn's checkpoint is one JSON file of whole chapter texts, written again after each change the turn makes ([FORMAT.md](FORMAT.md#agent-turn-checkpoints), 2026-11-04). Undo removes the newest file; nothing prunes older ones. Later the same day each entry gained, additively, the chapter's details before the turn and a hash of the details it left, the trash path of a deleted chapter, and a mark for text written by someone else mid-turn. Undo now brings a deleted chapter's own file back from the trash and keeps a `conflict-undo` copy before restoring marked text. The size question is unchanged: a deleted chapter's text is still also held whole in `before`. |
-| **Needed** | A storage spike with a realistic turn sequence, plus a pruning rule the author can see. |
+| **Needed** | Detailed FORMAT schemas before v2 writers, checked caller migration, independent fault/recovery review and measured materialization/checkpoint workloads. The previous request for automatic pruning is replaced by explicit recoverable author cleanup. |
 | **Blocks** | spec 002 agent history tasks |
 | **Owner** | spec 002 |
 
@@ -180,16 +181,18 @@ needed and the spec or task it blocks.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
-| **Recommendation** | Show provider-reported cost per turn; enforce a per-turn and per-session ceiling the author sets; refuse to start a batch (images, long agent runs) whose estimate exceeds the remaining ceiling. |
-| **Needed** | Acceptance, plus what to do when the provider reports no price. |
+| **Status** | Accepted contract (2026-11-07, delegated authority); enforcement and live adapter qualification pending |
+| **Decision** | [ADR 0019](adr/0019-bounded-autonomous-authoring.md#d-196-admission-routing-and-bounded-iteration): explicit bounded-operation mode permits unknown actual cost and is not a dollar cap. Strict money requires a qualified provider-enforceable all-charge upper bound with durable concurrent reservations; unknown or unresolved charges block capped work. Report known subtotal plus unknown/partial calls; no zero-cost inference, hidden retry or model substitution. Estimates/abort do not establish a ceiling. |
+| **Previous proposal** | An estimate-based batch ceiling was considered; it cannot guarantee actual billing and is superseded by the two-mode contract. |
+| **Needed** | Implement/test admission, accounting and failures; certify adapters separately before enabling strict-money claims. No current adapter is certified by this decision. |
 | **Blocks** | spec 011 usage tasks, spec 002 image batch |
 | **Owner** | spec 011 |
 
 **Update (2026-11-03).** The informational hooks landed via 011 T036 and stay unenforced: per-book
 `perTurnCeilingUsd`/`monthlyWarningUsd` settings (null by default), pure per-turn and monthly
 evaluators, and a display-only Spending section in the agent dialog. Nothing blocks or refuses a turn.
-Acceptance — the unknown-price policy and the enforcement itself — is still open.
+The November 7 decision above selects the unknown-price policy. Existing hooks remain informational;
+enforcement remains implementation work and may not silently reinterpret saved thresholds.
 
 ### D-117 · iOS through Capacitor
 
@@ -395,11 +398,12 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted replacement (2026-11-07, delegated authority), D-199 / ADR 0020 |
+| **Decision** | [ADR 0020](adr/0020-inline-editorial-review.md#d-199--d-171-explicit-saved-review-ownership): volatile default, explicit immutable Save review, checked separate dispositions/profiles and segmented campaign manifests. Ordinary recoverable author files, no automatic eviction or unlink; archive/sync includes saved quotations. Each document has a 2,500,000-byte exact serialized limit; overflow preserves the draft. Detailed FORMAT/continuation schemas precede writers. Export includes attribution, actual coverage and export-time freshness through the safe publication path. U-039-03 is resolved. |
 | **Question** | After the disposable first milestone, may authors save or export review reports, where do saved reports live, what manuscript excerpts may they contain, and how are they deleted and retained? |
-| **Recommendation** | Allow both narrowly. Export a human-readable summary (scope, timestamps, counts, coverage, findings with excerpts) to the clipboard and to one author-chosen Markdown file via the safe-publication pattern; excerpts capped at 500 characters with an ellipsis marker, plus captured-at and may-have-changed markings. Save JSON beside the book under `books/<bookId>/reviews/<runId>.json` — additive per-book derived file, no library format field, nothing in profile/index/threads/usage/sync baselines (FR-011's exclusion list extends to saved reports). Results carry references and excerpts but never bodies, excerpts are unbounded in the type today, and freshness is computed never stored — so the decision sets the cap and requires export-time staleness marking. Retention: derived and disposable, at most 20 per book with oldest-first eviction and visible count; explicit per-report Delete plus book-fate deletion; no external registry or metadata; excluded from portable archive and sync until 016 decides. Rejected: volatile-only forever, threads/usage storage, unbounded excerpts, syncing reports. Saved reports revalidate version+hash on open and show stale when the source moved. |
+| **Historical proposal, superseded** | Derived reports with a 20-per-book eviction cap, direct deletion and archive/sync exclusion. Rejected on November 7: saved paid/subjective feedback is author-owned, and a folder-sync exclusion cannot be guaranteed. Earlier research remains historical evidence. Kind-specific quote bounds remain; do not truncate a verified citation into a different quote. |
 | **Evidence** | `specs/034-manuscript-review/research/report-retention.md`; `packages/core/tests/review/report-persistence-premises.test.ts` (excerpts without bodies, unbounded excerpts, computed freshness); `apps/desktop/tests/review-report.test.tsx` (volatile run, no writes, discard on switch). |
-| **Needed** | Author acceptance of the export cap and markings, the reviews directory with its cap and deletion rules, and the archive/sync exclusion. |
+| **Needed** | Implement detailed formats, complete conflict/trash/continuation recovery, export and independent acceptance. Existing unsaved 034/039 runs still write nothing. |
 | **Blocks** | spec 034 report persistence/export implementation (no such task may begin before acceptance and any required format/ADR review) |
 | **Owner** | spec 034 |
 
@@ -460,7 +464,7 @@ enforcement, and the D-124 device-identity question stands.
 | **Status** | Accepted (2026-11-03, on the author's delegation) |
 | **Decision** | As recommended. Building it is deferred until after the hackathon submission: it adds `books/<bookId>/history/` to the format and touches the only writer, archive and trash, so it lands with its own release and the manuscript-safety suite, not in the last day's merge queue. |
 | **Question** | What retention, size-limit, and cleanup policy applies to named and safety snapshots, given that no period or quota may be chosen by assumption? |
-| **Recommendation** | No automatic pruning, quota, expiry, or compaction for snapshots, safety copies, or intents — including unapplied intents, which are recovery material. Explicit author deletion moves the record to chapter trash; storage/write failures report without deleting. Size visibility comes from storage stats at list time, not a new format field. Numeric caps only later, with measured evidence and acceptance. Rejected: count/age/quota auto-rules (assumed numbers that pick the author's loss), delete-means-unlink (violates the no-permanent-delete rule). D-171's 20-cap stays scoped to review reports. |
+| **Recommendation** | No automatic pruning, quota, expiry, or compaction for snapshots, safety copies, or intents — including unapplied intents, which are recovery material. Explicit author deletion moves the record to chapter trash; storage/write failures report without deleting. Size visibility comes from storage stats at list time, not a new format field. Numeric caps only later, with measured evidence and acceptance. Rejected: count/age/quota auto-rules (assumed numbers that pick the author's loss), delete-means-unlink (violates the no-permanent-delete rule). D-171's historical 20-report proposal was never history policy and is now superseded by D-199. |
 | **Evidence** | `specs/032-chapter-history/research/retention.md`; `packages/core/tests/chapter-history-retention-premises.test.ts` (unbounded conflicts and trash, failed writes preserve bytes); 034 T013 volatility precedent; FORMAT transport-only caps. |
 | **Remaining after acceptance** | Implement and test size visibility, explicit recoverable deletion and preservation of restore dependencies under spec 032 T011; no automatic pruning or quota is authorized. |
 | **Unblocks** | Spec 032's retention-policy decision task T002 and the policy for T011; implementation and lifecycle verification remain outstanding. |
@@ -512,6 +516,13 @@ an older promotional cut must not prevent delivery of independently verified con
 work remains in L22 and must identify its recorded build truthfully. The existing video is not evidence
 of these new controls, and this update approves no new upload, paid recording or product authority.
 The substantive Discuss, continuation and no-live-steering decisions above are unchanged.
+
+**Scope amendment (November 7, D-194–D-196):** Discuss remains the ordinary default; Workflow is a
+distinct operation, not a permissive composer mode. D-178's new explicit turn/restart-expiry rules
+remain for ordinary 031 plans. The separately authorized 037 graph persists across restart and may
+schedule fresh attempts within its bounded grant; uncertain work never replays. D-179 keeps immutable
+in-flight inputs and permits versioned author direction between workflow attempts. The historical
+“no SDK channel” rationale is not current API evidence; steering is deliberately not selected.
 
 ### D-180 · Legacy import idempotency by content fingerprint
 
@@ -662,9 +673,69 @@ The substantive Discuss, continuation and no-live-steering decisions above are u
 | **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
 | **Decision** | [ADR 0018](adr/0018-scoped-review-contracts.md) defines immutable disclosed source envelopes, snapshot-only read tools, exact UTF-16 span/quote verification, immutable reader/profile attribution and explicit byte/count overflow bounds. It resolves U-037-01/02 and U-039-01/02/04. U-039-04 stays a dependency of both T003 and T006; no single-book exemption. Local ID lookup may inspect candidates but no unselected content enters the review executor/provider. Ordinary Discuss alone does not meet this contract. |
 | **Evidence** | Current `agent/runtime.ts` ordinary full-book prompt/history assembly, core `review/index.ts` and editor body-span convention, and scoped-envelope/citation analysis. Design limits are explicit policy, not measured model quality, provider fit or a completed user study. |
-| **Remaining** | Pure envelope/verifier/profile modules and synthetic boundary tests first. Shared thread checked-write/recoverable-delete/versioning work precedes durable 037 conversational review. Structured 039 runs remain volatile and append no review payload to conversations; their pure/volatile slice does not wait for 037 storage. D-171/U-039-03 and later autonomy/media policies remain separate work. |
+| **Remaining** | Corrected envelope/verifier/profile implementation and host integration. Shared thread checked-write/recoverable-delete/versioning work precedes durable 037 conversational review. Unsaved 039 runs stay volatile with no conversation payload; they do not wait for 037 storage. D-194–D-199 select distinct workflow/campaign and explicit-save extensions without widening ordinary v1 review bounds. Media policies remain separate. |
 | **Unblocks** | 037/039 pure source/citation and volatile reader contracts; it does not claim their UI/runtime is implemented. |
 | **Owner** | specs 037/039 |
+
+### D-194 · Explicit full-book workflow authority and direction
+
+Accepted November 7 under delegated feature-delivery authority. [ADR 0019](adr/0019-bounded-autonomous-authoring.md)
+resolves U-037-03: bounded revocable book-owned grants, small brief onboarding, separate specialist
+attempts, run-created clean-target adoption only, recurring character questions and direction epochs.
+Constitution/AGENTS are amended together. Existing author text requires exact action authorization.
+Implementation and evidence remain open; neither a foreground review nor ordinary background checkbox
+grants this authority.
+
+### D-195 · Durable workflow ownership, artifacts and recovery
+
+Accepted November 7; [ADR 0019](adr/0019-bounded-autonomous-authoring.md) resolves U-037-04/05.
+One pinned host coordinator, one checked Library publisher, ordinary bounded records/artifacts,
+independent host-local permission, prepublication safety/intents and honest uncertain recovery.
+Default restart requires Continue; opt-in same-host resume never retries ambiguous effects. No daemon,
+cross-device takeover, automatic pruning or exactly-once external-effects promise. Field-level FORMAT
+and independent storage/host review precede writers/execution. D-113's shared thread safety is selected
+individually in its entry; old queue/node-bound proposals are not blanket-accepted.
+
+### D-196 · Workflow admission, pinned role routing and evidence
+
+Accepted November 7; [ADR 0019](adr/0019-bounded-autonomous-authoring.md) resolves U-037-06/07.
+Select finite calls/time/output/revisions, three default/four maximum concurrent model calls,
+zero automatic retries, pinned selected roles/destinations and D-116's separate cost modes.
+036 preview remains offline/selection-neutral; workflow dispatch is the narrow explicit extension.
+Protocol, actual synthetic full-length UI journey, literary quality, usability, device and release
+evidence are separate. No current live quality or strict-money adapter qualification is inferred.
+D-129 remote delivery remains deferred; local full-book work does not require it.
+
+### D-197 · Exact-source editable underlines
+
+Accepted November 7; [ADR 0020](adr/0020-inline-editorial-review.md) selects a manuscript-adjacent
+Review workspace, CodeMirror 6 plain-text adapter, existing single undo owner, exact current-editor
+source checks and a complete overlap index with accessible sidebar/navigation. Dirty/stale sources
+lose current marks without losing historical findings. No source remapping by quote search, copied
+proprietary UI or automatic provider call. Editor fidelity/license/bundle/performance gates remain.
+
+### D-198 · Editorial taxonomy, deterministic signals and staged review
+
+Accepted November 7; [ADR 0020](adr/0020-inline-editorial-review.md) separately selects versioned v2
+editorial groups/strengths/questions, repetition-v1 exact-span observations, explicit one-suggestion
+checked preview/application and disclosed full-book campaign coverage. V1 enums and request bounds
+stay intact. Generation is read-only; application is a separate author command. No objective quality
+score, silent request splitting, global ignored-rule inference or automatic resolved state.
+
+### D-199 · Recoverable explicit review retention
+
+Accepted November 7; [ADR 0020](adr/0020-inline-editorial-review.md) replaces D-171 and resolves
+U-039-03 as detailed above. Saving/profile/disposition/campaign writers and recoverable related-file
+operations need their explicit schemas, implementation and tests. Unsaved results remain volatile.
+
+### D-200 · Hands-free activation, interruption and bound commands
+
+Accepted November 7; [ADR 0021](adr/0021-hands-free-session.md) individually selects activation/lifetime,
+local segmentation, qualified barge-in, typed commands, exact confirmation/correction, end-to-end
+request cancellation, permission predicates, accessible reading/local input and shared check-ins.
+D-125 memory-only audio and D-192 explicit routes remain. D-109 host/offline engine qualification
+remains open; source implementation proceeds synthetically. A voice session cannot mint a workflow
+grant or change scope. 038 T022 stays unchecked; no microphone/device/live-spend authorization added.
 
 ## Resolved browser decisions
 
@@ -717,7 +788,7 @@ The substantive Discuss, continuation and no-live-steering decisions above are u
 | ID | Status | Question | Decision | Evidence | Tasks |
 | --- | --- | --- | --- | --- | --- |
 | D-125 | Accepted | Does the studio keep the audio a dictation sends to Meta? | No. Audio exists in renderer and main memory for one request, is converted to the WAV Meta documents and is discarded. It is never written to the library, thread store, archive or a temporary file. A future kept-recording feature needs its own format, consent copy and deletion path. | `packages/core/src/providers/speech.ts`, `apps/desktop/src/main/voice.ts`, spec 017 FR-004 | 017 T001–T006 |
-| D-126 | Accepted | What may a background turn do, and how does it reach the author? | A turn is background only when the author opts in for that turn. It notifies on finish, failure or an approval pause, focuses the window on click and never auto-approves a destructive tool. "Reach out" means a native notification, not email or a network message. A quit app stops all work. | `apps/desktop/src/main/background-copy.ts`, `background.ts`, `agent/runtime.ts`, spec 017 FR-010–FR-017 | 017 T008–T010 |
+| D-126 | Accepted; scoped extension D-194–D-196 | What may a background turn do, and how does it reach the author? | Ordinary turns remain opt-in per turn, notify on outcome/approval and never auto-approve destruction. A distinct 037 workflow may continue within an explicit bounded grant under ADR 0019; an old checkbox is not that grant. Native/in-app notification only, never email/network outreach. A quit app stops all work. | `apps/desktop/src/main/background-copy.ts`, `background.ts`, `agent/runtime.ts`, ADR 0019 | 017 T008–T010; 037 T017–T042 |
 | D-127 | Accepted | Can the browser build dictate? | Not yet. The browser surface returns a specific refusal until Meta's browser access passes the D-101 table. Recording first and failing afterwards is forbidden. | `apps/web/src/runtime/browser-api.ts`, spec 017 FR-008 | 017 T006; D-101 browser test |
 
 ## Agent toolkit decisions (2026-10-26)
@@ -749,5 +820,5 @@ The substantive Discuss, continuation and no-live-steering decisions above are u
 | D-138 | Accepted | How does the app use Muse Spark 1.3 Contributor without sending an author's private book to a training-eligible model? | Contributor is opt-in per book (`allowContributorTraining`, default false). The model picker shows the training warning, prices and reasoning limit and requires a checkbox; `AgentRuntime` refuses the model before any request until consent exists. Contributor is for the synthetic fixture/public-domain tests; Standard is the default alternative. | `packages/core/src/providers/compatibility.ts`, `AgentRuntime.start`, `ModelPickerDialog`; spec 022 | 022 T001–T008 |
 | D-139 | Deferred | Should the compatibility layer also be a local OpenAI-compatible HTTP endpoint? | Not in v1. `modelFor` is the one AI SDK seam. A network gateway needs caller authentication, streaming, tool execution and approval ownership; it would be a separate spec. | Spec 022 FR-014 | None |
 | D-158 | Superseded | Is SAM 3.1 the way to make a character cutout? | No. The live request reaches Meta and is accepted — `200`, `status: completed` — but the response carries no records and no usage, on two real illustrations and a synthetic disc, with four different nouns, in the shape Meta's own segmenting guide documents. Whether that is an entitlement gap or a model the account cannot use, it is not something the studio can fix, and the cutout was never on the critical path. Spec 020 is superseded. The code first stayed, tested, with nothing built on it; it was removed from the build on 2026-11-04 (the Illustration dialog's cutout, the segmentation channel and service, the live check's SAM step and the `@meta-sam/parser` dependency), so the shipped app matches the submission, which claims no cutout. An older library's `cutout` image record still reads (`docs/FORMAT.md`). | `docs/research/live-meta-2026-10-26.md`, spec 020 |
-| D-159 | Accepted | How does the agent speak? | A provider seam for text-to-speech, with OpenAI's `/audio/speech` as the first adapter, and the browser's own `speechSynthesis` as the fallback when no voice service is connected. A chapter is longer than one request, so the pipeline splits the text at sentence boundaries and joins the audio back into one sound that plays and stops as a whole. The voice is a per-call choice, so a passage and a notification can sound different. | `packages/core/src/providers/tts.ts`, `apps/desktop/src/main/speech.ts`, `packages/app/src/hooks/use-speech.ts` |
+| D-159 | Accepted; amended by D-192/D-200 | How does the agent speak? | TTS provider seam and bounded chapter chunks. D-192 replaces the original automatic browser fallback with explicit selected routes/device-voice choice. D-200 requires host-owned cancellable requests, per-chunk permission/route checks, playback arbitration and truthful possibly-sent/charged state; integration remains. | `packages/core/src/providers/tts.ts`, `apps/desktop/src/main/speech.ts`, `packages/app/src/hooks/use-speech.ts`, ADR 0021 |
 | D-160 | Accepted | How does the author's own book reach the glasses? | The phone is the server and the glasses the client, through Meta's Device Access Toolkit: the toolkit sends UI content over Bluetooth and routes the interactions back. It is the only route that keeps the author's own book private (D-156, D-157): a Web App cannot read a private network, and a hosted copy is out of the question. The studio stays the only writer; the phone is a display and a remote control. | `apps/desktop/src/main/bridge.ts`, spec 026 | 026 T015–T018 (native companion) |

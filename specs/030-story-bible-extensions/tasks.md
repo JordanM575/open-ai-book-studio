@@ -30,8 +30,9 @@ state/result/close callback exceptions without losing the draft or relabelling c
 Keep editing focuses only after the fieldset is enabled. Planning/goal focused checks pass **166
 tests**, all workspace and strict new-core-test typechecks pass, and focused lint is clean. The
 retained native Chromium reproduction passes **14/14 assertions**, including all four reviewed
-failures. Fresh independent review and Library/API/workspace integration remain required; no broad
-task is marked complete by this leaf evidence.
+failures. Independent review ACCEPTED exact `320defb`, including 16 additional core probes and seven
+adjacent native scenarios. Library/API/workspace integration remains; no broad task is completed by
+leaf evidence. RF-01/RF-02 in `docs/RETAINED-DELIVERY.md` retain the original Bible/series follow-ons.
 
 - [x] T001 Compare ordinary-file storage alternatives and decide the versioning, backward-compatibility,
   unknown-field and archive behavior for the optional typed planning extension. Separately decide the

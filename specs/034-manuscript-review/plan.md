@@ -4,6 +4,13 @@
 
 ## Scope
 
+**November 7 reconciliation:** D-198/ADR 0020 accepts repetition v1 (FR-005/T008), including combining
+marks, apostrophe folding and every overlapping original-source span. The dated counts-only entries
+below describe earlier implementation. D-199 replaces the historical retention proposal; explicit
+save/export reuses 039 T014–T015 after detailed formats, while ordinary analysis remains local and
+write-free. D-197's editor adapter supplies real inline navigation; seeded findings alone do not
+close T016/T018. Existing shared word-count semantics are unchanged.
+
 This plan covers only the first milestone in [spec.md](spec.md): an explicit deterministic review of
 confirmed saved chapter bodies, with shared word counts, the proposed repeated-phrase signal, visible
 coverage, exact evidence navigation, and stale/cancel/insufficient-evidence states. It does not add
@@ -26,8 +33,8 @@ model calls or report persistence. All report state is disposable and in memory.
     also prevents the run from claiming complete coverage.
 3. **Analyze a stable snapshot in shared core.** A pure review module consumes the snapshot and
    returns metric definitions, counts, coverage, findings and evidence spans. It reuses the existing
-   shared word counter. The repeated-phrase scanner remains gated on the open metric-set decision in
-   the spec. It records source-relative spans as it scans; it does not rewrite or canonicalize
+   shared word counter. The repeated-phrase scanner now follows the accepted FR-005/D-198 contract.
+   It records source-relative spans as it scans; it does not rewrite or canonicalize
    manuscript text.
 4. **Keep run state transient.** The result is held only for the active book/run in app memory. It is
    not sent to the library writer, thread store, usage log, index or app settings. Starting another

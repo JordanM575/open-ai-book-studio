@@ -18,9 +18,12 @@ go to `.studio/trash`.
 
 ## 3. Local-first, no custody
 
-No account, no server of ours, no telemetry, no background network traffic. AI features run only
-when the author asks, through the author's own key, stored in the OS keychain. Sync happens through
-the folder the author already uses; the app never holds provider credentials.
+No account, no server of ours, no telemetry, no unsolicited background network traffic. AI requests
+occur only for an explicit author action or an active, bounded, revocable workflow or voice session
+the author started, to its named destinations and selected data scope. The app executes no work
+while quit. Host credentials stay in the selected host's protected/disclosed store, never library
+artifacts or a studio service. Sync uses the author's folder. Losing host-local execution permission
+requires reauthorization and never loses authored files. See ADRs 0019 and 0021 (November 7, 2026).
 
 ## 4. Spec before code
 

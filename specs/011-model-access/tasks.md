@@ -129,8 +129,9 @@ defaults yet.
   evaluators in `providers/usage.ts`, a `spending` block on `AgentStatus`, and a Spending section
   in the agent dialog with dollar inputs, the month-to-date line (lower-bound qualified when turns
   went unpriced) and both warnings. Informational only per 036 T004: nothing blocks, refuses or
-  retries a turn, and D-116 stays Proposed. Scope note: the monthly level is per book, like the
-  usage log it reads; a studio-wide monthly roll-up waits on the D-116 acceptance.
+  retries a turn. November 7 D-116 accepts two separate cost modes; these saved thresholds remain
+  informational until explicitly converted. Monthly values remain per book; studio-wide accounting
+  and qualified strict-money enforcement still need implementation.
 
 ## Phase 8 — Web enablement
 
@@ -159,8 +160,8 @@ tasks rather than interface-blocked. T039 remains blocked on D-101.
   connection, confirm the secret is gone and the library contains nothing.
 - [x] T042 Update `docs/DECISIONS.md` (D-104, D-105, D-116 status and evidence), `docs/FORMAT.md` for
   the new optional book fields, `AGENTS.md` for the provider boundary, `CHANGELOG.md`, and the
-  provider section of `docs/ARCHITECTURE.md`. D-105 no longer blocks T037; D-116 remains proposed and
-  the cost-ceiling task stays unstarted until it is accepted.
+  provider section of `docs/ARCHITECTURE.md`. D-105 no longer blocks T037. D-116 is now accepted as
+  a two-mode contract; enforcement/qualified adapters remain unimplemented, distinct from this row.
 - [x] T043 Add a non-secret credential-vault status probe (`connections:status`) and a **Check keychain**
   action in Settings. The desktop probe performs an in-memory `safeStorage` encrypt/decrypt round-trip so
   a locked login keychain reports “Locked or unavailable”; the web build reports browser origin storage.

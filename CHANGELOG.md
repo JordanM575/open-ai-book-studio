@@ -9,6 +9,14 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Accept individually researched full-book authoring, inline editorial-review and hands-free
+  contracts (D-194–D-200 / ADRs 0019–0021), with the bounded workflow/session authority amendment,
+  checked conversation policy, explicit cost modes and recoverable saved-review ownership.
+  Reserve formats before writers and add implementation/failure/evidence tasks; no new runtime,
+  microphone, provider-spend or full-book acceptance is claimed by these documentation changes.
+- Reconcile current candidate/merged statuses and original retained Bible/series, local reading/input,
+  illustration recovery, migration, folder export and native-target ownership. Update every current
+  development dispatch instruction to GPT-6 Astra/high, preserving historical model/audit records.
 - Record expanded hands-free, inline editorial review, brief-to-full-book and asynchronous
   multi-agent requirements; set the current development queue to five concurrent agents while
   preserving the historical six-agent dispatch and existing completion DAG.

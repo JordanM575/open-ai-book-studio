@@ -1,6 +1,6 @@
 # Manuscript review: an evidence-linked report on saved text
 
-**Status:** Draft / In progress — report entry and view, save gate, volatility, stale/cancel/insufficient states and evidence plumbing are built and fixture-tested on desktop; the phrase signal is deferred by the recorded metric decision and remaining hosts follow desktop
+**Status:** In progress — saved-count/coverage report exists; D-198 selects repetition v1 and D-199 selects explicit retention, with implementation and remaining-host evidence open
 **Number:** 034
 **Depends on:** [002](../002-studio-v1/spec.md) for the book, chapter and shared-count contracts; the existing storage boundary for confirmed saved chapter text.
 
@@ -13,17 +13,17 @@ how much text it could actually inspect.
 
 The first milestone is deliberately small: an author explicitly starts a deterministic, local,
 read-only analysis of the current book's confirmed saved chapter text. It produces a disposable,
-structured report with the existing studio word counts, a proposed repeated-phrase signal, visible
+structured report with the existing studio word counts, the accepted repeated-phrase signal, visible
 definitions and coverage, and links to the exact saved text behind each finding.
 
 ## Present public behavior and proposed behavior
 
-**Present:** The library, chapter rail and editor show word counts. Spec 002 FR-016 requires word,
+**Present:** The desktop report, library, chapter rail and editor show word counts. Spec 002 FR-016 requires word,
 character and paragraph counts to use the shared counter. The public word-count contract trims the
 text, returns zero for empty text, and otherwise counts whitespace-separated tokens; punctuation is
 not stripped (`one — two` is three words). The writing agent can answer in a conversation, while
-[025](../025-agent-capabilities/spec.md) covers operational cache and tool metrics. There is no
-author-facing structured manuscript report with coverage and evidence navigation.
+[025](../025-agent-capabilities/spec.md) covers operational cache and tool metrics. The report has
+coverage and fixture-tested evidence plumbing; the repetition scanner and actual underline journey remain.
 
 **Proposed:** A separate **Review manuscript** action runs only when the author asks. It reads the
 current book's saved chapter bodies, never an unsaved editor buffer, Story Bible text, agent thread,
@@ -77,15 +77,13 @@ it does not change the existing count contract or manuscript format.
   separated token counts once, including punctuation-only tokens. The report MUST label this as the
   studio word count, not as a linguistic or editorial judgment. The book total MUST be the sum of
   the included chapters' counts.
-- **FR-005 — Proposed repeated-phrase signal.** The initial metric proposal is a list of repeated
-  three-token phrases. For this signal, analyze each saved chapter body as text; normalize tokens to
-  Unicode NFC and locale-independent lowercase; a token is a run of Unicode letters or numbers, with
-  an internal straight or curly apostrophe retained. Other punctuation separates tokens, so
-  hyphenated and unhyphenated forms can match. A consecutive three-token sequence is a finding when
-  it occurs at least twice in the book; sequences never cross a chapter boundary. Do not apply a
-  language-specific stop-word list. Report the occurrence count and every location. Show the exact
-  source excerpt; do not label a match as an error or a quality problem. This metric is deferred by
-  the recorded metric-set decision below and is not implemented in this milestone.
+- **FR-005 — Repetition v1 (D-198).** Scan overlapping three-token windows independently within each
+  saved chapter. Tokens use Unicode letters/numbers with combining marks and internal straight/curly
+  apostrophes. Comparison keys use NFC, locale-independent lowercase and U+2019→U+0027; keep original
+  UTF-16 source spans. Punctuation separates tokens; windows may cross sentence punctuation, never
+  chapters. List sequences occurring at least twice across the selected book, counting every overlap
+  and retaining every location. No stemming, stopwords, ideal threshold or overuse verdict. Version
+  the analyzer, show exact evidence and paginated complete coverage. Implementation remains T008.
 - **FR-006 — Definitions and coverage.** The report MUST make each metric's definition available
   beside its result. It MUST show the number of chapters in scope, included, empty and skipped, and
   give a plain-language reason for every skipped chapter. It MUST distinguish a complete report
@@ -110,8 +108,9 @@ it does not change the existing count contract or manuscript format.
 - **FR-011 — Disposable report.** The first milestone MUST keep report data in volatile run-local
   state only. It MUST NOT write a report, excerpt, run history or retention metadata to the library,
   app profile, index, conversation store or usage log. A new run replaces the current report; changing
-  books, closing the window or restarting the app discards it. Persistence/export and retention are
-  not authorized by this spec and require the decision below.
+  books, closing the window or restarting the app discards unsaved state. D-199/ADR 0020 separately
+  permits explicit Save review/export with recoverable ordinary files; formats/storage tests precede
+  those writers. An ordinary run remains write-free.
 - **FR-012 — Repeatability.** Given identical saved chapter bodies and the same analyzer version,
   repeated runs MUST return the same counts, phrase set, occurrence order and source spans.
 
@@ -149,7 +148,7 @@ it does not change the existing count contract or manuscript format.
 - Grammar correction, rewrite, auto-fix, style grading, quality score, or silent text changes.
 - Comparing drafts, unsaved text, Story Bible content, non-chapter files or a second book in the
   first milestone.
-- Saving, exporting, sharing, syncing or retaining reports after the current run.
+- Automatic saving, retention or eviction. Explicit saved feedback follows D-199/039 T014–T015.
 - Agent cache/tool performance, provider/location health, or usage/cost dashboards.
 
 ## Assumptions
@@ -158,33 +157,31 @@ it does not change the existing count contract or manuscript format.
   verify. There is no chapter picker in this milestone.
 - The shared public count contract remains authoritative. Any future change to it belongs in the
   existing shared counter and its own tests, not in this feature's analyzer.
-- Report excerpts are shown only in volatile memory for the current run. The report never stores a
-  second complete copy of the manuscript.
+- Unsaved excerpts remain volatile. Explicit saved reports retain bounded quotes under D-199, never
+  a second complete source-body copy.
 - Deterministic review is available without a provider key and performs no network access.
 
-## Unresolved decisions
+## Decisions and remaining implementation
 
 Open decisions block only the tasks that depend on them; they do not block independent work on the
 read-only source contract or saved-count reuse.
 
-1. **Initial metric set and phrase normalization — decided 2026-11-03.** The first report measures
-   saved words and coverage only; the repeated three-token phrase signal is deferred, not accepted.
+1. **Initial metric set — historical November 3 outcome; expanded November 7.** The first report
+   measured saved words and coverage only; repetition was then deferred.
    The decision used synthetic examples: case/punctuation folding, hyphen matching and chapter
    boundaries behaved as proposed, while curly and straight apostrophes did not match under the
-   retain-apostrophes rule. If a future signal is specified, it unifies curly and straight
-   apostrophes. This parks the phrase scanner (T008) and its report copy, not the saved-text snapshot
-   or word-count path.
+   retain-apostrophes rule. D-198 / ADR 0020 now selects the exact FR-005 algorithm including
+   apostrophe unification; T008 and report copy can proceed. This is policy, not scanner evidence.
 2. **Initial host surfaces — decided 2026-11-03.** Desktop ships first; the browser and mobile
    targets reuse the shared app component and follow later. Each host must still prove saved chapter
    text plus version/hash revalidation before it ships the review.
-3. **Persistence and retention — D-171 Proposed, awaiting author acceptance**
-   (`research/report-retention.md`). The proposal: narrow clipboard/Markdown export with
-   500-character capped excerpts plus captured-at and may-have-changed markings, JSON save under
-   `books/<bookId>/reviews/` with a 20-per-book cap, explicit delete, book-fate deletion and
-   archive/sync exclusion. No persistence task may begin before the decision is accepted and any
-   required format/ADR updates land.
+3. **Persistence and retention — accepted D-199/D-171, November 7.** ADR 0020 selects volatile
+   default, explicit immutable save, checked dispositions/profiles, recoverable trash, no pruning
+   and ordinary archive/sync inclusion. Field-level/continuation formats precede writers. The old
+   20-report eviction/sync-exclusion proposal in `research/report-retention.md` is historical only.
 4. **AI-assisted phases.** Decide the scope and disclosure flow in a separate follow-on spec before
    adding model critique, personas, rereads or series analysis. That spec must resolve provider/model
    display, exactly what text is sent, cost/unknown-price presentation, applicable data-use and
    training consent, refusal/no-fallback behavior, and the no-write boundary. These questions block
-   only future provider-backed tasks; they do not block this deterministic milestone.
+   only future provider-backed tasks; they do not block this deterministic milestone. D-193 and
+   D-197–D-199 now define those follow-ons in 037/039; model generation remains read-only.

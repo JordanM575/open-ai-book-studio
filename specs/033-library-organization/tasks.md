@@ -31,8 +31,9 @@ bytes and false port hashes cannot produce a confirmed total; valid replacement 
 headerless text remain countable. Two detached reads retain enumeration/change detection. Goal
 and planning sidecars share lossless numeric admission, including recovery baselines. **166 focused
 core/component tests** pass; workspace and strict new-core-test typechecks pass; focused lint is
-clean. The shared editor correction passes **14/14 native Chromium assertions**. Fresh independent
-review, real Library composition, API/IPC and workspace exposure still remain.
+clean. The shared editor correction passes **14/14 native Chromium assertions**. Independent review
+ACCEPTED exact `320defb`, adding 16 core probes and seven adjacent native scenarios. Real Library
+composition, complete enumeration, API/IPC and workspace exposure still remain.
 
 - [x] T001 Resolve OD-033-01 with a per-data-type storage/versioning matrix for collections, recent
   entries, goals and annotations. Keep collections, goals and annotations in ordinary library

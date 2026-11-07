@@ -62,19 +62,26 @@ or prompt-equality reuse may change the recorded source/consent identity.
 - Spec 034's deterministic structured report remains separate. No score, report schema or export is
   added here.
 
-## Gated future work
+## Accepted full-book implementation
 
-Autonomy is not a later phase that can start merely because Phase 1 ships. Before any autonomous
-implementation, resolve the dependent U-037 decisions, record accepted public decisions, agree the
-verification evidence, and approve ownership/recovery contracts. Review the constitution and AGENTS.md;
-where a principle changes, land the required ADR and amendment before implementation. Decide scope,
-tool authority, candidate ownership/publication, lifecycle, recovery, budgets and remote delivery
-separately. The D-126 boundary does not answer those questions.
+D-194–D-196 / ADR 0019 and the constitution/AGENTS amendment select the distinct workflow contract.
+`packages/core/src/authoring/` owns pure graph/state/permission-descriptor/admission/context contracts;
+it has no SDK/filesystem imports or ambient credentials. The desktop coordinator pins the current
+Library and consumes IDs/events. The existing runtime remains the SDK boundary. Workflow storage
+and publication compose into the existing book queue and checked writer. New field-level schemas
+must precede their writers. Host-local permission is outside portable book files.
 
-Once those gates are resolved, write or amend a public implementation spec with the accepted behavior
-and tasks. Until then, autonomy tasks in `tasks.md` are decision work only; they do not authorize
-workers, candidates, schedules, notifications, automatic publication, restart behavior, budgets or
-remote delivery.
+Order: checked threads/settlement → pure graph/admission/artifacts → scoped attempt driver and real
+async scheduler → small onboarding/goal/outline/cast → incremental scene pipeline/checked adoption →
+independent reviews/revisions → versioned character questions/branch steering → lifecycle/restart →
+whole-book coverage/final handoff → separately named synthetic/quality/usability/platform gates.
+T017–T042 make each step explicit. Manual 030/033, standalone 034/039 and ordinary 031 continue to
+use their own contracts. Shared Library/API/preload/Workspace/runtime files each have one owner.
+
+Pure reducers and injected editor/voice interfaces can run concurrently with storage integration.
+Only actual host integration and exact-candidate tests qualify execution; unmounted leaves remain
+partial evidence. The complete synthetic journey must generate through the real pipeline into
+verified saved text, including independent overlapping transports, revisions, questions and restart.
 
 ## Verification approach
 

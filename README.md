@@ -77,10 +77,10 @@ there is a working slice with remaining work; **planned** means it is not availa
 | External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
 | CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
 | Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
-| Inline editorial critique | Planned | AutoCrit-style review with underlined source passages and linked explanations; exact-span/stale-source handling is part of the retained scope |
-| Hands-free authoring | Planned beyond current voice controls | Continuous conversational control, interruption and spoken check-ins need their own integrated workflow |
-| Guided/autonomous authoring and task-aware routing | Planned beyond current slices | Short-brief onboarding, asynchronous multi-agent drafting toward a full ~70,000-word book, revision cycles and human direction; see specs 036–037 |
-| Named chapter history and library organization | In progress | Verified saved-history core merged in PR #33; history UI/restore and planning/goals are follow-up candidates; collections and source-linked notes remain |
+| Inline editorial critique | Contracts accepted; implementation pending | Exact-current underlines, accessible feedback, explicit suggestion application and saved reviews selected in ADR 0020 |
+| Hands-free authoring | Contracts accepted beyond current voice controls | Bound sessions, interruption, confirmation and spoken check-ins selected in ADR 0021; integrated and acoustic acceptance remain |
+| Guided/autonomous authoring and task-aware routing | Contracts accepted; runtime pending | ADR 0019 selects short-brief onboarding, bounded asynchronous drafting toward ~70,000 saved words, revision and character check-ins; no full-book delivery claimed |
+| Named chapter history and library organization | In progress | Core merged in PR #33; restore/UI correction passed full gates pending fresh review; planning/goal leaves accepted, host integration and remaining organization open |
 | Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
 
 ### Delivery mechanisms
@@ -288,7 +288,7 @@ keeps its screenshot and console log for seven days.
 | `bun run coverage` | Function and line coverage stay at or above a floor that only moves up |
 
 The current recorded results and their limits are in [docs/TESTING.md](docs/TESTING.md#recorded-baseline).
-The [submission packet](hackathon/SUBMISSION.md#verification-evidence) retains the historical event evidence.
+The [submission packet](hackathon/SUBMISSION.md#verification-and-limits) retains the historical event evidence.
 
 ## Documentation
 

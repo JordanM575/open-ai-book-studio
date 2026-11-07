@@ -12,14 +12,17 @@ data-protection, spending, credential or release-access restrictions.
 
 **Decision progress:** D-163–D-168 / ADR 0017 now select the planning/organization contracts.
 D-193 / ADR 0018 selects the initial scoped-review, exact-citation, reader-profile and overflow
-contracts. The first-wave table records the original dispatch; those completed research packets
-now feed implementation. Broader media, routing, persistence and autonomy scope remains on the
-retained roadmap, not implicitly deferred by choosing small initial slices.
+contracts. D-194–D-200 / ADRs 0019–0021 now select bounded full-book workflows, checked conversations,
+two explicit cost modes, inline editorial review, recoverable saved reviews and hands-free sessions.
+Detailed workflow/review wire schemas precede writers. Broader media/platform decisions remain
+individual work; the completed research packets are reused rather than commissioned again.
 
 **Latest delivered foundation:** PR #32 merged the reviewed agent/export corrections; PR #33 merged
 the verified saved-history core as `a9997624ac28b970c0a656c50233753ad375982f`. Its exact candidate
-passed 2,500 tests and all 12 e2e suites. History restore/UI and corrected planning/goal candidates
-remain under separate review. The expanded authoring journeys remain required future delivery.
+passed 2,500 tests and all 12 e2e suites. W02 restore/UI correction `56c7b7d` passed 2,580 tests,
+93.12% function / 94.88% line coverage, toolkit build and all 12 e2e suites; its interrupted recheck
+gave no verdict, so fresh independent review precedes publication. W08 core/UI at `320defb` is
+independently accepted, with Library/API/Workspace integration next. Expanded journeys remain open.
 
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
 [spec ownership map](SPEC-DAG.md). Its machine-readable work packages are in
@@ -30,14 +33,15 @@ finish. Research can proceed while those decisions are open.
 ## Capacity and ownership
 
 - **Five concurrent agents**, per the author's latest November 7 direction. The original six-agent
-  dispatch below is historical. The current wave is the requirements audit, autonomy design,
-  inline-critique design, history review and corrected planning review described in
+  dispatch below is historical. The current queue is history review, planning integration, pure
+  authoring graph/admission, inline editor adapter and pure hands-free contracts, described in
   [Expanded authoring requirements](EXPANDED-AUTHORING-REQUIREMENTS.md). The JSON `currentWave`
   owns the current queue; `firstWave` preserves the initial dispatch.
   The coordinator owns the queue, integration and public completion records. Freed slots take the
   next ready package; five is a concurrency limit, not five permanent assignments.
-- **Every child uses `openai/gpt-6-astra-ultrafast`, `variant: high`.** This includes research and
-  re-review. No silent model/effort substitution. The author's remaining monthly allowance is a
+- **Every new child uses `openai/gpt-6-astra`, `variant: high`.** The author's latest correction,
+  “no more ultra fast just the same model as yourself”, supersedes the historical model choice.
+  This includes fresh review. No silent model/effort substitution. The remaining monthly allowance is a
   capacity note, not a measured token balance or permission for paid application-provider calls.
 - **Isolated worktrees for builders.** Each starts from an identified public commit. A branch from
   the older private checkout fails preflight. Research/review agents have read-only source ownership
@@ -98,7 +102,7 @@ one-time waiver for later commits. W18 covers the supported desktop matrix. New 
 receive candidate-specific acceptance when delivered; Android, glasses and audiobook completion
 belong to W99 rather than blocking the earlier desktop milestone.
 
-## First wave — ready now
+## First wave — historical dispatch
 
 | Slot / package | Bounded output | Owned surfaces and handoff |
 | --- | --- | --- |
@@ -109,9 +113,25 @@ belong to W99 rather than blocking the earlier desktop milestone.
 | Research 2 · W09 | Ordered 034/036/037/039/041/042 decision packet, beginning with foreground review scope/citations and media storage/authorization | Read-only source; report only. Identify minimum independent deliverables and precise blocking decisions; preserve U-039-04, unknown-cost semantics and no silent consent. |
 | Auditor · W15 | Independently review the DAG/ownership and current file/agent/export contracts; report actionable gaps and candidate test requirements | Read-only source and isolated synthetic verification. Separate known historical findings from reproduced current ones; never claim a clean candidate not actually inspected. |
 
-The next free research slot takes **W12**, covering model/browser access, sync trust and placeholders,
-Android storage/credentials, iOS/companion capability and the D-115/D-172–D-174 lifecycle decisions.
-This prevents later platform work from remaining unplanned while the first builders run.
+**W12 is delivered and read**, covering model/browser access, sync trust and placeholders,
+Android storage/credentials, iOS/companion capability and D-115/D-172–D-174. Its remaining individual
+decisions are coordinator work; no duplicate research assignment is needed.
+
+## Current bounded implementation queue
+
+| Package | Next acceptance slice | Exclusive ownership |
+| --- | --- | --- |
+| W02 | Fresh independent review of immutable `56c7b7d`; prior exact-head broad gates already pass | Read-only candidate and unique report |
+| W08 | Real worldbuilding/goal save/reopen and complete saved-word progress | Planning Library/API/IPC/preload/browser/Workspace seams, dedicated tests |
+| W04 | Pure task graph, direction invalidation and finite admission | New `core/authoring` leaves; no storage/runtime/host writer |
+| W10 | Minimal plain-text editor adapter and exact-current overlap underlines | New inline editor leaves and dependency manifest/lock only; no mounted editor replacement yet |
+| W14 | Pure bound voice session, confirmation/interruption, permission and PCM segmentation | New voice-session leaves; no microphone or host/ambient integration yet |
+
+The coordinator retains W04 stop-consumer/accounting and W10 scoped-core/UI corrections, policy/docs,
+integration and broad gates. W08 is the sole shared Library/API/Workspace writer until its handoff.
+Candidates receive fresh independent reviews before composition/exposure; leaf acceptance alone is
+not a connected author journey. [Retained follow-through](RETAINED-DELIVERY.md) preserves the original
+scope that smaller first slices leave open.
 
 ## Whole-roadmap coverage and next slices
 
@@ -163,9 +183,9 @@ stay disabled; their obsolete instructions and model choices do not govern this 
 At each execution, read the latest private queue/state and current public branch, consume delivered
 results once, preserve partial work, and advance or dispatch only unowned ready packages. Prioritize
 reproduced data-loss bugs, completing in-flight slices, accepted-decision work, then new packets.
-Maintain at most five active children and one integrated full-suite owner. A task awaiting an author
-   external access, provider quota or hardware availability parks only its dependent work. Routine
-   design decisions are researched and resolved under delegated authority rather than parked for questions.
+Maintain at most five active children and one integrated full-suite owner. A task awaiting external
+access, provider quota or hardware availability parks only its dependent work. Routine design
+decisions are researched and resolved under delegated authority rather than parked for questions.
 
 Do not poll running children or use the schedule to poll PR checks. If waiting for a PR's checks or
 reviews is the only work, hand off to the PR watch mechanism and pause the fallback. After two

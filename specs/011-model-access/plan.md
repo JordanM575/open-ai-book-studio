@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md) · **Status**: In progress (plan and tasks written, no code yet)
 **Decisions**: D-104 (OpenRouter redirect, proposed), D-105 (browser key storage, open), D-106 (Bun +
-Electron, accepted), D-114 (test boundaries, proposed), D-116 (cost ceilings, proposed)
+Electron, accepted), D-114 (test boundaries, proposed), D-116 (two-mode cost contract accepted under ADR 0019; enforcement pending)
 
 ## Context
 

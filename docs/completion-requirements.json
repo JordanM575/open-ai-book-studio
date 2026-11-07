@@ -2,13 +2,14 @@
   "schemaVersion": 1,
   "reviewedBaseline": "f3541f6750e60226ce8490e5ac192f10a1856dab",
   "date": "2026-11-04",
-  "statusBaseline": "55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34",
+  "statusBaseline": "a9997624ac28b970c0a656c50233753ad375982f",
   "statusDate": "2026-11-07",
-  "scope": "Product requirements distilled from research; classification is evidence-scoped, not release approval.",
+  "scope": "Product requirements distilled from research; classification is evidence-scoped, not release approval. Candidate notes explicitly distinguish unmerged work; retained follow-ons are in RETAINED-DELIVERY.md.",
   "requirements": [
     {
       "id": "REQ-AUTO-001",
       "classification": "missing",
+      "statusNote": "D-194–D-196 / ADR 0019 accepted; 037 T018–T042 track implementation and actual brief-to-book acceptance.",
       "public_anchors": ["037", "030", "031", "033"],
       "statement": "Support brief-to-full-book authoring: roughly 100 words of direction and small onboarding lead to autonomous background drafting and revisions toward an author-visible target such as 70,000 saved words.",
       "acceptance": [
@@ -20,6 +21,7 @@
     {
       "id": "REQ-AUTO-002",
       "classification": "missing",
+      "statusNote": "Book-owned graph, separate host permission, candidate-only specialists and versioned direction selected; async runtime is not yet implemented.",
       "public_anchors": ["037", "031", "032", "036"],
       "statement": "Coordinate asynchronous specialist agents in a continuous background authoring workflow with revision cycles, attributable progress and human check-ins for character development and other direction.",
       "acceptance": [
@@ -31,6 +33,7 @@
     {
       "id": "REQ-REVIEW-004",
       "classification": "missing",
+      "statusNote": "D-197–D-199 / ADR 0020 accepted; exact-current CodeMirror adapter, explicit saved feedback and campaign implementation remain.",
       "public_anchors": ["039", "034", "033", "037"],
       "statement": "Provide AutoCrit-style editorial critique with underlined source passages, linked explanations and navigable/filterable feedback, while distinguishing deterministic metrics from subjective interpretation.",
       "acceptance": [
@@ -42,6 +45,7 @@
     {
       "id": "REQ-VOICE-002",
       "classification": "missing",
+      "statusNote": "D-200 / ADR 0021 accepted; pure sessions precede host and acoustic qualification. 038 T022 remains unchecked.",
       "public_anchors": ["017", "038", "031", "037"],
       "statement": "Support a hands-free authoring journey with spoken direction, replies and check-ins, interruption/stop and correction, beyond existing push-to-talk transcription.",
       "acceptance": [
@@ -75,7 +79,7 @@
       "acceptance": [
         "Synthetic fixtures prove saved-only input, shared word-count semantics, cancellation, stale detection, and byte-identical library files.",
         "The report distinguishes complete, partial, stopped, stale, and insufficient-evidence outcomes.",
-        "The deferred phrase signal and persistence remain absent unless their decisions change."
+        "D-198 repetition v1 preserves every exact occurrence; D-199 explicit retention requires detailed formats and recoverable writes. Neither decision alone establishes implementation."
       ]
     },
     {
@@ -220,8 +224,8 @@
     },
     {
       "id": "REQ-HISTORY-001",
-      "classification": "missing",
-      "statusNote": "D-175/D-176 accepted on 2026-11-03; history implementation remains planned. Finish T001's format/ADR follow-through and T003's detailed schema before persistence.",
+      "classification": "partial",
+      "statusNote": "Verified saved-only core merged in PR33. Restore/UI correction56c7b7d passed exact-head broad gates; fresh independent review and host mounting remain. Original candidates are preserved.",
       "public_anchors": [
         "002",
         "032"
@@ -235,7 +239,8 @@
     },
     {
       "id": "REQ-ROUTING-001",
-      "classification": "decision-blocked",
+      "classification": "partial",
+      "statusNote": "Offline preview leaf exists but is unmounted. D-196 selects explicit pinned workflow routes; D-116 selects bounded-operation versus qualified strict-money mode. Enforcement/adapter qualification remain.",
       "public_anchors": [
         "011",
         "022",
