@@ -8,6 +8,12 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 ### Changed
+- The hidden smoke run no longer asks the operating system for protected storage. An unpackaged run started with both
+  `STUDIO_TEST=1` and `STUDIO_NO_KEYCHAIN=1` uses a cipher that reports storage as unavailable and refuses to encrypt or
+  decrypt before the system is asked, including the status read Settings makes on open (D-191). It is a refusal and
+  not a fallback: nothing is written, either flag alone changes nothing, and a packaged build ignores it. The smoke run
+  also starts the app with an allowlisted environment, so a provider key or a STUDIO_ flag in the caller's shell never
+  reaches it.
 - The browser smoke check waits for the page the way an author would: it polls for the screen it expects, up to ten
   seconds, instead of sleeping 1.2 seconds after each load and looking once. After a reload it waits for whichever
   first screen the page draws, the welcome or the library, chooses browser storage only if it is the welcome, and
