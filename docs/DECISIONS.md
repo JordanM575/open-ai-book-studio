@@ -292,68 +292,76 @@ enforcement, and the D-124 device-identity question stands.
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | Optional, independently versioned `books/<bookId>/planning.json`, schemaVersion 1 with explicit owning book ID, file revision and typed records; lazy creation, no rewrite-on-open, nested unknown-field preservation and refusal of corrupt/foreign/future/over-budget files. Existing Story Bible fields remain separate. [ADR 0017](adr/0017-planning-and-organization.md) is the accepted contract. D-190 makes a tolerant book extension viable; independent validation and the no-merge planning policy are the reasons for the sidecar. |
 | **Question** | Do optional planning records live in an extension of `book.json` or in a separate versioned book-level file, and with what versioning, compatibility, unknown-field and archive behavior? |
 | **Recommendation** | A separate versioned `planning.json` beside `book.json`: `looseObject` schema with spread-on-write (like `book.json`, explicitly unlike `images.json`, which strips unknown keys), newer-schema refusal, write refusal while the on-disk shape is unsupported (never reset to empty), lazy creation on the first record, and `bookId` ownership validation. Rationale: failure isolation (a corrupt planning file never bricks the book — verified with the repo's zod that a nested strict section would fail the whole `book.json` parse) and conflict granularity (planning saves commit one file, disjoint from book edits). |
 | **Evidence** | `specs/030-story-bible-extensions/research/storage-alternatives.md`; `packages/core/tests/story-bible-storage-premises.test.ts` (unknown-field survival, no-rewrite opens). |
-| **Needed** | Author acceptance of the recommendation or the one-file alternative with section-tolerant book parsing. |
-| **Blocks** | spec 030 T002–T008 (format, schema, storage, IPC, UI) |
+| **Remaining** | Implement and verify 030 schemas/storage/UI under D-164/D-165 and ADR 0017. The older recommendation's strict-section failure premise is historical, not a claim that all tolerant book extensions fail. |
+| **Unblocks** | spec 030 T002–T008 design and implementation; format documentation precedes first persistence. |
 | **Owner** | spec 030 |
 
 ### D-164 · Planning revision and conflict representation
 
 | | |
 | --- | --- |
-| **Status** | Open |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | Exact absent-or-raw-SHA baseline plus file revision, one checked commit, no silent merge/rebase/retry, verified semantic no-op with zero writes. Service assigns safe-integer file/record revisions; order lives in separate ID lists. Stale drafts become complete, uniquely named, absent-created and byte-verified JSON conflict copies; failed preservation retains the dirty editor and never claims a durable save. Validate actual book identity and schema, bind late responses to their initiating view, and re-read after uncertain outcomes. See [ADR 0017](adr/0017-planning-and-organization.md); this is not cross-process CAS. |
 | **Question** | Which file/snapshot is the baseline for a planning save, how do entity revisions relate to that source, and where is a stale draft retained for review — within the existing expected-hash commit and common adapter contract? |
-| **Needed** | D-163 acceptance first (the baseline depends on the file decision), then a two-writer synthetic plus injected-failure suite against the chosen file, reusing the chapter-conflict copy conventions. |
-| **Blocks** | spec 030 storage, IPC and UI tasks |
+| **Remaining** | Two-reader, stale no-op, collision, failed-copy and uncertain-publication tests against the actual new service; preserve current chapter/book writer semantics. |
+| **Unblocks** | spec 030 storage, IPC and UI tasks under the recorded contract. |
 | **Owner** | spec 030 |
 
 ### D-165 · Planning bounds and identity rules
 
 | | |
 | --- | --- |
-| **Status** | Open |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | Retain 200 active-plus-archived records per planning list kind and one optional notes record; short fields 200 UTF-16 units, prose 20,000. Add a 2,500,000 UTF-8-byte exact serialized-file budget including unknown data. Organization files share that byte budget without arbitrary extra count quotas. New IDs are host-generated, immutable, kind-specific, with 6–40 ASCII letter/digit/hyphen suffixes; validate owner and retained-ID uniqueness. Revisions are positive safe integers, absence 0; refuse overflow. No trimming/truncation/pruning makes a write fit. [ADR 0017](adr/0017-planning-and-organization.md) defines request/recovery bounds and measured rationale. |
 | **Question** | Are the proposed bounds (200 records per kind, 200-unit names/labels, 20,000-unit bodies), identity grammar/uniqueness and revision representation confirmed against validation, archive and user-visible error needs? |
-| **Needed** | D-163 acceptance (schema shape follows the file decision), then boundary fixtures proving over-limit rejection without partial writes and duplicate/foreign-identity refusal. |
-| **Blocks** | spec 030 schema and UI tasks |
+| **Evidence** | Current authored-metadata scale and synthetic exact serialization: a substantial 600-record fixture is 729,613 bytes; maximum ASCII fields are 24,397,173 bytes, proving field/count limits alone do not bound file size. These are payload measurements, not UI performance certification. |
+| **Remaining** | Boundary fixtures for bytes/UTF-16 counts, unknown fields, owner/ID errors and revision overflow, with unchanged old files and exact retained drafts. |
+| **Unblocks** | spec 030 schema/UI and shared 033 bounds. |
 | **Owner** | spec 030 |
 
 ### D-166 · Organization data storage matrix
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | Root `collections.json`; per-book `goals.json` and `annotations.json`; schemaVersion 1 and D-164-style single-attempt checked writes with D-165 bounds and unknown-field preservation. Root conflicts live in root `conflicts/`, book conflicts in that book; authored data travels in archives/folder copies. Recents are disposable pointers scoped to the host's current selected library, updated from successful explicit navigation intents only. Goals use complete verified saved chapter counts and explicit incomplete/unavailable states. [ADR 0017](adr/0017-planning-and-organization.md) supersedes conflicting earlier premises below. |
 | **Question** | For collections, recent entries, goals and annotations, which records are ordinary library files and which are disposable preferences — with scope, schema/version, limits, checked writes, conflict behavior, archive and sync treatment? |
 | **Recommendation** | Collections in library-root `collections.json`; recent entries as disposable host-profile preferences (desktop `studio.json`, web origin storage); per-book `goals.json` and `annotations.json` sidecars. All files validated, versioned, loose schemas with spread round-trip; corrupt/unsupported-future refused, never reset; lazy creation; every write through the expected-hash commit (never `updateBook`'s `kind: "any"` path). Rationale: failure isolation per book, no false conflicts between goal/book edits, machine-local resume state, archive travel by construction. |
 | **Evidence** | `specs/033-library-organization/research/storage-matrix.md`; `packages/core/tests/organization-storage-premises.test.ts` (sidecar trash/restore travel, root-file archive ride + trash independence); existing pins for expected-hash refusal, unknown-file archive round-trip and whole-book trash moves. |
-| **Needed** | Author acceptance of the matrix or a named alternative, plus numeric caps for record counts, field sizes and file bytes. |
-| **Blocks** | spec 033 T004–T008 (services, surfaces, integration) |
+| **Current-premise correction** | D-190 now checks both `editBook` and `updateBook`; the earlier reference to an unchecked `updateBook` is obsolete. Sidecars are chosen for failure isolation and consistent no-merge semantics, not because existing book writes are unguarded. |
+| **Remaining** | Implement 033 services/surfaces and literal current-library recency, complete-source goal and archive/conflict acceptance tests. |
+| **Unblocks** | spec 033 T004–T008 (services, surfaces, integration). |
 | **Owner** | spec 033 |
 
 ### D-167 · Collection identity and membership
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | Many-to-many stable book-ID membership; immutable host-generated `col_` IDs using the narrow new grammar, without globally widening legacy ID endpoints. Unique active names use trimmed display spelling with NFC-plus-locale-independent-lowercase keys. Archived-name collisions require explicit rename-and-restore. Idempotent changes write nothing only on a current baseline. Retain unavailable/trashed/ambiguous references; exact same-ID restore may revalidate, titles never substitute. Archive a collection without moving any book. See [ADR 0017](adr/0017-planning-and-organization.md). |
 | **Question** | Can a book belong to one or multiple collections? Are collection names unique? Which stable collection identity survives rename, and how are references handled on trash/restore of the same versus a different book identity? |
 | **Recommendation** | Many-to-many membership by stable book id; case-insensitive unique collection names; stable `col_` identity surviving renames (needs an `idSchema` prefix extension at implementation); idempotent add/remove that rewrite nothing on no-ops; trash/restore handled by id lookup (dangling = unavailable, never substituted, same-id restore revalidates). |
 | **Evidence** | `specs/033-library-organization/research/collection-identity.md`; `packages/core/tests/collection-identity-premises.test.ts` (rename preserves id/paths, trashed ids unresolvable and never substituted, restore keeps identity). |
-| **Needed** | Author acceptance of the membership/name/identity rules (or the exclusive-shelf alternative) plus numeric caps. |
-| **Blocks** | spec 033 T005 (collection persistence and CRUD) |
+| **Remaining** | Synthetic name/Unicode, two-same-title-book, stale no-op, owner mismatch, reversible archive and occupied-name restore tests. |
+| **Unblocks** | spec 033 T005 collection persistence and CRUD after the shared storage slice. |
 | **Owner** | spec 033 |
 
 ### D-168 · Source-anchor representation and verification
 
 | | |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | Exact book/chapter identity, saved version and raw-file SHA-256 plus a nonempty half-open UTF-16 span in the canonical saved body and verbatim excerpt. Reuse current review/editor coordinates; this replaces the older full-line-only proposal, which widens partial-line selections. Validate bounds, surrogate boundaries, excerpt equality and destination editor's same clean source before selection. Any mismatch keeps note/excerpt visibly stale and selects nothing; no fuzzy fallback or silent re-anchor. Note-only edits preserve stale anchors; explicit re-anchor preserves annotation identity. A source changing after committed note save yields saved-but-stale, not false unsaved. See [ADR 0017](adr/0017-planning-and-organization.md). |
 | **Question** | How is a passage encoded against saved chapter text, and what exact evidence suffices to open it or mark it stale after edits, moves, duplicate text, line-ending changes, Unicode, reorder, rename or restore — never retargeting by guess? |
 | **Recommendation** | Anchor = `bookId`, `chapterId`, `chapterVersion`, whole-file `chapterHash`, 1-based inclusive body line range plus verbatim excerpt, taken only from a confirmed saved source. Verification is exact and ordered: resolvable chapter, version+hash equality, excerpt-at-range equality — any failure is visibly stale with excerpt retained and nothing selected. No fuzzy fallback, no passage-hash-only or file-offset variants (documented rejections). |
 | **Evidence** | `specs/033-library-organization/research/source-anchors.md`; `packages/core/tests/annotation-anchor-premises.test.ts` (version/hash advance on any edit, stable on no-op re-save, deterministic body lines, trashed chapters unresolvable). |
-| **Needed** | Author acceptance of the serialization and rule (point-anchor and wording details stay with T008 implementation). |
-| **Blocks** | spec 033 annotation persistence, navigation and re-anchoring (T008) |
+| **Remaining** | No point anchors in this slice. Test literal Unicode/repeated passages, changed version/hash, line endings, dirty editor, wrong identity and post-commit source changes; never infer freshness from unchanged-looking prose. |
+| **Unblocks** | spec 033 annotation persistence/navigation/re-anchor after shared storage; existing chapter/agent line tools retain their own coordinates. |
 | **Owner** | spec 033 |
 
 ### D-169 · Ordered matter schema and legacy conversion
@@ -638,6 +646,17 @@ enforcement, and the D-124 device-identity question stands.
 | **Evidence** | [Spec 038 research](../specs/038-voice-options/research.md), the local catalog and provider-contract tests, `apps/desktop/tests/settings-store.test.ts`, `voice-service.test.ts`, `speech.test.ts` and `ipc-handlers.test.ts`. |
 | **Unblocks** | Spec 038 profile persistence, provider routes and Settings controls. |
 | **Owner** | spec 038 |
+
+### D-193 · Scoped review envelopes, exact citations and reader attribution
+
+| | |
+| --- | --- |
+| **Status** | Accepted (2026-11-07, delegated feature-delivery authority) |
+| **Decision** | [ADR 0018](adr/0018-scoped-review-contracts.md) defines immutable disclosed source envelopes, snapshot-only read tools, exact UTF-16 span/quote verification, immutable reader/profile attribution and explicit byte/count overflow bounds. It resolves U-037-01/02 and U-039-01/02/04. U-039-04 stays a dependency of both T003 and T006; no single-book exemption. Local ID lookup may inspect candidates but no unselected content enters the review executor/provider. Ordinary Discuss alone does not meet this contract. |
+| **Evidence** | Current `agent/runtime.ts` ordinary full-book prompt/history assembly, core `review/index.ts` and editor body-span convention, and scoped-envelope/citation analysis. Design limits are explicit policy, not measured model quality, provider fit or a completed user study. |
+| **Remaining** | Pure envelope/verifier/profile modules and synthetic boundary tests first. Shared thread checked-write/recoverable-delete/versioning work precedes durable review integration. D-171/U-039-03 and later autonomy/media policies remain separate work. |
+| **Unblocks** | 037/039 pure source/citation and volatile reader contracts; it does not claim their UI/runtime is implemented. |
+| **Owner** | specs 037/039 |
 
 ## Resolved browser decisions
 

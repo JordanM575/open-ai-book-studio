@@ -1,6 +1,6 @@
 # Structured reader and continuity review
 
-**Status:** Draft / Planned — not implemented or accepted
+**Status:** Draft / Planned — initial contracts accepted under D-193; implementation and full acceptance pending
 **Number:** 039
 **Requirement:** REQ-REVIEW-003
 **Depends on:** 034 saved-source evidence contracts; 037 scoped read-only provider review;
@@ -81,12 +81,13 @@ provider runtime; automatic routing; real-reader impersonation; settling 030's s
 
 ## Open decisions
 
-These questions are proposals, not accepted architecture. Record outcomes in docs/DECISIONS.md and
-an ADR before dependent implementation; amendments are required if constitutional boundaries change.
+D-193 / [ADR 0018](../../docs/adr/0018-scoped-review-contracts.md) resolves the initial source, quote,
+profile and overflow contracts. Persistence remains a separate decision. Accepted policy is not
+implemented behavior; amendments are required if constitutional boundaries change.
 
 | ID | Question / required evidence | Blocks |
 | --- | --- | --- |
-| U-039-01 | Finding schema, source location and quote-normalization rules; test against synthetic revisions and U-037-02. | T002, T004 |
-| U-039-02 | Reader identity/version model, profile editing and rerun comparison semantics; test attribution with authors. | T002, T005 |
+| U-039-01 | Accepted D-193: exact selected-source UTF-16 spans/quotes, no normalization/fuzzy matching, derived verification and bounded subjective findings. | T002/T004 implementation remains |
+| U-039-02 | Accepted D-193: fictional Alpha/Beta lenses, immutable IDs/versioned edits, full per-run snapshots and separate source/profile/provider change attribution. No completed user study is claimed. | T002/T005 implementation remains |
 | U-039-03 | Volatile versus saved report/profile history, retention, export and deletion; reconcile D-171 before defining any layout. | Persistence only; T007 decision work |
-| U-039-04 | Maximum explicit multi-book scope, context-overflow behavior and planning-record inclusion; validate disclosure and capability limits. | T003, T006 |
+| U-039-04 | Accepted D-193: four books/64 items, 65,536 source-text bytes, 131,072 combined content bytes, 262,144 complete request/output bytes. Bounds are not token-fit claims; overflow refuses without clipping/splitting/fallback. Single-book work uses the same policy. | Remains prerequisite for T003/T006 implementation; no single-book exemption |

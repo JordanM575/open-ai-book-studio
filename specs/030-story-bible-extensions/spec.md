@@ -13,8 +13,9 @@ worldbuilding or timeline entries, nor optional story notes and outline beats.
 
 This extension adds those manual planning materials without replacing the existing fields, changing
 chapter order, or creating a series-wide planning surface. Every new record belongs to the book the
-author has open and is saved through a checked write. Its exact on-disk representation and revision
-contract remain undecided; implementation must wait for the decisions listed below.
+author has open and is saved through a checked write. D-163–D-165 and
+[ADR 0017](../../docs/adr/0017-planning-and-organization.md) accepted its storage, revision and bounds
+contracts on November 7. Implementation and acceptance remain outstanding.
 
 ## Current public behavior and proposed behavior
 
@@ -24,8 +25,8 @@ contract remain undecided; implementation must wait for the decisions listed bel
   cast and memories in the book's `book.json`.
 - The public Story Bible editor can change those fields. The existing agent's `read_story_bible`
   tool reads the fields it currently supports.
-- Chapter saves carry a base version and hash. The current book-level update path does not expose an
-  equivalent checked revision to the Story Bible editor.
+- Chapter saves carry a base version and hash. D-190 now gives the Story Bible field-level checked
+  merges; planning deliberately uses the separate all-or-stale policy below rather than that merge policy.
 - No typed worldbuilding list, timeline list, story-notes group or outline-beat list is part of the
   public format today.
 
@@ -150,14 +151,16 @@ These requirements add to, and do not repeat, spec 002's existing Story Bible re
   MUST NOT write files directly. An adapter that cannot honor the accepted checked-save contract
   MUST report that the operation is unavailable; it MUST NOT fall back to an unchecked write.
 
-### Bounds proposed for the public contract
+### Accepted bounds
 
-These limits are part of the proposal and must be confirmed with the format decision before
-implementation:
+These limits were accepted in D-165; field/count/aggregate limits apply together:
 
 - Up to 200 retained records per kind, including archived records.
 - Titles, names, categories and `when` labels: at most 200 UTF-16 code units each.
 - Descriptions, notes, story-notes fields, beat summaries: at most 20,000 UTF-16 code units each.
+- One optional story-notes singleton; the 200-record limit applies to each list kind.
+- Exact serialized sidecar: at most 2,500,000 UTF-8 bytes including unknown fields and formatting.
+- Immutable host-generated kind-specific IDs and safe-integer revisions follow ADR 0017.
 
 An over-limit value is rejected before writing. The field remains editable, its limit is identified,
 and no partial record is saved.
@@ -171,26 +174,19 @@ and no partial record is saved.
 - New search, export, import, review, sync or collaboration journeys.
 - Changing the checked-save behavior of existing book-level Story Bible fields in this extension.
 
-## Open decisions
+## Accepted decisions and remaining implementation
 
-No storage or typed-planning design below is accepted yet. Record and resolve these in the public
-decision process before dependent implementation begins:
+The former questions are resolved by D-163–D-165 under delegated authority on November 7:
 
-1. **Storage and compatibility**: Should the optional records live in an extension of `book.json`,
-   in a separately versioned book-level file, or another ordinary-file representation? Decide schema
-   versioning, archive/restore representation, compatibility with old books, and how unsupported
-   future data is protected. This blocks the format and schema tasks.
-2. **Planning revision and conflict representation**: Which source file/snapshot is the baseline for
-   a planning save, how do entity revisions relate to that source, and where/how is a stale draft
-   retained as a reviewable conflict? The existing shared library port's expected-hash commit and
-   the same-format/same-conflict-rule requirement remain constraints; this decision does not reopen
-   or weaken them. This blocks storage, IPC and UI implementation.
-3. **Field limits and identity rules**: Confirm the proposed bounds, identity grammar/uniqueness and
-   revision representation as part of the format decision. This blocks schema validation and UI
-   implementation.
+1. **D-163:** optional independently versioned `planning.json` per book, lazy creation, explicit
+   ownership, nested unknown-field preservation, archive/whole-book trash travel and invalid/future refusal.
+2. **D-164:** exact absent-or-raw-hash token plus file revision, one checked commit attempt, no
+   implicit merge/rebase/retry, complete verified conflict copies and view-bound results. A stale
+   same-content request is still stale; only a current semantic no-op writes nothing.
+3. **D-165:** bounds above and narrow kind IDs; no automatic deletion/truncation to fit. Publish the
+   detailed file schema in FORMAT before its first writer and prove the boundary with synthetic tests.
 
-An open decision blocks only the tasks that depend on it. The spec itself and decision research can
-proceed; no implementation task may assume an answer.
+These decisions unblock implementation; they do not mark the schemas, service, UI or tests complete.
 
 ## Success criteria
 

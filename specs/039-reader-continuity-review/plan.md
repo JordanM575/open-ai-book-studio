@@ -2,7 +2,8 @@
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
 
-**Status:** Draft / Planned. Expanded November 7, 2026; no decision or implementation accepted here.
+**Status:** Draft / Planned. D-193 / ADR 0018 accepts initial envelope/citation/profile/overflow
+contracts; implementation and persistence acceptance remain separate.
 
 ## Approach
 
@@ -18,7 +19,7 @@ approved scope. Credentials remain in the provider service; no renderer access o
 
 ## Sequence and gates
 
-Resolve U-039-01/02 before schema and comparison work. U-039-04 currently gates T003's selected-source
+Apply accepted D-193 / ADR 0018 for U-039-01/02/04. U-039-04 remains a prerequisite of T003's selected-source
 request assembly as well as T006's multi-book work; single-book input can overflow too. The proposed
 first delivery is a single-book volatile report, after those gates. Add cross-book inputs only through explicit selection;
 030 is needed only when its proposed planning records are included. Existing manuscript sources do
@@ -37,9 +38,9 @@ retention/deletion and recovery tests before implementing saved reports.
 | U-039-04 / T003/T006 | Explicit source bounds and overflow/refusal behavior for single- and multi-book inputs, with optional planning inclusion | Oversized one-chapter and multi-book fixtures; payload inventory must match disclosure. Compare smaller-scope refusal and any proposed reduction policy without accepting silent truncation. |
 | U-039-03 / T007 | Whether D-171 applies, excerpts/profile retention, deletion, export and archive/sync implications | Compare volatile-only and recoverable saved-report alternatives. Do not inherit 034's proposed numeric cap or a new storage directory by assumption. |
 
-The disputed proposal to exempt a bounded single-book T003 slice from U-039-04 remains unresolved.
-T001 may prepare its fixture/disclosure matrix, but the existing gate stays until an explicit task/spec
-amendment is accepted. Test design is not permission to implement a competing overflow policy.
+The proposed single-book exemption from U-039-04 was rejected in D-193. T003 uses the accepted shared
+bounds/refusal policy. The decision packets below record the original questions and evidence still
+needed from implementation; D-193, not those earlier alternatives, supplies the selected contract.
 
 ## Delivery checkpoints
 

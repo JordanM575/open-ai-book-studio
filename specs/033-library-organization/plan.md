@@ -4,9 +4,9 @@
 
 ## Status
 
-Draft / Planned. No implementation is claimed. The persistence and identity decisions in the spec
-must be resolved before dependent storage or navigation work begins; independent interaction
-design and synthetic contract tests may proceed without them.
+Draft / Planned implementation. D-166–D-168 and ADR 0017 were accepted on November 7; storage,
+identity, source anchors, recents and saved-goal contracts are selected. No implementation is
+claimed by that acceptance. Publish detailed format contracts with the first writer.
 
 ## Summary
 
@@ -37,9 +37,9 @@ Do not add a new writer, index, account, service, report history or mobile shell
 ### Feature behavior
 
 - **Collections** reference books; they never rename, relocate or rewrite a book. The membership
-  model and collection identity wait on OD-033-02. Collection removal affects references only.
+  model and collection identity follow D-167. Collection removal archives its record and affects references only.
 - **Recent work** records only a successful, explicit open. Keep one current pointer per book and
-  sort by last-open time. It is a resume aid, not an event/report store. Failure to update this
+  order by serialized successful navigation intent, using timestamps for display. It is a resume aid, not an event/report store. Failure to update this
   nonessential data does not block the book.
 - **Word goals** keep one optional total-word target per book. Derive progress from the existing
   saved-text counter. If the editor has a dirty draft, keep its estimate separate and label it as
@@ -47,7 +47,7 @@ Do not add a new writer, index, account, service, report history or mobile shell
 - **Bookmarks and notes** refer to a saved source passage and remain separate from chapter prose.
   Verify the source before navigation. A failed verification produces a visible stale state; do not
   guess, auto-relocate or rewrite the chapter. Explicit re-anchoring changes only the annotation
-  record and waits on OD-033-03.
+  record and follows D-168's exact saved-body span contract.
 
 ### User interface ownership
 
@@ -65,9 +65,9 @@ Do not add a new writer, index, account, service, report history or mobile shell
 
 ## Storage and safety constraints
 
-OD-033-01 is a blocking decision for persistent metadata. Its outcome must state the storage scope
-for each data type, whether it is author-owned or disposable, the version/checking rules and whether
-it travels through the portable archive or a user-chosen synced folder. Regardless of outcome:
+D-166 resolves OD-033-01 through ADR 0017's storage matrix and D-164/D-165 checked-write/bounds
+contracts. Authored sidecars and conflict copies travel in archives/folder copies; recents are
+disposable host state for only the current selected library. These invariants remain:
 
 - Author-created collections, goals and notes must not become an opaque database-only or
   host-profile-only source of truth.

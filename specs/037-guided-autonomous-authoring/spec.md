@@ -4,6 +4,10 @@
 **Number:** 037
 **Depends on:** [002](../002-studio-v1/spec.md) agent and library contracts; [011](../011-model-access/spec.md) provider and model selection; [024](../024-agent-tool-parity/spec.md) tool tiers; [025](../025-agent-capabilities/spec.md) per-book tool controls and plugins; [012](../012-automated-verification/spec.md) verification approach.
 
+U-037-01/02 were accepted November 7 as D-193 / [ADR 0018](../../docs/adr/0018-scoped-review-contracts.md).
+Pure source-envelope/citation work can proceed; runtime/UI and the prerequisite shared thread-safety
+implementation remain open. Later autonomy decisions remain separate work.
+
 ## Why
 
 An author should be able to ask for brief, grounded guidance without giving an agent permission to
@@ -34,12 +38,13 @@ The author selects a passage or chapter, chooses any additional source material 
 a concise conversational review in the foreground. The answer gives useful observations tied to
 human-readable source citations. It cannot edit, stage or publish manuscript changes.
 
-A model review sends the selected content, plus any additional author-selected content that the
-review's built-in read tools retrieve, to the configured provider. Before the request starts, the
+A model review sends only a captured immutable envelope of explicitly selected content to the
+configured provider. Its built-in read tools project that envelope and cannot expand it. Before the request starts, the
 interface identifies the provider and model, shows the content scope, and says plainly that this
 content will be sent there. The author starts the request with an explicit provider-named action; a
-cancel before that action sends nothing. No unselected book content may be fetched or sent to expand
-the scope silently.
+cancel before that action sends nothing. No unselected content may enter the executor, prompt, tool
+result or request. Local identity/permission resolution may inspect container metadata and chapter
+candidates under existing Library rules; this is not a promise of zero other local filesystem reads.
 
 ### Later direction — verified autonomous workflows
 
@@ -92,6 +97,9 @@ and contracts listed below. A gate blocks only the dependent future work, not Ph
 - **FR-008** A review request, its read-tool results, citations and answer MUST follow the existing
   conversation's storage and deletion behavior. This feature MUST NOT create a separate report file,
   candidate store or hidden history.
+  Before new review parts are persisted, the shared conversation store MUST have a reviewed checked-write,
+  recoverable-deletion and versioned-reader contract. D-193 does not approve the current unchecked
+  overwrite/direct-removal behavior as evidence of that contract.
 - **FR-009** Stopping a review MUST stop further tool/model work on a best-effort basis, preserve the
   prompt and selected scope for retry, and mark the result incomplete. The interface MUST explain
   that content already sent to a provider cannot be recalled. A provider, tool or source-read failure
@@ -151,13 +159,13 @@ requests and real manuscripts are outside this spec's acceptance work.
 
 ## Open decisions
 
-These are unresolved public questions, not accepted decisions. The task IDs below are their only
-blockers; none blocks unrelated Phase 1 work or the whole spec.
+The table retains local IDs. D-193 resolves U-037-01/02; remaining autonomy questions need their own
+evidenced outcomes under delegated authority. No decision alone proves runtime implementation.
 
 | ID | Question and evidence needed | Blocks |
 | --- | --- | --- |
-| U-037-01 | Which selected content and tool-returned source payload are sent and retained in the existing thread, and how is that exact scope disclosed before sending? Test the scope/disclosure with authors and record the provider-boundary contract. | T004–T005 and the dependent synthetic checks in T010 only |
-| U-037-02 | Which author-visible location and revision label make a citation resolvable across supported builds? Confirm the version comparison contract against the shared library. | T006–T007 and the dependent citation/stale checks in T010 only |
+| U-037-01 | Accepted D-193 / ADR 0018: one immutable, exactly disclosed source envelope; captured-source facade only, explicit start/rerun, no implicit history/SKILLS. Selected request text is retained in the existing conversation after its shared safety prerequisite. A user study is not claimed. | Policy resolved; T004–T005/T010 implementation and conversation-safety integration remain |
+| U-037-02 | Accepted D-193 / ADR 0018: exact identity/version/raw hash plus in-scope UTF-16 span and literal quote; derived author-facing line labels, strict stale/clean-editor checks before selection. | Policy resolved; T006–T007/T010 implementation remains |
 | U-037-03 | What authority, scope, lifetime, revocation and tool/plugin policy could any autonomous workflow have? Resolve through public decisions and a reviewed constitution/AGENTS amendment if required. | T016 and dependent autonomous implementation only |
 | U-037-04 | Who owns autonomous work and candidates, how are they stored/versioned/recovered, and what author review, conflict and publication steps apply? Include whether any automatic publication is permitted. | T016 and dependent candidate/publication implementation only |
 | U-037-05 | Who owns background execution, cancellation, failures, restart/recovery, close/quit, notifications and schedules? D-126 answers only the single explicitly opted-in turn. | T016 and dependent background/scheduled implementation only |

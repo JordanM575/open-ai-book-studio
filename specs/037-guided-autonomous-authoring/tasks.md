@@ -2,17 +2,19 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
-Tasks are ordered. Every task is pending. An open decision blocks only the dependent task named in
+Tasks are ordered. U-037-01/02 are accepted; implementation tasks remain pending. An open decision blocks only the dependent task named in
 `spec.md`; autonomous implementation remains gated until its public decisions and contracts are
 accepted.
 
 ## Phase 0 — settle the Phase 1 contracts
 
-- [ ] T001 Resolve U-037-01: agree and record the exact source payload, pre-send disclosure and local
+- [x] T001 Resolve U-037-01: agree and record the exact source payload, pre-send disclosure and local
   conversation-record behavior for a model review. This blocks only the provider request and
-  disclosure work in T004–T005.
-- [ ] T002 Resolve U-037-02: agree and record the author-visible citation location and revision
-  contract, including how the shared library detects a changed source. This blocks only T006–T007.
+  disclosure work in T004–T005. Accepted in D-193 / ADR 0018 (November 7): immutable explicit source
+  envelope and snapshot-only tools; conversation-safety integration precedes new durable parts.
+- [x] T002 Resolve U-037-02: agree and record the author-visible citation location and revision
+  contract, including how the shared library detects a changed source. Accepted in D-193 / ADR 0018:
+  exact source token plus UTF-16 span/quote and derived human labels. T006–T007 still implement it.
 
 ## Phase 1 — foreground, read-only guidance
 

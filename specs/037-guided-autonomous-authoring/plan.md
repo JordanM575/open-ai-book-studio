@@ -6,6 +6,8 @@
 
 Deliver Phase 1 as a foreground mode of the existing agent, not as a second agent runtime or report
 engine. Reuse the configured provider/model path, the studio-owned tool catalog and the open Library.
+Under D-193 / ADR 0018, reuse the lifecycle, not ordinary full-book prompt/history assembly. A
+snapshot-backed facade provides the same read-tool names over only explicitly selected sources.
 Keep the review turn read-only at both tool selection and execution boundaries. The only initial
 network activity is the provider request the author explicitly starts after seeing its destination and
 source scope.
@@ -24,8 +26,9 @@ The likely implementation seams are:
 - Synthetic core, component and mocked-runtime tests for data scope, tool refusal, stale sources,
   cancellation and failure. No real provider or manuscript is needed for these contracts.
 
-Confirm exact module names and ownership during implementation; this plan does not authorize a new
-storage format, backend, plugin boundary or write path.
+Confirm exact module names and ownership during implementation. New review parts stay in the
+existing conversation file, with a separately reviewed versioned-reader/checked-write/recoverable-delete
+contract before persistence. No parallel store, backend or plugin execution path is introduced.
 
 ## Request and safety flow
 
@@ -41,9 +44,10 @@ storage format, backend, plugin boundary or write path.
 5. Stop, provider failure or a read failure leaves files unchanged and the request retryable. Existing
    thread persistence is reused; no review report or candidate file is introduced.
 
-The precise payload/disclosure contract (U-037-01) and user-visible citation/revision contract
-(U-037-02) must be resolved before their dependent tasks. They do not block independent UI framing or
-synthetic contract tests.
+U-037-01/02 are resolved by D-193 / ADR 0018. First build pure envelope serialization, bounded
+source-facade and exact citation verification. Shared thread safety/versioning and W03's runtime
+interaction changes must be integrated before durable foreground review. No implicit history replay
+or prompt-equality reuse may change the recorded source/consent identity.
 
 ## Boundaries and dependencies
 

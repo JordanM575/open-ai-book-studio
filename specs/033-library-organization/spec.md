@@ -183,8 +183,8 @@ that stale notes remain visible until the author changes or removes them.
   a bookmark with an optional label and note, anchored to a passage in a saved chapter. Annotation
   text MUST remain separate from manuscript prose.
 - **FR-014**: A bookmark MUST identify its book and chapter by stable identity and retain enough
-  source evidence to verify the saved passage before navigation. The exact serialized range is
-  unresolved under OD-033-03.
+  source evidence to verify the saved passage before navigation. D-168 resolves OD-033-03 with a
+  nonempty half-open UTF-16 span in the canonical saved body, exact excerpt and version/raw-file hash.
 - **FR-015**: A source-version or source-hash mismatch MUST make the bookmark visibly stale, even if
   similar text appears elsewhere. The bookmark MUST retain its saved excerpt and note and MUST NOT
   jump to a guessed or unrelated passage. Re-anchoring MUST be an explicit author action; changing
@@ -232,23 +232,28 @@ that stale notes remain visible until the author changes or removes them.
 
 ## Key Entities
 
-- **Collection**: author-named local grouping and references to book identities; cardinality and
-  record identity are open under OD-033-02.
+- **Collection**: author-named local grouping with immutable `col_` identity and many-to-many stable
+  book-ID membership under D-167.
 - **Recent entry**: a local navigation pointer to a book identity and its most recent successful
   explicit open; it is not an activity report.
 - **Word goal**: one optional total word target for a book; progress is derived from saved manuscript
   text and the shared counter.
-- **Bookmark and note**: author-authored label/note plus a reference to a saved passage. Its exact
-  source-anchor representation is open under OD-033-03.
+- **Bookmark and note**: author-authored label/note plus D-168's exact saved-body span and source token.
 - **Saved source state**: the complete chapter content/version/hash confirmed by the existing library
   save protocol, as distinct from an editor draft.
 
-## Open Decisions
+## Accepted decisions
 
-These are local identifiers for unresolved questions in this draft, not accepted public decisions.
-Each blocks only the dependent implementation tasks listed here.
+D-166–D-168 and [ADR 0017](../../docs/adr/0017-planning-and-organization.md) resolve these local
+questions under delegated authority on November 7. The original questions below retain scope and
+traceability; the accepted outcomes take precedence over their earlier proposals. Detailed format
+documentation and actual implementation/verification remain required before feature acceptance.
 
 ### OD-033-01 — Storage, versioning and checked-write policy
+
+**Resolved by D-166:** root collections, per-book goals/annotations, host-and-current-library-scoped
+recents; checked no-merge sidecars, D-165 byte/field limits, reversible authored records and complete
+saved-source goal counts. Root/book conflict copies follow their corresponding owner location.
 
 - **Question**: For collections, recent entries, goals and annotations, which records are ordinary
   library files and which, if any, are disposable host-profile preferences? What are their scope,
@@ -263,6 +268,9 @@ Each blocks only the dependent implementation tasks listed here.
 
 ### OD-033-02 — Collection identity and membership
 
+**Resolved by D-167:** immutable host-generated IDs, many-to-many membership, NFC/lowercase active-name
+uniqueness, current-baseline no-op rules, recoverable archive and explicit collision handling on restore.
+
 - **Question**: Can a book belong to one or multiple collections? Are collection names unique?
   Which stable collection identity survives rename, and how are references handled on trash/restore?
 - **Needed**: A decision covering duplicate names, membership idempotence, collection rename/removal,
@@ -271,6 +279,9 @@ Each blocks only the dependent implementation tasks listed here.
   annotations.
 
 ### OD-033-03 — Source-anchor representation and verification
+
+**Resolved by D-168:** exact UTF-16 saved-body span plus identity/version/raw hash and literal excerpt;
+verify source and clean destination editor before navigation, with no fuzzy or title-based fallback.
 
 - **Question**: How is a passage encoded against saved chapter text, and what exact evidence is
   sufficient to open it or mark it stale after edits, moves, duplicate text, line-ending changes,
