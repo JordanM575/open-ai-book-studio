@@ -9,10 +9,11 @@ import type { UsageSummary } from "@ai-book-studio/core/providers/usage";
 import { exportBrowserArchive, importBrowserArchive, pickArchiveFile } from "../storage/archive-io";
 import { BrowserCredentialVault } from "../storage/credentials";
 import { BrowserDraftBuffer, flushDraftsOnHide } from "../storage/drafts";
-import { BrowserLibraries, browserRuntime } from "./browser-libraries";
+import { type BrowserLibraries, browserRuntime } from "./browser-libraries";
 import { cancelOpenRouterFlow, startOpenRouterFlow } from "./openrouter";
 import { fetchLicenses } from "./licenses";
 import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
+import { createPlanningApi, planningHandler } from "@ai-book-studio/core/library/planning-api";
 
 /**
  * Staged publication needs the desktop atomic rename, and only the desktop app converts Word
@@ -60,6 +61,7 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
   }
 
   return {
+    planning: createPlanningApi(planningHandler(() => libraries.require())),
     app: {
       // The browser reports its own platform channel as "web"; CPU architecture is
       // not reliably detectable there, so it stays honestly unknown.

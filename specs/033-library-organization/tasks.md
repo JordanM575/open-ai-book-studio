@@ -23,6 +23,16 @@ All broad tasks remain unchecked because this leaf delivery does not complete th
 
 ## Phase 1 — Resolve dependent decisions
 
+### W08 bounded goal integration — November 7, 2026
+
+The workspace now supports set → reopen → clear through the open Library, validated desktop/browser
+transport and checked dialogs. Saved progress uses fresh complete enumeration, independent raw-source
+verification and invalidation on observed saved-source changes; duplicate/unreadable/omitted inspected
+files cannot confirm a partial total. Pending/dirty/uncertain navigation retains the originating view.
+Real Library contention, filesystem/IPC UI journeys, browser publication/readback faults and native
+focus/guard probes supply bounded evidence. The library-grid goal indicator, collections, recents,
+annotations and full integrated acceptance remain open; no broad task is checked off here.
+
 ### Corrected goal/editor candidate — November 7, 2026
 
 The combined W08 follow-up independently reads each enumerated source, checks exact raw hashes,

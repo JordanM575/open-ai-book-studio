@@ -81,6 +81,7 @@ export class GoalService {
         const envelope = readHistoryEnvelope(raw);
         const meta = envelope.metadata;
         if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+        if ("bookId" in meta && meta.bookId !== bookId) return false;
         if (("id" in meta && meta.id !== chapter.id) || ("version" in meta && meta.version !== chapter.version)) return false;
         content = envelope.content;
       } else content = normalizeBody(raw);

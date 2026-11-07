@@ -29,7 +29,9 @@ export type FileExpectation =
 
 export type CommitFileResult =
   | { status: "written"; snapshot: LibraryFileSnapshot }
-  | { status: "changed"; current: LibraryFileSnapshot | null };
+  | { status: "changed"; current: LibraryFileSnapshot | null;
+      /** Publication happened before the readback differed. Checked sidecars must not retry or relabel this as a prepublication race. */
+      publication?: "uncertain" };
 
 export type LibraryEntry = { name: string; kind: "file" | "directory" };
 export type LibraryInspectedEntry = LibraryEntry | { name: string; kind: "unsupported" };

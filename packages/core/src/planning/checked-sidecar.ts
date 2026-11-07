@@ -134,6 +134,7 @@ export class CheckedSidecar<T extends SidecarDocument> {
       let result: CommitFileResult;
       try {
         result = await this.host.commitFile(sidecarPath(request.bookId, this.kind), bytes.slice(), expectation(request.source));
+        if (result.status === "changed" && result.publication === "uncertain") throw new SidecarWriteError("uncertain", "active");
         if (result.status === "written" && !await this.verifies(bytes, result.snapshot)) {
           throw new SidecarWriteError("uncertain", "active");
         }
@@ -175,6 +176,7 @@ export class CheckedSidecar<T extends SidecarDocument> {
         const name = `${this.kind}.conflict-${reason}.${device}.${stamp}${attempt === 0 ? "" : `-${attempt + 1}`}.json`;
         const path = conflictPath(request.bookId, name);
         const result = await this.host.commitFile(path, copy.slice(), { kind: "absent" });
+        if (result.status === "changed" && result.publication === "uncertain") throw new SidecarWriteError("uncertain", "recovery");
         if (result.status === "changed") continue;
         if (!await this.verifies(copy, result.snapshot)) throw new SidecarWriteError("uncertain", "recovery");
         return { status: "conflict", bookId: request.bookId, reason, savedAs: libraryPathToArchivePath(path), observed };

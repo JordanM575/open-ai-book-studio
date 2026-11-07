@@ -9,6 +9,12 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Connect checked worldbuilding and saved-word goals to the open Library, validated desktop/browser
+  transport and workspace controls. Share the existing book queue and journal boundary; verify
+  complete saved chapter enumeration, block unresolved planning navigation, retain uncertain drafts,
+  and expose verified recovery-copy inspection. Distinguish browser postpublication readback drift
+  from a prepublication conflict without retrying. Focused synthetic integration and native guard/focus
+  checks accompany this bounded slice; full planning/organization and integrated acceptance remain open.
 - Accept individually researched full-book authoring, inline editorial-review and hands-free
   contracts (D-194–D-200 / ADRs 0019–0021), with the bounded workflow/session authority amendment,
   checked conversation policy, explicit cost modes and recoverable saved-review ownership.

@@ -1,7 +1,8 @@
 # Planning UI leaves
 
-These components implement an isolated portion of ADR 0017 / specs 030 and 033. They are not mounted
-in the product. They add no writer, global API, provider call or automatic save.
+These components implement the bounded worldbuilding/goal portion of ADR 0017 / specs 030 and 033.
+`PlanningPanel` mounts them in the shared workspace, using the existing Library's checked services
+through `library/planning-api.ts`. They add no provider call or automatic save.
 
 - `WorldbuildingDialog`: `recordId` omitted creates a world detail; supplied edits the exact saved
   record. Fields stay literal. The host assigns IDs, validates full serialized size, and owns all
@@ -55,11 +56,21 @@ version is read-only comparison and never rebases. Reload and discard draft is a
 confirmation, and a failed reload keeps the draft. Later edits after a conflict are not falsely
 described as part of the already-kept copy. `onResult` supplies the copy path for central discovery.
 
-The host must implement validated Library/API/IPC bindings, verified raw-source goal reading,
-conflict-copy inspection and navigation guards before product exposure. The combined follow-up
-contains numeric-admission and independently checked raw goal-source corrections; these require
-fresh review with the UI corrections. These leaves do not deliver full specs 030/033.
+The integrated host supplies validated desktop/browser bindings, fresh completeness-aware saved
+reads, `PlanningCopies` inspection and `PlanningNavigation` guards. A session starts blocked before
+mounting, and only matching leaf registration installs its close action. Shell library selection holds
+the guard across its await; book/conversation/drift navigation and native beforeunload first resolve
+the editor. A blocked navigation is not queued: after closing, retry that action. Unsupported hosts
+have no `planning` capability and cannot open a draft.
 
-Focused synthetic tests: `apps/desktop/tests/planning-dialogs.test.tsx`. Design uses the existing
+Recovery is manual and checked: inspect the complete verified read-only copy, reopen the current
+goal/world editor and enter the chosen fields before Save changes. Copy metadata is never an active
+baseline. Copies remain in ordinary files even if inspection fails. The current bounded UI exposes
+neither whole-document replacement nor record archive/restore. These journeys do not deliver full
+specs 030/033; fresh independent review and parent integrated gates remain required.
+
+Focused synthetic tests: `apps/desktop/tests/planning-dialogs.test.tsx` (including the actual mounted
+Workspace/registered IPC/filesystem), `planning-storage.test.ts`, core planning integration and browser
+adapter planning tests. Design uses the existing
 shared Dialog/Button, native labelled controls, token surfaces and 44px minimum local controls.
 Integrated theme/viewport/keyboard smoke and application acceptance remain host-owned.

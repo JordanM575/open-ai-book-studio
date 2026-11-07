@@ -80,9 +80,9 @@ export function serializeDocument(data: SidecarDocument, limit = SIDECAR_BYTES):
   return checkBytes(encoder.encode(`${JSON.stringify(data, null, 2)}\n`), limit);
 }
 
-export function parseJson(bytes: Uint8Array): unknown {
+export function parseJson(bytes: Uint8Array, limit = SIDECAR_BYTES): unknown {
   try {
-    const text = decoder.decode(checkBytes(bytes));
+    const text = decoder.decode(checkBytes(bytes, limit));
     // Walk string literals as whole tokens, so numeric-looking authored text is never interpreted.
     // This is portable to hosts without JSON.parse's newer reviver source-context argument.
     for (const match of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g)) {

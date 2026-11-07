@@ -214,7 +214,7 @@ export class DirectoryHandleLibraryPort implements LibraryPort {
     if (!snapshot) throw new LibraryPortError("io", "The file was written but could not be read back.", true);
     if (snapshot.sha256 !== expectedHash) {
       // The close succeeded, but different bytes are on disk now. Never report them as ours.
-      return { status: "changed", current: snapshot };
+      return { status: "changed", current: snapshot, publication: "uncertain" };
     }
     return { status: "written", snapshot };
   }

@@ -22,6 +22,17 @@ a renderer write path. Preserve the unchecked task states until those complete j
 
 ## Phase 1 — Resolve public format and save decisions
 
+### W08 bounded vertical integration — November 7, 2026
+
+Worldbuilding create/edit/reopen is now mounted in the workspace through validated desktop IPC and
+browser adapters, the actual open Library queue and journal-aware commit boundary. Exact baselines,
+stale conflict copies and uncertainty survive transport. Planning navigation begins blocked before
+leaf registration; verified copy inspection supports explicit manual field recovery through a fresh
+checked editor. Focused tests exercise actual Workspace/IPC/filesystem storage and browser-adapter
+faults. A bounded preload smoke assertion is added for the parent integrated run. Fresh independent
+review and integrated gates still precede acceptance. No broad checkbox changes: timeline/notes/beats,
+record archive/restore, full theme/responsive acceptance and retained Bible/series work remain open.
+
 ### Corrected core/editor candidate — November 7, 2026
 
 The combined W08 follow-up refuses lossy numeric tokens before either active or recovery writes,

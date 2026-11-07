@@ -50,6 +50,8 @@ import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
 import { editBook, formatCount, formatWords, keptCopyText, must, pluralize } from "../lib/utils";
 import type { ThemeChoice } from "../hooks/use-theme";
+import { PlanningPanel } from "../components/planning/PlanningPanel";
+import { PlanningNavigation } from "../components/planning/navigation";
 
 export interface ChapterRequest {
   bookId: string;
@@ -67,6 +69,7 @@ export interface ConversationRequest {
 }
 
 interface Props {
+  planningNavigation?: PlanningNavigation;
   bookId: string;
   theme: { choice: ThemeChoice; set: (choice: ThemeChoice) => void; cycle: () => void };
   libraryRoot: string;
@@ -117,6 +120,7 @@ function readIssueCopy(issues: BookDetail["chapterReadIssues"]): string {
 }
 
 export function WorkspaceView({
+  planningNavigation,
   bookId,
   theme,
   libraryRoot,
@@ -131,6 +135,16 @@ export function WorkspaceView({
   onNotice,
   onSchemaRefusal
 }: Props) {
+  const [localPlanningNavigation] = useState(() => new PlanningNavigation());
+  const navigation = planningNavigation ?? localPlanningNavigation;
+  const loadGeneration = useRef(0);
+  useEffect(() => {
+    const blockClose = (event: BeforeUnloadEvent) => {
+      if (!navigation.allow()) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", blockClose);
+    return () => window.removeEventListener("beforeunload", blockClose);
+  }, [navigation]);
   const handledRequest = useRef<number | null>(null);
   const handledConversation = useRef<number | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
@@ -226,16 +240,21 @@ export function WorkspaceView({
 
   const load = useCallback(
     async (preferId?: string): Promise<BookDetail | null> => {
+      const generation = ++loadGeneration.current;
       try {
         const next = await mustCompatible(window.studio.books.open(bookId));
+        if (generation !== loadGeneration.current) return null;
         setDetail(next);
-        setConflicts(await must(window.studio.conflicts.list(bookId)));
+        const copies = await must(window.studio.conflicts.list(bookId));
+        if (generation !== loadGeneration.current) return null;
+        setConflicts(copies);
         setSelectedId((current) => {
           const wanted = preferId ?? current;
           return next.chapters.some((chapter) => chapter.id === wanted) ? (wanted ?? null) : (next.chapters[0]?.id ?? null);
         });
         return next;
       } catch (error) {
+        if (generation !== loadGeneration.current) return null;
         // A newer-schema refusal opens the recovery journey instead of a toast: the
         // library stays open, the book stays unread, and nothing is written.
         if (error instanceof SchemaRefusalError) {
@@ -251,6 +270,7 @@ export function WorkspaceView({
 
   useEffect(() => {
     void load();
+    return () => { loadGeneration.current++; };
   }, [load]);
 
   /** List the conflict copies again after the editor or an agent tool kept one, so the banner counts what is on disk. */
@@ -845,7 +865,7 @@ export function WorkspaceView({
     <div className="window-wash flex h-full flex-col" data-testid="workspace-view">
       <header className={`titlebar-drag flex h-14 shrink-0 items-center justify-between gap-3 pr-2 pl-3 min-[700px]:h-16 min-[700px]:gap-4 min-[700px]:pr-4 ${isMac ? "min-[700px]:pl-[92px]" : "min-[700px]:pl-5"}`}>
         <div className="flex min-w-0 items-center gap-1.5 min-[700px]:gap-2">
-          <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to library" title="Back to library" className="shrink-0">
+          <Button variant="ghost" size="icon" onClick={() => { if (navigation.allow()) onBack(); }} aria-label="Back to library" title="Back to library" className="shrink-0">
             <ChevronLeft size={18} />
           </Button>
           <div className="min-w-0">
@@ -1080,6 +1100,10 @@ export function WorkspaceView({
         ) : null}
 
         <section className="thin-scroll min-w-0 flex-1 overflow-y-auto">
+          {detail?.book.id === bookId && <PlanningPanel bookId={bookId} bookTitle={detail.book.title}
+            api={window.studio.planning} navigation={navigation}
+            sourceGeneration={JSON.stringify([detail.chapters.map((chapter) => [chapter.id, chapter.path, chapter.version, chapter.hash]), detail.chapterReadIssues, externalChange])}
+            manuscriptState={status.kind === "saved" ? "clean" : status.kind === "saving" ? "pending" : status.kind === "error" ? "failed" : status.kind} />}
           <RecoveryPanel
             entries={recovered}
             chapters={detail?.chapters ?? []}
