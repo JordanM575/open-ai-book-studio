@@ -5,7 +5,7 @@ import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-book-studio/ui/components/collapsible";
 import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
-import { must } from "../lib/utils";
+import { editBook, keptCopyText } from "../lib/utils";
 
 interface Props {
   open: boolean;
@@ -49,22 +49,32 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
     if (saving || !title.trim()) return;
     setSaving(true);
     try {
-      const updated = await must(
-        window.studio.books.update(book.id, {
-          title: title.trim(),
-          description: description.trim(),
-          genres: splitList(genres),
-          influences: splitList(influences),
-          outline,
-          storyArc: arc,
-          characters: characters
-            .map((character) => ({ ...character, name: character.name.trim() }))
-            .filter((character) => character.name.length > 0),
-          memories: memories.map((memory) => ({ ...memory, text: memory.text.trim() })).filter((memory) => memory.text.length > 0)
+      // Only what the author changed is sent, with what it was when the dialog opened, and merged onto
+      // the file as it is now: another device or the agent may have written it since. Only what the
+      // author touched is tidied; anything else goes back exactly as it was read, so it is no change.
+      const result = await editBook(book, {
+        title: title === book.title ? title : title.trim(),
+        description: description === book.description ? description : description.trim(),
+        genres: genres === book.genres.join(", ") ? book.genres : splitList(genres),
+        influences: influences === book.influences.join(", ") ? book.influences : splitList(influences),
+        outline,
+        storyArc: arc,
+        characters: characters.flatMap((character) => {
+          if (book.characters.includes(character)) return [character];
+          const name = character.name.trim();
+          return name ? [{ ...character, name }] : [];
+        }),
+        memories: memories.flatMap((memory) => {
+          if (book.memories.includes(memory)) return [memory];
+          const text = memory.text.trim();
+          return text ? [{ ...memory, text }] : [];
         })
-      );
-      onSaved(updated);
-      onClose();
+      });
+      onSaved(result.book);
+      if (result.status === "saved") return onClose();
+      // The book now shows the other writer's values; the notice says the author's went to a copy.
+      onNotice(new Error(keptCopyText("The Story Bible")));
+      setSaving(false);
     } catch (error) {
       onNotice(error);
       setSaving(false);

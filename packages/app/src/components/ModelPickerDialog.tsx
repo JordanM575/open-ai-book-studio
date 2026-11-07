@@ -6,7 +6,7 @@ import { canRunAgent, unavailableReason } from "@ai-book-studio/core/providers/m
 import { contributorWarning, isContributorModel } from "@ai-book-studio/core/providers/compatibility";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
-import { must } from "../lib/utils";
+import { editBook, keptCopyText, must } from "../lib/utils";
 
 interface Props {
   open: boolean;
@@ -186,15 +186,15 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
     setSaving(true);
     setError(null);
     try {
-      const updated = await must(
-        window.studio.books.update(book.id, {
-          defaultProvider: connection.provider,
-          defaultConnectionId: connection.id,
-          defaultModelId: chosen,
-          allowContributorTraining: contributor ? allowContributor : book.allowContributorTraining
-        })
-      );
-      onSaved(updated);
+      // Only the choices that changed are sent, so a consent changed elsewhere is never put back.
+      const result = await editBook(book, {
+        defaultProvider: connection.provider,
+        defaultConnectionId: connection.id,
+        defaultModelId: chosen,
+        allowContributorTraining: contributor ? allowContributor : book.allowContributorTraining
+      });
+      onSaved(result.book);
+      if (result.status === "conflict") return setError(keptCopyText());
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

@@ -49,6 +49,17 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
+  while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
+  that stale copy, so a character another device added or a memory the toolkit saved disappeared with
+  no conflict copy. Editors now send only the fields they changed, each with the value they started
+  from, and the main process merges them onto a fresh read of the file under the book's write lock:
+  objects key by key, characters and memories record by record, rewriting only the parts that changed.
+  Where both sides changed the same part, the file keeps the other writer's value, the author's version
+  of the book is kept as `conflicts/book.conflict-external-edit.<device>.<time>.json` and listed with
+  the book's other conflict copies, and the author is told. The format settings, a rename, the model
+  picker, the agent settings and the agent's book tools (and so the toolkit's) merge the same way, and
+  a story arc written as lists stays as written until that part is edited.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
   build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
   chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict

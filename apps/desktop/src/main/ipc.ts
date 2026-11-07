@@ -12,7 +12,7 @@ import {
   type StudioError,
   type VoiceSpeakers
 } from "@ai-book-studio/core/ipc";
-import { idSchema } from "@ai-book-studio/core/schema";
+import { idSchema, type BookChanges } from "@ai-book-studio/core/schema";
 import { MATTER_LIMITS, matterSchema } from "@ai-book-studio/core/matter";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
 import { EXTERNAL_LINKS } from "@ai-book-studio/core/providers/links";
@@ -89,6 +89,28 @@ const speakInput = z.object({
 });
 
 const ambientRequestSchema = z.object({ bookId: idSchema, chapterId: idSchema });
+
+/** The `book.json` fields the renderer may write. Identity, schema and dates are the main process's. */
+const BOOK_FIELDS = [
+  "title",
+  "workingTitle",
+  "description",
+  "genres",
+  "influences",
+  "isErotica",
+  "chapterRange",
+  "outline",
+  "storyArc",
+  "characters",
+  "memories",
+  "stage",
+  "settings",
+  "frontMatter",
+  "defaultProvider",
+  "defaultConnectionId",
+  "defaultModelId",
+  "allowContributorTraining"
+] as const;
 
 const saveInput = z.object({
   bookId: idSchema,
@@ -366,9 +388,16 @@ export function registerIpc(
 
   handle(IPC.books.update, async (payload) => {
     const input = z.object({ bookId: idSchema, patch: z.record(z.string(), z.unknown()) }).parse(payload);
-    const allowed = ["title", "workingTitle", "description", "genres", "influences", "isErotica", "chapterRange", "outline", "storyArc", "characters", "memories", "stage", "settings", "frontMatter", "defaultProvider", "defaultConnectionId", "defaultModelId", "allowContributorTraining"];
-    const patch = Object.fromEntries(Object.entries(input.patch).filter(([key]) => allowed.includes(key)));
+    const patch = Object.fromEntries(Object.entries(input.patch).filter(([key]) => (BOOK_FIELDS as readonly string[]).includes(key)));
     return studio.requireLibrary().updateBook(input.bookId, patch);
+  });
+
+  handle(IPC.books.edit, async (payload) => {
+    // Each change carries the value the editor started from; the merged book is checked by the schema.
+    const input = z
+      .object({ bookId: idSchema, changes: z.partialRecord(z.enum(BOOK_FIELDS), z.object({ from: z.unknown(), to: z.unknown() })) })
+      .parse(payload);
+    return studio.requireLibrary().editBook(input.bookId, input.changes as BookChanges);
   });
 
   handle(IPC.books.saveMatter, async (payload) => {
@@ -844,7 +873,8 @@ export function registerIpc(
     if (input.patch.perTurnCeilingUsd !== undefined) agent.perTurnCeilingUsd = input.patch.perTurnCeilingUsd;
     if (input.patch.monthlyWarningUsd !== undefined) agent.monthlyWarningUsd = input.patch.monthlyWarningUsd;
     if (input.patch.cachePrefixMode) cache.prefixMode = input.patch.cachePrefixMode;
-    await library.updateBook(input.bookId, { settings: { ...book.settings, agent, cache } });
+    // Merged against the settings just read, so a format change made in between is kept.
+    await library.editBook(input.bookId, { settings: { from: book.settings, to: { ...book.settings, agent, cache } } });
     return agentStatus(input.bookId);
   });
 

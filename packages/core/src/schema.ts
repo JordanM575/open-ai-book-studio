@@ -259,6 +259,21 @@ export type SaveChapterResult =
   | { status: "saved"; chapter: Chapter }
   | { status: "conflict"; conflict: ChapterConflict };
 
+/**
+ * A book edit: each top-level field the editor changed, with the value it started from and the value
+ * it wants. Fields it did not change are absent, so they are never written.
+ */
+export type BookChanges = { [K in keyof BookMeta]?: { from: BookMeta[K]; to: BookMeta[K] } };
+
+/**
+ * A written book edit. `conflict` means another writer had changed some of the same fields since the
+ * editor read them: their values stay in `book`, and the editor's whole version is kept at `savedAs`.
+ * `fields` names the top-level fields that overlapped.
+ */
+export type BookEditResult =
+  | { status: "saved"; book: BookMeta }
+  | { status: "conflict"; book: BookMeta; savedAs: string; fields: string[] };
+
 export type ReorderDirection = "up" | "down";
 
 /** A move affects two chapter files; the whole book is returned so the rail can re-render once. */

@@ -169,8 +169,8 @@ function bookSettings(books: Record<string, unknown>) {
 describe("book settings", () => {
   test("shows the book as it is and saves a trimmed rename", async () => {
     const updated = { ...SUMMARY, title: "The Salt Road, Again" };
-    const update = mock(async () => ({ ok: true, data: updated }));
-    const { page, onSaved, onOpenChange } = bookSettings({ update });
+    const edit = mock(async (_bookId: string, _changes: unknown) => ({ ok: true, data: { status: "saved", book: updated } }));
+    const { page, onSaved, onOpenChange } = bookSettings({ edit });
     const title = page.getByRole("textbox", { name: "Title" }) as HTMLInputElement;
     expect(title.value).toBe("The Salt Road");
     const about = page.getByRole("textbox", { name: /What is it about/ }) as HTMLTextAreaElement;
@@ -181,24 +181,53 @@ describe("book settings", () => {
     testing.fireEvent.click(page.getByRole("button", { name: "Save changes" }));
 
     await testing.waitFor(() => expect(onSaved).toHaveBeenCalledWith(updated));
-    expect(update).toHaveBeenCalledWith(BOOK_ID, { title: "The Salt Road, Again", description: "A road that floods." });
+    expect(edit).toHaveBeenCalledWith(BOOK_ID, {
+      title: { from: "The Salt Road", to: "The Salt Road, Again" },
+      description: { from: "A road that floods twice a day.", to: "A road that floods." }
+    });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  test("a rename sends only the title, so a description written elsewhere meanwhile is kept", async () => {
+    const edit = mock(async (_bookId: string, _changes: unknown) => ({ ok: true, data: { status: "saved", book: SUMMARY } }));
+    const { page, onOpenChange } = bookSettings({ edit });
+    testing.fireEvent.change(page.getByRole("textbox", { name: "Title" }), { target: { value: "The Salt Crossing" } });
+    testing.fireEvent.click(page.getByRole("button", { name: "Save changes" }));
+
+    await testing.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(edit).toHaveBeenCalledWith(BOOK_ID, { title: { from: "The Salt Road", to: "The Salt Crossing" } });
+  });
+
+  test("a rename another writer overlapped keeps their title, says so and stays open", async () => {
+    const theirs = { ...SUMMARY, title: "The Salt Causeway" };
+    const edit = mock(async () => ({
+      ok: true,
+      data: { status: "conflict", book: theirs, savedAs: `books/${BOOK_ID}/conflicts/book.conflict-external-edit.device_a.json`, fields: ["title"] }
+    }));
+    const { page, onSaved, onNotice, onOpenChange } = bookSettings({ edit });
+    testing.fireEvent.change(page.getByRole("textbox", { name: "Title" }), { target: { value: "The Salt Crossing" } });
+    testing.fireEvent.click(page.getByRole("button", { name: "Save changes" }));
+
+    await testing.waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));
+    expect(onSaved).toHaveBeenCalledWith(theirs);
+    expect(noticed(onNotice)).toContain("your version was kept as a separate copy");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
   test("a book cannot be saved without a title, and Cancel saves nothing", () => {
-    const update = mock(async () => ({ ok: true, data: SUMMARY }));
-    const { page, onOpenChange } = bookSettings({ update });
+    const edit = mock(async () => ({ ok: true, data: { status: "saved", book: SUMMARY } }));
+    const { page, onOpenChange } = bookSettings({ edit });
     testing.fireEvent.change(page.getByRole("textbox", { name: "Title" }), { target: { value: "   " } });
     expect((page.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
 
     testing.fireEvent.click(page.getByRole("button", { name: "Cancel" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(update).not.toHaveBeenCalled();
+    expect(edit).not.toHaveBeenCalled();
   });
 
   test("a rename that fails is reported and the dialog stays open to try again", async () => {
-    const update = mock(async () => ({ ok: false, error: { code: "io", message: "The book folder is read-only." } }));
-    const { page, onNotice, onSaved, onOpenChange } = bookSettings({ update });
+    const edit = mock(async () => ({ ok: false, error: { code: "io", message: "The book folder is read-only." } }));
+    const { page, onNotice, onSaved, onOpenChange } = bookSettings({ edit });
     testing.fireEvent.click(page.getByRole("button", { name: "Save changes" }));
 
     await testing.waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));

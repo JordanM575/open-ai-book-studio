@@ -48,7 +48,13 @@ function mockStudio(options: Options = {}) {
     options.addModel ?? (async (_connectionId: string, modelId: string) => ({ ok: true, data: manualModel("meta", modelId) }))
   );
   const models = mock(options.models ?? (async () => ({ ok: true, data: { models: [LISTED], fetchedAt: NOW } })));
-  const update = mock(async (_bookId: string, patch: Record<string, unknown>) => ({ ok: true, data: { ...BOOK, ...patch } }));
+  const edit = mock(async (_bookId: string, changes: Record<string, { to: unknown }>) => ({
+    ok: true,
+    data: {
+      status: "saved",
+      book: { ...BOOK, ...Object.fromEntries(Object.entries(changes).map(([key, change]) => [key, change.to])) }
+    }
+  }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: options.platform ?? "darwin",
     providers: {
@@ -57,9 +63,9 @@ function mockStudio(options: Options = {}) {
       addModel
     },
     connections: { list: mock(async () => ({ ok: true, data: [META] })) },
-    books: { update }
+    books: { edit }
   };
-  return { addModel, models, update };
+  return { addModel, models, edit };
 }
 
 function renderPicker() {
@@ -127,11 +133,11 @@ describe("entering a model id by hand", () => {
     await testing.waitFor(() => expect(use.disabled).toBe(false));
     testing.fireEvent.click(use);
     await testing.waitFor(() =>
-      expect(mocks.update).toHaveBeenCalledWith(BOOK.id, {
-        defaultProvider: "meta",
-        defaultConnectionId: "conn_metapick0001",
-        defaultModelId: "muse-spark-1.3-contributor",
-        allowContributorTraining: true
+      expect(mocks.edit).toHaveBeenCalledWith(BOOK.id, {
+        defaultProvider: { from: null, to: "meta" },
+        defaultConnectionId: { from: null, to: "conn_metapick0001" },
+        defaultModelId: { from: null, to: "muse-spark-1.3-contributor" },
+        allowContributorTraining: { from: false, to: true }
       })
     );
     expect(onSaved).toHaveBeenCalled();
@@ -156,11 +162,11 @@ describe("entering a model id by hand", () => {
     expect(view.getByTestId("manual-model-result").textContent).toBe("Muse Spark 1.3 answered, so it is saved on Meta.");
     testing.fireEvent.click(button(view, "Use this model"));
     await testing.waitFor(() =>
-      expect(mocks.update).toHaveBeenCalledWith(BOOK.id, {
-        defaultProvider: "meta",
-        defaultConnectionId: "conn_metapick0001",
-        defaultModelId: "muse-spark-1.3",
-        allowContributorTraining: false
+      // Consent did not change here, so it is not sent: a choice made elsewhere is never put back.
+      expect(mocks.edit).toHaveBeenCalledWith(BOOK.id, {
+        defaultProvider: { from: null, to: "meta" },
+        defaultConnectionId: { from: null, to: "conn_metapick0001" },
+        defaultModelId: { from: null, to: "muse-spark-1.3" }
       })
     );
   });

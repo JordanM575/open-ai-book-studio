@@ -48,7 +48,7 @@ import { exportBlockedMessage } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
 import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
-import { formatCount, formatWords, must, pluralize } from "../lib/utils";
+import { editBook, formatCount, formatWords, keptCopyText, must, pluralize } from "../lib/utils";
 import type { ThemeChoice } from "../hooks/use-theme";
 
 export interface ChapterRequest {
@@ -555,10 +555,10 @@ export function WorkspaceView({
   const saveFormatSettings = async (manuscript: ManuscriptSettings): Promise<void> => {
     if (!detail) return;
     try {
-      const updated = await must(
-        window.studio.books.update(bookId, { settings: { ...detail.book.settings, manuscript } })
-      );
-      setDetail((current) => (current ? { ...current, book: updated } : current));
+      // Merged with the settings as they are on disk, so an agent setting changed meanwhile is kept.
+      const result = await editBook(detail.book, { settings: { ...detail.book.settings, manuscript } });
+      setDetail((current) => (current ? { ...current, book: result.book } : current));
+      if (result.status === "conflict") throw new Error(keptCopyText("The format settings"));
     } catch (error) {
       onNotice(error);
       throw error;

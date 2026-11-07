@@ -61,6 +61,16 @@ retries once on Windows sharing violations, and best-effort fsyncs the directory
 A conflict is a feature, not an error: the UI keeps the author typing, shows what happened, and
 offers "Show the saved copy" and "Load the version on disk".
 
+`book.json` has no version, and many writers share it: the Story Bible, the settings, the agent's
+book tools, the toolkit and other devices. So its editors send `books.edit`: only the fields they
+changed, each with the value they started from. `LibraryService.editBook` reads the file again under
+the same per-book lock and merges three ways (`library/book-merge.ts`): objects per key, `characters`
+and `memories` per record id. It rewrites only the parts that changed, commits only while the file
+is still the read (a sha256 expectation, retried on a fresh read), and where another writer changed
+the same part keeps their value and writes the editor's whole version to `conflicts/` as a `.json`
+copy. `updateBook` replaces whole fields and is left to callers with no earlier read, such as the
+legacy import; it too leaves untouched parts as written.
+
 ## Catalog versus truth
 
 `library.json` is a cache of book summaries so the library screen can paint before parsing every

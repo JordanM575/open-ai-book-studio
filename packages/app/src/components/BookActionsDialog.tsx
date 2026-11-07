@@ -4,7 +4,7 @@ import type { ImageExportNote, ImageExportResult } from "@ai-book-studio/core/ip
 import type { BookMeta, BookSummary } from "@ai-book-studio/core/schema";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
-import { formatCount, must } from "../lib/utils";
+import { editBook, formatCount, keptCopyText, must } from "../lib/utils";
 
 interface Props {
   book: BookSummary | null;
@@ -67,8 +67,9 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
     if (!book || !title.trim() || busy) return;
     setBusy(true);
     try {
-      const updated = await must(window.studio.books.update(book.id, { title: title.trim(), description: description.trim() }));
-      onSaved(updated);
+      const result = await editBook(book, { title: title.trim(), description: description.trim() });
+      onSaved(result.book);
+      if (result.status === "conflict") throw new Error(keptCopyText());
       onOpenChange(false);
     } catch (error) {
       onNotice(error);

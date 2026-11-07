@@ -1216,14 +1216,21 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         );
       };
 
-      // The studio's own writes: a Story Bible change through the bridge, then a typed line it autosaves.
+      // The studio's own writes: a Story Bible change through the bridge, sent the way the dialog sends
+      // it (each field with the value it started from), then a typed line it autosaves.
       const updated = await evaluate<string>(
         win,
         `(async () => {
-          const first = await window.studio.books.update(${JSON.stringify(book.id)}, { genres: ["Smoke"] });
+          const id = ${JSON.stringify(book.id)};
+          const opened = await window.studio.books.open(id);
+          if (!opened.ok) return opened.error.message;
+          const genres = opened.data.book.genres;
+          const first = await window.studio.books.edit(id, { genres: { from: genres, to: ["Smoke"] } });
           if (!first.ok) return first.error.message;
-          const second = await window.studio.books.update(${JSON.stringify(book.id)}, { genres: [] });
-          return second.ok ? "ok" : second.error.message;
+          if (first.data.status !== "saved" || first.data.book.genres[0] !== "Smoke") return "the first edit did not save";
+          const second = await window.studio.books.edit(id, { genres: { from: ["Smoke"], to: genres } });
+          if (!second.ok) return second.error.message;
+          return second.data.status === "saved" ? "ok" : "the second edit did not save";
         })()`
       );
       if (updated !== "ok") throw new Error(`the Story Bible change failed: ${updated}`);
