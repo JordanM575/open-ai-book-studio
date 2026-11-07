@@ -83,6 +83,11 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     validated immutable DAG/reference contracts, exact command replay checks, question/direction
     invalidation, historical late outcomes and distinct attempt/effect settlement. Focused adversarial
     tests live in `packages/core/tests/authoring/`; no wire writer or host execution is exposed.
+  - Independent F1/F2 follow-up preserves depth64 records through aggregate wrappers and validates
+    Continue clocks before property access. Cross-transition regressions accompany the correction;
+    fresh exact-head independent review remains required and this broad task stays unchecked.
+    Local correction gates:83 focused tests, strict source/test and platform-independent checks,
+    workspace typechecks and warning-free scoped lint; no writer/host/full-book evidence inferred.
 - [ ] T022 Implement host permission and durable finite admission/reservations, including unknown charges.
   - Pure portion only: finite reservation/accounting decisions, injected clock/account facts, strict
     qualified-maximum versus bounded-operation cost modes, and generation changes preserving budget

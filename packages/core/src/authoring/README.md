@@ -26,6 +26,14 @@ complete structural payload (including expected revision/generation). Exact repl
 deduplicates its entire request, including after release. Snapshots must come from these factories/
 reducers; casting deserialized or worker values to `RunSnapshot`/`AdmissionLedger` is unsupported.
 
+External records retain depth64 admission before validation. Internal snapshot copying separately
+allows the maximum three structural wrappers (`reservations[].request`); aggregate depth is at most67.
+Graph/policy records add one wrapper, commands two, and reservation requests three. Extracted graph/
+command references and receipt/clock projections fit within the same allowance. Repeated transitions
+replace that aggregate rather than nest it again. This internal copier is not exported from the leaf
+index and never admits external records or new wire formats; unknown extension values are preserved.
+Explicit connection Continue copies its supplied clock before reading or comparing any property.
+
 Plain values allow finite fractional numbers within the safe-number magnitude; all semantic revisions,
 generations, bounds, times and micro-USD are separately required to be nonnegative safe integers.
 Negative zero, nonfinite/unsafe numbers, lone surrogates, classes, functions, symbols, getters,
