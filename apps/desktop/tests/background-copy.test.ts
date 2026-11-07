@@ -50,6 +50,22 @@ describe("background notification copy", () => {
     expect(notificationFor(outcome({ kind: "stopped" }))).toBeNull();
   });
 
+  for (const kind of ["done", "error", "stopped"] as const) {
+    test(`${kind} notifies about failed persistence without inventing a rollback`, () => {
+      const warning = "The conversation outcome could not be fully saved. Changes to the book remain.";
+      const result = outcome({ kind, persistenceError: warning, undoAvailable: false, message: "The connection expired." });
+      const copy = notificationFor(result)!;
+      expect(copy.title).toContain("save warning");
+      expect(copy.title).not.toContain("ready");
+      expect(copy.body).toContain(warning);
+      expect(copy.body).toContain("1 chapter changed. No undo checkpoint.");
+      if (kind === "error") expect(copy.body).toContain("The connection expired.");
+      expect(shouldNotify(result, { visible: false, focused: false })).toBe(true);
+      expect(notificationRoute(result, { visible: false, focused: false }, true)).toBe("log");
+      expect(shouldNotify({ ...result, background: false }, { visible: true, focused: true })).toBe(false);
+    });
+  }
+
   test("notifies for an explicit background turn even when the window is focused", () => {
     expect(shouldNotify(outcome(), { visible: true, focused: true })).toBe(true);
     expect(shouldNotify(outcome({ background: false }), { visible: true, focused: true })).toBe(false);

@@ -32,6 +32,9 @@ authorized; no task requires a live provider, credential, paid service, real man
   event ("Stopping…" until then), continuation is always a new turn, approvals stay per
   turn, close stops non-background turns and restart expires plans. W04 implements the bounded
   terminal-stop prerequisite; see [stop-boundary evidence](stop-boundary.md). Plan lifecycle remains open.
+  The consumer correction adds terminal ownership in Ambient, usage/conversation/approval warning
+  accumulation and completion/background/toolkit propagation. Its 271-test focused pass and
+  workspace typechecks do not close plan, host lifecycle or integrated delivery tasks.
 - [x] T003 Decide whether new guidance can be added to a running or paused plan and whether that
   action revises the same plan or requires a new turn. Blocks only in-flight plan guidance; proposed
   plan guidance and pre-send controls can proceed.

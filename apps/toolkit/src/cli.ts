@@ -251,7 +251,10 @@ export async function runCli(
         const prompt = required(parsed.positionals.slice(1).join(" "), "ask needs something to say.");
         const result = await client.turn(bookId, prompt);
         if (json) return print(io, result);
-        io.stdout.write(`${result.text}\n`);
+        io.stdout.write(result.stopped
+          ? `Stopped · ${result.changed} ${result.changed === 1 ? "chapter" : "chapters"} changed\n`
+          : `${result.text}\n`);
+        if (result.persistenceError) io.stderr.write(`Save warning: ${result.persistenceError}\n`);
         return 0;
       }
       case "undo": {

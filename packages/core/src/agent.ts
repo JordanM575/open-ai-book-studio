@@ -56,6 +56,10 @@ export interface AgentTurnResult {
   costUsd?: number | null;
   /** True when the author stopped the turn. */
   stopped?: boolean;
+  /** Whether the runtime confirmed a checkpoint covering the recorded changes. */
+  undoAvailable?: boolean;
+  /** Local outcome/usage persistence failed; the answer and recorded book effects still stand. */
+  persistenceError?: string;
 }
 
 /** What one undo of an agent turn did. */

@@ -43,6 +43,10 @@ Update the `Unreleased` section before every commit.
 
 ### Agent interaction
 
+- Keep Ambient controls owned through request-only Stop and show settled changes, undo availability
+  and save warnings. Ignore late replies/events, expose failed Stop requests and retain typed input.
+  Accumulate usage/conversation/approval persistence warnings without losing successful book effects;
+  carry them through completion results, background notifications and plain-text toolkit replies.
 - Keep stopped turns owned until in-flight tools, approval decisions, checkpoints and outcome
   persistence settle. Remove the five-second false-stop deadline, capture late tool receipts outside
   the SDK stream, close dispatch synchronously, and serialize approval versus Stop. The composer

@@ -100,6 +100,9 @@ export interface AgentOutcome {
   background: boolean;
   text: string;
   changed: number;
+  undoAvailable?: boolean;
+  /** Orthogonal to the model/tool outcome: a local outcome or usage write failed. */
+  persistenceError?: string;
   message?: string;
   approvalName?: string;
 }
@@ -148,6 +151,21 @@ interface CheckpointProgress {
 }
 
 const MAX_STEPS = 20;
+
+// Fixed, public-safe warnings. Multiple failed writes must not replace one another, and repeated
+// attempts to save the same outcome must not grow its warning without bound.
+const PERSISTENCE_WARNINGS = {
+  approval: "The approval could not be saved. Its action was not started.",
+  conversation: "The conversation outcome could not be fully saved. Changes to the book remain.",
+  usage: "The turn's usage could not be saved. Local usage and spend history may be incomplete."
+} as const;
+
+function recordPersistenceError(state: TurnState, kind: keyof typeof PERSISTENCE_WARNINGS): void {
+  const warning = PERSISTENCE_WARNINGS[kind];
+  if (!state.persistenceError?.includes(warning)) {
+    state.persistenceError = [state.persistenceError, warning].filter(Boolean).join(" ");
+  }
+}
 
 /** Replaceable at the edge so tests and future provider adapters do not need a network. */
 export type AgentModelFactory = (credential: StoredCredential, modelId: string) => LanguageModel;
@@ -282,6 +300,8 @@ export class AgentRuntime {
         background: turn.background,
         text: state.text,
         changed: state.changes.length,
+        ...(kind !== "approval" ? { undoAvailable: checkpointCovers(state) } : {}),
+        ...(state.persistenceError ? { persistenceError: state.persistenceError } : {}),
         ...(extra.message ? { message: extra.message } : {}),
         ...(extra.approvalName ? { approvalName: extra.approvalName } : {})
       });
@@ -339,11 +359,20 @@ export class AgentRuntime {
             threadId: started.threadId,
             text: event.text,
             changed: event.changed ?? 0,
-            costUsd: event.costUsd
+            costUsd: event.costUsd,
+            ...(event.undoAvailable !== undefined ? { undoAvailable: event.undoAvailable } : {}),
+            ...(event.persistenceError ? { persistenceError: event.persistenceError } : {})
           });
         } else if (event.type === "error") {
           unsubscribe();
-          reject(new ProviderError("unknown", event.message));
+          // Existing HTTP/bridge error envelopes carry the message, so retain both facts there
+          // as well as the orthogonal fields for in-process callers. Never replace the failure.
+          reject(Object.assign(new ProviderError("unknown",
+            [event.message, event.persistenceError].filter(Boolean).join(" ")), {
+            changed: event.changed ?? 0,
+            ...(event.undoAvailable !== undefined ? { undoAvailable: event.undoAvailable } : {}),
+            ...(event.persistenceError ? { persistenceError: event.persistenceError } : {})
+          }));
         } else if (event.type === "stopped") {
           unsubscribe();
           resolve({
@@ -351,7 +380,9 @@ export class AgentRuntime {
             threadId: started.threadId,
             text: "",
             changed: event.changed ?? 0,
-            stopped: true
+            stopped: true,
+            ...(event.undoAvailable !== undefined ? { undoAvailable: event.undoAvailable } : {}),
+            ...(event.persistenceError ? { persistenceError: event.persistenceError } : {})
           });
         } else if (event.type === "approval") {
           /*
@@ -571,10 +602,10 @@ export class AgentRuntime {
       await this.setApprovalStatus(turn, approvalId, approved ? "approved" : "denied");
       pending.resume(turn.controller.signal.aborted ? null : approved);
     } catch {
-      turn.state.persistenceError = "The approval could not be saved. Its action was not started.";
+      recordPersistenceError(turn.state, "approval");
       void this.stop(turnId);
       pending.resume(null);
-      throw new ProviderError("invalid-request", turn.state.persistenceError);
+      throw new ProviderError("invalid-request", PERSISTENCE_WARNINGS.approval);
     }
     return null;
   }
@@ -747,7 +778,7 @@ export class AgentRuntime {
           thread = await threadStore.save({ ...thread, checkpointTurns });
         }
       } catch (error) {
-        state.persistenceError = "The conversation outcome could not be fully saved. Changes to the book remain.";
+        recordPersistenceError(state, "conversation");
         console.warn("[agent] Could not save the conversation:",
           error instanceof Error ? redact(error.message) : "The conversation write failed.");
       }
@@ -929,7 +960,9 @@ export class AgentRuntime {
           steps: state.steps
         });
       } catch (error) {
-        console.warn("[agent] Could not record usage:", redact((error as Error).message));
+        recordPersistenceError(state, "usage");
+        console.warn("[agent] Could not record usage:",
+          error instanceof Error ? redact(error.message) : "The usage write failed.");
       }
       controller.signal.throwIfAborted();
       this.terminal(turnId, state, done);

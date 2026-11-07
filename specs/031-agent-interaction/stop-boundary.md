@@ -26,9 +26,22 @@ resume is introduced. The broader thread-storage proposals remain separately own
   A checkpoint failure does not pretend the manuscript edit was undone.
 - Ordinary completion also finishes usage persistence before its terminal event. Normal Discuss,
   Edit, destructive approvals and checked one-turn undo retain their existing behavior.
+- Usage-write failure produces a usage/spend-history warning, independently of provider-reported
+  cost. Approval, conversation and usage warnings accumulate once each; none overwrites another.
+  A hung usage append holds ownership just like an unfinished checked write.
 - The composer keeps its controls busy and says **Stopping… Waiting for in-flight work to settle.**
   until terminal acknowledgment. It then shows stopped chapter count, actual undo availability and
   any conversation-save failure. A late approval reply cannot restore a working status.
+- Ambient uses the same terminal boundary: Stop acknowledgment leaves Send, Keep going, microphone
+  and Undo busy. A failed request stays visibly unconfirmed and permits a retry unless the host has
+  already confirmed Stopping. Matching done/stopped/error events retain answer/error, change count,
+  undo and persistence facts; obsolete replies/events cannot restore controls or replace them.
+- Completion results carry additive `undoAvailable`/`persistenceError`; error callers retain the
+  original failure plus the save warning. Background notifications say **save warning**, including
+  stopped turns with failed persistence, instead of promising a saved conversation. Spoken Ambient
+  replies and plain-text toolkit replies also surface the warning. No provider retry is introduced.
+- Backend/bridge Stop's legacy `stopped` count is a request count. Only the retained completion or
+  live status after terminal settlement establishes that the turn ended.
 
 ## Focused verification
 
@@ -59,6 +72,24 @@ focused rerun passed **2 tests / 6 assertions** without the earlier teardown war
 TypeScript projects pass. Lint of the seven changed TypeScript files exits successfully with
 46 existing non-null-assertion warnings and no errors; no lint rule or baseline was changed.
 
+### Consumer/persistence correction, November 7
+
+The first exact-head independent review requested three narrow corrections: Ambient request-only
+ownership, missing usage-write warnings, and dropped completion/background persistence status.
+The follow-up implements these without changing the settlement mechanism or conversation format.
+
+Focused follow-up run: **271 passed, 0 failed, 1,587 assertions across 11 files**. This includes
+runtime, pause boundary, Ambient, Chat composer, notification copy/notifier, modes, guidance,
+checkpoint, toolkit CLI and backend-client suites. Workspace desktop/web/toolkit typechecks pass;
+changed-file lint passes with 56 non-null-assertion warnings, no errors. The older counts above
+remain original-candidate evidence and are not additive. Fresh review and integrated gates remain.
+
+New regressions exercise a real loopback backend plus actual runtime and toolkit completion client;
+held/failing usage writes with and without Stop/conversation failure; failed approval plus failed
+conversation persistence; original provider failure retained in completion/background outcomes;
+indefinitely unresolved usage; request-only Ambient Stop, false Result, late success/refusal/error,
+same-batch duplicate controls, retained typed input, terminal facts and synthetic spoken warnings.
+
 ## Limits and parent integration
 
 A never-settling adapter remains **Stopping** indefinitely with outcome unresolved and no new turn
@@ -84,4 +115,10 @@ and completion promise remain alive until the terminal boundary; no new global r
    failed save. Confirm no unstarted destructive action runs after Stop and no late reply restores
    Working. Surface a conversation-save failure separately from a successful manuscript change.
 4. Repeat with an adapter that never resolves. Confirm it remains unresolved rather than displaying
-   a fabricated zero-change success. No automatic continuation or background permission is offered.
+    a fabricated zero-change success. No automatic continuation or background permission is offered.
+5. Repeat Stop through Ambient with request acknowledgment only. Keep its controls busy until the
+   matching terminal; inject late events and Stop replies and confirm the settled/new-turn state wins.
+   A failed request must say Stop was not confirmed and retain the still-running turn.
+6. Hold usage append, request Stop, and confirm the backend reports only a request count while the
+   completion stays pending. Reject the usage write, with/without a conversation failure, and check
+   actual manuscript bytes, complete warnings, completion/CLI copy and the hidden notification log.

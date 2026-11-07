@@ -111,7 +111,11 @@ let spoken: string[] = [];
 let started: Array<{ bookId: string; mode: string; prompt: string }> = [];
 let transcript = "carry on with the next scene";
 let transcribeFails = false;
-let listeners: Array<(event: { turnId: string; type: string; delta?: string; message?: string }) => void> = [];
+type TestEvent = {
+  turnId: string; type: string; delta?: string; message?: string; text?: string;
+  changed?: number; undoAvailable?: boolean; persistenceError?: string;
+};
+let listeners: Array<(event: TestEvent) => void> = [];
 let turnId = "turn_amb000001";
 let voiceSpoken: string[] = [];
 let speakersAvailable = false;
@@ -228,6 +232,7 @@ beforeEach(() => {
   speakersAvailable = false;
   speakersSelected = false;
   startRefusal = null;
+  turnId = "turn_amb000001";
   speakFails = false;
   utteranceAutoEnd = true;
   pendingEnds = [];
@@ -292,18 +297,20 @@ afterEach(() => {
 
 function render(voiceStatusRevision = 0) {
   const onNotice = mock(() => {});
+  const onChanged = mock(() => {});
   const props = {
     bookId: BOOK,
     chapterId: null,
     chapterTitle: "The Light",
     chapterContent: "The storm came in low.",
     onNextChapter: () => {},
-    onNotice
+    onNotice,
+    onChanged
   };
   const view = testing.render(React.createElement(AmbientPanel, { ...props, voiceStatusRevision }));
   const reviseVoiceStatus = (revision: number) =>
     view.rerender(React.createElement(AmbientPanel, { ...props, voiceStatusRevision: revision }));
-  return { view, onNotice, reviseVoiceStatus };
+  return { view, onNotice, onChanged, reviseVoiceStatus };
 }
 
 function installFakeAudio() {
@@ -418,6 +425,137 @@ describe("the status line", () => {
   });
 });
 
+describe("Ambient terminal ownership", () => {
+  function stopActions() {
+    window.studio.agent.ambient = async () => ({ ok: true, data: {
+      ...status, actions: [...status.actions,
+        { id: "stop", label: "Stop", spoken: "stop", available: false },
+        { id: "undo", label: "Undo", spoken: "undo", available: true }]
+    } });
+  }
+
+  async function openTurn() {
+    stopActions();
+    const result = render();
+    await testing.waitFor(() => expect(result.view.getByTestId("ambient-line").textContent).toContain("Chapter One"));
+    await testing.fireEvent.click(result.view.getByTestId("ambient-toggle"));
+    await testing.act(async () => { testing.fireEvent.click(result.view.getByTestId("ambient-action-keep_going")); });
+    await testing.waitFor(() => expect(started).toHaveLength(1));
+    return result;
+  }
+
+  async function emit(event: TestEvent) {
+    await testing.act(async () => { for (const listener of listeners) listener(event); });
+  }
+
+  test("a request-only Stop keeps controls busy until the matching terminal, and ignores late events", async () => {
+    const stopped: string[] = [];
+    window.studio.agent.stop = async (id) => {
+      stopped.push(id);
+      for (const listener of listeners) listener({ type: "stopping", turnId: id });
+      return { ok: true, data: null };
+    };
+    const { view, onChanged } = await openTurn();
+    // A just-started turn owns Stop even when the earlier ambient snapshot called it unavailable.
+    expect(view.getByTestId("ambient-action-stop").hasAttribute("disabled")).toBe(false);
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("ambient-action-stop"));
+      testing.fireEvent.click(view.getByTestId("ambient-action-stop"));
+    });
+    expect(stopped).toEqual([turnId]);
+    expect(view.getByTestId("ambient-note").textContent).toContain("Stopping…");
+    expect(view.getByTestId("ambient-note").textContent).not.toContain("Stopped");
+    expect(view.getByTestId("ambient-action-keep_going").hasAttribute("disabled")).toBe(true);
+    expect(view.getByTestId("ambient-action-undo").hasAttribute("disabled")).toBe(true);
+    expect(view.getByTestId("ambient-mic").hasAttribute("disabled")).toBe(true);
+    await testing.fireEvent.change(view.getByTestId("ambient-input"), { target: { value: "Keep this pending request" } });
+    await testing.fireEvent.keyDown(view.getByTestId("ambient-input"), { key: "Enter" });
+    expect((view.getByTestId("ambient-input") as HTMLInputElement).value).toBe("Keep this pending request");
+    expect(view.getByTestId("ambient-send").hasAttribute("disabled")).toBe(true);
+    expect(started).toHaveLength(1);
+    const warning = "The conversation outcome could not be fully saved. Changes to the book remain.";
+    await emit({ type: "stopped", turnId, changed: 1, undoAvailable: false, persistenceError: warning });
+    const terminal = view.getByTestId("ambient-note").textContent;
+    expect(terminal).toBe(`Stopped · 1 chapter changed · no undo checkpoint · ${warning}`);
+    expect(view.getByTestId("ambient-note").getAttribute("role")).toBe("status");
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(view.getByTestId("ambient-send").hasAttribute("disabled")).toBe(false);
+    await emit({ type: "stopping", turnId });
+    await emit({ type: "text", turnId, delta: "Late answer" });
+    await emit({ type: "error", turnId, message: "Late failure" });
+    expect(view.getByTestId("ambient-note").textContent).toBe(terminal);
+    expect(view.queryByTestId("ambient-reply")).toBeNull();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  for (const hostStopping of [false, true]) {
+    test(`a failed Stop Result retains ownership${hostStopping ? " after host stopping" : " and permits a retry"}`, async () => {
+      window.studio.agent.stop = async (id) => {
+        if (hostStopping) for (const listener of listeners) listener({ type: "stopping", turnId: id });
+        return { ok: false, error: { code: "unknown", message: "Synthetic transport failure" } };
+      };
+      const { view, onNotice } = await openTurn();
+      await testing.act(async () => { testing.fireEvent.click(view.getByTestId("ambient-action-stop")); });
+      expect(view.getByTestId("ambient-note").textContent).toContain("Synthetic transport failure");
+      expect(view.getByTestId("ambient-note").textContent).not.toContain("Stopped");
+      expect(view.getByTestId("ambient-action-keep_going").hasAttribute("disabled")).toBe(true);
+      expect(view.getByTestId("ambient-action-stop").hasAttribute("disabled")).toBe(hostStopping);
+      expect(onNotice).toHaveBeenCalledTimes(1);
+      await emit({ type: "stopped", turnId, changed: 2, undoAvailable: true });
+      expect(view.getByTestId("ambient-note").textContent).toBe("Stopped · 2 chapters changed · undo available");
+    });
+  }
+
+  for (const reply of ["resolve", "reject", "refuse"] as const) {
+    test(`a late Stop ${reply} cannot overwrite a terminal or release a newer turn`, async () => {
+      let finish!: (value: Result<null>) => void;
+      let fail!: (error: Error) => void;
+      window.studio.agent.stop = () => new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+      const { view, onNotice } = await openTurn();
+      await testing.fireEvent.click(view.getByTestId("ambient-action-stop"));
+      const oldTurn = turnId;
+      await emit({ type: "stopped", turnId, changed: 1, undoAvailable: true, persistenceError: "Usage save failed." });
+      expect(view.getByTestId("ambient-note").textContent).toContain("Usage save failed.");
+      turnId = "turn_amb000002";
+      await testing.act(async () => { testing.fireEvent.click(view.getByTestId("ambient-action-keep_going")); });
+      await testing.waitFor(() => expect(started).toHaveLength(2));
+      await testing.act(async () => {
+        if (reply === "reject") fail(new Error("Late failure"));
+        else finish(reply === "resolve" ? { ok: true, data: null }
+          : { ok: false, error: { code: "unknown", message: "Late refusal" } });
+      });
+      await emit({ type: "done", turnId: oldTurn, text: "Late old answer" });
+      expect(view.queryByTestId("ambient-note")).toBeNull();
+      expect(view.queryByTestId("ambient-reply")).toBeNull();
+      expect(view.getByTestId("ambient-action-keep_going").hasAttribute("disabled")).toBe(true);
+      expect(onNotice).not.toHaveBeenCalled();
+    });
+  }
+
+  for (const type of ["done", "error"] as const) {
+    test(`${type} retains its answer/error, changes and save warning`, async () => {
+      const { view, onChanged } = await openTurn();
+      await emit({ type, turnId, text: "Final answer", message: "Original provider failure", changed: 1,
+        undoAvailable: true, persistenceError: "Usage save failed." });
+      expect(view.getByTestId("ambient-note").textContent).toBe(
+        `${type === "done" ? "Done" : "Original provider failure"} · 1 chapter changed · undo available · Usage save failed.`);
+      if (type === "done") expect(view.getByTestId("ambient-reply").textContent).toBe("Final answer");
+      expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  test("two starts in one event batch cannot dispatch overlapping turns", async () => {
+    const { view } = render();
+    await testing.waitFor(() => expect(view.getByTestId("ambient-line").textContent).toContain("Chapter One"));
+    await testing.fireEvent.click(view.getByTestId("ambient-toggle"));
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("ambient-action-keep_going"));
+      testing.fireEvent.click(view.getByTestId("ambient-action-keep_going"));
+    });
+    expect(started).toHaveLength(1);
+  });
+});
+
 describe("the hands-free loop", () => {
   test("a spoken sentence reaches the agent, and what was heard is shown", async () => {
     const { view } = render();
@@ -475,6 +613,21 @@ describe("the hands-free loop", () => {
       for (const listener of listeners) listener({ turnId, type: "done" });
     });
     await testing.waitFor(() => expect(spoken).toEqual(["The storm is quieter now."]));
+  });
+
+  test("a spoken answer includes its local save warning", async () => {
+    const { view } = render();
+    await testing.waitFor(() => expect(view.getByTestId("ambient-line").textContent).toContain("Chapter One"));
+    await testing.fireEvent.click(view.getByTestId("ambient-toggle"));
+    await testing.act(async () => { testing.fireEvent.click(view.getByTestId("ambient-mic")); });
+    await testing.act(async () => { FakeRecorder.instances.at(-1)?.stop(); });
+    await testing.waitFor(() => expect(started).toHaveLength(1));
+    await testing.act(async () => {
+      for (const listener of listeners) listener({ turnId, type: "done", text: "The storm is quieter now.",
+        persistenceError: "The conversation could not be saved." });
+    });
+    await testing.waitFor(() => expect(spoken).toEqual(["The storm is quieter now. The conversation could not be saved."]));
+    expect(view.getByTestId("ambient-note").textContent).toContain("The conversation could not be saved.");
   });
 
   test("the answer is spoken as words, without its markup", async () => {

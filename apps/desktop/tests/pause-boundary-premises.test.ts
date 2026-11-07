@@ -9,9 +9,13 @@ import type { StoredCredential } from "@ai-book-studio/core/providers/types";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderService } from "../src/main/providers";
 import type { Studio } from "../src/main/studio";
-import { AgentRuntime } from "../src/main/agent/runtime";
+import { AgentRuntime, type AgentOutcome } from "../src/main/agent/runtime";
 import { Library } from "../src/main/library/store";
 import { CheckpointStore } from "../src/main/agent/checkpoints";
+import { UsageStore } from "../src/main/usage";
+import { notificationFor } from "../src/main/background-copy";
+import { LocalBackend } from "../src/main/backend";
+import { BackendClient } from "../../toolkit/src/backend-client";
 
 let root = "";
 let library: Library;
@@ -313,6 +317,135 @@ function terminals(events: AgentEvent[]) {
 }
 
 describe("D178 definitive stop boundary", () => {
+  test("the real loopback completion client receives settlement warnings after request-only Stop", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Loopback", content: "The old opening.\n" });
+    const entered = gate();
+    const held = gate();
+    const append = spyOn(UsageStore.prototype, "append").mockImplementation(async () => {
+      entered.release();
+      await held.promise;
+      throw new Error("Synthetic usage failure");
+    });
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => replaceModel(chapter.id));
+    const backend = new LocalBackend({
+      current: () => ({ root, deviceId: library.deviceId, deviceName: library.deviceName }),
+      requireLibrary: () => library
+    }, {
+      locatorPath: join(root, "synthetic-backend.json"), token: "synthetic-stop-token", port: 0,
+      agent: {
+        run: (input) => runtime.runToCompletion(input),
+        stop: async (bookId) => ({ stopped: await runtime.stopBook(bookId) }),
+        undo: (bookId, turnId) => runtime.undoLast(bookId, turnId)
+      }
+    });
+    const address = await backend.start();
+    const client = new BackendClient({ url: address.url, token: address.token });
+    const completion = client.turn(book.id, "Replace");
+    try {
+      await entered.promise;
+      expect(await client.stop(book.id)).toEqual({ stopped: 1 });
+      expect(runtime.isWorking(book.id)).toBe(true);
+      expect(terminals(events)).toHaveLength(0);
+      await expect(client.turn(book.id, "Another")).rejects.toThrow(/still stopping/);
+      held.release();
+      const result = await completion;
+      expect(result).toMatchObject({ stopped: true, changed: 1, undoAvailable: true });
+      expect(result.persistenceError).toContain("usage could not be saved");
+      expect(runtime.isWorking(book.id)).toBe(false);
+      expect((await library.readChapter(book.id, chapter.id)).content).toBe("The new opening.\n");
+    } finally { held.release(); await completion; await backend.stop(); append.mockRestore(); }
+  });
+
+  for (const stop of [false, true]) {
+    for (const conversationFails of [false, true]) {
+      test(`usage persistence failure survives ${stop ? "Stop" : "completion"}${conversationFails ? " with a conversation failure" : ""}`, async () => {
+        const chapter = await library.createChapter(book.id, { title: "Usage", content: "The old opening.\n" });
+        const entered = gate();
+        const held = gate();
+        const append = spyOn(UsageStore.prototype, "append").mockImplementation(async () => {
+          entered.release();
+          await held.promise;
+          throw new Error("Synthetic usage storage failure");
+        });
+        if (conversationFails) library.threads.upsertMessage = async () => { throw new Error("Synthetic conversation failure"); };
+        const events: AgentEvent[] = [];
+        const outcomes: AgentOutcome[] = [];
+        const model = replaceModel(chapter.id);
+        const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model,
+          (outcome) => outcomes.push(outcome));
+        let completed = false;
+        const completion = runtime.runToCompletion({ mode: "edit", bookId: book.id, prompt: "Replace", background: true })
+          .then((result) => { completed = true; return result; });
+        try {
+          await entered.promise;
+          const turnId = events[0]!.turnId;
+          if (stop) expect(await runtime.stopBook(book.id)).toBe(1); // Request count, not settled turns.
+          expect(completed).toBe(false);
+          expect(terminals(events)).toHaveLength(0);
+          expect(runtime.isWorking(book.id)).toBe(true);
+          expect(runtime.hasActiveBackgroundTurns()).toBe(true);
+          await expect(runtime.start({ mode: "edit", bookId: book.id, prompt: "Another" })).rejects.toThrow(/still stopping/);
+          held.release();
+          const result = await completion;
+          const terminal = terminals(events)[0]!;
+          expect(terminals(events)).toHaveLength(1);
+          expect(terminal).toMatchObject({ type: stop ? "stopped" : "done", turnId, changed: 1, undoAvailable: true });
+          const warning = "persistenceError" in terminal ? terminal.persistenceError : undefined;
+          expect(warning).toContain("usage could not be saved");
+          expect(warning).toContain("spend history may be incomplete");
+          expect(warning?.includes("conversation outcome")).toBe(conversationFails);
+          if (conversationFails) expect(warning?.match(/conversation outcome/g)).toHaveLength(1);
+          expect(result).toMatchObject({ text: stop ? "" : "Sharpened.", changed: 1, undoAvailable: true, persistenceError: warning });
+          expect(result.stopped).toBe(stop ? true : undefined);
+          expect(outcomes).toHaveLength(1);
+          expect(outcomes[0]).toMatchObject({ kind: stop ? "stopped" : "done", text: "Sharpened.", changed: 1, undoAvailable: true, persistenceError: warning });
+          expect(notificationFor(outcomes[0]!)?.title).toContain("save warning");
+          expect(notificationFor(outcomes[0]!)?.body).toContain(warning!);
+          expect(await new UsageStore(root).read(book.id)).toHaveLength(0);
+          expect(runtime.isWorking(book.id)).toBe(false);
+          expect(model.doStreamCalls).toHaveLength(2);
+          expect((await library.readChapter(book.id, chapter.id)).content).toBe("The new opening.\n");
+          expect((await runtime.undoLast(book.id, turnId)).restored).toBe(1);
+        } finally { held.release(); await completion; append.mockRestore(); }
+      });
+    }
+  }
+
+  test("a never-settling usage write keeps completion and Stop unresolved", async () => {
+    const entered = gate();
+    const append = spyOn(UsageStore.prototype, "append").mockImplementation(async () => {
+      entered.release();
+      return new Promise(() => {});
+    });
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => textModel());
+    try {
+      const started = await runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read" });
+      await entered.promise;
+      await runtime.stop(started.turnId);
+      expect(terminals(events)).toHaveLength(0);
+      expect(runtime.isWorking(book.id)).toBe(true);
+      await expect(runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read again" })).rejects.toThrow(/still stopping/);
+    } finally { append.mockRestore(); }
+  });
+
+  test("failed approval and final conversation writes retain both warnings", async () => {
+    const events: AgentEvent[] = [];
+    const model = memoryApprovalModel();
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Forget" });
+    const approval = await waitForApproval(events, started.turnId);
+    library.threads.updateApproval = async () => { throw new Error("Synthetic approval failure"); };
+    library.threads.upsertMessage = async () => { throw new Error("Synthetic conversation failure"); };
+    await expect(runtime.approve(started.turnId, approval.approvalId, true)).rejects.toThrow(/action was not started/);
+    const stopped = await waitForStopped(events, started.turnId);
+    expect(stopped.persistenceError).toContain("approval could not be saved");
+    expect(stopped.persistenceError).toContain("conversation outcome could not be fully saved");
+    expect(stopped.changed).toBe(0);
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
   test("stop after approval has dispatched preserves the destructive write's late outcome", async () => {
     const chapter = await library.createChapter(book.id, { title: "Approved", content: "The old opening.\n" });
     const entered = gate();

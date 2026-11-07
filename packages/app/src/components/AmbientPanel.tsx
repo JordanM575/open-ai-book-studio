@@ -53,8 +53,14 @@ export function AmbientPanel({
   const [expanded, setExpanded] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  // Keep the settled facts visible even if a later speech/status operation fails.
+  const [outcomeNote, setOutcomeNote] = useState("");
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const busyRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const stopConfirmedRef = useRef(false);
   const turnRef = useRef<string | null>(null);
   /** Whether the turn that just finished was spoken to, so its answer is spoken back. */
   const spokenRef = useRef(false);
@@ -121,14 +127,33 @@ export function AmbientPanel({
         if (event.type === "done") void refresh();
         return;
       }
-      if (event.type === "text") {
+      if (event.type === "stopping") {
+        stoppingRef.current = true;
+        stopConfirmedRef.current = true;
+        setStopping(true);
+        setNote("Stopping… Waiting for in-flight work to settle.");
+      } else if (event.type === "text") {
         replyRef.current += event.delta;
         setReply(replyRef.current);
-      } else if (event.type === "done") {
+      } else if (event.type === "done" || event.type === "stopped" || event.type === "error") {
+        // Only the matching terminal releases ownership. Late events and Stop replies cannot
+        // change this outcome or a later turn, including before React has rendered again.
+        turnRef.current = null;
+        busyRef.current = false;
+        stoppingRef.current = false;
+        stopConfirmedRef.current = false;
+        setStopping(false);
         setRunning(false);
         setStatus((current) => (current ? { ...current, working: false } : current));
+        const summary = terminalNote(event);
+        setOutcomeNote(summary);
+        setNote("");
+        if (event.type === "done") {
+          replyRef.current = event.text ?? replyRef.current;
+          setReply(replyRef.current);
+        }
         void refresh();
-        void changedRef.current?.();
+        if (event.type !== "error" || event.changed) void changedRef.current?.();
         /*
          * In the hands-free loop the answer is spoken as well as shown, because the author is not
          * looking at the screen — that is what makes it hands-free. The text stays on screen for
@@ -136,16 +161,10 @@ export function AmbientPanel({
          */
         if (spokenRef.current) {
           spokenRef.current = false;
-          void speech.speak(replyRef.current.trim() || "Done.");
+          void speech.speak(event.type === "done"
+            ? [replyRef.current.trim() || "Done.", event.persistenceError].filter(Boolean).join(" ")
+            : summary);
         }
-      } else if (event.type === "stopped") {
-        setRunning(false);
-        void changedRef.current?.();
-      } else if (event.type === "error") {
-        setRunning(false);
-        setNote(event.message);
-        // A turn can fail after it changed a chapter; that change is real and undoable.
-        if (event.changed) void changedRef.current?.();
       }
     });
     return unsubscribe;
@@ -153,11 +172,16 @@ export function AmbientPanel({
 
   const ask = useCallback(
     async (prompt: string, options: { spoken?: boolean } = {}) => {
-      if (running) return;
+      if (busyRef.current) return;
+      busyRef.current = true;
       setRunning(true);
+      stoppingRef.current = false;
+      stopConfirmedRef.current = false;
+      setStopping(false);
       replyRef.current = "";
       setReply("");
       setNote("");
+      setOutcomeNote("");
       try {
         const started = await window.studio.agent.start({ bookId, prompt, mode: "edit" });
         if (!started.ok) {
@@ -168,12 +192,13 @@ export function AmbientPanel({
         spokenRef.current = options.spoken === true;
         setStatus((current) => (current ? { ...current, working: true } : current));
       } catch (error) {
+        busyRef.current = false;
         setRunning(false);
         setNote(error instanceof Error ? error.message : String(error));
         onNotice(error);
       }
     },
-    [bookId, running, onNotice]
+    [bookId, onNotice]
   );
 
   const readAloud = useCallback(() => {
@@ -195,6 +220,7 @@ export function AmbientPanel({
   }, [refresh, status, speech]);
 
   const undo = useCallback(async () => {
+    if (busyRef.current) return;
     try {
       // The strip names no turn: it undoes the book's newest change on purpose, whoever made it.
       const result = await must(window.studio.agent.undoLast(bookId));
@@ -217,19 +243,28 @@ export function AmbientPanel({
 
   const stop = useCallback(async () => {
     const turnId = turnRef.current;
-    if (!turnId) return;
+    if (!turnId || stoppingRef.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
+    setNote("Stopping… Waiting for in-flight work to settle.");
     try {
-      await window.studio.agent.stop(turnId);
-      setRunning(false);
-      setNote("Stopped.");
+      await must(window.studio.agent.stop(turnId));
     } catch (error) {
+      if (turnRef.current !== turnId) return;
+      // A failed request is not a terminal, nor proof that an already received host Stop failed.
+      stoppingRef.current = stopConfirmedRef.current;
+      setStopping(stopConfirmedRef.current);
+      const detail = error instanceof Error ? error.message : String(error);
+      setNote(stopConfirmedRef.current
+        ? `Stopping… Waiting for in-flight work to settle. The Stop reply failed: ${detail}`
+        : `Stop could not be confirmed: ${detail} The turn is still owned; try Stop again.`);
       onNotice(error);
     }
   }, [onNotice]);
 
   const send = useCallback(() => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || busyRef.current) return;
     setInput("");
     void ask(text);
   }, [ask, input]);
@@ -267,9 +302,9 @@ export function AmbientPanel({
               Heard: “{heard}”
             </p>
           ) : null}
-          {note ? (
-            <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground" data-testid="ambient-note">
-              {note}
+          {outcomeNote || note ? (
+            <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground" role="status" data-testid="ambient-note">
+              {[outcomeNote, note].filter(Boolean).join(" · ")}
             </p>
           ) : null}
         </div>
@@ -322,8 +357,8 @@ export function AmbientPanel({
                 key={action.id}
                 variant={action.id === "read_aloud" ? "primary" : "secondary"}
                 size="sm"
-                disabled={!action.available || (action.id === "stop" ? !running : running)}
-                title={action.available ? action.spoken : action.why}
+                disabled={action.id === "stop" ? !running || stopping : !action.available || running}
+                title={action.id === "stop" && running ? "Stop this turn" : action.available ? action.spoken : action.why}
                 data-testid={`ambient-action-${action.id}`}
                 onClick={() => {
                   if (action.id === "read_aloud") readAloud();
@@ -417,4 +452,15 @@ export function AmbientPanel({
       ) : null}
     </section>
   );
+}
+
+function terminalNote(event: Extract<AgentEvent, { type: "done" | "stopped" | "error" }>): string {
+  const changed = event.changed ?? 0;
+  return [
+    event.type === "error" ? event.message : event.type === "stopped" ? "Stopped" : "Done",
+    `${changed} ${changed === 1 ? "chapter" : "chapters"} changed`,
+    changed > 0 ? event.undoAvailable === true ? "undo available"
+      : event.undoAvailable === false ? "no undo checkpoint" : "undo availability not confirmed" : "",
+    event.persistenceError
+  ].filter(Boolean).join(" · ");
 }
