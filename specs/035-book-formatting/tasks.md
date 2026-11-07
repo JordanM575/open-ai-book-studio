@@ -162,8 +162,11 @@ manuscripts, credentials, live providers, paid services or devices.
   (`exportManuscriptPdf`, `exportManuscriptEpub`), and `export-pdf-epub.test.ts` exercises cancel,
   a destination inside the library, replace consent, a file changed or created after consent,
   render and write failures and prior-output preservation in temporary folders. The Format dialog
-  exports only after the open chapter's save confirms. Open: cleanup reporting that names a
-  leftover temporary path, and the header's buttons still export after a failed save.
+  exports only after the open chapter's save confirms. The header also blocks a failed
+  or conflicted flush (`WorkspaceView.exportBook`, with an IO-failure regression in
+  `docx-export-flush.test.tsx`); the earlier missing-header-guard note was stale. Open: cleanup
+  reporting that names a leftover temporary path, and canonical destination-alias rejection across
+  all manuscript formats. Lexical path checks do not prevent an outside parent symlink into the library.
 - [ ] **T017** Complete synthetic end-to-end journeys for DOCX, PDF, EPUB and Markdown as each renderer
   becomes available. Verify the author-visible destination/status, source hashes, matter order,
   optional-image warning, save conflict, cancel and failure behavior. Unsupported targets must remain

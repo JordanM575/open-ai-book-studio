@@ -40,6 +40,11 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Address the independent delivery audit: distinguish supported turn schemas from runtime message
+  population, correct the already-fixed header export refusal note, and require each advertised
+  execution-stream lane to have explicitly assigned work. File-write ownership remains a separate
+  coordinator responsibility; graph validation does not claim runtime or release acceptance.
+
 - Record the author's November 7 delegated feature-delivery authority: resolve evidenced design
   recommendations and merge reviewed, validated feature PRs without routine approval stalls,
   preserving existing data-protection, spending and release-access restrictions.

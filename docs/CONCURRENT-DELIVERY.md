@@ -168,5 +168,7 @@ schedule is not authorization for the product itself to gain autonomous backgrou
 
 `python3 scripts/validate-completion-specs.py` checks both DAGs, Markdown/JSON edge agreement,
 work-package/stream references, coverage of all 25 completion lanes, and unconditional coverage of
-the all-roadmap milestone. These structural checks do not establish implementation or release
+the all-roadmap milestone. `workLanes` ties each package to its stream's lane scope; every advertised
+stream lane needs assigned work. These are scope references, not proof of disjoint file writes:
+the coordinator's exact-file dispatch ledger still governs shared seams. These structural checks do not establish implementation or release
 acceptance; the work-package gates and exact-candidate evidence remain required.

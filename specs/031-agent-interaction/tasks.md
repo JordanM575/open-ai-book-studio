@@ -45,7 +45,7 @@ authorized; no task requires a live provider, credential, paid service, real man
   with mode shown as unrecorded. Add the corresponding `docs/FORMAT.md` contract before writing the
   new fields. Test migrations and round trips with temporary synthetic libraries.
   Implemented: `AgentTurnInput` requires `mode` (`discuss`/`edit`) with optional bounded
-  `guidance` (1–2,000 chars, rejected never truncated); stored turns carry `mode` on the
+  `guidance` (1–2,000 chars, rejected never truncated); the schema/store supports `mode` on the
   assistant message and a `guidance` part on the user message; agent settings gain `tone`
   (≤500) and `answerLength` (brief/standard/detailed, standard by default) with old books
   gaining defaults on read. Every turn caller (composer, ambient, backend, bridge, live
@@ -53,7 +53,10 @@ authorized; no task requires a live provider, credential, paid service, real man
   composer default. `docs/FORMAT.md` documents the thread and settings contract. Covered by
   `packages/core/tests/agent-interaction-contract.test.ts` (validation, legacy reads,
   store round-trips, defaults and bounds). No runtime permission or UI behavior changes;
-  enforcement stays with T006 and the composer with T007/T011.
+  enforcement stays with T006 and the composer with T007/T011. Production runtime population of
+  stored mode/guidance and retry identity still need wiring: a same-text request with changed mode
+  or guidance must not silently reuse a different earlier request. Schema round trips alone do not
+  prove that production messages contain these fields.
 - [ ] T005 Add validated plan and step state to the thread contract, with explicit parent-turn
   binding and allowed transitions. Persist proposed, active and terminal state through the existing
   thread store. Malformed or incompatible plan state must be reported without deleting the thread.

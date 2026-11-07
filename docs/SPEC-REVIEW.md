@@ -46,3 +46,26 @@ Documentation review and structural checks do not prove provider output quality,
 native platform behavior, licensing rights or publishing/distributor acceptance. All new specs remain
 Draft/Planned with unchecked tasks and open decision gates. No live provider, paid generation,
 credential, signing, store, production-library or device work was performed for this change.
+
+## November 7 concurrent-delivery review
+
+An independent OpenCode `openai/gpt-6-astra-ultrafast` review inspected PR #30 at
+`1844285e2dbb83e131e691393ed7ec6c9b4c394c`. The coordinator's dispatch result confirmed
+`variant: high`. Verdict: **approve with nits for the documentation**, not runtime/release acceptance.
+
+- Clarify that 031 T004 implements schema/store support; production mode/guidance message population
+  and retry identity still need the active agent-interaction slice. Corrected in its task evidence.
+- Remove the stale claim that header exports ignore a failed save; preserve open cleanup, source-alias
+  and missing-image warning work. Corrected in 035 T016 without closing the whole task.
+- Tie lane ownership to assigned work, not just stream labels. Added explicit `workLanes` and checks
+  that every advertised stream lane has work and every work scope belongs to its assigned stream.
+  File-write concurrency remains governed by the coordinator's exact-file ledger.
+
+The audit also reproduced an existing manuscript-export source-alias defect with the lexical guard
+and real atomic writer on synthetic files. It predates this documentation PR and is assigned to the
+active export-safety slice; documentation approval does not certify that runtime issue as fixed.
+
+Parent verification after these corrections: both DAGs pass; five negative ownership cases are
+rejected, including an orphaned stream; 24 history/interaction contract tests and 34 existing export
+tests pass with zero failures; desktop/web/toolkit typechecks pass. The reviewer's original focused
+test attempts lacked dependencies; these parent results supplement rather than replace that record.

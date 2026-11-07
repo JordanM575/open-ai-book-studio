@@ -35,11 +35,21 @@ def validate_execution(lanes):
     work = {item["id"]: item for item in execution["work"]}
     assert len(streams) == len(execution["streams"]), "Duplicate stream ID"
     assert len(work) == len(execution["work"]), "Duplicate work-package ID"
+    work_lanes = execution["workLanes"]
+    assert set(work_lanes) == set(work), "Work-package lane coverage mismatch"
+    assigned = {stream_id: set() for stream_id in streams}
+    for item_id, item in work.items():
+        assert item["stream"] in streams, f"Unknown stream: {item_id}"
+        scope = work_lanes[item_id]
+        assert scope and len(scope) == len(set(scope)), f"Invalid work lane scope: {item_id}"
+        assert set(scope) <= set(streams[item["stream"]]["lanes"]), f"Work outside stream scope: {item_id}"
+        assigned[item["stream"]].update(scope)
     covered = set()
     for stream in streams.values():
         assert stream["lanes"], f"Empty stream: {stream['id']}"
         assert len(stream["lanes"]) == len(set(stream["lanes"])), "Duplicate lane in stream"
         assert set(stream["lanes"]) <= set(lanes), f"Unknown lane in {stream['id']}"
+        assert assigned[stream["id"]] == set(stream["lanes"]), f"Stream lanes without assigned work: {stream['id']}"
         covered.update(stream["lanes"])
     assert covered == set(lanes), f"Unowned execution lanes: {set(lanes) - covered}"
     assert 1 <= execution["maxConcurrentIntegrationGates"] <= execution["maxConcurrentAgents"]
@@ -76,7 +86,7 @@ def validate_execution(lanes):
     shown = set(re.findall(r"\b(W\d{2})(?:\[[^\]\n]*\])?\s*-->\s*(W\d{2})", diagram[1]))
     assert edges == shown, f"Execution Mermaid mismatch: {edges ^ shown}"
     print(f"Execution valid: {len(streams)} streams, {len(work)} packages, {len(edges)} edges, "
-          f"{len(wave)} initial agents; all lanes and packages reach completion")
+          f"{len(wave)} initial agents; assigned lane scopes and terminal coverage valid")
 
 
 def validate():
