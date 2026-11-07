@@ -10,9 +10,9 @@ export function navigationKey(run: ReaderRun, citation: Citation): string {
 
 export function navigationState(run: ReaderRun, citation: Citation, currentSources: readonly CurrentSource[], editor: ReaderReviewProps["editor"]) {
   try {
-    // The synchronous core verifier alone does not establish an envelope's validation provenance.
+    // Keep editor data uninspected until the core's descriptor-first validation.
     const envelope = reviewDisclosure(run.envelope);
-    return reviewCitationNavigation(envelope, citation, currentSources, editor?.clean === true ? editor : undefined).status;
+    return reviewCitationNavigation(envelope, citation, currentSources, editor).status;
   } catch { return "unavailable" as const; }
 }
 

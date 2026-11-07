@@ -23,6 +23,9 @@ Update the `Unreleased` section before every commit.
 
 ### Integration
 
+- Forward reader-navigation editor facts to the descriptor-first core without reading `clean` in
+  the UI. Direct transition and separately mounted Strict Mode regressions reject accessor effects
+  while preserving valid navigation; React development prop inspection is outside that guarantee.
 - Harden scoped-review input and evidence boundaries: require validated immutable envelopes for
   citations, refuse lossy/foreign/accessor/cyclic data before schemas or digests, validate current
   Start/editor facts, and reject oversized quotes even with malformed Unicode. Preserve complete

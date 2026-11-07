@@ -19,6 +19,12 @@ The colocated `contracts.ts` defines its callback types. Core imports use the `r
   Publish new facts when sources/editor state change. An unavailable prepared source clears its
   disclosure instead of reviving authorization if the old source later returns.
 
+Navigation passes editor facts untouched to the descriptor-first core verifier; it never reads
+`clean` to decide whether to validate. Malformed accessors are refused without application getter
+effects. This is not a framework-wide promise: React development performance tracks can inspect
+changed nested props before or after component code. Hosts must supply plain data facts at the React
+boundary; adversarial helper transitions and separate Strict Mode refusal/positive mounts are tested.
+
 Opening, refreshing the host, updating props or resolving a promise never invokes Start. Preparing
 or refreshing the disclosure requires a button action; a separate provider-named Start sends the
 exact registered immutable envelope displayed. Every accepted preparation needs a new request ID,
