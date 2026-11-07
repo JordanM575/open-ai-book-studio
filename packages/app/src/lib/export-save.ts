@@ -1,5 +1,15 @@
 import type { SaveStatus } from "../components/ManuscriptEditor";
 
+/** Additive integration seam: the parent-owned IPC contract can replace legacy path-only replies. */
+export interface ManuscriptExportReceipt {
+  path: string;
+  warnings: string[];
+}
+
+export function exportReceipt(result: string | ManuscriptExportReceipt | null): ManuscriptExportReceipt | null {
+  return typeof result === "string" ? { path: result, warnings: [] } : result;
+}
+
 /**
  * Why an export did not start: the open chapter's save did not confirm. One wording,
  * shared by the Format dialog and the workspace header export, so the author reads

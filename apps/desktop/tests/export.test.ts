@@ -330,6 +330,33 @@ describe("isInsideLibrary", () => {
   });
 });
 
+describe("all manuscript formats reject a symlinked source directory", () => {
+  for (const kind of ["docx", "markdown", "pdf", "epub"] as const) {
+    test(kind, async () => {
+      const { library, bookId } = await fixture();
+      const detail = await library.readBook(bookId);
+      const before = await snapshotBook(library.root);
+      const outside = await mkdtemp(join(tmpdir(), "abs-export-alias-"));
+      cleanups.push(outside);
+      await symlink(join(library.root, "books", bookId), join(outside, "alias"));
+      const deps = {
+        pickDestination: async () => join(outside, "alias", `source.${kind}`),
+        confirmReplace: async () => true,
+        statDestination: async () => null,
+        renderPdf: async () => new TextEncoder().encode("%PDF-synthetic")
+      };
+      const attempt = {
+        docx: () => exportManuscriptDocx(detail, new Map(), library.root, deps),
+        markdown: () => exportManuscriptMarkdown(detail, library.root, deps),
+        pdf: () => exportManuscriptPdf(detail, new Map(), library.root, deps),
+        epub: () => exportManuscriptEpub(detail, new Map(), library.root, deps)
+      }[kind];
+      await expect(attempt()).rejects.toMatchObject({ code: "invalid" });
+      expect(await snapshotBook(library.root)).toEqual(before);
+    });
+  }
+});
+
 describe("exportManuscriptDocx", () => {
   async function outside(): Promise<string> {
     const dir = await mkdtemp(join(tmpdir(), "abs-docx-out-"));

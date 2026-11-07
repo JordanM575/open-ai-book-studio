@@ -22,6 +22,7 @@ import { LibraryError } from "./library/errors";
 import { writeFileAtomic } from "./library/atomic";
 import { buildEpub } from "./epub";
 import { buildManuscriptHtml, exportPlan } from "./manuscript-html";
+import { createExportWriter, DESTINATION_CHANGED, inspectExportDestination, type ExportAtomicOverrides, type ExportInspectionOverrides } from "./export-publication";
 
 const LINE_SPACING: Record<ManuscriptSettings["lineSpacing"], number> = {
   Single: 240,
@@ -232,31 +233,61 @@ export async function collectDocxImages(
   detail: BookDetail,
   images: DocxImageSource
 ): Promise<Map<string, DocxImage>> {
+  const result = await collectManuscriptImages(detail, images);
+  for (const warning of result.warnings) console.warn("[export]", warning);
+  return result.illustrations;
+}
+
+/** Snapshot-specific warnings travel with the rendered images, never via a second renderer read. */
+export async function collectManuscriptImages(
+  detail: BookDetail,
+  images: DocxImageSource,
+  target: "embedded" | "markdown" = "embedded"
+): Promise<{ illustrations: Map<string, DocxImage>; warnings: string[] }> {
   const collected = new Map<string, DocxImage>();
+  const warnings: string[] = [];
+  const chapters = new Map(detail.chapters.map((chapter) => [chapter.id, chapter.title]));
   try {
-    const { manifest } = await images.listImages(detail.book.id);
+    const { manifest, warning } = await images.listImages(detail.book.id);
+    if (warning) warnings.push(`Illustrations were not included because the image list could not be read. ${warning}`);
     for (const record of manifest.images) {
-      if (!record.chapterId || record.mimeType === "image/webp") continue;
-      if (collected.has(record.chapterId)) continue;
+      if (!record.chapterId || !chapters.has(record.chapterId)) continue;
+      const name = `${record.fileName} (${chapters.get(record.chapterId)})`;
+      if (target === "markdown") {
+        warnings.push(`Skipped ${name}: this Markdown export is text only and does not include illustrations.`);
+        continue;
+      }
+      if (record.mimeType === "image/webp") {
+        warnings.push(`Skipped ${name}: WebP illustrations are not supported by this export.`);
+        continue;
+      }
+      if (collected.has(record.chapterId)) {
+        warnings.push(`Skipped ${name}: only the first readable illustration for each chapter is included.`);
+        continue;
+      }
       try {
         const stored = await images.readImage(detail.book.id, record.id);
         if (stored) {
           collected.set(record.chapterId, {
-            bytes: stored.bytes,
+            bytes: new Uint8Array(stored.bytes),
             width: record.width,
             height: record.height,
             mimeType: record.mimeType,
             prompt: record.prompt
           });
+        } else {
+          warnings.push(`Skipped ${name}: the image is no longer in the book's image list.`);
         }
       } catch (error) {
-        console.warn("[export] Skipping an unavailable illustration:", (error as Error).message);
+        const reason = error instanceof LibraryError || error instanceof LibraryPortError
+          ? error.message : "The image file could not be read.";
+        warnings.push(`Skipped ${name}: ${reason}`);
       }
     }
-  } catch (error) {
-    console.warn("[export] Could not read illustrations:", (error as Error).message);
+  } catch {
+    warnings.push("Illustrations were not included because the image list could not be read.");
   }
-  return collected;
+  return { illustrations: collected, warnings };
 }
 
 /**
@@ -373,6 +404,9 @@ export interface ExportDeps {
   confirmReplace: (path: string) => Promise<boolean>;
   statDestination: (path: string) => Promise<ExportState | null>;
   writeFile?: (path: string, data: Uint8Array) => Promise<void>;
+  /** Scoped filesystem faults for synthetic publication tests; production uses the real writer. */
+  atomic?: ExportAtomicOverrides;
+  inspection?: ExportInspectionOverrides;
 }
 
 /** Kept for the DOCX journey's existing imports; new code uses ExportDeps. */
@@ -398,24 +432,9 @@ export async function exportManuscriptDocx(
   deps: ExportDeps
 ): Promise<string | null> {
   assertNoUnreadableChapters(detail);
-  const destination = await deps.pickDestination(suggestDocxName(detail.book.title));
-  if (!destination) return null;
-  if (isInsideLibrary(libraryRoot, destination)) {
-    throw new LibraryError(
-      "invalid",
-      "That location is inside the open library. Choose another folder so the export cannot overwrite the book's own files."
-    );
-  }
-  const data = await buildDocx(detail, illustrations);
-  const observed = await deps.statDestination(destination);
-  if (observed && !(await deps.confirmReplace(destination))) return null;
-  const reread = await deps.statDestination(destination);
-  if (!sameExportState(observed, reread)) {
-    throw new LibraryError("io", "The file changed before the export was saved. Nothing was written. Try the export again.");
-  }
-  const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, Buffer.from(bytes)));
-  await write(destination, new Uint8Array(data));
-  return destination;
+  const snapshot = structuredClone(detail);
+  const pictures = structuredClone(illustrations);
+  return publishManuscript(suggestDocxName(snapshot.book.title), libraryRoot, deps, () => buildDocx(snapshot, pictures));
 }
 
 /**
@@ -430,24 +449,10 @@ export async function exportManuscriptMarkdown(
   deps: ExportDeps
 ): Promise<string | null> {
   assertNoUnreadableChapters(detail);
-  const destination = await deps.pickDestination(suggestMarkdownName(detail.book.title));
-  if (!destination) return null;
-  if (isInsideLibrary(libraryRoot, destination)) {
-    throw new LibraryError(
-      "invalid",
-      "That location is inside the open library. Choose another folder so the export cannot overwrite the book's own files."
-    );
-  }
-  const data = buildMarkdown(detail);
-  const observed = await deps.statDestination(destination);
-  if (observed && !(await deps.confirmReplace(destination))) return null;
-  const reread = await deps.statDestination(destination);
-  if (!sameExportState(observed, reread)) {
-    throw new LibraryError("io", "The file changed before the export was saved. Nothing was written. Try the export again.");
-  }
-  const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, Buffer.from(bytes)));
-  await write(destination, new TextEncoder().encode(data));
-  return destination;
+  const snapshot = structuredClone(detail);
+  return publishManuscript(suggestMarkdownName(snapshot.book.title), libraryRoot, deps, async () =>
+    new TextEncoder().encode(buildMarkdown(snapshot))
+  );
 }
 
 /**
@@ -470,15 +475,20 @@ async function publishManuscript(
       "That location is inside the open library. Choose another folder so the export cannot overwrite the book's own files."
     );
   }
-  const data = await build();
+  const inspected = await inspectExportDestination(libraryRoot, destination, deps.inspection);
   const observed = await deps.statDestination(destination);
-  if (observed && !(await deps.confirmReplace(destination))) return null;
-  const reread = await deps.statDestination(destination);
-  if (!sameExportState(observed, reread)) {
-    throw new LibraryError("io", "The file changed before the export was saved. Nothing was written. Try the export again.");
-  }
-  const write = deps.writeFile ?? ((path, bytes) => writeFileAtomic(path, bytes));
-  await write(destination, data);
+  const data = await build();
+  if ((observed || inspected.exists) && !(await deps.confirmReplace(destination))) return null;
+  const validate = async (): Promise<void> => {
+    const reread = await deps.statDestination(destination);
+    if (!sameExportState(observed, reread) || inspected.fingerprint !== (await inspectExportDestination(libraryRoot, destination, deps.inspection)).fingerprint) {
+      throw new LibraryError("io", DESTINATION_CHANGED);
+    }
+  };
+  await validate();
+  const write = deps.writeFile ?? createExportWriter(validate, deps.atomic);
+  // Anchor staging and cleanup to the checked real parent, not a retargetable alias supplied by the picker.
+  await write(inspected.resolvedPath, data);
   return destination;
 }
 
@@ -502,10 +512,12 @@ export async function exportManuscriptPdf(
   deps: PdfExportDeps
 ): Promise<string | null> {
   assertNoUnreadableChapters(detail);
-  return publishManuscript(suggestPdfName(detail.book.title), libraryRoot, deps, async () => {
+  const snapshot = structuredClone(detail);
+  const pictures = structuredClone(illustrations);
+  return publishManuscript(suggestPdfName(snapshot.book.title), libraryRoot, deps, async () => {
     let pdf: Uint8Array;
     try {
-      pdf = await deps.renderPdf(buildManuscriptHtml(detail, illustrations));
+      pdf = await deps.renderPdf(buildManuscriptHtml(snapshot, pictures));
     } catch (error) {
       if (error instanceof LibraryError) throw error;
       console.warn("[export] The PDF could not be rendered:", (error as Error | undefined)?.message);
@@ -524,8 +536,10 @@ export async function exportManuscriptEpub(
   deps: ExportDeps
 ): Promise<string | null> {
   assertNoUnreadableChapters(detail);
-  return publishManuscript(suggestEpubName(detail.book.title), libraryRoot, deps, async () =>
-    buildEpub(detail, illustrations)
+  const snapshot = structuredClone(detail);
+  const pictures = structuredClone(illustrations);
+  return publishManuscript(suggestEpubName(snapshot.book.title), libraryRoot, deps, async () =>
+    buildEpub(snapshot, pictures)
   );
 }
 

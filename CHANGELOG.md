@@ -115,6 +115,15 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+
+- W05 export safety: Word, Markdown, PDF and EPUB reject destinations that resolve inside the
+  open library, including parent-directory aliases. They recheck destination identity and content
+  immediately before atomic publication, preserve the supplied saved snapshot, and name any
+  temporary output that could not be cleaned up while retaining the primary failure. Format and
+  header exports also refuse pending/failed format saves and unresolved matter-save conflicts.
+  Snapshot image-warning collection and visible structured export receipts are prepared; their
+  production IPC wiring remains a coordinator integration step. Synthetic focused tests cover
+  source/prior-output bytes, alias changes, filesystem failures and save/status behavior.
 - A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
   while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
   that stale copy, so a character another device added or a memory the toolkit saved disappeared with

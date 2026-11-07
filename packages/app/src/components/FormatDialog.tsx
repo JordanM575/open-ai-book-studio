@@ -28,7 +28,7 @@ import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
 import { Textarea } from "@ai-book-studio/ui/components/textarea";
-import { exportBlockedMessage } from "../lib/export-save";
+import { exportBlockedMessage, exportReceipt, type ManuscriptExportReceipt } from "../lib/export-save";
 import { must } from "../lib/utils";
 import type { SaveStatus } from "./ManuscriptEditor";
 
@@ -54,7 +54,7 @@ const TARGET_COPY: Record<FormatTarget, { name: string; note: string }> = {
   Markdown: { name: "Markdown", note: "Plain text with chapter headings. The typography below does not apply." }
 };
 
-const EXPORTS: Record<FormatTarget, (bookId: string) => Promise<Result<string | null>>> = {
+const EXPORTS: Record<FormatTarget, (bookId: string) => Promise<Result<string | ManuscriptExportReceipt | null>>> = {
   DOCX: (bookId) => window.studio.books.exportDocx(bookId),
   PDF: (bookId) => window.studio.books.exportPdf(bookId),
   EPUB: (bookId) => window.studio.books.exportEpub(bookId),
@@ -63,7 +63,7 @@ const EXPORTS: Record<FormatTarget, (bookId: string) => Promise<Result<string | 
 
 
 
-type ExportNote = { kind: "saved"; message: string; path: string } | { kind: "error"; message: string };
+type ExportNote = { kind: "saved"; message: string; path: string; warnings: string[]; target: string } | { kind: "error"; message: string };
 
 const LINE_HEIGHT: Record<ManuscriptSettings["lineSpacing"], number> = {
   Single: 1,
@@ -128,6 +128,8 @@ interface FormatDialogProps {
   onSaveSettings: (change: FormatChange) => Promise<void>;
   /** Saves the open chapter before an export; null when no chapter is open. */
   onFlush: () => Promise<SaveStatus | null>;
+  /** Gives the header the same format/matter save preflight even after this dialog closes. */
+  onExportPreflight?: (check: () => Promise<void>) => () => void;
 }
 
 export const FORMAT_LABELS: Record<string, string> = {
@@ -151,11 +153,13 @@ export function FormatDialog({
   settings,
   chapters,
   onSaveSettings,
-  onFlush
+  onFlush,
+  onExportPreflight
 }: FormatDialogProps) {
   const [target, setTarget] = useState<FormatTarget>("DOCX");
   const [draft, setDraft] = useState<ManuscriptSettings>(settings);
   const settingsOut = useRef(0);
+  const settingsFailures = useRef(new Map<string, string>());
   const [answered, setAnswered] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<ExportNote | null>(null);
@@ -163,6 +167,7 @@ export function FormatDialog({
   const [kind, setKind] = useState<MatterKind>("copyright");
   const [removing, setRemoving] = useState<string | null>(null);
   const [matterError, setMatterError] = useState<string | null>(null);
+  const matterFailure = useRef<string | null>(null);
   // The matter as saved (the base of the next save), the latest edit (ahead of the render that
   // shows it, so two quick changes both land), the change waiting to be saved, and the save chain.
   const savedMatter = useRef<BookMatter | null>(matter);
@@ -243,8 +248,14 @@ export function FormatDialog({
     const from = Object.fromEntries(Object.keys(patch).map((key) => [key, draft[key as keyof ManuscriptSettings]]));
     settingsOut.current += 1;
     onSaveSettings({ patch, from: from as Partial<ManuscriptSettings> })
-      // The workspace has already told the author why a save failed; the draft goes back to the saved settings.
-      .catch(() => {})
+      .then(() => {
+        for (const key of Object.keys(patch)) settingsFailures.current.delete(key);
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        for (const key of Object.keys(patch)) settingsFailures.current.set(key, message);
+        setNote({ kind: "error", message: `The format settings could not be saved. ${message}` });
+      })
       .finally(() => {
         settingsOut.current -= 1;
         setAnswered((count) => count + 1);
@@ -254,6 +265,7 @@ export function FormatDialog({
   /** Shows why the matter did not save; after the dialog has closed, the workspace says it too. */
   const fail = (message: string, savedAs: string | null = null): void => {
     copy.current = savedAs;
+    matterFailure.current = message;
     setMatterError(message);
     if (!isOpen.current) onNotice(new Error(message));
   };
@@ -264,7 +276,7 @@ export function FormatDialog({
     timer.current = null;
     saving.current = saving.current.then(async () => {
       const next = pending.current;
-      if (!next) return true;
+      if (!next) return matterFailure.current === null;
       pending.current = null;
       sent.current = true;
       const base = savedMatter.current;
@@ -275,6 +287,8 @@ export function FormatDialog({
         savedMatter.current = readMatter(result.book).matter;
         onBookSaved(result.book);
         if (result.status === "saved") {
+          matterFailure.current = null;
+          copy.current = null;
           setMatterError(null);
           return true;
         }
@@ -325,11 +339,26 @@ export function FormatDialog({
     });
   };
 
+  const prepareExport = async (): Promise<void> => {
+    if (settingsOut.current > 0 || settingsFailures.current.size > 0) {
+      const reason = settingsOut.current > 0
+        ? "Wait for the format settings to finish saving, then export again."
+        : `The format settings could not be saved. ${[...new Set(settingsFailures.current.values())].join(" ")} Change the affected setting to save it again.`;
+      throw new Error(`Nothing was exported. ${reason}`);
+    }
+    if (!(await persist())) throw new Error("The front and back matter could not be saved, so nothing was exported.");
+  };
+
+  // The preflight reads live refs. It belongs to this book's dialog, including when closed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prepareExport reads refs, never a captured save outcome
+  useEffect(() => onExportPreflight?.(prepareExport), [onExportPreflight]);
+
   const runExport = async (): Promise<void> => {
     if (exporting || !canExport) return;
     setExporting(true);
     setNote(null);
     try {
+      await prepareExport();
       let saved: SaveStatus | null;
       try {
         saved = await onFlush();
@@ -340,13 +369,9 @@ export function FormatDialog({
         setNote({ kind: "error", message: exportBlockedMessage(saved) });
         return;
       }
-      if (!(await persist())) {
-        setNote({ kind: "error", message: "The front and back matter could not be saved, so nothing was exported." });
-        return;
-      }
-      const path = await must(EXPORTS[target](bookId));
+      const receipt = exportReceipt(await must(EXPORTS[target](bookId)));
       // A cancelled picker or a declined replacement wrote nothing, so there is nothing to say.
-      if (path) setNote({ kind: "saved", message: `Saved ${path.split(/[\\/]/).pop() ?? path}`, path });
+      if (receipt) setNote({ kind: "saved", message: `Saved ${receipt.path.split(/[\\/]/).pop() ?? receipt.path}`, ...receipt, target: TARGET_COPY[target].name });
     } catch (error) {
       setNote({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -400,6 +425,14 @@ export function FormatDialog({
               <p role="status" data-testid="format-export-note" className="truncate" title={note?.kind === "saved" ? note.path : undefined}>
                 {canExport ? (note?.kind === "saved" ? note.message : "") : "Exporting is available in the desktop app."}
               </p>
+              {note?.kind === "saved" ? (
+                <div className="break-words" data-testid="format-export-details">
+                  <p>{note.target} · Saved version captured when export began · {note.path}</p>
+                  {note.warnings.length > 0 ? <ul role="status" aria-label="Export warnings" className="list-disc pl-4">
+                    {[...new Set(note.warnings)].map((warning) => <li key={warning}>{warning}</li>)}
+                  </ul> : null}
+                </div>
+              ) : null}
               {note?.kind === "error" ? (
                 <p role="alert" data-testid="format-export-error" className="text-[var(--destructive-text)]">
                   {note.message}
@@ -420,7 +453,7 @@ export function FormatDialog({
         }
       >
         <div className="space-y-6">
-          <fieldset>
+          <fieldset disabled={exporting}>
             <legend className={LEGEND}>Target</legend>
             <div className="mt-2 flex flex-wrap gap-4" role="radiogroup" aria-label="Output target">
               {TARGETS.map((option) => (
@@ -442,7 +475,7 @@ export function FormatDialog({
             </p>
           </fieldset>
 
-          <fieldset>
+          <fieldset disabled={exporting}>
             <legend className={LEGEND}>Typography</legend>
             <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3">
               <label className={LABEL}>
@@ -542,7 +575,7 @@ export function FormatDialog({
             </div>
           </fieldset>
 
-          <fieldset data-testid="format-matter">
+          <fieldset data-testid="format-matter" disabled={exporting}>
             <legend className={LEGEND}>Front and back matter</legend>
             {unreadable ? null : (
               <div className="mt-2 space-y-4">

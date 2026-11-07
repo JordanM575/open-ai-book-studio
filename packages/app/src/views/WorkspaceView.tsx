@@ -44,7 +44,7 @@ import {
 import { RecoveryPanel } from "../components/RecoveryPanel";
 import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateDialog";
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
-import { exportBlockedMessage } from "../lib/export-save";
+import { exportBlockedMessage, exportReceipt, type ManuscriptExportReceipt } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
 import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
@@ -175,7 +175,12 @@ export function WorkspaceView({
   const [voiceStatusRevision, setVoiceStatusRevision] = useState(0);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
-  const [exportNote, setExportNote] = useState<string | null>(null);
+  const [exportNote, setExportNote] = useState<(ManuscriptExportReceipt & { message: string; target: string }) | null>(null);
+  const formatExportPreflight = useRef<(() => Promise<void>) | null>(null);
+  const registerExportPreflight = useCallback((check: () => Promise<void>) => {
+    formatExportPreflight.current = check;
+    return () => { if (formatExportPreflight.current === check) formatExportPreflight.current = null; };
+  }, []);
   // Cleared on unmount, so the note's timer never fires into a workspace that is gone.
   const exportNoteTimer = useRef<number | undefined>(undefined);
   const [formatOpen, setFormatOpen] = useState(false);
@@ -543,23 +548,26 @@ export function WorkspaceView({
   useEffect(() => () => window.clearTimeout(exportNoteTimer.current), []);
 
   /** Saves the open chapter, runs one export and names the written file for a few seconds. */
-  const runExport = async (request: () => ReturnType<typeof window.studio.books.exportDocx>): Promise<void> => {
+  const runExport = async (target: string, request: () => ReturnType<typeof window.studio.books.exportDocx>): Promise<void> => {
     if (exporting) return;
     setExporting(true);
+    setExportNote(null);
+    window.clearTimeout(exportNoteTimer.current);
     try {
       // An export reads the saved files, so a chapter whose latest text did not save would leave the
       // author's newest words out without a word. Stop and say so instead.
       const flushed = await editorRef.current?.flush();
-      if (flushed?.kind === "conflict" || flushed?.kind === "error") {
+      if (flushed && flushed.kind !== "saved") {
         onNotice(new Error(exportBlockedMessage(flushed)));
         return;
       }
-      const path = await must(request());
-      if (!path) return;
-      const name = path.split(/[\\/]/).pop() ?? path;
-      setExportNote(`Saved ${name}`);
-      window.clearTimeout(exportNoteTimer.current);
-      exportNoteTimer.current = window.setTimeout(() => setExportNote(null), 8000);
+      await formatExportPreflight.current?.();
+      const receipt = exportReceipt(await must(request()));
+      if (!receipt) return;
+      const name = receipt.path.split(/[\\/]/).pop() ?? receipt.path;
+      setExportNote({ ...receipt, message: `Saved ${name}`, target });
+      // A warning remains available to read until the next export, rather than timing out.
+      if (receipt.warnings.length === 0) exportNoteTimer.current = window.setTimeout(() => setExportNote(null), 8000);
     } catch (error) {
       onNotice(error);
     } finally {
@@ -567,8 +575,8 @@ export function WorkspaceView({
     }
   };
 
-  const exportDocx = (): Promise<void> => runExport(() => window.studio.books.exportDocx(bookId));
-  const exportMarkdown = (): Promise<void> => runExport(() => window.studio.books.exportMarkdown(bookId));
+  const exportDocx = (): Promise<void> => runExport("Word document", () => window.studio.books.exportDocx(bookId));
+  const exportMarkdown = (): Promise<void> => runExport("Markdown", () => window.studio.books.exportMarkdown(bookId));
 
   const saveFormatSettings = ({ patch, from }: FormatChange): Promise<void> => {
     // The book the author changed the setting in, which the save belongs to even if the workspace has
@@ -896,9 +904,13 @@ export function WorkspaceView({
               <FileSearch size={16} />
             </Button>
             {exportNote ? (
-              <span className="max-w-[180px] truncate text-(length:--text-caption-size) text-muted-foreground" title={exportNote}>
-                {exportNote}
-              </span>
+              <div className="max-w-sm break-words text-(length:--text-caption-size) text-muted-foreground" role="status">
+                <p>{exportNote.message}</p>
+                <p>{exportNote.target} · Saved version captured when export began · {exportNote.path}</p>
+                {exportNote.warnings.length > 0 ? <ul aria-label="Export warnings" className="list-disc pl-4">
+                  {[...new Set(exportNote.warnings)].map((warning) => <li key={warning}>{warning}</li>)}
+                </ul> : null}
+              </div>
             ) : null}
             <Button
               variant="ghost"
@@ -1262,6 +1274,7 @@ export function WorkspaceView({
             chapters={detail.chapters}
             onSaveSettings={saveFormatSettings}
             onFlush={() => editorRef.current?.flush() ?? Promise.resolve(null)}
+            onExportPreflight={registerExportPreflight}
           />
         </>
       ) : null}
