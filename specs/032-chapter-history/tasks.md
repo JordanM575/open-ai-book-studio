@@ -4,7 +4,8 @@
 
 Tasks are ordered. `[P]` means safe to do in parallel within a phase. Storage and retention decisions
 are accepted; T002 records decision completion only. W01 completes T001/T003/T004's format and
-saved-only library core. IPC/UI, restore/undo, cleanup and end-to-end acceptance remain open.
+saved-only library core. W02 adds bounded T007–T009 core evidence below; IPC/UI, live draft/save
+integration, cleanup and end-to-end acceptance remain open.
 
 ## Phase 0 — Resolve only the decisions needed by each task
 
@@ -61,6 +62,12 @@ saved-only library core. IPC/UI, restore/undo, cleanup and end-to-end acceptance
   shared components and token conventions. Show labels, capture times, source versions, corrupt or
   unavailable states, and whether a comparison excludes an unsaved editor draft. Test author-visible
   outcomes and keyboard/focus behavior with synthetic chapters.
+  Partial W02 UI delivery (2026-11-07): `packages/app/src/components/chapter-history/` provides an
+  isolated injected-API dialog for saved-only capture/list/open/compare, literal bodies and changed-span
+  comparison, stat sizes, individual issues, source/draft disclosure, focus/selection and asynchronous
+  lifetime guards. See its README for the exact host contract. The entry point, real host draft gate,
+  IPC/preload/browser adapters and light/dark/reduced-transparency visual acceptance remain parent
+  integration work; T006 stays unchecked. No restore/undo or deletion action is exposed.
 
 ## Phase 3 — Checked restore and its undo
 
@@ -68,16 +75,27 @@ saved-only library core. IPC/UI, restore/undo, cleanup and end-to-end acceptance
   resolution of pending drafts, show the saved current body and selected snapshot, and retain the
   current saved body as a visible safety snapshot before writing. If safety-snapshot creation
   fails, prove that the chapter remains unchanged.
+  W02 partial core evidence: strict saved-source/selected-reference requests; exact current version
+  and raw hash checks; verified visible safety snapshot and prepared intent before chapter writing.
+  Host draft/save gating and author confirmation are not implemented, so this task remains open.
 - [ ] T008 **After T007.** Restore only the snapshot body with the current read's
   `baseVersion` and `baseHash` through the existing checked chapter writer. Preserve metadata and
   normal conflict behavior. Test stale/external changes, cancellation before and after the safety
   snapshot, write failure, delayed result, and draft preservation with the in-memory writer and
   isolated synthetic libraries.
+  W02 partial core evidence: shared unlocked journal-aware checked writer under the existing book
+  queue; raw current metadata preserved, including unknown runtime-name fields; exact checks even
+  for equal bodies; cancellation/failure and competing-writer tests. Desktop synthetic DraftBuffer
+  test retains racing text for normal conflict handling; live host coordination remains open.
 - [ ] T009 **Required with T008 before exposing restore.** Persist a restore-specific undo tied to the exact committed
   post-restore version/hash. Persist a prepared intent before chapter commit and reconcile it after
   interrupted finalization; undo through the same checked writer, refuse a stale undo, and retain
   all snapshot material. Test success, reload, interrupted finalization, stale base, second writer,
   and recovery of both versions using synthetic fixtures.
+  W02 partial core evidence: exact precomputed/final result identities, expected-hash intent updates,
+  reload-stable undo and read-only conservative reconciliation with no replay. Legacy prepared
+  intents without exact identities cannot enable undo; interrupted undo plans require review.
+  Author-facing recovery, validated IPC and complete integrated acceptance remain open.
 - [ ] T010 Add explicit success, stale, canceled, and failed states to the restore UI. A confirmed
   commit may update a clean editor only as an identified restore result; a racing draft remains
   visible and is not flushed or replaced. The interface must not report a commit as canceled or
@@ -111,6 +129,50 @@ saved-only library core. IPC/UI, restore/undo, cleanup and end-to-end acceptance
   editor undo, agent-turn checkpoints, whole-library archives, and sync conflicts.
 
 ## Dependency notes
+
+### W02 bounded core evidence (2026-11-07)
+
+- `history-restore.ts` plus narrow LibraryService/desktop facade integration implements restore,
+  restore-specific undo and read-only reconciliation. No second queue/writer, automatic pruning,
+  quota, deletion, draft flush, IPC or UI was added.
+- Focused synthetic history/restore/library/identity/damaged-file regressions: **129 passed,
+  0 failed, 832 assertions across eight files**. Includes two-writer conflicts, same-body stale
+  checks, cancellation, history/chapter faults, uncertain readbacks, failed finalization, unknown
+  metadata, reopen/undo, real filesystem archives carrying safety/intent through live/trash state,
+  preservation of a racing desktop draft as a normal conflict copy, and quiet successful restore/
+  undo despite unrelated malformed chapter candidates (no legacy catalog scan from history).
+- Workspace desktop node/web, browser and toolkit typechecks passed. Strict standalone checking
+  of new core/desktop tests and their imported closure passed. Focused lint has only the existing
+  LibraryService watch non-null-assertion warning. Parent owns full verify/coverage/build/e2e and
+  independent candidate review. T007–T009 and T014–T015 remain unticked.
+
+### W02 isolated UI evidence (2026-11-07)
+
+- `bun test apps/desktop/tests/chapter-history-ui.test.tsx apps/desktop/tests/dialog-focus.test.tsx`:
+  **40 passed, 0 failed, 188 assertions** (36 new history UI cases and four shared focus regressions).
+  Synthetic callbacks cover individual unavailable records, literal/Unicode bodies, source/draft
+  disclosure, invalid labels, duplicate submission, uncertain capture review, read/compare failures,
+  selection and source races, navigation ABA, close/reopen, unmount and focus return.
+- Desktop `tsconfig.web.json` and `tsconfig.node.json` no-emit typechecks passed; focused Biome lint
+  passed for the new leaf and test. Only the new test's desktop include/exclude entries were added.
+- These are isolated component receipts, not IPC/host-gate, visual, browser or full application
+  acceptance. T005/T006/T014 remain open; parent owns mounting and integrated gates. Restore/undo,
+  retention cleanup and book-level size totals are not delivered by this UI leaf.
+
+### W02 review correction evidence (2026-11-07)
+
+- Corrected partial-front-matter restore/undo results: raw omitted/unknown fields stay intact, while
+  successful runtime Chapters retain validated fallbacks. Added restore/reopen/undo regressions for
+  distinct and same-body operations, including unknown fields named after runtime properties.
+- Bound capture-retry release to an explicit successful refresh begun after the uncertainty. Both
+  older success/failure replies keep retry blocked. Close is synchronously idempotent, including a
+  throwing or re-entrant callback and a pending capture.
+- **175 focused tests passed, 0 failed, 1,146 assertions across ten files**. All workspace typechecks
+  and the strict core/desktop restore-test closure passed. Focused lint has one existing Library
+  watch non-null warning. Five native Chromium scenarios passed: both stale-refresh outcomes,
+  normal/throwing re-entrant close, and native Enter/focus trapping/Escape return.
+- This combined candidate still requires fresh independent review and integrated gates. Host/API/
+  workspace mounting, restoration controls, recovery/deletion journeys and T006–T009 remain open.
 
 ### W01 validation evidence (2026-11-07)
 

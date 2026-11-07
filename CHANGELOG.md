@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Keep history restore/undo success results complete for partial saved front matter without adding
+  runtime defaults to the file. Require a post-failure history refresh to unlock uncertain capture,
+  and make close notifications idempotent even when the host callback fails.
 - Invalidate Format dialog export continuations after close, navigation or unmount; delayed
   chapter/matter saves cannot submit an obsolete export, and late replies cannot update a new visit.
 - Bind header export receipts, errors, preflight and busy state to the originating book view;
@@ -40,6 +43,19 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Add bounded chapter-history restore, durable restore-specific undo and conservative read-only
+  recovery through Library. Verify a visible safety snapshot and prepared exact-result intent before
+  the existing journal-aware checked writer replaces a body; preserve current metadata, exact-check
+  version/hash even for equal text, retain all recovery files on failures, and never replay uncertain
+  writes. Add synthetic core/desktop fault, concurrency, reload, archive and racing-draft tests.
+  Live draft/save gating, IPC, confirmation/recovery UI and whole-feature acceptance remain open.
+
+- Add an isolated chapter-history dialog with named saved-only capture, per-record size and
+  unavailable notices, literal read-only bodies and saved-text comparison. Bind asynchronous results
+  to library/chapter/view lifetimes and exact source tokens; preserve dirty drafts, block duplicate
+  submissions and require history review after unconfirmed capture. Focused synthetic UI coverage
+  accompanies the leaf; parent mounting, validated host APIs, restore/undo and integrated acceptance
+  remain follow-through for spec 032.
 - Correct history codec admission before new recovery writers use it: reject unpreservable YAML
   metadata without changing the file, and keep all history source-resolution diagnostics quiet.
   Verify saved-source UTF-8/raw hashes, snapshot metadata before asynchronous serialization, and

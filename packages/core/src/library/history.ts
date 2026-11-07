@@ -72,7 +72,9 @@ export const historyMetaSchema = z.discriminatedUnion("kind", [
     intendedBodyHash: hash,
     state: z.enum(["prepared", "applied", "undone"]),
     result: result.optional(),
-    undoResult: result.optional()
+    undoResult: result.optional(),
+    plannedResult: result.optional(),
+    plannedUndoResult: result.optional()
   })
 ]).superRefine((meta, context) => {
   if (meta.kind !== "intent") return;
@@ -84,7 +86,28 @@ export const historyMetaSchema = z.discriminatedUnion("kind", [
       meta.selected.fileName === meta.safety.fileName) {
     context.addIssue({ code: "custom", message: "An intent must reference distinct selected and safety records." });
   }
+  if ((meta.state === "prepared" && meta.plannedUndoResult !== undefined) ||
+      (meta.result && meta.plannedResult && !sameHistoryBase(meta.result, meta.plannedResult)) ||
+      (meta.undoResult && meta.plannedUndoResult && !sameHistoryBase(meta.undoResult, meta.plannedUndoResult))) {
+    context.addIssue({ code: "custom", message: "Intent results do not match their prepared identities." });
+  }
 });
+
+export const historyRestoreSchema = z.strictObject({
+  bookId, chapterId, selected: z.strictObject({ fileName: historyFileNameSchema, id: recordId, hash }),
+  source: z.strictObject({ status: z.literal("saved"), version, hash })
+});
+export const historyUndoSchema = z.strictObject({
+  bookId, chapterId, intent: z.strictObject({ fileName: historyFileNameSchema, id: recordId, hash }),
+  source: z.strictObject({ status: z.literal("saved"), version, hash })
+});
+export type HistoryRestoreInput = z.infer<typeof historyRestoreSchema>;
+export type HistoryUndoInput = z.infer<typeof historyUndoSchema>;
+export type HistoryReference = z.infer<typeof reference>;
+export type HistoryBase = z.infer<typeof result>;
+export function sameHistoryBase(a: HistoryBase, b: HistoryBase): boolean {
+  return a.version === b.version && a.hash === b.hash;
+}
 
 export type HistoryScope = z.infer<typeof historyScopeSchema>;
 export type HistoryReadInput = z.infer<typeof historyReadSchema>;

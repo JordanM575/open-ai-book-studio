@@ -20,8 +20,10 @@ import {
 } from "@ai-book-studio/core/library/service";
 import type { BookMatter, SaveMatterResult } from "@ai-book-studio/core/matter";
 import type {
-  HistoryCaptureInput, HistoryComparison, HistoryListing, HistoryReadInput, HistoryScope, StoredHistoryRecord
+  HistoryCaptureInput, HistoryComparison, HistoryListing, HistoryReadInput, HistoryScope, StoredHistoryRecord,
+  HistoryRestoreInput, HistoryUndoInput
 } from "@ai-book-studio/core/library/history";
+import type { HistoryMutationResult, HistoryRecovery } from "@ai-book-studio/core/library/history-restore";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import type { LocationHealth } from "@ai-book-studio/core/sync/health";
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
@@ -154,6 +156,18 @@ export class Library {
 
   compareChapterHistory(input: HistoryReadInput): Promise<HistoryComparison> {
     return this.service.compareChapterHistory(input);
+  }
+
+  restoreChapterHistory(input: HistoryRestoreInput, signal?: AbortSignal): Promise<HistoryMutationResult> {
+    return this.service.restoreChapterHistory(input, signal);
+  }
+
+  undoChapterHistory(input: HistoryUndoInput, signal?: AbortSignal): Promise<HistoryMutationResult> {
+    return this.service.undoChapterHistory(input, signal);
+  }
+
+  reconcileChapterHistory(input: HistoryReadInput): Promise<HistoryRecovery> {
+    return this.service.reconcileChapterHistory(input);
   }
 
   createChapter(

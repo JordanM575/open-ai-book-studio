@@ -28,7 +28,8 @@ import {
   normalizeBody,
   parseChapterFile,
   parseOrderFromFileName,
-  serializeChapter
+  serializeChapter,
+  serializeChapterEnvelope
 } from "../markdown";
 import {
   matterHash,
@@ -88,10 +89,14 @@ import { scanLibrary } from "../sync/scan";
 import { detectDrift } from "../sync/detector";
 import type { DriftReport } from "../sync/types";
 import { ChapterHistoryStore } from "./history-store";
+import { ChapterHistoryRestore, type HistoryChapterWrite, type HistoryMutationResult, type HistoryRecovery } from "./history-restore";
 import {
   HistoryError,
   historyDirectory,
   readHistoryEnvelope,
+  sameHistoryBase,
+  type HistoryRestoreInput,
+  type HistoryUndoInput,
   type HistoryCaptureInput,
   type HistoryComparison,
   type HistoryListing,
@@ -502,6 +507,61 @@ export class LibraryService {
     return this.chapterHistoryStore(input).compare(input);
   }
 
+  restoreChapterHistory(input: HistoryRestoreInput, signal?: AbortSignal): Promise<HistoryMutationResult> {
+    return this.serializeWrite(input.bookId, async () => {
+      await this.requireHistoryBook(input);
+      return this.chapterHistoryRestore(input).restore(input, signal);
+    });
+  }
+
+  undoChapterHistory(input: HistoryUndoInput, signal?: AbortSignal): Promise<HistoryMutationResult> {
+    return this.serializeWrite(input.bookId, async () => {
+      await this.requireHistoryBook(input);
+      return this.chapterHistoryRestore(input).undo(input, signal);
+    });
+  }
+
+  async reconcileChapterHistory(input: HistoryReadInput): Promise<HistoryRecovery> {
+    await this.requireHistoryBook(input);
+    return this.chapterHistoryRestore(input).reconcile(input);
+  }
+
+  private chapterHistoryRestore(scope: HistoryScope): ChapterHistoryRestore {
+    const store = this.chapterHistoryStore(scope);
+    return new ChapterHistoryRestore(store, this.env.runtime,
+      async (owner, base, content): Promise<HistoryChapterWrite> => {
+        const snapshot = await this.env.storage.readFile(chapterPath(owner.bookId, base.path));
+        if (!snapshot || snapshot.sha256 !== base.hash || await this.env.runtime.sha256(snapshot.bytes) !== base.hash) {
+          throw new HistoryError("stale-source", "The saved chapter changed before restore preparation.");
+        }
+        if (!Number.isSafeInteger(base.version + 1)) throw new HistoryError("invalid", "The chapter version cannot be incremented safely.");
+        // Use raw metadata, not the Chapter view: unknown keys may be named content/path/hash.
+        const envelope = readHistoryEnvelope(new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes));
+        const rawMeta = { ...(envelope.metadata as Record<string, unknown>), version: base.version + 1, updatedAt: this.env.runtime.now() };
+        // The on-disk envelope may omit fields supplied by the saved reader. Return a complete
+        // validated view while leaving those omissions and unknown raw values intact on disk.
+        const projection = chapterMetaSchema.safeParse({ ...base, ...rawMeta });
+        if (!projection.success) throw new HistoryError("saved-source-required", "History needs readable saved chapter metadata.");
+        const text = serializeChapterEnvelope(rawMeta, content);
+        // Keep the quiet, lossless codec domain at the new writer boundary too.
+        readHistoryEnvelope(text);
+        return { base, meta: projection.data, content, text, result: { version: projection.data.version,
+          hash: await this.env.runtime.sha256(textEncoder.encode(text)) } };
+      },
+      async (owner, prepared) => {
+        await this.requireHistoryBook(owner);
+        const disk = await store.savedChapter(owner);
+        if (!sameHistoryBase(disk, prepared.base)) {
+          return this.preserveConflictingVersion(owner.bookId, disk, disk.path, prepared.content,
+            disk.version !== prepared.base.version ? "newer-version" : "external-edit", prepared.base.version + 1);
+        }
+        return this.commitChapterBody(owner.bookId, disk, prepared.meta, prepared.content, prepared.text, true);
+      },
+      (owner, disk, content, expected) => this.preserveConflictingVersion(owner.bookId, disk, disk.path, content,
+        disk.version !== expected.version ? "newer-version" : "external-edit", expected.version + 1)
+    );
+  }
+
   private async requireHistoryBook(scope: HistoryScope): Promise<void> {
     historyDirectory({ bookId: scope.bookId, chapterId: scope.chapterId });
     let book: BookMeta;
@@ -520,10 +580,10 @@ export class LibraryService {
     return new ChapterHistoryStore(
       this.env,
       (bookId, chapterId) => this.readChapterForHistory(bookId, chapterId),
-      async (path, text) => {
+      async (path, text, expected) => {
         // Capture may have awaited storage or a filename collision since its initial preflight.
         await this.requireHistoryBook(scope);
-        return this.commitText(path, text, { kind: "absent" });
+        return this.commitText(path, text, expected);
       }
     );
   }
@@ -630,17 +690,30 @@ export class LibraryService {
         version: disk.version + 1,
         updatedAt: this.env.runtime.now()
       };
-      const result = await this.commitText(chapterPath(bookId, fileName), serializeChapter(meta, normalized), {
-        kind: "sha256",
-        value: disk.hash
-      });
-      if (result.status === "changed") {
-        const current = await this.chapterFromSnapshot(bookId, fileName, result.current);
-        return this.preserveConflictingVersion(bookId, current, fileName, normalized, "external-edit", expected.baseVersion + 1);
-      }
-      await this.rebuildCatalog();
-      return { status: "saved", chapter: chapterFrom(meta, normalized, fileName, result.snapshot.sha256) };
+      return this.commitChapterBody(bookId, disk, meta, normalized, serializeChapter(meta, normalized), false, expected.baseVersion + 1);
     });
+  }
+
+  /** Shared unlocked publication path. Callers hold the book queue; history adds exact preflight. */
+  private async commitChapterBody(bookId: string, disk: Chapter, meta: ChapterMeta, content: string,
+    text: string, history = false, localVersion = meta.version): Promise<SaveChapterResult> {
+    const result = await this.commitText(chapterPath(bookId, disk.path), text, { kind: "sha256", value: disk.hash });
+    if (result.status === "changed") {
+      const current = history ? await this.chapterHistoryStore({ bookId, chapterId: disk.id }).savedChapter({ bookId, chapterId: disk.id })
+        : await this.chapterFromSnapshot(bookId, disk.path, result.current);
+      return this.preserveConflictingVersion(bookId, current, disk.path, content, "external-edit", localVersion);
+    }
+    if (history) {
+      const bytes = textEncoder.encode(text);
+      if (result.snapshot.sha256 !== await this.env.runtime.sha256(bytes) || result.snapshot.bytes.length !== bytes.length ||
+          !bytes.every((byte, i) => result.snapshot.bytes[i] === byte)) {
+        throw new HistoryError("io", "The chapter write could not be verified. Review the retained restore intent.");
+      }
+    }
+    // Catalog rebuilding scans unrelated chapters through the legacy diagnostic parser.
+    // History stays on its quiet path; this disposable catalog is never read as truth.
+    if (!history) await this.rebuildCatalog();
+    return { status: "saved", chapter: chapterFrom(meta, content, disk.path, result.snapshot.sha256) };
   }
 
   async updateChapterMeta(

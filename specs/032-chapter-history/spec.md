@@ -2,7 +2,7 @@
 
 **Feature Branch**: `032-chapter-history`
 
-**Status**: In progress — saved-only library core implemented; author-facing journey planned
+**Status**: In progress — saved-only and bounded restore/undo library core implemented; author-facing journey planned
 
 ## Overview
 
@@ -30,8 +30,9 @@ SHA-256 hash; the checked library writer refuses stale replacement and preserves
 **Proposed by this spec:** a separate chapter history surface for explicit, named snapshots of
 already-saved chapter bodies, with read-only browsing/comparison, a checked restore, and a
 restore-specific undo. D-175/D-176 accepted the storage and retention policies on November 3, 2026;
-the saved-only library core now implements capture/list/open/compare. The author-facing journey,
-restore and undo remain unimplemented; premise tests alone do not establish that journey.
+the library core implements capture/list/open/compare and bounded checked restore/undo/recovery.
+The author-facing journey and live draft/save integration remain unimplemented; core tests alone
+do not establish that journey.
 
 ## User scenarios and acceptance
 
