@@ -138,6 +138,27 @@ function composer(): { input: HTMLElement; view: ReturnType<typeof testing.withi
 }
 
 describe("chat composer", () => {
+  test("stop return keeps the composer stopping until the terminal receipt and shows persistence failure", async () => {
+    const { start, fire } = renderComposer();
+    const { input, view } = composer();
+    testing.fireEvent.change(input, { target: { value: "Make a change" } });
+    testing.fireEvent.keyDown(input, { key: "Enter" });
+    await testing.waitFor(() => expect(view.getByTestId("chat-stop")).toBeDefined());
+    await testing.act(async () => { testing.fireEvent.click(view.getByTestId("chat-stop")); });
+    expect(view.getByText("Stopping… Waiting for in-flight work to settle.")).toBeDefined();
+    expect(view.queryByTestId("chat-send")).toBeNull();
+    testing.fireEvent.change(input, { target: { value: "Do not send yet" } });
+    testing.fireEvent.keyDown(input, { key: "Enter" });
+    expect(start).toHaveBeenCalledTimes(1);
+    await testing.act(async () => {
+      fire({ type: "stopped", turnId: "turn_cmp000001", changed: 1, undoAvailable: false,
+        persistenceError: "The conversation outcome could not be fully saved. Changes to the book remain." });
+    });
+    expect(view.getByTestId("chat-send")).toBeDefined();
+    expect(view.getByText(/Stopped · 1 chapter changed · no undo checkpoint/).textContent).toContain("could not be fully saved");
+    expect(view.queryByText("Stopping… Waiting for in-flight work to settle.")).toBeNull();
+  });
+
   test("Discuss is the default; Edit is explicit, fixed on retry, and reset for the next turn", async () => {
     const { start } = renderComposer(null, () => Promise.resolve({ ok: false, error: { code: "offline", message: "Synthetic offline" } }));
     const { input, view } = composer();
@@ -673,6 +694,36 @@ describe("chat composer", () => {
       });
     });
   }
+
+  test("a late approval reply cannot replace stopping or resurrect a terminal turn", async () => {
+    const { start, fire, approve } = renderComposer();
+    let release!: () => void;
+    approve.mockImplementation(() => new Promise((resolve) => { release = () => resolve({ ok: true, data: null }); }));
+    const { view } = await pauseForApproval(fire, start);
+    testing.fireEvent.click(view.getByTestId("agent-approve"));
+    await testing.waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+    await testing.act(async () => {
+      fire({ type: "stopping", turnId: "turn_cmp000001" });
+    });
+    expect(view.getByText("Stopping… Waiting for in-flight work to settle.")).toBeDefined();
+    await testing.act(async () => {
+      fire({ type: "stopped", turnId: "turn_cmp000001", changed: 0, undoAvailable: true });
+      release();
+    });
+    expect(view.getByText("Stopped · 0 chapters changed")).toBeDefined();
+    expect(view.getByText("Allowed")).toBeDefined();
+    expect(view.queryByText("Approved. Working…")).toBeNull();
+    expect(view.getByTestId("chat-send")).toBeDefined();
+  });
+
+  test("stop before Allow refuses the stale approval in the composer", async () => {
+    const { start, fire, approve } = renderComposer();
+    const { view } = await pauseForApproval(fire, start);
+    await testing.act(async () => { testing.fireEvent.click(view.getByTestId("chat-stop")); });
+    testing.fireEvent.click(view.getByTestId("agent-approve"));
+    expect(approve).not.toHaveBeenCalled();
+    expect(view.getByText("Stopping… Waiting for in-flight work to settle.")).toBeDefined();
+  });
 
   // QA B13: a branch copies the conversation, and a waiting approval cannot be answered from a copy.
   test("a turn waiting for approval offers no branch until it is answered", async () => {

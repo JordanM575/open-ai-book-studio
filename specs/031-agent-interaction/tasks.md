@@ -30,7 +30,8 @@ authorized; no task requires a live provider, credential, paid service, real man
   terminal-stop facts, mid-write atomicity with reported outcome, and new-turn continuation
   against five alternatives: pause completes on the terminal `stopped`
   event ("Stopping…" until then), continuation is always a new turn, approvals stay per
-  turn, close stops non-background turns and restart expires plans. Runtime implementation remains open.
+  turn, close stops non-background turns and restart expires plans. W04 implements the bounded
+  terminal-stop prerequisite; see [stop-boundary evidence](stop-boundary.md). Plan lifecycle remains open.
 - [x] T003 Decide whether new guidance can be added to a running or paused plan and whether that
   action revises the same plan or requires a new turn. Blocks only in-flight plan guidance; proposed
   plan guidance and pre-send controls can proceed.
@@ -124,6 +125,9 @@ authorized; no task requires a live provider, credential, paid service, real man
 - [ ] T015 Add Pause and Resume according to T002. A requested pause is not shown as complete until
   the runtime confirms the boundary; no later tool may start while paused. Use a synthetic in-flight
   tool fixture to cover the chosen boundary.
+  W04 prerequisite: the existing Stop now closes dispatch synchronously, retains settling ownership
+  beyond five seconds, records late tool results and publishes one terminal outcome after persistence
+  attempts. This does not implement plan Pause/Resume or complete this task.
 - [ ] T016 Add terminal cancellation. Cancel stops later tool dispatch, does not roll back completed
   writes, expires any pending approval under 002 and reports the actual checkpoint/undo state. Test
   cancellation before a write, between steps and while approval is pending.

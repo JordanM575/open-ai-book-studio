@@ -43,6 +43,11 @@ Update the `Unreleased` section before every commit.
 
 ### Agent interaction
 
+- Keep stopped turns owned until in-flight tools, approval decisions, checkpoints and outcome
+  persistence settle. Remove the five-second false-stop deadline, capture late tool receipts outside
+  the SDK stream, close dispatch synchronously, and serialize approval versus Stop. The composer
+  shows Stopping until one terminal event, with actual changes, undo and conversation-save failures.
+  A never-settling adapter remains unresolved; no plan resume or background permission is added.
 - Add the first Discuss/Edit interaction slice: new composer requests default to Discuss,
   whose enabled built-in read tools cannot mutate the book and never load plugins. Edit
   retains checked writes, destructive approval and turn undo. Mode is recorded per request

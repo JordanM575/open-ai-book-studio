@@ -1176,7 +1176,11 @@ describe("agent runtime contract", () => {
       "user: Now replace it again."
     ]);
 
+    const stopped = new Promise<void>((resolve) => {
+      const off = runtime.onEvent((event) => { if (event.type === "stopped") { off(); resolve(); } });
+    });
     await runtime.stop(next.turnId);
+    await stopped;
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
     expect(second.doStreamCalls).toHaveLength(1);
   });
@@ -1201,7 +1205,11 @@ describe("agent runtime contract", () => {
 
     const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory.", guidance: "Only this turn." });
     await approval;
+    const stopped = new Promise<void>((resolve) => {
+      const off = runtime.onEvent((event) => { if (event.type === "stopped") { off(); resolve(); } });
+    });
     await runtime.stop(started.turnId);
+    await stopped;
 
     const thread = await library.threads.read(book.id, started.threadId);
     expect(thread?.messages.at(-1)?.mode).toBe("edit");

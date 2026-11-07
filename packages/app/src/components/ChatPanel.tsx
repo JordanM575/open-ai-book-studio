@@ -154,6 +154,7 @@ export function ChatPanel({
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ThreadSummary | null>(null);
   const turnRef = useRef<string | null>(null);
+  const stoppingRef = useRef<string | null>(null);
   const assistantRef = useRef<string | null>(null);
   const retryRequestsRef = useRef(new Map<string, AgentTurnInput>());
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -359,7 +360,10 @@ export function ChatPanel({
         const turnId = event.turnId;
         setCheckpointTurns((current) => (current.includes(turnId) ? current : [...current, turnId]));
       }
-      if (event.type === "text") {
+      if (event.type === "stopping") {
+        stoppingRef.current = event.turnId;
+        patchAssistant(event.turnId, (message) => ({ ...message, note: "Stopping… Waiting for in-flight work to settle." }));
+      } else if (event.type === "text") {
         patchAssistant(event.turnId, (message) => ({ ...message, text: message.text + event.delta }));
       } else if (event.type === "reasoning") {
         // Reasoning is deliberately not shown; the author sees the result, not the machinery.
@@ -430,7 +434,8 @@ export function ChatPanel({
               costUsd: event.costUsd,
               costBasis: event.costBasis,
               contextLength: event.contextLength
-            }) + (event.changed && event.undoAvailable === false ? " · no undo checkpoint" : "")
+            }) + (event.changed && event.undoAvailable === false ? " · no undo checkpoint" : "") +
+            (event.persistenceError ? ` · ${event.persistenceError}` : "")
         }));
         if (assistantRef.current) retryRequestsRef.current.delete(assistantRef.current);
         turnRef.current = null;
@@ -443,7 +448,9 @@ export function ChatPanel({
           turnId: event.turnId,
           changed: event.changed ?? 0,
           undoAvailable: event.undoAvailable,
-          note: "Stopped",
+          note: `Stopped · ${event.changed ?? 0} ${event.changed === 1 ? "chapter" : "chapters"} changed` +
+            (event.changed ? (event.undoAvailable ? " · undo available" : " · no undo checkpoint") : "") +
+            (event.persistenceError ? ` · ${event.persistenceError}` : ""),
           approvals: message.approvals?.map((entry) =>
             entry.status === "pending" ? { ...entry, status: "expired" } : entry
           )
@@ -456,7 +463,7 @@ export function ChatPanel({
         patchAssistant(event.turnId, (message) => ({
           ...message,
           failed: true,
-          note: event.message,
+          note: event.message + (event.persistenceError ? ` · ${event.persistenceError}` : ""),
           errorCode: event.code,
           ...(event.retryAfterSeconds !== undefined ? { retryAfterSeconds: event.retryAfterSeconds } : {}),
           turnId: event.turnId,
@@ -508,7 +515,7 @@ export function ChatPanel({
   };
 
   const approve = async (message: Message, approval: Approval, approved: boolean, pressed: HTMLElement): Promise<void> => {
-    if (approval.status !== "pending") return;
+    if (approval.status !== "pending" || stoppingRef.current === approval.turnId) return;
     // Allow and Deny leave with the question. Focus still on them moves to their card before they
     // go, so an answer from the keyboard does not drop focus to the page.
     const card = pressed.closest<HTMLElement>('[data-slot="confirmation"]');
@@ -522,6 +529,14 @@ export function ChatPanel({
       assistantRef.current = message.id;
       await must(window.studio.agent.approve(approval.turnId, approval.id, approved));
       const status: Approval["status"] = approved ? "approved" : "denied";
+      if (turnRef.current !== approval.turnId || stoppingRef.current === approval.turnId) {
+        // The answer won ownership, but its persistence reply can arrive after Stop. Keep the
+        // accepted answer without resurrecting a working status or changing terminal controls.
+        patchMessage(message.id, (item) => ({ ...item, approvals: item.approvals?.map((entry) =>
+          entry.id === approval.id ? { ...entry, status } : entry) }));
+        keepFocus();
+        return;
+      }
       patchMessage(message.id, (item) => ({
         ...item,
         note: approved ? "Approved. Working…" : "Denied. Working…",
@@ -531,6 +546,7 @@ export function ChatPanel({
       }));
       keepFocus();
     } catch (error) {
+      if (turnRef.current !== approval.turnId || stoppingRef.current === approval.turnId) return;
       const expired = error instanceof Error && /no longer waiting/i.test(error.message);
       if (expired) {
         patchMessage(message.id, (item) => ({
@@ -554,6 +570,8 @@ export function ChatPanel({
   const stop = async (): Promise<void> => {
     const turnId = turnRef.current;
     if (!turnId) return;
+    stoppingRef.current = turnId;
+    patchAssistant(turnId, (message) => ({ ...message, note: "Stopping… Waiting for in-flight work to settle." }));
     try {
       await must(window.studio.agent.stop(turnId));
     } catch (error) {
