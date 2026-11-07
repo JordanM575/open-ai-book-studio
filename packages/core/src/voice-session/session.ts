@@ -22,6 +22,11 @@ export interface Confirmation extends SessionToken {
   readonly action: NamedAction;
   readonly text: string;
 }
+export interface FailedReceipt {
+  readonly request: Request;
+  /** Bounded host-redacted failure; never provider/source text without host validation. */
+  readonly message: string;
+}
 export interface VoiceSession {
   readonly generation: number;
   readonly sequence: number;
@@ -45,6 +50,10 @@ export interface VoiceSession {
   readonly lastSegment: number;
   readonly lastChunk: number;
   readonly requests: Readonly<Record<RequestKind, Request | null>>;
+  /** One unacknowledged failure per kind; blocks reuse instead of overwriting/evicting it. */
+  readonly failures: Readonly<Record<RequestKind, FailedReceipt | null>>;
+  /** The exact outstanding TTS result was admitted; independent of aggregate display status. */
+  readonly playbackReady: boolean;
   readonly answered: readonly QuestionBinding[];
   readonly confirmed: readonly NamedAction[];
   readonly workflowStopped: boolean;
@@ -62,6 +71,7 @@ export type VoiceEvent =
       readonly autoSendDiscuss: boolean }
   | { readonly type: "observe" }
   | { readonly type: "settled"; readonly request: Request; readonly failure?: string }
+  | { readonly type: "acknowledge-failure"; readonly request: Request }
   | ({ readonly token: SessionToken } & (
     | { readonly type: "permission"; readonly granted: boolean }
     | { readonly type: "end"; readonly reason: "hide" | "close" | "lock" | "permission-loss" | "scope-change" | "route-change" }
@@ -112,7 +122,8 @@ export function initialVoiceSession(): VoiceSession {
     permissionPending: false, grantId: null, capture: false, dispatchInhibited: true, interrupted: false,
     speechEnabled: false, speechId: 0, autoSendDiscuss: false, commandMode: false, draft: "", confirmation: null,
     correctionPending: false, lastSentText: null, lastSegment: 0, lastChunk: 0,
-    requests: { stt: null, tts: null, work: null }, answered: [], confirmed: [], workflowStopped: false, reason: null });
+    requests: { stt: null, tts: null, work: null }, failures: { stt: null, tts: null, work: null },
+    playbackReady: false, answered: [], confirmed: [], workflowStopped: false, reason: null });
 }
 
 function requestMatches(a: Request | null, b: Request): boolean {
@@ -144,7 +155,7 @@ export function maySend(state: VoiceSession, request: Request, facts: HostFacts)
 
 /** Recheck before starting decoded audio, including a result queued before Stop speaking. */
 export function mayPlay(state: VoiceSession, request: Request, facts: HostFacts): boolean {
-  return request.kind === "tts" && state.active && state.speechEnabled && state.status === "speaking" &&
+  return request.kind === "tts" && state.active && !state.permissionPending && state.speechEnabled && state.playbackReady &&
     !state.dispatchInhibited && !!state.token && sameToken(state.token, request) && !!state.binding &&
     hostReady(facts) && sameBinding(state.binding, facts.binding) && granted(state, facts) &&
     requestMatches(state.requests.tts, request) && state.requests.tts?.closed === true;
@@ -152,14 +163,14 @@ export function mayPlay(state: VoiceSession, request: Request, facts: HostFacts)
 
 /** Host checks before accepting PCM, particularly if full-duplex qualification has been lost. */
 export function mayCapture(state: VoiceSession, facts: HostFacts): boolean {
-  return state.active && state.capture && !state.permissionPending && !state.requests.stt &&
+  return state.active && state.capture && !state.permissionPending && !state.requests.stt && !state.failures.stt &&
     !!state.binding && hostReady(facts) && sameBinding(state.binding, facts.binding) && granted(state, facts) &&
     ((!state.requests.tts && state.status !== "speaking") || facts.fullDuplexQualified);
 }
 
 /** Recheck immediately before handing an issued answer to the checked 037 authority. */
 export function mayDeliverAnswer(state: VoiceSession, token: SessionToken, question: QuestionBinding, facts: HostFacts): boolean {
-  return state.active && !!state.token && sameToken(state.token, token) && !!state.binding &&
+  return state.active && !state.permissionPending && !!state.token && sameToken(state.token, token) && !!state.binding &&
     hostReady(facts) && sameBinding(state.binding, facts.binding) && granted(state, facts) &&
     !state.dispatchInhibited && !state.workflowStopped && !facts.workflowRevoked && !!facts.question &&
     sameQuestion(question, facts.question) && state.answered.some((q) => sameQuestion(q, question));
@@ -214,7 +225,7 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
   const result = (): Transition => immutable({ state, effects });
   const refuse = (reason: string): Transition => { update({ reason }); return result(); };
   const allocate = (kind: RequestKind, action: NamedAction | null = null): Request | null => {
-    if (!state.token || !state.binding || state.requests[kind] || state.sequence >= Number.MAX_SAFE_INTEGER) return null;
+    if (!state.token || !state.binding || state.requests[kind] || state.failures[kind] || state.sequence >= Number.MAX_SAFE_INTEGER) return null;
     const route = kind === "stt" ? state.binding.stt : kind === "tts" ? state.binding.tts : state.binding.agent;
     if (!route) return null;
     const request: Request = { ...state.token, id: state.sequence + 1, kind, route, action, closed: false,
@@ -222,6 +233,11 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
     update({ sequence: request.id, requests: { ...state.requests, [kind]: request } });
     return request;
   };
+  const hasFailures = () => Object.values(state.failures).some(Boolean);
+  const settledStatus = (): VoiceStatus => state.interrupted ? "interrupted"
+    : state.requests.tts && state.speechEnabled ? "speaking"
+      : state.draft || state.confirmation ? "review-needed"
+        : state.requests.work || state.requests.stt ? "processing" : state.capture ? "listening" : "held";
   const submitDiscuss = () => {
     if (state.binding?.mode !== "discuss" || state.dispatchInhibited ||
         !state.draft.trim() || state.draft.trim().toLowerCase() === "yes" || state.correctionPending || state.requests.work) return;
@@ -246,18 +262,33 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
     simple("stop-capture");
   }
 
-  // Settlement is receipt-only and may release an old slot. It never resumes work or plays a result.
-  if (event.type === "settled") {
-    if (requestMatches(state.requests[event.request.kind], event.request)) {
-      update({ requests: { ...state.requests, [event.request.kind]: null } });
+  // Acknowledgement is an authenticated host/control event. It never rearms capture or dispatch.
+  if (event.type === "acknowledge-failure") {
+    if (requestMatches(state.failures[event.request.kind]?.request ?? null, event.request)) {
+      update({ failures: { ...state.failures, [event.request.kind]: null } });
+    }
+    return result();
+  }
+  // Receipt-only paths may release old slots, even after Stop or generation replacement.
+  // Playback completion needs an admitted TTS result, never a display-status guess or late content.
+  if (event.type === "settled" || event.type === "playback-ended") {
+    const request = state.requests[event.request.kind];
+    const receiptAllowed = event.type === "settled" || (event.request.kind === "tts" &&
+      state.playbackReady && sameToken(event.token, event.request));
+    if (request && receiptAllowed && requestMatches(request, event.request)) {
+      update({ requests: { ...state.requests, [request.kind]: null },
+        ...(request.kind === "tts" ? { playbackReady: false } : {}) });
+      const failure = event.type === "settled" && event.failure !== undefined
+        ? textValid(event.failure) && event.failure.trim() ? event.failure
+          : "The external operation failed. Review its host receipt before continuing." : null;
+      if (failure !== null) {
+        update({ failures: { ...state.failures, [request.kind]: { request, message: failure } } });
+      }
       if (state.token && sameToken(state.token, event.request) && state.active && !state.permissionPending) {
-        if (event.failure !== undefined) {
+        if (failure !== null) {
           inhibit();
-          update({ reason: textValid(event.failure) && event.failure.trim()
-            ? event.failure : "The external operation failed. Review its host receipt before continuing." });
-        } else if (!state.interrupted && (state.status === "processing" || state.status === "speaking")) {
-          update({ status: state.draft ? "review-needed" : state.capture ? "listening" : "held" });
-        }
+          update({ reason: failure });
+        } else update({ status: settledStatus() });
       }
     }
     return result();
@@ -275,7 +306,8 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
     // Unsettled old operations retain their bounded slots across reactivation, never a second STT.
     update({ ...initialVoiceSession(), generation: event.generation, sequence: state.sequence,
       token: { sessionId: event.sessionId, generation: event.generation }, binding: copyBinding(facts.binding),
-      requests: state.requests, active: true, permissionPending: true, autoSendDiscuss: event.autoSendDiscuss,
+      requests: state.requests, failures: state.failures, playbackReady: state.playbackReady,
+      active: true, permissionPending: true, autoSendDiscuss: event.autoSendDiscuss,
       status: "requesting", reason: null });
     simple("request-permission");
     return result();
@@ -315,8 +347,10 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
     if (!event.granted || !granted(state, facts)) {
       end("Microphone permission was refused. Activate again to retry.", true);
     } else {
-      update({ permissionPending: false, grantId: facts.grant?.grantId ?? null, capture: !state.requests.stt,
-        dispatchInhibited: false, status: state.requests.stt ? "held" : "listening" });
+      const capture = !state.requests.stt && !state.failures.stt && (!state.requests.tts || facts.fullDuplexQualified);
+      update({ permissionPending: false, grantId: facts.grant?.grantId ?? null, capture,
+        dispatchInhibited: state.interrupted || hasFailures(),
+        status: state.interrupted ? "interrupted" : capture && !hasFailures() ? "listening" : "held" });
       if (state.capture) simple("start-capture");
     }
     return result();
@@ -394,6 +428,10 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
       submitDiscuss();
       break;
     case "continue":
+      if (hasFailures()) {
+        update({ reason: "Review and acknowledge external failure receipts before continuing." });
+        break;
+      }
       if (state.requests.stt || state.requests.work || state.requests.tts) {
         update({ reason: "External operations are still settling. No continuation was sent." });
         break;
@@ -426,12 +464,7 @@ export function reduceVoiceSession(previous: VoiceSession, event: VoiceEvent, fa
       if (maySend(state, event.request, facts) && event.request.kind === "tts") {
         effects.push({ type: "play", request: event.request });
         // Keep the slot until playback-ended, so duplicate audio/chunk delivery cannot overlap.
-        update({ requests: { ...state.requests, tts: { ...event.request, closed: true } } });
-      }
-      break;
-    case "playback-ended":
-      if (state.status === "speaking" && state.requests.tts?.closed && requestMatches(state.requests.tts, event.request)) {
-        update({ requests: { ...state.requests, tts: null }, status: "held" });
+        update({ requests: { ...state.requests, tts: { ...event.request, closed: true } }, playbackReady: true });
       }
       break;
     case "answer":

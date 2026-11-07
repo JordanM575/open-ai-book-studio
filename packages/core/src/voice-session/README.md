@@ -18,6 +18,12 @@ for each of STT, TTS and work; canceled operations retain their slot until a mat
 This intentionally favors a visible hold over overlapping an uncertain request. No timeout claims
 an external operation stopped, was refunded, or cost zero. No request retry is automatic.
 
+Failed receipts occupy a separate bounded slot per kind (STT/TTS/work), with the exact originating
+request and host-redacted message. They survive Stop, lifecycle invalidation and new activations.
+Reuse of that kind waits for exact `acknowledge-failure`; the reducer never overwrites or evicts an
+unacknowledged receipt. Acknowledgement does not enable capture/dispatch or resume work. These are
+transient presentation receipts, not a replacement for the host's durable runtime/accounting record.
+
 Local engineering bounds (not provider or acoustic certifications): safe integer generations and
 IDs; strings used as identities/routes up to 2,048 UTF-16 units; transcript/correction text up to
 65,536 UTF-16 units; 64 consumed confirmations and 64 answered question projections per activation.
@@ -42,6 +48,8 @@ not a new file format or durable question store. The host still owns durable ide
   Stop work asks the host to stop and blocks further check-in answers for this activation. Stop
   listening ends capture/voice outputs, without a work-stop intent. Bare Stop silences, inhibits,
   asks for pause, closes capture and invalidates the grant. None needs confirmation.
+  Successful permission completion grants capture independently: it retains an earlier Pause/Stop
+  work interruption and dispatch inhibition. Only explicit Continue may reopen that work gate.
 - `parseVoiceCommand` accepts only whole local commands in explicit command mode. It does not
   parse free-form story dialogue. Bare yes does not send/confirm. Structured correction and named
   undo carry explicit payloads instead of guessing targets from speech. Read/Next/Repeat emit
@@ -63,6 +71,11 @@ not a new file format or durable question store. The host still owns durable ide
   Explicit `start-speaking` has a monotonic speech ID; each chunk has a monotonic ID within it.
   Stop speaking cannot be undone by a late chunk. A canceled old STT slot survives Start until actual
   settlement; old settlement can release its own slot but cannot rearm capture or replace new content.
+  `playbackReady` tracks an admitted TTS result independently from display status. Work settlement
+  cannot invalidate its queued playback; interruption still closes the immediate-use gate. An exact
+  `playback-ended` receipt releases that admitted request even after pause, correction, Stop or a new
+  generation. A canceled synthesis with no admitted result still needs generic settlement. Old/foreign
+  playback receipts cannot release a replacement slot, and no receipt alone rearms held capture.
 - Restart begins stopped and carries no permission. The caller must preserve visible pending text
   from the previous immutable state before replacing it with a new activation; no transcript log
   or persistence is created here. Reopening/hiding/locking/permission loss cannot implicitly Start.
@@ -94,8 +107,16 @@ not a new file format or durable question store. The host still owns durable ide
    Do not send a generic `settled` before consuming a successful result. `settled` is for final
    cancellation/failure/work receipts, has no result delivery, and never auto-resumes. Route STT
    no-match through empty `transcript`; canceled operations use settlement, never late content.
-   Include a host-redacted `failure` on a failed receipt: it remains visible and inhibits further
-   dispatch. A successful work receipt clears processing without reopening previously held capture.
+    Include a host-redacted `failure` on a failed receipt. Always present `state.failures`, including
+    when stopped or showing a newer session: exact request/session/route identity stays attributable,
+    messages are bounded to65,536 UTF-16 units (invalid/oversize uses fixed local copy), and duplicate
+    receipts cannot replace them. A current active failure inhibits dispatch; an old-session failure
+    leaves the new draft/status intact while blocking reuse of that request kind. Continue waits for
+    explicit failure acknowledgement and all actual unresolved slots. Acknowledge only after the host
+    has retained the real receipt and the author explicitly dismisses its presented failure; do not
+    acknowledge merely on render, view closure or activation. Process-loss durability is still the
+    host's responsibility. A successful work receipt derives status with other slots in view, preserving
+    queued/playing speech and never reopening held capture.
 7. `answer-intent` reuses run/question/character/direction/question/source/authority revisions from
    the live 037 projection. No names-as-identity, separate voice question database or scheduler.
    The host must atomically deduplicate durable answers and reject stopped/revoked/answered questions

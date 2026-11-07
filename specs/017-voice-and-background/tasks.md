@@ -73,6 +73,9 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   generations, exact named readbacks, correction/stop/settlement gates and 037 answer-intent projection.
   Its local README specifies trusted host ownership and integration requirements; no runtime authority
   or actual track/transport stop is claimed by an effect description.
+  Independent-review correction adds permission/stop ordering, bounded attributable failed receipts
+  with exact explicit acknowledgement, and playback completion independent from display status.
+ 144 pure tests pass; fresh exact-head correction review remains required before integration.
 - [x] T014 Add bounded injected PCM/VAD segmentation, preroll/end-silence and one-STT backpressure tests.
   Synthetic tests cover the 1.2s/250ms/60s defaults, bounded reads/PCM, explicit held state, exact
   unconsumed suffix, noise/silence, stale results and never-settling slots. The injected classifier
