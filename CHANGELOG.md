@@ -7,6 +7,16 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Pure authoring foundation
+
+- Add isolated, immutable authoring graph and finite-admission domain modules under ADR 0019:
+  checked dependencies/command identity, versioned direction and question invalidation, historical
+  late results, truthful attempt/effect settlement, pinned-route reservations and explicit unknown
+  costs. Preserve accounting across generation changes; refuse no-progress cycles, uncertain replay
+  and unqualified strict-money bounds. Add focused adversarial tests and strict platform-independent
+  typechecks. This is partial 037 evidence; host permission, durable formats, scheduler and checked
+  publication integration remain open.
+
 ### Integration
 
 - Accept individually researched full-book authoring, inline editorial-review and hands-free

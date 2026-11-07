@@ -79,10 +79,20 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
 - [ ] T019 Implement checked/lossless shared threads, explicit migration, recoverable deletion and all callers.
 - [ ] T020 Integrate truthful stop settlement, consumer/persistence warnings and pinned-Library quiescence.
 - [ ] T021 Implement pure versioned graph, dependency/direction invalidation, command identity and reducers.
+  - Partial implementation evidence (November 7): isolated `packages/core/src/authoring/` provides
+    validated immutable DAG/reference contracts, exact command replay checks, question/direction
+    invalidation, historical late outcomes and distinct attempt/effect settlement. Focused adversarial
+    tests live in `packages/core/tests/authoring/`; no wire writer or host execution is exposed.
 - [ ] T022 Implement host permission and durable finite admission/reservations, including unknown charges.
+  - Pure portion only: finite reservation/accounting decisions, injected clock/account facts, strict
+    qualified-maximum versus bounded-operation cost modes, and generation changes preserving budget
+    history. Host permission, durable storage and adapter qualification remain required.
 - [ ] T023 Implement immutable artifact/context and checked run/task/attempt/effect/question storage.
 - [ ] T024 Add scoped attempt execution at the existing runtime seam; no ordinary full-book prompt/plugins.
 - [ ] T025 Add event-driven asynchronous scheduling, account limiter, zero automatic retries and no spin.
+  - Pure portion only: ready/blocked/settling projections, pinned-route capacity decisions, no-progress/
+    revision ceilings and rate-limit eligibility without resend. Actual asynchronous scheduling,
+    host serialization, held-transport overlap and runtime integration remain unimplemented here.
 - [ ] T026 Mount small optional New book onboarding, exact brief/choices/agreement and real 033 goal.
 - [ ] T027 Run independent outline/cast proposals, reconcile them and record initial author direction.
 - [ ] T028 Execute incremental scene/chapter assembly, bounded completion and causal dependencies.
