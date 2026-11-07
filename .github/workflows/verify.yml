@@ -39,9 +39,8 @@ jobs:
     # The end-to-end checks drive a real Electron window, so they need a display.
     #
     # This job passed on macOS first. Its first Linux runs failed at launch on Electron's sandbox
-    # helper, which the step below now sets up. It stays allowed to fail until someone has watched it
-    # pass on Linux and said so.
-    continue-on-error: true
+    # helper, which the step below now sets up. It has since passed three runs in a row on main, so a
+    # failure here fails the workflow like any other job.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

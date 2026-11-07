@@ -259,8 +259,8 @@ build keeps an OpenRouter sign-in in that browser's own storage and does not run
 
 The checks run locally, and none needs a provider key. The repository also has a manually started
 GitHub Actions workflow, `verify`: one job runs `bun run verify` and the coverage floor on Linux,
-and an end-to-end job drives the built app under a virtual display. That end-to-end job is still
-allowed to fail until it has been watched passing on Linux. Its smoke skips the manuscript-import
+and an end-to-end job drives the built app under a virtual display. Either job failing fails the
+workflow. The end-to-end smoke skips the manuscript-import
 checks off macOS, because only macOS offers the import, and when a smoke check fails there the job
 keeps its screenshot and console log for seven days.
 

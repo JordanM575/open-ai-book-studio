@@ -8,6 +8,11 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 ### Changed
+- The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at
+  launch on Electron's sandbox helper. After that was fixed and the browser smoke check was made to wait for the
+  page, it passed three runs in a row on `main` (both the verify and the end-to-end job, read from the jobs and not
+  from the run, which `continue-on-error` kept green), so a failure in it now fails the workflow like the verify job.
+  The workflow comment, the README Verification paragraph and the Linux note in `docs/TESTING.md` say so.
 - The hidden smoke run checks a damaged chapter file in the real app. While the book is open it writes a chapter file with
   broken front matter into the disposable smoke library, as another editor might, and confirms the workspace names the
   file in its notice, the readable chapters stay readable, a Word export and a Markdown export through the real bridge
