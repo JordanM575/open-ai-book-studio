@@ -2,7 +2,8 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 **Status:** Draft / In progress — decision tasks T001–T003 reconciled to accepted D-177–D-179;
-T004 and T010 implemented. Other implementation/verification tasks remain open.
+T004 and T010 implemented. W03 implements T007–T009 and T011 plus the mode/guidance
+portion of T006; plan/lifecycle and integrated delivery verification remain open.
 
 Tasks are ordered. An unresolved decision blocks only the task that depends on it. All tests use
 temporary synthetic libraries, fixture chapters and scripted model responses unless separately
@@ -64,18 +65,21 @@ authorized; no task requires a live provider, credential, paid service, real man
 - [ ] T006 Add mode, plan and guidance fields to the main-process turn/event contract. Reject
   invalid modes, oversized guidance and plans that exceed the selected bounds before a provider
   call or write can start. Test through the model factory seam without a network.
+  W03: mode/guidance validation and request snapshots are implemented; actual user guidance
+  and user/assistant mode persist, including failed, stopped and approval-waiting attempts.
+  Retry identity includes prompt, mode and guidance. Plan/event expansion remains open.
 
 ## Phase 2 — Discuss and Edit permissions
 
-- [ ] T007 Add the visible per-turn Discuss/Edit control and store the selected mode with each sent
+- [x] T007 Add the visible per-turn Discuss/Edit control and store the selected mode with each sent
   turn. Show historical mode from stored turn data; do not infer or relabel it from the current
   composer. Apply the decided default from T001.
-- [ ] T008 Enforce Discuss permissions in the main-process runtime and tool construction, applying
+- [x] T008 Enforce Discuss permissions in the main-process runtime and tool construction, applying
   the exact read-only policy decided in T001. A
   synthetic model attempt to call a write, destructive or unknown capability must be refused and
   leave book and chapter fixture bytes unchanged. Keep plugin tools out of Discuss unless a
   separately accepted public capability contract permits them.
-- [ ] T009 Verify Edit still uses the shared 024 catalog, checked writer, existing 002 destructive
+- [x] T009 Verify Edit still uses the shared 024 catalog, checked writer, existing 002 destructive
   approval and one-turn undo. A plan or mode control must not approve a destructive tool. Cover an
   ordinary write and a pending approval with scripted model responses.
 
@@ -95,10 +99,15 @@ authorized; no task requires a live provider, credential, paid service, real man
   round-trip) and `agent-tone.test.tsx` (dialog set/clear/disclosure/default) with
   synthetic fixtures only. Runtime inclusion of tone/answer-length in submitted turns
   stays with T011/future wiring.
-- [ ] T011 Add bounded one-turn guidance to the composer. Show that it applies to this turn only,
+- [x] T011 Add bounded one-turn guidance to the composer. Show that it applies to this turn only,
   enforce the 2,000-character limit without truncating, persist it with the turn and do not carry it
   into the next turn. Verify it cannot alter mode, tools, approvals or 011 model attribution. Use a
   synthetic thread and mock model inputs.
+  W03: guidance is kept verbatim in the user message and only the current model request;
+  composer and runtime reject over 2,000 characters. Existing book tone/length prompt
+  wiring is retained, with pre-provider refusal of invalid saved guidance. See
+  [implementation evidence and delivery runbook](implementation.md). These source/test
+  completions do not close the accepted film/script/runbook delivery condition.
 - [ ] T012 Add guidance to a proposed plan and require a refreshed visible proposal before **Start
   plan**. No tool may write during this refresh. Keep live steering disabled under D-179.
 

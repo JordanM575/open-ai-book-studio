@@ -1,8 +1,9 @@
 # Plan: agent interaction and guidance
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
-**Status:** Draft / In progress — T004 contracts and T010 tone/length controls implemented;
-runtime permissions, request wiring and plan lifecycle remain planned.
+**Status:** In progress — T004/T010 and W03 Discuss/Edit permissions, composer and bounded
+request guidance implemented. Plan lifecycle and integrated delivery acceptance remain open.
+See [candidate evidence and delivery runbook](implementation.md).
 
 ## Shape
 

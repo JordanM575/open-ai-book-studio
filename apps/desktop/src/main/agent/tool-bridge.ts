@@ -9,6 +9,8 @@ import { chapterToolCatalog, createChapterTools, toolTier } from "./tools";
 import { loadPlugins, pluginTools } from "./plugins";
 import { pluginLibrary } from "./tool-set";
 import type { Library } from "../library/store";
+import type { AgentMode } from "@ai-book-studio/core/agent/messages";
+import { DISCUSS_NEXT_STEP, modeAllowsTool } from "./mode";
 
 /** The AI SDK's tool object, reduced to the parts the bridge needs. */
 interface ToolLike {
@@ -18,6 +20,8 @@ interface ToolLike {
 }
 
 export interface ToolRunRequest {
+  /** Optional for existing toolkit callers; a mode-bound caller must pass its captured mode. */
+  mode?: AgentMode;
   bookId: string;
   name: string;
   args: unknown;
@@ -65,13 +69,13 @@ export class ToolBridge {
    * A tool the author withdrew for that book is left out, so the app and the toolkit see the same
    * list the agent gets (FR-004).
    */
-  async catalogFor(bookId: string): Promise<ToolDescriptor[]> {
+  async catalogFor(bookId: string, mode: AgentMode = "edit"): Promise<ToolDescriptor[]> {
     const library = this.getLibrary();
     if (!library) return [];
     const { book } = await library.readBook(bookId);
     const disabled = new Set(book.settings?.agent?.disabledTools ?? []);
-    const all = await this.catalog();
-    return all.filter((tool) => !disabled.has(tool.name));
+    const all = mode === "edit" ? await this.catalog() : chapterToolCatalog();
+    return all.filter((tool) => !disabled.has(tool.name) && modeAllowsTool(mode, tool.name));
   }
 
   /** The tools the loaded plugins provide, in the same shape as the built-in ones. */
@@ -89,6 +93,10 @@ export class ToolBridge {
 
   /** Run one tool against one book and return its result unchanged. */
   async run(request: ToolRunRequest): Promise<ToolCallResult> {
+    request = structuredClone(request);
+    if (!modeAllowsTool(request.mode ?? "edit", request.name)) {
+      throw new ToolError("unknown-tool", DISCUSS_NEXT_STEP);
+    }
     const library = this.getLibrary();
     if (!library) {
       throw new ToolError("failed", "No library is open in the studio. Open a folder first.");
@@ -116,6 +124,7 @@ export class ToolBridge {
 
     // A plugin tool, when the author has pointed the app at a folder.
     if (!bound?.execute) {
+      if (request.mode === "discuss") throw new ToolError("unknown-tool", DISCUSS_NEXT_STEP);
       const plugin = await this.runPluginTool(library, request);
       if (plugin) return plugin;
       throw new ToolError("unknown-tool", `Unknown tool: ${request.name}`);

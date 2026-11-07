@@ -7,6 +7,17 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Agent interaction
+
+- Add the first Discuss/Edit interaction slice: new composer requests default to Discuss,
+  whose enabled built-in read tools cannot mutate the book and never load plugins. Edit
+  retains checked writes, destructive approval and turn undo. Mode is recorded per request
+  and outcome; older conversations remain explicitly unrecorded.
+- Add inspectable, bounded one-turn guidance with no silent truncation or later-turn reuse,
+  fixed retry attribution, and runtime validation before provider access. Preserve book
+  tone/answer-length guidance and the system-prompt budget. This candidate retains spec 031's
+  matching demo re-shoot, script/runbook and integrated acceptance conditions.
+
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at
   launch on Electron's sandbox helper. After that was fixed and the browser smoke check was made to wait for the

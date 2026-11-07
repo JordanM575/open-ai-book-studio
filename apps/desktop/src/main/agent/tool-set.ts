@@ -9,6 +9,8 @@ import {
 import { createChapterTools, type ChapterChange, type ProposedBases } from "./tools";
 import type { ProviderOptions } from "./cache";
 import type { Library } from "../library/store";
+import type { AgentMode } from "@ai-book-studio/core/agent/messages";
+import { DISCUSS_NEXT_STEP, modeAllowsTool } from "./mode";
 
 /**
  * The agent's tool set for one book.
@@ -21,6 +23,8 @@ export function buildToolSet(
   library: Library,
   bookId: string,
   options: {
+    /** Legacy direct callers use Edit; the runtime always supplies its validated mode. */
+    mode?: AgentMode;
     disabledTools?: string[];
     pluginTools?: PluginTool[];
     onBeforeChange?: (change: ChapterChange) => void | Promise<void>;
@@ -36,12 +40,13 @@ export function buildToolSet(
   } = {}
 ): ToolSet {
   const disabled = new Set(options.disabledTools ?? []);
-  const tools: ToolSet = {};
+  const mode = options.mode ?? "edit";
+  const tools: ToolSet = Object.create(null);
   for (const [name, definition] of Object.entries(createChapterTools(library, bookId, options.onBeforeChange, options.proposed))) {
-    if (disabled.has(name)) continue;
+    if (disabled.has(name) || !modeAllowsTool(mode, name)) continue;
     tools[name] = definition as ToolSet[string];
   }
-  for (const plugin of options.pluginTools ?? []) {
+  for (const plugin of mode === "edit" ? options.pluginTools ?? [] : []) {
     if (disabled.has(plugin.name)) continue;
     if (plugin.name in tools) continue;
     tools[plugin.name] = tool({
@@ -59,6 +64,14 @@ export function buildToolSet(
         return { ok: true, message: "Done.", result } as never;
       }) as never
     }) as ToolSet[string];
+  }
+  for (const [name, definition] of Object.entries(tools)) {
+    const execute = definition.execute;
+    if (!execute) continue;
+    definition.execute = (input, context) => {
+      if (disabled.has(name) || !modeAllowsTool(mode, name)) throw new Error(DISCUSS_NEXT_STEP);
+      return execute(input, context);
+    };
   }
   if (options.toolProviderOptions) {
     const names = Object.keys(tools);

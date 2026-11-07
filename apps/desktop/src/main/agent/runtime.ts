@@ -16,6 +16,8 @@ import type {
 } from "@ai-book-studio/core/agent";
 import {
   agentMessageSchema,
+  agentModeSchema,
+  agentGuidanceTextSchema,
   messageText,
   type AgentApprovalPart,
   type AgentApprovalStatus,
@@ -60,6 +62,8 @@ import { cachePrefixFor } from "./cache";
 import { loadPlugins, pluginTools, type LoadedPlugins } from "./plugins";
 import type { PluginTool } from "@ai-book-studio/core/agent/plugins";
 import type { MetricsStore } from "../metrics";
+import { agentSettingsSchema } from "@ai-book-studio/core/agent/settings";
+import { DISCUSS_NEXT_STEP, modeAllowsTool } from "./mode";
 
 interface PendingApproval {
   approvalId: string;
@@ -116,7 +120,6 @@ interface TurnState {
   steps: number;
   /** Stable for the whole turn so the paused and finished messages share one id. */
   createdAt: string;
-  persisted: boolean;
   checkpoint: CheckpointProgress;
   /** What each paused destructive call was proposed against, noted before the author is asked. */
   proposed: ProposedBases;
@@ -340,8 +343,25 @@ export class AgentRuntime {
     });
   }
 
-  async start(input: AgentTurnInput): Promise<AgentTurnStarted> {    const library = this.studio.requireLibrary();
-    const { book, chapters } = await library.readBook(input.bookId);
+  async start(input: AgentTurnInput): Promise<AgentTurnStarted> {
+    // Capture caller-owned objects before the first await. A live turn cannot be steered by mutation.
+    input = structuredClone(input);
+    if (!agentModeSchema.safeParse(input.mode).success) {
+      throw new ProviderError("invalid-request", "Choose Discuss or Edit before sending this turn.");
+    }
+    if (input.guidance !== undefined && !agentGuidanceTextSchema.safeParse(input.guidance).success) {
+      throw new ProviderError("invalid-request", "One-turn guidance must contain 1–2,000 characters. Shorten it before sending.");
+    }
+    const library = this.studio.requireLibrary();
+    const { book, chapters } = await library.readBook(input.bookId).catch((error: unknown) => {
+      if (error instanceof LibraryError && error.code === "format" && /settings\.agent\.(tone|answerLength)/.test(error.message)) {
+        throw new ProviderError("invalid-request", "The saved book guidance is invalid and has been kept. Shorten tone to 500 characters and choose Brief, Standard or Detailed before sending.");
+      }
+      throw error;
+    });
+    if (!agentSettingsSchema.safeParse(book.settings?.agent).success) {
+      throw new ProviderError("invalid-request", "The book's agent guidance is invalid. Shorten tone to 500 characters and choose Brief, Standard or Detailed before sending.");
+    }
     const connectionId = input.model?.connectionId ?? book.defaultConnectionId;
     const modelId = input.model?.modelId ?? book.defaultModelId;
     if (!connectionId || !modelId) {
@@ -381,12 +401,12 @@ export class AgentRuntime {
       input.bookId,
       book.settings?.agent?.skillsEnabled !== false
     );
-    const built = buildPrompt({ book, chapters, activeChapter, skills: skills?.text ?? null });
+    const built = buildPrompt({ book, chapters, activeChapter, skills: skills?.text ?? null, mode: input.mode });
     const compacted = compactHistory(prepared.thread).messages;
-    const messages = modelMessagesFor(compacted);
+    const messages = modelMessagesFor(compacted, input.guidance);
     const context = contextBreakdown(
       built.sections,
-      compacted.map((message) => messageText(message)).join("\n")
+      messages.map((message) => typeof message.content === "string" ? message.content : "").join("\n")
     );
     const messageId = newId("msg");
     const state: TurnState = {
@@ -405,7 +425,6 @@ export class AgentRuntime {
       context,
       steps: 0,
       createdAt: new Date().toISOString(),
-      persisted: false,
       checkpoint: { revision: 0, saved: 0, at: null, file: null, queue: Promise.resolve() },
       proposed: new ProposedBases(library, input.bookId),
       running: new Set()
@@ -416,8 +435,9 @@ export class AgentRuntime {
       book.settings?.cache?.prefixMode !== "off"
     );
     const tools = buildToolSet(library, input.bookId, {
+      mode: input.mode,
       disabledTools: book.settings?.agent?.disabledTools ?? [],
-      pluginTools: await this.pluginToolsFor(),
+      pluginTools: input.mode === "edit" ? await this.pluginToolsFor() : [],
       ...(cache.toolProviderOptions ? { toolProviderOptions: cache.toolProviderOptions } : {}),
       proposed: state.proposed,
       // Every change goes into the checkpoint as it is made, before the tool answers the model, so
@@ -671,6 +691,7 @@ export class AgentRuntime {
       const message = agentMessageSchema.parse({
         id: messageId,
         role: "assistant",
+        mode: input.mode,
         parts,
         model: {
           provider,
@@ -685,7 +706,6 @@ export class AgentRuntime {
       });
       try {
         let thread = await threadStore.upsertMessage(input.bookId, threadId, message);
-        state.persisted = true;
         if (options.checkpoint) {
           const checkpointTurns = thread.checkpointTurns.includes(turnId)
             ? thread.checkpointTurns
@@ -743,7 +763,8 @@ export class AgentRuntime {
         } else if (part.type === "tool-error") {
           // A tool that throws ends like one that answered `ok: false`: a failed step in the chat and
           // the thread, and a failed call in the metrics. Without this it would stay running forever.
-          const output = { ok: false, message: toolErrorMessage(part.error) };
+          const output = { ok: false, message: input.mode === "discuss" && !modeAllowsTool(input.mode, part.toolName)
+            ? DISCUSS_NEXT_STEP : toolErrorMessage(part.error) };
           state.toolParts.push({ type: "tool-result", id: part.toolCallId, name: part.toolName, output, isError: true });
           await this.recordToolCall(input.bookId, part.toolName, false);
           this.publish({
@@ -955,22 +976,17 @@ export class AgentRuntime {
           state.changes.length > 0 && !undoAvailable
             ? `${base} The turn changed the book, but its undo checkpoint could not be saved. Review the affected chapters before continuing.`
             : base;
-        // A turn that never paused keeps only its user message, so Retry can reuse it. A turn that
-        // did pause already has a stored assistant message; record the failure on that same message.
-        if (state.persisted) {
-          const failure: AgentErrorPart = {
-            type: "error",
-            code: normalized.code,
-            message,
-            ...(wait !== undefined ? { retryAfterSeconds: wait } : {})
-          };
-          await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, failure), ...state.approvals], {
-            checkpoint: state.changes.length > 0 && undoAvailable
-          });
-        } else if (state.changes.length > 0 && undoAvailable) {
-          // Still the newest checkpoint: listed, a reload offers no earlier turn's undo in its place.
-          await this.listCheckpointTurn(input.bookId, threadId, turnId);
-        }
+        // Even an attempt that failed before producing text records its mode and outcome.
+        // Retry reuses the matching user request, never deletes or relabels this failed attempt.
+        const failure: AgentErrorPart = {
+          type: "error",
+          code: normalized.code,
+          message,
+          ...(wait !== undefined ? { retryAfterSeconds: wait } : {})
+        };
+        await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, failure), ...state.approvals], {
+          checkpoint: state.changes.length > 0 && undoAvailable
+        });
         this.publish({
           type: "error",
           turnId,
@@ -989,13 +1005,12 @@ export class AgentRuntime {
 }
 
 /**
- * Resolve the conversation and make sure this prompt is present exactly once. A retry after a failed
- * turn finds the same last user message and reuses it instead of appending a duplicate.
+ * Reuse an unchanged request after failure, retaining every failed assistant attempt. A changed
+ * mode or guidance is a new request even when its prompt is identical. Legacy mode stays absent.
  */
 export async function prepareThread(
   store: ThreadStore,
-  // Thread preparation needs only routing and content, never the turn's permission level.
-  input: Pick<AgentTurnInput, "bookId" | "threadId" | "prompt" | "history">,
+  input: Pick<AgentTurnInput, "bookId" | "threadId" | "prompt" | "history"> & Partial<Pick<AgentTurnInput, "mode" | "guidance">>,
   now: () => string = () => new Date().toISOString()
 ): Promise<{ thread: AgentThread; reused: boolean }> {
   const prompt = input.prompt.trim();
@@ -1006,7 +1021,8 @@ export async function prepareThread(
   const userMessage = agentMessageSchema.parse({
     id: newId("msg"),
     role: "user",
-    parts: [{ type: "text", text: prompt }],
+    mode: input.mode,
+    parts: [{ type: "text", text: prompt }, ...(input.guidance !== undefined ? [{ type: "guidance", text: input.guidance }] : [])],
     createdAt: at
   });
 
@@ -1021,8 +1037,13 @@ export async function prepareThread(
     thread = await store.create(input.bookId, titleFromPrompt(prompt), seedMessages(input.history, at));
   }
 
-  const last = thread.messages.at(-1);
-  if (last?.role === "user" && messageText(last) === prompt) {
+  const lastUserIndex = thread.messages.findLastIndex((message) => message.role === "user");
+  const last = thread.messages[lastUserIndex];
+  const failedAttempts = thread.messages.slice(lastUserIndex + 1);
+  if (last && messageText(last) === prompt && last.mode === input.mode &&
+    last.parts.find((part) => part.type === "guidance")?.text === input.guidance &&
+    failedAttempts.every((message) => message.role === "assistant" &&
+      message.parts.some((part) => part.type === "error" && part.code !== "stopped"))) {
     return { thread, reused: true };
   }
   thread = await store.appendMessage(input.bookId, thread.id, userMessage);
@@ -1046,12 +1067,17 @@ function seedMessages(history: AgentTurnInput["history"], at: string): AgentMess
   return messages;
 }
 
-function modelMessagesFor(history: AgentMessage[]): ModelMessage[] {
+function modelMessagesFor(history: AgentMessage[], guidance?: string): ModelMessage[] {
   const messages: ModelMessage[] = [];
+  const currentRequest = history.findLast((message) => message.role === "user");
   for (const message of history) {
     const text = messageText(message);
     if (!text) continue;
-    messages.push({ role: message.role, content: text });
+    // Stored guidance is inspectable history, never a standing instruction. Only this submission's
+    // guidance joins the current user request, including when the SDK resumes its approval step.
+    const currentGuidance = message === currentRequest ? guidance : undefined;
+    messages.push({ role: message.role, content: currentGuidance === undefined
+      ? text : `${text}\n\nAuthor guidance for this turn only:\n${currentGuidance}` });
   }
   return messages;
 }
