@@ -355,6 +355,19 @@ export interface ExportState {
 /** Kept for the DOCX journey's existing imports; new code uses ExportDeps. */
 export type DocxExportState = ExportState;
 
+/** What the author reads when an export is refused because some chapter files could not be read. */
+export const UNREADABLE_CHAPTERS_EXPORT_MESSAGE =
+  "The manuscript was not exported because some chapter files could not be read. Reopen the book and review the affected files.";
+
+/**
+ * A manuscript export is a statement that this is the book. When some chapter files could not be read
+ * the readable chapters are only a subset, so every manuscript export refuses before it asks for a
+ * destination, builds a file or writes anything, rather than hand over a book with chapters missing.
+ */
+export function assertNoUnreadableChapters(detail: BookDetail): void {
+  if (detail.chapterReadIssues.length > 0) throw new LibraryError("format", UNREADABLE_CHAPTERS_EXPORT_MESSAGE);
+}
+
 export interface ExportDeps {
   pickDestination: (suggestedName: string) => Promise<string | null>;
   confirmReplace: (path: string) => Promise<boolean>;
@@ -384,6 +397,7 @@ export async function exportManuscriptDocx(
   libraryRoot: string,
   deps: ExportDeps
 ): Promise<string | null> {
+  assertNoUnreadableChapters(detail);
   const destination = await deps.pickDestination(suggestDocxName(detail.book.title));
   if (!destination) return null;
   if (isInsideLibrary(libraryRoot, destination)) {
@@ -415,6 +429,7 @@ export async function exportManuscriptMarkdown(
   libraryRoot: string,
   deps: ExportDeps
 ): Promise<string | null> {
+  assertNoUnreadableChapters(detail);
   const destination = await deps.pickDestination(suggestMarkdownName(detail.book.title));
   if (!destination) return null;
   if (isInsideLibrary(libraryRoot, destination)) {
@@ -486,6 +501,7 @@ export async function exportManuscriptPdf(
   libraryRoot: string,
   deps: PdfExportDeps
 ): Promise<string | null> {
+  assertNoUnreadableChapters(detail);
   return publishManuscript(suggestPdfName(detail.book.title), libraryRoot, deps, async () => {
     let pdf: Uint8Array;
     try {
@@ -507,6 +523,7 @@ export async function exportManuscriptEpub(
   libraryRoot: string,
   deps: ExportDeps
 ): Promise<string | null> {
+  assertNoUnreadableChapters(detail);
   return publishManuscript(suggestEpubName(detail.book.title), libraryRoot, deps, async () =>
     buildEpub(detail, illustrations)
   );
