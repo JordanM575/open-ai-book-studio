@@ -170,7 +170,7 @@ features with independent contracts can advance without waiting for unrelated ro
 | Voice acceptance · 038 / L12 | Complete the author's review of T022's automated record; inventory live microphone/provider/playback gaps separately | T022 stays unchecked until the author closes it. Decide `marin`/`cedar` separately; current catalogs are model-specific. Any paid check needs explicit scope/budget. |
 | Named history · 032 / L07 | T001 format/ADR follow-through, T003 record schema, then T004–T006 saved-only capture/list/compare | D-175/D-176 already accepted. Prove identity, body hashes, no draft flush, unknown-field preservation and archive/trash travel. Add T007–T010 checked restore/undo only after fault and interruption boundaries are defined. |
 | Agent interaction · 031 / L05 | Enforce the accepted Discuss/Edit boundary and expose the composer choice together | D-177–D-179 already accepted; T004/T010 exist. T006–T009 must prove no writes/plugins in Discuss, unchanged Edit approvals and correct mode attribution. Retain the decisions' matching demo/script/runbook condition; plans and new-turn continuation follow, with no live steering. |
-| Planning and organization · 030/033 / L06–L07 | Decision packets for storage/conflicts/bounds and collections/notes, then one manual record journey at a time | D-163–D-168 remain open/proposed. Pin current D-190 premises before using older research. Test failed writes, two writers, foreign identities and stale anchors before persistence/UI. No automatic series authority. |
+| Planning and organization · 030/033 / L06–L07 | Implement the ADR 0017 checked-sidecar/schema slice, then one manual record journey at a time | D-163–D-168 accepted November 7 after current D-190 premise review. Test failed writes, two writers, foreign identities and exact source anchors before persistence/UI. No automatic series authority. |
 | Formatting · 035 / L11 | T014 Markdown folder export from the saved ordered book, with failure-safe destination handling | Keep existing exports usable. Separate future physical layout, templates and named publishing rules; unknown measurements cannot pass KDP/EPUB/PDF readiness. |
 | Review · 034/037/039 / L08–L09 | Finish deterministic saved-text evidence; develop the explicit foreground, selected-source review boundary before structured readers | D-171 gates report persistence/export; 037 scope/consent questions and U-039-01/02/04 gate dependent model work. Start with one volatile selected-source report, then attributed rereads and explicit cross-book scope. No automatic edits or routing. |
 | Routing · 036 / L14 | Resolve taxonomy, capability/price evidence and author selection around the existing offline preview | Preview remains zero-call/zero-write. Dispatch, fallback, retry and hard spend enforcement each need their accepted policy; D-116 is not an implemented ceiling. |
@@ -192,9 +192,10 @@ author-visible deliverable and exact acceptance tests. Completion evidence names
 and target, commands/results and remaining limits. Mock/provider contracts, live requests, native
 devices and release approval get their own records. Retain failed results and contested remedies.
 
-The U-039-04 gate remains on T003 as currently written: overflow can affect a single large selected
-chapter as well as multi-book work. Whether to split that task into a separately approved bounded
-single-book slice is still an open review question, not a gate removed by this plan.
+The U-039-04 gate remains on T003: overflow can affect a single large chapter as well as multi-book
+work. D-193 / ADR 0018 now accepts the shared bounded-envelope policy and rejects a single-book
+exemption. Pure review contracts can proceed; shared thread safety and provider/UI integration
+remain implementation prerequisites, and later persistence/autonomy decisions remain separate work.
 
 Release links belong in the repository only when their artifacts are ready. A configured installer,
 responsive viewport, Simulator capture or successful submission is not by itself release evidence.

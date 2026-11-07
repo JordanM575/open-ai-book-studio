@@ -10,6 +10,12 @@ without routine approval questions. This includes integrating and merging review
 their required checks. It does not turn unfinished research into evidence or override existing
 data-protection, spending, credential or release-access restrictions.
 
+**Decision progress:** D-163–D-168 / ADR 0017 now select the planning/organization contracts.
+D-193 / ADR 0018 selects the initial scoped-review, exact-citation, reader-profile and overflow
+contracts. The first-wave table records the original dispatch; those completed research packets
+now feed implementation. Broader media, routing, persistence and autonomy scope remains on the
+retained roadmap, not implicitly deferred by choosing small initial slices.
+
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
 [spec ownership map](SPEC-DAG.md). Its machine-readable work packages are in
 [concurrent-delivery.json](concurrent-delivery.json). Work-package arrows order contract delivery;
@@ -172,3 +178,9 @@ the all-roadmap milestone. `workLanes` ties each package to its stream's lane sc
 stream lane needs assigned work. These are scope references, not proof of disjoint file writes:
 the coordinator's exact-file dispatch ledger still governs shared seams. These structural checks do not establish implementation or release
 acceptance; the work-package gates and exact-candidate evidence remain required.
+For the 039–042 family listed in `newSpecs`, the exact status token is Draft / Planned, In progress
+or Implemented, optionally followed by ` — ` and a description. The owning spec must explicitly
+move to In progress before checking implemented tasks. The validator rejects completed tasks in
+a wholly planned new spec; older specs need task-aware review because decision tasks can be complete.
+New-spec
+ownership is permanent provenance, not a rule that these features must remain unbuilt forever.

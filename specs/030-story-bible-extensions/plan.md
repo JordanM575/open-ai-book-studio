@@ -10,16 +10,17 @@ the host's validated API and `Library`. The renderer edits a book-scoped draft a
 save. It never accesses the filesystem. Preserve the current manuscript, chapter and Story Bible
 journeys unless a requirement in `spec.md` calls out a specific extension.
 
-The current public implementation is useful context, not a save contract to reuse: `bookSchema`
-already covers the current fields, and `StoryBibleDialog` saves through `books.update`. The current
-`LibraryService.updateBook` writes the whole `book.json` without an expected base hash. The new
-planning save must therefore have a dedicated checked contract and must not route through that
-unchecked update path.
+The current Story Bible uses D-190's field-aware `books.edit`; `updateBook` also checks its fresh
+read at commit but replaces requested whole fields, so omitted nested values may be removed.
+Loose parsing and edits that carry unknown values preserve them; `updateBook` is not a nested patch API.
+Planning instead uses D-164's dedicated
+all-or-stale sidecar contract because FR-006 forbids an implicit merge or retry.
 
-## Open decisions — implementation gates
+## Accepted decisions — implementation prerequisites
 
-The following questions are intentionally unresolved. T001 in `tasks.md` must produce accepted
-public decisions before dependent implementation starts.
+T001 is resolved by D-163–D-165 and [ADR 0017](../../docs/adr/0017-planning-and-organization.md),
+accepted November 7. The original alternatives below remain the research record; the ADR supplies
+the selected storage, revision, conflict, identity and bounds policy.
 
 | Question | Alternatives/evidence to resolve | Blocks |
 | --- | --- | --- |
@@ -29,7 +30,7 @@ public decisions before dependent implementation starts.
 
 The outcome belongs in the public decision record and, if the choice is hard to reverse, an ADR.
 `docs/FORMAT.md` must be updated with the chosen file contract in the implementation that changes it.
-No open item is treated as an accepted public decision in this plan.
+No implementation task is complete merely because its policy is accepted.
 
 ## Proposed domain behavior
 
@@ -44,8 +45,8 @@ No open item is treated as an accepted public decision in this plan.
 - Opening old books projects absent extension data as empty without migration writes. Supported
   edits preserve unknown supported fields; unsupported future extension data is never dropped.
 
-These domain invariants do not choose the on-disk location. Storage, the source snapshot represented
-to the author, entity revision granularity and conflict retention remain gated by the decisions above.
+The on-disk location is optional per-book `planning.json`; exact absent/hash baselines, file/record
+revisions and verified complete conflict copies follow ADR 0017.
 The existing shared-port checked-commit boundary and cross-target format/conflict requirements remain
 in force.
 
@@ -73,7 +74,8 @@ agent prompt context or typed agent write tools.
 These are planning targets, not files changed by this spec-authoring task. The accepted storage
 decision may change the exact file list.
 
-- `packages/core/src/schema.ts`: typed records, field bounds and revision validation.
+- Focused planning modules in `packages/core/src/library/`: typed records, bounds, revisions and
+  checked sidecar operations; do not broaden the legacy global ID schema.
 - `packages/core/src/library/service.ts` and the shared storage port: snapshot/read, checked planning
   save, archive and restore; preserve unrelated and unknown supported data.
 - `packages/core/src/ipc.ts`, `apps/desktop/src/main/ipc.ts` and the preload API: strict request
@@ -83,7 +85,7 @@ decision may change the exact file list.
 - Relevant synthetic tests under the core and desktop test suites; update `docs/FORMAT.md` and the
   public decision/ADR record when their outcomes are accepted.
 
-Do not broaden this work into existing unchecked book metadata writers, agent tools, provider calls,
+Do not broaden this work into changing existing book metadata writers, agent tools, provider calls,
 training consent, series mutation, or chapter-order code.
 
 ## Verification approach

@@ -2,21 +2,21 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
-Tasks are ordered. Every implementation task remains blocked until the decisions it depends on are
-accepted in the public decision process. A blocked decision blocks only its dependent tasks.
+Tasks are ordered. D-163–D-165 and ADR 0017 are accepted; the first checked-sidecar implementation
+may proceed. All implementation tasks remain unchecked until their actual evidence exists.
 
 ## Phase 1 — Resolve public format and save decisions
 
-- [ ] T001 Compare ordinary-file storage alternatives and decide the versioning, backward-compatibility,
+- [x] T001 Compare ordinary-file storage alternatives and decide the versioning, backward-compatibility,
   unknown-field and archive behavior for the optional typed planning extension. Separately decide the
   planning revision boundary, source snapshot, stale-draft/conflict representation, adapter
   conformance, identity rules and field limits. Keep the existing shared-port expected-hash commit
   contract. Record accepted outcomes in
-  `docs/DECISIONS.md` and an ADR if warranted. **T002–T008 are blocked until the relevant decisions
-  are accepted.** Use only synthetic fixture libraries for evidence.
-  Research recorded 2026-11-03 (not accepted): `research/storage-alternatives.md` compares the
-  `book.json` extension against a separate versioned `planning.json` with synthetic evidence;
-  D-163 proposes the separate file, D-164/D-165 stay Open. T002–T008 remain blocked.
+  `docs/DECISIONS.md` and an ADR if warranted. Use only synthetic fixture libraries for evidence.
+  Accepted November 7 as D-163–D-165 and ADR 0017 after rechecking current D-190 premises:
+  independent `planning.json`, exact absent/hash plus revision, no-merge checked saves, complete
+  verified conflict copies, explicit bounds/identity. The November 3 research remains historical;
+  acceptance unblocks T002–T008 without claiming them implemented.
 
 ## Phase 2 — Define and persist the typed records
 

@@ -40,6 +40,19 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Resolve the contract review: scope conversation persistence to 037, explicitly keep 039 runs
+  volatile, qualify whole-field book replacement semantics, and validate exact new-spec status
+  tokens with an optional description rather than accepting arbitrary prefixes.
+
+- Accept D-163–D-168 under delegated authority with ADR 0017: checked planning/organization sidecars,
+  explicit bounds and identities, scoped recents, complete saved-word goals and exact source anchors.
+  Reconcile current D-190 premises and the decision-only tasks without claiming feature implementation.
+- Accept D-193 / ADR 0018 for initial review envelopes, exact citations, versioned reader profiles
+  and shared overflow limits. Keep U-039-04 on single-book request assembly and require shared
+  conversation safety before durable integration; later media, routing and autonomy work remains retained.
+  Completion validation permits an explicit In progress/Implemented transition for these specs while
+  continuing to reject completed tasks under a wholly Draft/Planned status.
+
 - Address the independent delivery audit: distinguish supported turn schemas from runtime message
   population, correct the already-fixed header export refusal note, and require each advertised
   execution-stream lane to have explicitly assigned work. File-write ownership remains a separate

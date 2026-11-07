@@ -2,13 +2,12 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
-Tasks are ordered. Every implementation task that depends on an open decision stays blocked until
-that decision is accepted through the public decision process. A decision blocks only its dependent
-work. Tests use synthetic isolated fixtures unless separately authorized.
+Tasks are ordered. D-166–D-168 and ADR 0017 are accepted; dependent implementation may proceed.
+Implementation and acceptance tasks remain open. Tests use synthetic isolated fixtures.
 
 ## Phase 1 — Resolve dependent decisions
 
-- [ ] T001 Resolve OD-033-01 with a per-data-type storage/versioning matrix for collections, recent
+- [x] T001 Resolve OD-033-01 with a per-data-type storage/versioning matrix for collections, recent
   entries, goals and annotations. Keep collections, goals and annotations in ordinary library
   files; decide whether recent pointers are library-scoped or disposable local preferences. Define
   schema/version and size limits, checked atomic-write/conflict behavior,
@@ -16,23 +15,21 @@ work. Tests use synthetic isolated fixtures unless separately authorized.
   Record the accepted public decision and any required ADR or
   `docs/FORMAT.md` change before dependent persistence work. This gates T004 and the persistence
   portions of T005–T008; it does not block independent view-model or interaction design.
-  Research recorded 2026-11-03 (not accepted): `research/storage-matrix.md` compares per-type
-  placement with synthetic evidence; D-166 proposes the matrix (library-root collections,
-  disposable recent pointers, per-book goal/annotation sidecars), D-168 stays Open.
-  T004–T008 remain blocked.
-- [ ] T002 Resolve OD-033-02: collection identity, name uniqueness, one-versus-many membership,
+  Accepted November 7 as D-166/ADR 0017: root collections, per-book goals/annotations, scoped host
+  recents, D-164/D-165 checked/bounded sidecars and complete saved-goal counts. D-190's current
+  checked book writes replace the old research's unchecked-writer premise.
+- [x] T002 Resolve OD-033-02: collection identity, name uniqueness, one-versus-many membership,
   idempotent add/remove behavior, and same-identity book trash/restore handling. Record the public
   decision before collection persistence. Blocks T005 only.
-  Research recorded 2026-11-03 (not accepted): `research/collection-identity.md` proposes
-  many-to-many id-ref membership, case-insensitive unique names, stable `col_` identity and
-  id-lookup trash handling with synthetic evidence; D-167 Proposed. T005 remains blocked.
-- [ ] T003 Resolve OD-033-03: serialized passage anchor, source verification, stale detection,
+  Accepted November 7 as D-167/ADR 0017: immutable host-generated `col_` identity, many-to-many
+  membership, NFC/lowercase active-name keys, exact-ID unavailable handling and reversible archive.
+- [x] T003 Resolve OD-033-03: serialized passage anchor, source verification, stale detection,
   navigation and explicit re-anchor behavior. Test unchanged, edited, moved, repeated, missing,
   Unicode and line-ending cases with synthetic chapters. Record the public decision before
   annotation persistence/navigation. Blocks T008 only.
-  Research recorded 2026-11-03 (not accepted): `research/source-anchors.md` proposes exact
-  ordered verification over `(chapterId, version, hash)` plus excerpt-at-range with synthetic
-  evidence (no fuzzy fallback); D-168 Proposed. T008 remains blocked.
+  Accepted November 7 as D-168/ADR 0017: exact identity/version/raw hash plus half-open UTF-16 body
+  offsets and literal excerpt, rather than the historical line-only proposal; no fuzzy fallback.
+  Actual source and clean destination editor must match before selection; feature tests remain T008.
 
 ## Phase 2 — Shared checked data services
 
