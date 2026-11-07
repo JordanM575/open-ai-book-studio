@@ -88,6 +88,10 @@ the agent's book tools, the `bookwriter` toolkit and other devices through a syn
   as `notes: ""` is filled in.
 - Objects merge key by key. `characters` and `memories` merge record by record, by `id`, so an added
   memory and an edited character never collide. A record's `updatedAt` takes the later stamp.
+- The default provider, connection and model (`defaultProvider`, `defaultConnectionId`,
+  `defaultModelId`) are one choice. An editor that changes any of them sends all three, and if another
+  writer changed any of them since the editor read, the file keeps all of their choice and the
+  editor's whole choice goes to the copy, so a connection is never paired with a model it does not serve.
 - The file is replaced atomically, and only while it is still the version that was read. If another
   writer got in between, the merge runs again on the new read.
 - Where another writer changed the same part since the editor read it, the file keeps their value and

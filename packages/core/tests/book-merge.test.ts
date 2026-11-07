@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bookChanges, mergeValue, rewrite, sameValue } from "../src/library/book-merge";
+import { atomicOverlaps, bookChanges, mergeValue, rewrite, sameValue } from "../src/library/book-merge";
 import { LibraryService } from "../src/library/service";
 import { bookFilePath } from "../src/library/paths";
 import type { CommitFileResult, FileExpectation, LibraryPath } from "../src/library/port";
@@ -163,5 +163,87 @@ describe("committing book.json", () => {
     const copy = await port.readFile(result.savedAs.split("/"));
     expect(JSON.parse(new TextDecoder().decode(copy?.bytes)).outline).toBe("Two sisters and a letter.");
     expect((await service.listConflicts(book.id)).map((conflict) => conflict.savedAs)).toEqual([result.savedAs]);
+  });
+});
+
+describe("the default model is one choice", () => {
+  const OPENROUTER = { defaultProvider: "openrouter", defaultConnectionId: "conn_open0001", defaultModelId: "model-a" };
+  const META = { defaultProvider: "meta", defaultConnectionId: "conn_meta0001", defaultModelId: "model-c" };
+
+  async function bookWithModel() {
+    const port = new InMemoryLibraryPort();
+    const service = await LibraryService.open({ storage: port, runtime: port });
+    const created = await service.createBook({ title: "The Salt Road", outline: "Two sisters." });
+    await service.updateBook(created.id, OPENROUTER);
+    const { book } = await service.readBook(created.id);
+    return { port, service, book };
+  }
+
+  test("changing one part of the choice sends all of it, so the merge can see the others", () => {
+    const book = { ...OPENROUTER, outline: "Two sisters." };
+
+    expect(bookChanges(book, { defaultModelId: "model-c" })).toEqual({
+      defaultModelId: { from: "model-a", to: "model-c" },
+      defaultProvider: { from: "openrouter", to: "openrouter" },
+      defaultConnectionId: { from: "conn_open0001", to: "conn_open0001" }
+    });
+    expect(bookChanges(book, { outline: "Three sisters." })).toEqual({ outline: { from: "Two sisters.", to: "Three sisters." } });
+  });
+
+  test("another writer changing any part is an overlap with the whole choice, and an unchanged choice is not", () => {
+    const changes = bookChanges(OPENROUTER, META);
+
+    expect(atomicOverlaps(changes, { ...OPENROUTER, defaultModelId: "model-b" }).sort()).toEqual(
+      ["defaultConnectionId", "defaultModelId", "defaultProvider"]
+    );
+    expect(atomicOverlaps(changes, { ...OPENROUTER })).toEqual([]);
+    expect(atomicOverlaps(bookChanges(OPENROUTER, OPENROUTER), { ...OPENROUTER, defaultModelId: "model-b" })).toEqual([]);
+  });
+
+  test("a new connection with a model another writer changed meanwhile never pairs the two", async () => {
+    const { port, service, book } = await bookWithModel();
+    await writeElsewhere(port, book.id, (raw) => {
+      raw.defaultModelId = "model-b";
+    });
+
+    const result = await service.editBook(book.id, bookChanges(book, META));
+
+    expect(result.status).toBe("conflict");
+    if (result.status !== "conflict") return;
+    expect(result.fields.sort()).toEqual(["defaultConnectionId", "defaultModelId", "defaultProvider"]);
+    // The file keeps the other writer's whole choice: the old connection with their model.
+    expect(result.book).toMatchObject({ ...OPENROUTER, defaultModelId: "model-b" });
+    // The copy holds the editor's whole choice.
+    const copy = await port.readFile(result.savedAs.split("/"));
+    expect(JSON.parse(new TextDecoder().decode(copy?.bytes))).toMatchObject(META);
+  });
+
+  test("another writer's model change blocks a connection-only change too", async () => {
+    const { port, service, book } = await bookWithModel();
+    await writeElsewhere(port, book.id, (raw) => {
+      raw.defaultModelId = "model-b";
+    });
+
+    const result = await service.editBook(
+      book.id,
+      bookChanges(book, { defaultProvider: "meta", defaultConnectionId: "conn_meta0001" })
+    );
+
+    expect(result.status).toBe("conflict");
+    const { book: saved } = await service.readBook(book.id);
+    expect(saved).toMatchObject({ ...OPENROUTER, defaultModelId: "model-b" });
+  });
+
+  test("the choice saves normally when another writer changed something else", async () => {
+    const { port, service, book } = await bookWithModel();
+    await writeElsewhere(port, book.id, (raw) => {
+      raw.outline = "Three sisters.";
+    });
+
+    const result = await service.editBook(book.id, bookChanges(book, META));
+
+    expect(result.status).toBe("saved");
+    const { book: saved } = await service.readBook(book.id);
+    expect(saved).toMatchObject({ ...META, outline: "Three sisters." });
   });
 });

@@ -18,14 +18,48 @@ export function sameValue(a: unknown, b: unknown): boolean {
   return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => sameValue(left[key], right[key]));
 }
 
-/** For each field in `next` that differs from `book`, the value it started from and the value wanted. */
+/**
+ * Fields that are one choice. The default provider, connection and model are used together: a
+ * connection from one writer and a model from another asks that connection for a model it does not
+ * serve. So an editor that changes any of them sends all of them, and a change to any of them by
+ * another writer is an overlap with the whole choice.
+ */
+export const ATOMIC_FIELDS: readonly (readonly string[])[] = [["defaultProvider", "defaultConnectionId", "defaultModelId"]];
+
+/**
+ * Every field in `next` that differs from `book`, with the value it started from and the value it
+ * wants. When one field of an atomic choice changes, the others go with it, even if they are the same,
+ * so the merge can see that another writer changed any of them.
+ */
 export function bookChanges<T extends object>(book: T, next: Partial<T>): { [K in keyof T]?: { from: T[K]; to: T[K] } } {
   const changes: Json = {};
   for (const [key, to] of Object.entries(next)) {
     const from = (book as Json)[key];
     if (!sameValue(from, to)) changes[key] = { from, to };
   }
+  for (const group of ATOMIC_FIELDS) {
+    if (!group.some((key) => key in changes)) continue;
+    for (const key of group) {
+      if (key in changes) continue;
+      changes[key] = { from: (book as Json)[key], to: (book as Json)[key] };
+    }
+  }
   return changes as { [K in keyof T]?: { from: T[K]; to: T[K] } };
+}
+
+/**
+ * The fields of an atomic choice that must stay as the other writer left them: the editor changed
+ * the choice, and another writer changed any part of it since the editor read it.
+ */
+export function atomicOverlaps(changes: Record<string, { from: unknown; to: unknown } | undefined>, fresh: Json): string[] {
+  const keys: string[] = [];
+  for (const group of ATOMIC_FIELDS) {
+    const sent = group.filter((key) => changes[key]);
+    const editorChanged = sent.some((key) => !sameValue(changes[key]?.from, changes[key]?.to));
+    const theirsChanged = sent.some((key) => !sameValue(changes[key]?.from, fresh[key]));
+    if (editorChanged && theirsChanged) keys.push(...sent);
+  }
+  return keys;
 }
 
 const isObject = (value: unknown): value is Json => !!value && typeof value === "object" && !Array.isArray(value);

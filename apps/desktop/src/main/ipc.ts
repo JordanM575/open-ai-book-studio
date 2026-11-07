@@ -874,7 +874,14 @@ export function registerIpc(
     if (input.patch.monthlyWarningUsd !== undefined) agent.monthlyWarningUsd = input.patch.monthlyWarningUsd;
     if (input.patch.cachePrefixMode) cache.prefixMode = input.patch.cachePrefixMode;
     // Merged against the settings just read, so a format change made in between is kept.
-    await library.editBook(input.bookId, { settings: { from: book.settings, to: { ...book.settings, agent, cache } } });
+    const saved = await library.editBook(input.bookId, { settings: { from: book.settings, to: { ...book.settings, agent, cache } } });
+    if (saved.status === "conflict") {
+      // The other writer's value stays in force, so say so instead of answering as if the change took.
+      throw new LibraryError(
+        "io",
+        `The agent settings changed on disk while you were editing, so your version was kept as a separate copy (${saved.savedAs}) instead of overwriting the change. Reopen the settings to see what is saved.`
+      );
+    }
     return agentStatus(input.bookId);
   });
 

@@ -39,7 +39,7 @@ import {
   type SaveMatterResult
 } from "../matter";
 import { LibraryError, LibraryPortError } from "./errors";
-import { mergeValue, rewrite, sameValue } from "./book-merge";
+import { atomicOverlaps, mergeValue, rewrite, sameValue } from "./book-merge";
 import { assertBookWritable, assertSchemaVersion } from "./schema-guard";
 import { libraryPathFromArchivePath, libraryPathToArchivePath, toLibraryFilePath } from "./path";
 import type { LibraryPath } from "./path";
@@ -344,6 +344,13 @@ export class LibraryService {
           const merged = mergeValue(change.from, change.to, next[key], [key], overlaps);
           next[key] = merged.value;
           mine[key] = merged.mine;
+        }
+        // A choice made of several fields, such as the default model, comes from one writer: where
+        // another writer changed any part of it, the file keeps all of theirs and the copy all of ours.
+        for (const key of atomicOverlaps(changes, fresh)) {
+          next[key] = (fresh as Record<string, unknown>)[key];
+          mine[key] = changes[key as keyof BookChanges]?.to;
+          overlaps.push(key);
         }
         return overlaps.length > 0 ? { next, copy: mine } : { next };
       });
