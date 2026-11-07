@@ -40,6 +40,10 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Add the all-features concurrent delivery DAG: six agent slots, explicit work-package ownership,
+  first-wave deliverables, scoped decision gates and a continuation protocol. Include Story Bible/
+  series work directly in L24 completion and validate both DAGs, terminal coverage and stream ownership.
+
 - Refresh the November 7 public state at `55b55b8`: link the author's new README demo with a clickable
   thumbnail, preserve the original submitted video, and record merged voice/file-safety work and dated
   macOS/Linux verification. Reconcile integrated spec 038 ownership while leaving T022 unchecked and

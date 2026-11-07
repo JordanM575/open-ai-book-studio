@@ -37,7 +37,7 @@ not complete their dependent implementation or resolve an open decision.
 
 ## Lane ownership
 
-The completion DAG has 25 nodes, 62 unconditional prerequisite edges and three explicitly scoped
+The completion DAG has 25 nodes, 63 unconditional prerequisite edges and three explicitly scoped
 conditional edges. Its authoritative edge list is
 [product-completion.json](product-completion.json); the Mermaid diagram in PRODUCT-COMPLETION.md
 must match it. The machine-readable ownership map is [completion-specs.json](completion-specs.json).
@@ -112,9 +112,11 @@ check. These are different slices, not a cycle requiring both entire specs to fi
 deterministic metrics. D-171, D-115, D-116 and all new U-039…U-042 questions retain their open gates.
 
 Spec 017 explicitly excludes TTS; 038 and the existing speech services supply selection/request
-seams, not an audiobook job system. L06's missing unconditional route to L24 and claim-scoped lane
-interpretations remain [open dependency questions](PRODUCT-COMPLETION.md#dependency-questions-still-open).
-The graph is structurally valid; those acceptance-scope questions are not settled by that result.
+seams, not an audiobook job system. The all-features direction on November 7 adds L06 → L24 explicitly;
+claim-scoped lane interpretations remain documented in
+[the dependency notes](PRODUCT-COMPLETION.md#dependency-questions-still-open).
+[CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md) and its JSON map independent execution packages to
+every retained lane. Structural validity does not accept the open design decisions.
 
 ## Validation and review
 

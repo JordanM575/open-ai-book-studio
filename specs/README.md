@@ -8,6 +8,8 @@ Status reconciled November 7, 2026 against public `main` at `55b55b8`. See the
 [dated verification evidence](../docs/TESTING.md#recorded-baseline) and
 [remaining-work sequence](../docs/PRODUCT-COMPLETION.md#current-next-work). A merged implementation,
 an accepted decision, an automated pass and release approval are separate facts.
+The [concurrent delivery DAG](../docs/CONCURRENT-DELIVERY.md) records active-slot policy, package
+dependencies, decision gates and coverage of all retained features.
 
 | Spec | Title | State |
 | --- | --- | --- |

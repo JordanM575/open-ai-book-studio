@@ -298,6 +298,7 @@ The [submission packet](hackathon/SUBMISSION.md#verification-evidence) retains t
 - [docs/DECISIONS.md](docs/DECISIONS.md) and [docs/adr/](docs/adr/) — settled and open decisions
 - [specs/README.md](specs/README.md) — the spec index and roadmap
 - [docs/PRODUCT-COMPLETION.md](docs/PRODUCT-COMPLETION.md) — remaining work, lane dependencies and completion gates
+- [docs/CONCURRENT-DELIVERY.md](docs/CONCURRENT-DELIVERY.md) — concurrent work packages, ownership and delivery sequence
 - [hackathon/SUBMISSION.md](hackathon/SUBMISSION.md) — the submission packet
 - [samples/README.md](samples/README.md) — the sample library
 

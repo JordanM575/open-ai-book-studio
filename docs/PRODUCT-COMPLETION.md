@@ -11,6 +11,8 @@ The [distilled requirements](completion-requirements.json) record stable IDs, cu
 and acceptance criteria without including private research provenance.
 The [spec ownership and dependency map](SPEC-DAG.md) links every requirement and lane to its
 existing or new spec, including the four new Draft/Planned proposals 039–042.
+The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into six active agent slots,
+bounded work packages, decision packets and an event-driven continuation loop.
 
 ## Two completion milestones
 
@@ -84,7 +86,8 @@ flowchart TD
   L20 --> L23
   L21 --> L23
   L22 --> L23
-  L07 --> L24[Requested roadmap complete]
+  L06 --> L24[Requested roadmap complete]
+  L07 --> L24
   L09 --> L24
   L13 --> L24
   L14 --> L24
@@ -96,13 +99,14 @@ flowchart TD
   L06 -. optional new character records .-> L13
 ```
 
-Solid arrows are 62 unconditional prerequisite edges. Three dashed edges are conditional contracts
+Solid arrows are 63 unconditional prerequisite edges. Three dashed edges are conditional contracts
 with explicit scope in `conditionalDependencies`; they do not gate manuscript-only manual review
 or narrator-only audio. The union of both edge types is acyclic.
 
 ## Execution and ownership
 
-Use four concurrent lanes where useful: three bounded builders/researchers and one real-app auditor.
+Use up to six concurrent agents as specified in [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md):
+initially three bounded builders, two decision researchers and one independent auditor.
 The graph does not require starting every lane at once. Edges identify required contracts: an
 existing verified implementation may already satisfy one while other work in that lane remains.
 A lane may implement an independent slice before all predecessors finish; its final acceptance
@@ -129,17 +133,17 @@ cross-device trust, real-device distribution and glasses transport are not impli
 
 ### Dependency questions still open
 
-- **L06 → L24 coverage:** the graph has no unconditional path from Story Bible/series extensions to
-  the roadmap-complete milestone. Its conditional review/casting edges cannot prove completion of
-  the whole lane. Resolve whether to add a direct edge or record an explicit scope deferral before
-  closing L24; do not silently omit L06.
+- **L06 → L24 coverage repaired November 7:** the author's all-planned-features direction explicitly
+  includes Story Bible/series extensions. The graph now has a direct unconditional edge; optional
+  review/casting use cannot silently remove this lane from completion. Its design decisions remain open.
 - **Claim-scoped dependencies:** cover inputs for publishing, voice for Android and the supported
   desktop matrix need explicit acceptance scope. The graph's coarse lanes are not permission to
   make every future capability a desktop release blocker, or to skip a prerequisite of a claimed
   capability. Record these interpretations with the acceptance slice before implementation.
 
-The 62 solid and three conditional edges are retained pending that reconciliation. Acyclicity and
-ownership validation prove structural consistency, not that these scope questions are settled.
+The 63 solid and three conditional edges retain the existing claim-scoped interpretations.
+Acyclicity and ownership validation prove structural consistency, not that open design decisions
+are settled. The execution plan records concrete acceptance slices before dispatch.
 
 ## Current next work
 
