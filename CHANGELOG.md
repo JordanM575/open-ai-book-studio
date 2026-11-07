@@ -9,6 +9,8 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Invalidate Format dialog export continuations after close, navigation or unmount; delayed
+  chapter/matter saves cannot submit an obsolete export, and late replies cannot update a new visit.
 - Bind header export receipts, errors, preflight and busy state to the originating book view;
   ignore obsolete completions after navigation or unmount, including a return to the same book.
 - Keep terminal agent events deliverable when conversation validation or storage fails. Retain

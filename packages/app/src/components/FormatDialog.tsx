@@ -162,6 +162,10 @@ export function FormatDialog({
   const settingsFailures = useRef(new Map<string, string>());
   const [answered, setAnswered] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const exportPending = useRef(false);
+  const exportGeneration = useRef(0);
+  const shownBookId = useRef(bookId);
+  shownBookId.current = bookId;
   const [note, setNote] = useState<ExportNote | null>(null);
   const [matter, setMatter] = useState<BookMatter | null>(() => readMatter(book).matter);
   const [kind, setKind] = useState<MatterKind>("copyright");
@@ -188,6 +192,15 @@ export function FormatDialog({
   const current = matter ?? NO_MATTER;
   const plan = matterPlan(book, matter);
   const legacy = unreadable ? [] : pendingLegacyMatter(book.frontMatter, matter);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each dialog/book visit owns its export continuation
+  useEffect(() => {
+    exportGeneration.current++;
+    exportPending.current = false;
+    setExporting(false);
+    setNote(null);
+    return () => { exportGeneration.current++; };
+  }, [open, bookId]);
 
   // Only the draft follows saved settings while open.
   // While a save is out the draft keeps what the author chose, so the next change to the same control
@@ -354,28 +367,37 @@ export function FormatDialog({
   useEffect(() => onExportPreflight?.(prepareExport), [onExportPreflight]);
 
   const runExport = async (): Promise<void> => {
-    if (exporting || !canExport) return;
+    if (exportPending.current || !canExport || !open) return;
+    const generation = ++exportGeneration.current;
+    const originId = bookId;
+    const currentExport = () => exportGeneration.current === generation && isOpen.current && shownBookId.current === originId;
+    exportPending.current = true;
     setExporting(true);
     setNote(null);
     try {
       await prepareExport();
+      if (!currentExport()) return;
       let saved: SaveStatus | null;
       try {
         saved = await onFlush();
       } catch {
         saved = { kind: "error", message: "The chapter could not be saved." };
       }
+      if (!currentExport()) return;
       if (saved && saved.kind !== "saved") {
         setNote({ kind: "error", message: exportBlockedMessage(saved) });
         return;
       }
       const receipt = exportReceipt(await must(EXPORTS[target](bookId)));
       // A cancelled picker or a declined replacement wrote nothing, so there is nothing to say.
-      if (receipt) setNote({ kind: "saved", message: `Saved ${receipt.path.split(/[\\/]/).pop() ?? receipt.path}`, ...receipt, target: TARGET_COPY[target].name });
+      if (currentExport() && receipt) setNote({ kind: "saved", message: `Saved ${receipt.path.split(/[\\/]/).pop() ?? receipt.path}`, ...receipt, target: TARGET_COPY[target].name });
     } catch (error) {
-      setNote({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+      if (currentExport()) setNote({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     } finally {
-      setExporting(false);
+      if (currentExport()) {
+        exportPending.current = false;
+        setExporting(false);
+      }
     }
   };
 
