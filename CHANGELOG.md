@@ -40,6 +40,10 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Record the author's November 7 delegated feature-delivery authority: resolve evidenced design
+  recommendations and merge reviewed, validated feature PRs without routine approval stalls,
+  preserving existing data-protection, spending and release-access restrictions.
+
 - Add the all-features concurrent delivery DAG: six agent slots, explicit work-package ownership,
   first-wave deliverables, scoped decision gates and a continuation protocol. Include Story Bible/
   series work directly in L24 completion and validate both DAGs, terminal coverage and stream ownership.

@@ -7,6 +7,13 @@ significant, hard to reverse, or likely to be relitigated.
 **Rule:** a spec may depend only on a decision that is `Accepted` or on an assumption listed in the
 spec's Assumptions section. An `Open` decision blocks the task that needs it, not the whole spec.
 
+**Delivery authority (2026-11-07):** the author delegated autonomous completion and approved the
+coordinator's recommendations. For remaining feature decisions, research the current premises,
+choose and document an evidenced recommendation with alternatives, record its accepted scope under
+this authority, and proceed without a routine approval question. Existing data-protection, spending,
+credential and release-access restrictions remain. This process does not mass-accept older proposals;
+each entry still needs its own recorded outcome before dependent implementation.
+
 ## Status vocabulary
 
 | Status | Meaning |

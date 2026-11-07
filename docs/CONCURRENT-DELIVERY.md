@@ -4,6 +4,12 @@
 independent verification. Source baseline: public `main` at `55b55b8`; the documentation refresh is
 tracked in [PR #30](https://github.com/JordanM575/open-book-studio/pull/30).
 
+**Delegated authority, November 7:** the author authorized autonomous feature completion and approved
+the coordinator's recommendations: make an evidenced recommendation, record the decision and proceed
+without routine approval questions. This includes integrating and merging reviewed feature PRs after
+their required checks. It does not turn unfinished research into evidence or override existing
+data-protection, spending, credential or release-access restrictions.
+
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
 [spec ownership map](SPEC-DAG.md). Its machine-readable work packages are in
 [concurrent-delivery.json](concurrent-delivery.json). Work-package arrows order contract delivery;
@@ -114,9 +120,10 @@ claim-scoped edges retain the explanations in `SPEC-DAG.md`.
 
 1. A research report names the current source premise, alternatives, recommendation, exact affected
    tasks, and evidence that would validate or reject it. The coordinator keeps raw reports and
-   contested findings before synthesis. Open decisions retain their status until an explicit
-   accepted outcome is recorded; a general instruction to finish the product does not select a
-   retention quota, native storage API, background authority or release credential.
+   contested findings before synthesis. Under delegated authority, the coordinator selects the
+   supported recommendation, records its alternatives/rationale and accepted scope in the decision
+   register, then starts dependent work. Do not mass-accept stale recommendations. Storage, retention,
+   permissions and lifecycle choices still need their specific evidence and format/ADR changes.
 2. For each builder, record work-package ID, base commit, branch/worktree, owned files, prerequisite
    decisions and one acceptance slice before dispatch. Complete leaf modules first; queue shared
    seam changes for integration rather than running competing writers.
@@ -127,8 +134,9 @@ claim-scoped edges retain the explanations in `SPEC-DAG.md`.
    findings directly, then recheck affected behavior. Use source/contract tests plus hidden synthetic
    app checks appropriate to the change. Run required typecheck/verify/coverage and affected e2e on
    integrated candidates; add platform/live evidence only with its actual access and authorization.
-5. Open/link reviewable PRs and preserve every layer of a stack. Merge only under a recorded applicable
-   author approval; existing approval for earlier PRs does not automatically approve new ones. PR
+5. Open/link reviewable PRs and preserve every layer of a stack. The November 7 delegated authority
+   covers merging reviewed feature/documentation PRs after their required checks; record that basis
+   and exact candidate evidence. Signing and release publication retain their separate restrictions. PR
    check/review waiting is event-driven, not a scheduled polling loop.
 
 ## Continuation loop
@@ -141,12 +149,14 @@ At each execution, read the latest private queue/state and current public branch
 results once, preserve partial work, and advance or dispatch only unowned ready packages. Prioritize
 reproduced data-loss bugs, completing in-flight slices, accepted-decision work, then new packets.
 Maintain at most six active children and one integrated full-suite owner. A task awaiting an author
-decision, provider quota or hardware access parks only its dependent work.
+   external access, provider quota or hardware availability parks only its dependent work. Routine
+   design decisions are researched and resolved under delegated authority rather than parked for questions.
 
 Do not poll running children or use the schedule to poll PR checks. If waiting for a PR's checks or
 reviews is the only work, hand off to the PR watch mechanism and pause the fallback. After two
 executions with no new actionable work and no active child, disable the new loop and report the
-specific blockers once. Disable on completion or author cancellation as well. There is no inherited
+specific external blockers once. Routine decision questions are not a no-progress condition: make an
+evidenced recommendation, record it and proceed. Disable on completion or author cancellation as well. There is no inherited
 November 5/7 deadline; any new deadline must come from the author. Quota/rate-limit errors stop the
 affected dispatch rather than triggering a retry storm or model switch.
 
