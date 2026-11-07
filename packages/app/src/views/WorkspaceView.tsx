@@ -134,6 +134,11 @@ export function WorkspaceView({
   const handledRequest = useRef<number | null>(null);
   const handledConversation = useRef<number | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
+  /** The newest book this view knows, so a save that was waiting starts from what the one before it returned. */
+  const latestBook = useRef<BookDetail["book"] | null>(null);
+  latestBook.current = detail?.book ?? null;
+  /** Format saves run one at a time: the dialog sends a change per control change, without waiting for the last. */
+  const formatSaves = useRef<Promise<unknown>>(Promise.resolve());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<SaveStatus>(EMPTY_STATUS);
   const [conflicts, setConflicts] = useState<ChapterConflict[]>([]);
@@ -552,17 +557,26 @@ export function WorkspaceView({
   const exportDocx = (): Promise<void> => runExport(() => window.studio.books.exportDocx(bookId));
   const exportMarkdown = (): Promise<void> => runExport(() => window.studio.books.exportMarkdown(bookId));
 
-  const saveFormatSettings = async (manuscript: ManuscriptSettings): Promise<void> => {
-    if (!detail) return;
-    try {
-      // Merged with the settings as they are on disk, so an agent setting changed meanwhile is kept.
-      const result = await editBook(detail.book, { settings: { ...detail.book.settings, manuscript } });
-      setDetail((current) => (current ? { ...current, book: result.book } : current));
-      if (result.status === "conflict") throw new Error(keptCopyText("The format settings"));
-    } catch (error) {
-      onNotice(error);
-      throw error;
-    }
+  const saveFormatSettings = (manuscript: ManuscriptSettings): Promise<void> => {
+    const run = async (): Promise<void> => {
+      // Each save starts from the book the one before it returned, so changing a control twice quickly
+      // is two edits in a row and not an edit against settings that have already moved on.
+      const base = latestBook.current;
+      if (!base) return;
+      try {
+        // Merged with the settings as they are on disk, so an agent setting changed meanwhile is kept.
+        const result = await editBook(base, { settings: { ...base.settings, manuscript } });
+        latestBook.current = result.book;
+        setDetail((current) => (current ? { ...current, book: result.book } : current));
+        if (result.status === "conflict") throw new Error(keptCopyText("The format settings"));
+      } catch (error) {
+        onNotice(error);
+        throw error;
+      }
+    };
+    const next = formatSaves.current.then(run, run);
+    formatSaves.current = next.catch(() => {});
+    return next;
   };
 
   const confirmDelete = async (): Promise<void> => {

@@ -64,6 +64,9 @@ Update the `Unreleased` section before every commit.
   connection and model merge as one choice, so a new connection is never saved beside a model another
   writer picked for the old one, and an agent setting that overlaps another writer's is refused with a
   note that says where the author's version went, instead of answering as if it had been saved.
+  Changing a format control several times before the first save returns saves in turn, each from the
+  settings the one before returned, so the last choice stays and an earlier one is not mistaken for another
+  writer's change.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
   build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
   chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict
