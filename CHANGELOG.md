@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Pure authoring foundation
 
+- Preserve admitted depth-64 extensions through aggregate run/ledger control and receipt transitions
+  without widening external record admission. Reject connection-Continue clock accessors before any
+  reads. Add boundary regressions for graph, policy, command, request and retained clock/receipt data.
 - Add isolated, immutable authoring graph and finite-admission domain modules under ADR 0019:
   checked dependencies/command identity, versioned direction and question invalidation, historical
   late results, truthful attempt/effect settlement, pinned-route reservations and explicit unknown

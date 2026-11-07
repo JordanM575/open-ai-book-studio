@@ -48,6 +48,18 @@ export type Immutable<T> = T extends object ? { readonly [K in keyof T]: Immutab
  * Raw duplicate keys/numeric lexemes/UTF-8 must be checked by the future wire reader (T018).
  */
 export function copyValue<T>(input: T, maxBytes = 2_500_000): T {
+  return copyData(input, maxBytes, 64);
+}
+
+/** Internal factory snapshots only, never external record admission or rehydration.
+ * A validated record may sit under three aggregate wrappers (reservations[].request).
+ * Graph/policy/command/receipt/clock admission retains its independent depth-64 limit.
+ */
+export function copySnapshot<T>(input: T): T {
+  return copyData(input, Number.MAX_SAFE_INTEGER, 64 + 3);
+}
+
+function copyData<T>(input: T, maxBytes: number, maxDepth: number): T {
   let bytes = 0;
   const active = new Set<object>();
   const charge = (count: number) => {
@@ -55,7 +67,7 @@ export function copyValue<T>(input: T, maxBytes = 2_500_000): T {
     requireValue(bytes <= maxBytes, 'value-overflow');
   };
   const visit = (value: unknown, depth: number): unknown => {
-    requireValue(depth <= 64, 'value-depth');
+    requireValue(depth <= maxDepth, 'value-depth');
     if (value === null || typeof value === 'boolean') {
       charge(value === null || value === true ? 4 : 5);
       return value;

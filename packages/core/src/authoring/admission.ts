@@ -1,6 +1,6 @@
 import { DEFAULT_LIMITS, OUTPUT_TOKENS, ROLES, sameReference, validateOwner, validateReference,
   type Owner, type Reference, type Role } from './contracts';
-import { add, copyValue, digest, freeze, id, integer, requireValue, sameValue, text,
+import { add, copySnapshot, copyValue, digest, freeze, id, integer, requireValue, sameValue, text,
   type Immutable } from './value';
 
 export interface Destination {
@@ -259,7 +259,7 @@ export function reserve(ledger: AdmissionLedger, input: ReservationRequest, inpu
     requireValue(add(add(summary.knownSubtotalMicroUsd, summary.reservedMicroUsd), request.maximum?.microUsd ?? 0) <=
       ledger.policy.cost.capMicroUsd, 'money-limit');
   }
-  const state = copyValue(ledger, Number.MAX_SAFE_INTEGER) as LedgerData;
+  const state = copySnapshot(ledger) as LedgerData;
   state.clock = facts.clock;
   state.reservations.push({ request, phase: 'reserved', receipt: null });
   return finishMutation(state);
@@ -271,7 +271,7 @@ export type ReservationEvent = { type: 'dispatch'; facts: AdmissionFacts } | { t
 /** Intent, uncertainty and actual receipts are distinct. Timeout/abort never means known unsent. */
 export function observeReservation(ledger: AdmissionLedger, reservationId: string, input: ReservationEvent): AdmissionLedger {
   const event = copyValue(input, 262_144);
-  const state = copyValue(ledger, Number.MAX_SAFE_INTEGER) as LedgerData;
+  const state = copySnapshot(ledger) as LedgerData;
   const entry = state.reservations.find(entry => entry.request.id === reservationId);
   requireValue(entry, 'missing-reservation');
   switch (event.type) {
@@ -329,7 +329,7 @@ export function parkConnection(ledger: AdmissionLedger, input: ConnectionPark): 
   requireValue(['rate-limit', 'auth', 'quota'].includes(park.reason), 'invalid-connection-failure');
   if (park.reason === 'rate-limit') integer(park.eligibleAtMs);
   else requireValue(park.eligibleAtMs === null, 'invalid-retry-time');
-  const state = copyValue(ledger, Number.MAX_SAFE_INTEGER) as LedgerData;
+  const state = copySnapshot(ledger) as LedgerData;
   const prior = state.parked.find(p => p.connectionId === park.connectionId);
   // A later 429 must never clear a connection-wide auth/quota fault or shorten the wait.
   if (prior && (prior.reason !== 'rate-limit' || (park.reason === 'rate-limit' &&
@@ -340,14 +340,15 @@ export function parkConnection(ledger: AdmissionLedger, input: ConnectionPark): 
 }
 
 /** Explicit host Continue after connection repair; eligibility alone never creates work. */
-export function continueConnection(ledger: AdmissionLedger, connectionId: string, clock: ClockFacts): AdmissionLedger {
+export function continueConnection(ledger: AdmissionLedger, connectionId: string, inputClock: ClockFacts): AdmissionLedger {
+  const clock = copyValue(inputClock);
   clockAllowed(ledger, clock);
   const park = ledger.parked.find(p => p.connectionId === connectionId);
   requireValue(park, 'connection-not-parked');
   requireValue(park.eligibleAtMs === null || clock.nowMs >= park.eligibleAtMs, 'retry-not-yet-eligible');
-  const state = copyValue(ledger, Number.MAX_SAFE_INTEGER) as LedgerData;
+  const state = copySnapshot(ledger) as LedgerData;
   state.parked = state.parked.filter(p => p.connectionId !== connectionId);
-  state.clock = copyValue(clock);
+  state.clock = clock;
   return finishMutation(state);
 }
 
@@ -357,7 +358,7 @@ export function continueConnection(ledger: AdmissionLedger, connectionId: string
 export function advanceAdmissionGeneration(ledger: AdmissionLedger, generation: number): AdmissionLedger {
   integer(generation);
   requireValue(generation > ledger.policy.generation, 'stale-generation');
-  const state = copyValue(ledger, Number.MAX_SAFE_INTEGER) as LedgerData;
+  const state = copySnapshot(ledger) as LedgerData;
   state.policy.generation = generation;
   return finishMutation(state);
 }

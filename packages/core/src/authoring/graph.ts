@@ -2,7 +2,7 @@ import { sameReference, validateGraph, validateReference, type Graph, type Refer
   type TaskDefinition } from './contracts';
 import { advanceAttempt, advanceEffect, unsettledAttempt, unsettledEffect,
   type AttemptEvent, type AttemptPhase, type EffectEvent, type EffectPhase } from './lifecycle';
-import { add, copyValue, digest, freeze, id, integer, requireValue, sameValue, text,
+import { add, copySnapshot, copyValue, digest, freeze, id, integer, requireValue, sameValue, text,
   type Immutable } from './value';
 
 interface Attempt {
@@ -223,7 +223,7 @@ export function reduceRun(snapshot: RunSnapshot, input: Command): RunSnapshot {
   requireValue(command.generation === snapshot.generation, 'stale-generation');
   const nextRevision = add(snapshot.revision, 1);
   // Snapshots are locally constructed values, not deserialized records. T018 owns rehydration.
-  const state = copyValue(snapshot, Number.MAX_SAFE_INTEGER) as RunData;
+  const state = copySnapshot(snapshot) as RunData;
   const action = command.action;
   const terminal = state.mode === 'cancelled' || state.mode === 'revoked' || state.mode === 'finished';
   requireValue(!terminal || action.type === 'attempt' || action.type === 'effect' || action.type === 'recover',
