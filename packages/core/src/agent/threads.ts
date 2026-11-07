@@ -2,6 +2,7 @@ import { LibraryPortError } from "../library/errors";
 import { libraryPathToArchivePath, toLibraryFilePath, type LibraryPath } from "../library/path";
 import { threadsPath } from "../library/paths";
 import type { LibraryPort, LibraryRuntime } from "../library/port";
+import { assertBookWritable } from "../library/schema-guard";
 import { noteRemovedFiles, noteWrittenFiles } from "../sync/journal";
 import {
   agentThreadSchema,
@@ -196,6 +197,7 @@ export class ThreadStore {
   }
 
   async remove(bookId: string, threadId: string): Promise<void> {
+    await assertBookWritable(this.storage, bookId);
     try {
       await this.storage.removeFile(this.filePath(bookId, threadId));
     } catch (error) {
@@ -211,6 +213,8 @@ export class ThreadStore {
   private async write(thread: AgentThread, mode: "create" | "save"): Promise<AgentThread> {
     const parsed = agentThreadSchema.parse(thread);
     const path = this.filePath(parsed.bookId, parsed.id);
+    // A book another device upgraded to a newer schema gets no new conversation file either.
+    await assertBookWritable(this.storage, parsed.bookId);
     const next: AgentThread = { ...parsed, updatedAt: this.runtime.now() };
     const result = await this.storage.commitFile(
       path,

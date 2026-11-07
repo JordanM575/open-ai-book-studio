@@ -141,6 +141,7 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
         ),
       create: (input) => safe(() => libraries.require().createBook(input)),
       update: (bookId, patch) => safe(() => libraries.require().updateBook(bookId, patch)),
+      edit: (bookId, changes) => safe(() => libraries.require().editBook(bookId, changes)),
       saveMatter: (input) =>
         safe(() =>
           libraries.require().saveMatter(input.bookId, input.matter, {

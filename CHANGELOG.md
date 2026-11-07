@@ -49,6 +49,78 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
+  while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
+  that stale copy, so a character another device added or a memory the toolkit saved disappeared with
+  no conflict copy. Editors now send only the fields they changed, each with the value they started
+  from, and the main process merges them onto a fresh read of the file under the book's write lock:
+  objects key by key, characters and memories record by record, rewriting only the parts that changed.
+  Where both sides changed the same part, the file keeps the other writer's value, the author's version
+  of the book is kept as `conflicts/book.conflict-external-edit.<device>.<time>.json` and listed with
+  the book's other conflict copies. The Story Bible names the fields that overlapped and offers
+  "Show the copy", and the workspace's saved-copies banner offers it too. The format settings, a rename, the model
+  picker, the agent settings and the agent's book tools (and so the toolkit's) merge the same way, and
+  a story arc written as lists stays as written until that part is edited. The default provider,
+  connection and model merge as one choice, so a new connection is never saved beside a model another
+  writer picked for the old one, and an agent setting that overlaps another writer's is refused with a
+  note that says where the author's version went, instead of answering as if it had been saved.
+  Changing a format control several times before the first save returns saves in turn, each from the
+  settings the one before returned, so the last choice stays and an earlier one is not mistaken for another
+  writer's change.
+  Each of those saves carries only the field its control changed, so a field changed outside meanwhile is
+  kept, and a format change that clashes with an outside one lists the author's copy so the saved-copies
+  banner can show it. A change still waiting its turn keeps the value the author saw for its own field, so an
+  outside change to that same field meanwhile is a clash and not written over.
+  While any of those saves is out the dialog keeps the values the author chose, so a third change starts from
+  the author's own last choice and does not clash with it.
+  A format save waiting its turn belongs to the book it was made in: if the workspace moves to another book
+  meanwhile, that save still goes to its own book, and the next one starts from the book now shown.
+- The book settings dialog no longer closes behind a plain notice when a title or description edit clashes with an
+  outside change. It stays open, names the fields whose version was kept as a copy, and offers Show the copy.
+  After a save that applied one field and kept the other as a copy, the dialog measures its next save against what
+  that save left, so changing the applied field back is saved and not dropped as no change.
+  A field the author left alone follows the book that save returned, so the retry sends only what was edited and
+  does not put the old text back over another writer's change.
+- Choosing the book's default model when another writer changed it first lists the author's copy, so the
+  saved-copies banner and Show in folder appear, instead of leaving only a notice.
+- A book that another device upgraded to a newer schema while it was open is no longer written by this
+  build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
+  chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict
+  copy, moving the book to the trash, an image, a conversation, the agent's chapter tools and the
+  toolkit's saves all went ahead in a book whose new fields this build does not know. Now every write
+  into a book reads `book.json` first and refuses a newer `schemaVersion` with "was written by a newer
+  version of Open Book Studio" before anything changes, and leaves every byte as it was.
+- A field a newer build adds to `book.json` survives a save at every level (QA D7). A character, a
+  memory, the story arc and its three parts, the chapter range and every settings section lost any
+  field this build did not know the next time the book was saved; they are now kept and written back
+  as they were read, as `docs/FORMAT.md` already promised.
+- A book whose story arc was written the way `docs/FORMAT.md` used to describe it, with `keyMoments`
+  and `openQuestions` as lists of strings, opens again, one line per item. It used to fail the book
+  schema, so the book showed as unreadable. `docs/FORMAT.md` now describes the text shape the app writes.
+- Moving the chapter you are writing no longer turns your next save into a conflict (QA D5). A move
+  rewrites `order` in every chapter file it shifts, so the open chapter's version and hash moved on
+  while the editor kept the ones it loaded. Its next autosave was refused as a newer version, and
+  your words went to a conflict copy you had not caused. This happened with the rail's **Move up**
+  and **Move down**, ⌘⌥↑ and ⌘⌥↓, a drag, a drag of another chapter past the open one, and an
+  agent's `move_chapter`, `split_chapter` or `merge_chapters`. Now the editor's saves wait while a
+  move runs, and when the open chapter's file comes back with its words and title unchanged, it
+  becomes the editor's base. Words typed while the move was on its way stay in the editor and save
+  normally afterwards, with the caret, focus and undo where they were. After an agent turn the
+  workspace does the same before it saves your unsaved words, and remounts the editor only when the
+  turn changed the chapter's words or title. A move that meets an outside edit and is put back
+  leaves the editor on the right base too.
+- Moving a chapter in a long book no longer renumbers the chapters behind a gap (QA D10). After a
+  chapter had been deleted, dragging a chapter two places in a 300-chapter book rewrote 295 files,
+  and a move rebuilt the library catalog once for every file it wrote, 300 times for a drag from
+  first to last, all while the book's saves waited. Now the chapters between the two places share
+  out the numbers those places had and keep the gap, so that drag rewrites three files and every
+  move rebuilds the catalog once. A merge across a deleted chapter is no longer refused, and the
+  agent's split puts the new half right after its chapter in a book with a gap, because both now go
+  by place in the book. A move cut short, for example by a crash, leaves at most the moved chapter
+  and its new neighbour on one number; the book reads in one order, ties broken by file name as
+  `docs/FORMAT.md` says, with every other chapter in place, and the next move, from the buttons as
+  well as a drag, gives each chapter its own number instead of refusing with "Two chapters share
+  the same order".
 - An export no longer hands over a book with chapters missing. When some chapter files cannot be read (the workspace
   already reports them), the Word, Markdown, PDF and EPUB exports now refuse before asking for a destination, building
   a file or writing anything, and say "The manuscript was not exported because some chapter files could not be read.

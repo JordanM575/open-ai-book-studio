@@ -2,6 +2,7 @@ import { LibraryError } from "../library/errors";
 import { libraryPathToArchivePath, toLibraryPath } from "../library/path";
 import type { LibraryEnvironment } from "../library/port";
 import { imageFilePath, imagesPath, imageManifestPath, trashPath } from "../library/paths";
+import { assertBookWritable } from "../library/schema-guard";
 import { noteMovedPrefix, noteRemovedFiles, noteWrittenFiles } from "../sync/journal";
 import {
   IMAGE_SCHEMA_VERSION,
@@ -285,9 +286,14 @@ export class ImageStore {
     });
   }
 
+  /** One image write per book at a time, each refused first when the book has a newer schema. */
   private serialize<T>(bookId: string, work: () => Promise<T>): Promise<T> {
+    const checked = async () => {
+      await assertBookWritable(this.env.storage, bookId);
+      return work();
+    };
     const previous = this.writes.get(bookId) ?? Promise.resolve();
-    const next = previous.then(work, work);
+    const next = previous.then(checked, checked);
     this.writes.set(bookId, next);
     void next.finally(() => {
       if (this.writes.get(bookId) === next) this.writes.delete(bookId);

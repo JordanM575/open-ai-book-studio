@@ -2,7 +2,9 @@ import {
   bookSchema,
   chapterMetaSchema,
   SCHEMA_VERSION,
+  type BookChanges,
   type BookDetail,
+  type BookEditResult,
   type BookListing,
   type BookMeta,
   type BookReadIssue,
@@ -37,6 +39,9 @@ import {
   type SaveMatterResult
 } from "../matter";
 import { LibraryError, LibraryPortError } from "./errors";
+import { atomicOverlaps, mergeValue, rewrite, sameValue } from "./book-merge";
+import { assertBookWritable, assertSchemaVersion } from "./schema-guard";
+import { planMove } from "./order";
 import { libraryPathFromArchivePath, libraryPathToArchivePath, toLibraryFilePath } from "./path";
 import type { LibraryPath } from "./path";
 import {
@@ -306,7 +311,9 @@ export class LibraryService {
         createdAt: current.createdAt,
         updatedAt: this.env.runtime.now()
       });
-      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, {
+      // Only the parts this patch changed are rewritten; the rest keep the shape another writer gave them.
+      const out = rewrite(JSON.parse(textDecoder.decode(snapshot.bytes)), current, next);
+      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(out, null, 2)}\n`, {
         kind: "sha256",
         value: snapshot.sha256
       });
@@ -317,6 +324,82 @@ export class LibraryService {
       await this.rebuildCatalog();
       return next;
     });
+  }
+
+  /**
+   * Save the fields an editor changed, each with the value it started from. They are merged onto a
+   * fresh read of `book.json`: a field the editor did not change is never written, and the cast and
+   * memories merge record by record. Where another writer changed the same thing since the editor's
+   * read, the file keeps that writer's value and the editor's whole version goes to `conflicts/`.
+   * `updateBook` is for a caller that holds no earlier read, such as the import.
+   */
+  async editBook(bookId: string, changes: BookChanges): Promise<BookEditResult> {
+    return this.serializeWrite(bookId, async () => {
+      const overlaps: string[] = [];
+      const { book, savedAs } = await this.writeBook(bookId, (fresh) => {
+        overlaps.length = 0;
+        const next: Record<string, unknown> = { ...fresh };
+        const mine: Record<string, unknown> = { ...fresh };
+        for (const [key, change] of Object.entries(changes)) {
+          if (!change) continue;
+          const merged = mergeValue(change.from, change.to, next[key], [key], overlaps);
+          next[key] = merged.value;
+          mine[key] = merged.mine;
+        }
+        // A choice made of several fields, such as the default model, comes from one writer: where
+        // another writer changed any part of it, the file keeps all of theirs and the copy all of ours.
+        for (const key of atomicOverlaps(changes, fresh)) {
+          next[key] = (fresh as Record<string, unknown>)[key];
+          mine[key] = changes[key as keyof BookChanges]?.to;
+          overlaps.push(key);
+        }
+        return overlaps.length > 0 ? { next, copy: mine } : { next };
+      });
+      if (savedAs === undefined) return { status: "saved", book };
+      return { status: "conflict", book, savedAs, fields: [...new Set(overlaps.map((path) => path.split(".")[0] ?? path))] };
+    });
+  }
+
+  /**
+   * The one writer of `book.json` for `editBook`. It reads the file, builds the next version from that
+   * read, and commits only while the file is still the read; if another writer got in between, it
+   * builds again from the new read. Only the fields that changed are rewritten. A `copy` is the
+   * editor's own version where it overlapped another writer, kept after the commit so a retry never
+   * leaves two.
+   */
+  private async writeBook(
+    bookId: string,
+    build: (fresh: BookMeta) => { next: Record<string, unknown>; copy?: Record<string, unknown> }
+  ): Promise<{ book: BookMeta; savedAs?: string }> {
+    const path = bookFilePath(bookId);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { snapshot, book: fresh } = await this.readBookFile(bookId);
+      const text = textDecoder.decode(snapshot.bytes);
+      const { next, copy } = build(fresh);
+      const fixed = { id: fresh.id, schemaVersion: fresh.schemaVersion, createdAt: fresh.createdAt };
+      let book = bookSchema.parse({ ...next, ...fixed, updatedAt: fresh.updatedAt });
+      const now = this.env.runtime.now();
+      // Both versions are checked before anything is written.
+      const kept = copy ? bookSchema.parse({ ...copy, ...fixed, updatedAt: now }) : null;
+      if (!sameValue(book, fresh)) {
+        const out = rewrite(JSON.parse(text), fresh, { ...book, updatedAt: now });
+        book = bookSchema.parse(out);
+        const result = await this.commitText(path, `${JSON.stringify(out, null, 2)}\n`, { kind: "sha256", value: snapshot.sha256 });
+        if (result.status === "changed") continue;
+        await this.rebuildCatalog();
+      }
+      if (!kept) return { book };
+      await this.ensureBookLayout(bookId);
+      const stamp = now.replace(/[:.]/g, "-");
+      const name = await this.writeConflictCopy(
+        bookId,
+        `book.conflict-external-edit.${this.device.id}.${stamp}`,
+        ".json",
+        `${JSON.stringify(kept, null, 2)}\n`
+      );
+      return { book, savedAs: conflictDisplayPath(bookId, name) };
+    }
+    throw new LibraryError("io", "book.json kept changing while it was being saved. Nothing was written; try again.");
   }
 
   private async keepBookMetadataCopy(bookId: string, book: BookMeta): Promise<void> {
@@ -485,109 +568,60 @@ export class LibraryService {
   }
 
   /**
-   * Move one chapter past its neighbour by swapping their order metadata. File names stay as they
-   * are: the order field is the source of truth, and renaming would invalidate every open editor.
+   * Move one chapter past its neighbour: the rail's up and down controls and ⌘⌥↑/↓. File names stay
+   * as they are: the order field is the source of truth, and renaming would invalidate every open editor.
    */
   async reorderChapter(bookId: string, chapterId: string, direction: ReorderDirection): Promise<ReorderChapterResult> {
     return this.serializeWrite(bookId, async () => {
       const chapters = await this.readChapters(bookId);
       const index = chapters.findIndex((chapter) => chapter.id === chapterId);
       if (index === -1) throw new LibraryError("not-found", "That chapter was not found.");
-
-      const neighbourIndex = direction === "up" ? index - 1 : index + 1;
-      if (neighbourIndex < 0 || neighbourIndex >= chapters.length) {
-        return { status: "saved", chapters };
-      }
-
-      const moving = chapters[index]!;
-      const neighbour = chapters[neighbourIndex]!;
-      if (moving.order === neighbour.order) {
-        throw new LibraryError(
-          "invalid",
-          "Two chapters share the same order. Fix their order in the chapter files before moving them."
-        );
-      }
-
-      const first = await this.updateChapterMetaUnlocked(
-        bookId,
-        moving.id,
-        { order: neighbour.order },
-        { baseVersion: moving.version, baseHash: moving.hash }
-      );
-      if (first.status === "conflict") return first;
-
-      const second = await this.updateChapterMetaUnlocked(
-        bookId,
-        neighbour.id,
-        { order: moving.order },
-        { baseVersion: neighbour.version, baseHash: neighbour.hash }
-      );
-      if (second.status === "conflict") {
-        // The first write moved one chapter. Put it back when the second cannot commit, so a
-        // failed move does not leave a half-swapped order. If the rollback also conflicts, the
-        // original conflict is still reported and the author can reopen the book.
-        await this.updateChapterMetaUnlocked(
-          bookId,
-          moving.id,
-          { order: moving.order },
-          { baseVersion: first.chapter.version, baseHash: first.chapter.hash }
-        ).catch(() => {});
-        return second;
-      }
-
-      return { status: "saved", chapters: await this.readChapters(bookId) };
+      return this.moveUnlocked(bookId, chapters, index, direction === "up" ? index - 1 : index + 1);
     });
   }
 
-  /**
-   * Move one chapter to a position in the current order. This is the drag path; the rail's up/down
-   * controls use the smaller two-write swap above. Only chapters whose order number changes are
-   * rewritten, and a conflict rolls the earlier writes back.
-   */
+  /** Move one chapter to a position in the current order: the rail's drag, the agent and undo. */
   async moveChapterTo(bookId: string, chapterId: string, targetIndex: number): Promise<ReorderChapterResult> {
     return this.serializeWrite(bookId, async () => {
       const chapters = await this.readChapters(bookId);
       const from = chapters.findIndex((chapter) => chapter.id === chapterId);
       if (from === -1) throw new LibraryError("not-found", "That chapter was not found.");
+      const to = Number.isFinite(targetIndex) ? Math.max(0, Math.min(chapters.length - 1, Math.trunc(targetIndex))) : from;
+      return this.moveUnlocked(bookId, chapters, from, to);
+    });
+  }
 
-      const to = Number.isFinite(targetIndex)
-        ? Math.max(0, Math.min(chapters.length - 1, Math.trunc(targetIndex)))
-        : from;
-      if (from === to) return { status: "saved", chapters };
-
-      const ordered = [...chapters];
-      const [moving] = ordered.splice(from, 1);
-      if (!moving) throw new LibraryError("not-found", "That chapter was not found.");
-      ordered.splice(to, 0, moving);
-
-      const changed = ordered
-        .map((chapter, index) => ({ chapter, order: index + 1 }))
-        .filter(({ chapter, order }) => chapter.order !== order);
-      const written: Array<{ chapter: Chapter; order: number }> = [];
-
-      for (const item of changed) {
-        const result = await this.updateChapterMetaUnlocked(
-          bookId,
-          item.chapter.id,
-          { order: item.order },
-          { baseVersion: item.chapter.version, baseHash: item.chapter.hash }
-        );
+  /**
+   * Rewrite `order` in the chapter files a move shifts and in no others (`planMove`), each over the
+   * file as this move read it, then rebuild the catalog once. A conflict or a failed write puts the
+   * earlier writes back; if the app stops part way, the book still reads in one order and the next
+   * move repairs it.
+   */
+  private async moveUnlocked(bookId: string, chapters: Chapter[], from: number, to: number): Promise<ReorderChapterResult> {
+    const writes = planMove(chapters, from, to);
+    if (writes.length === 0) return { status: "saved", chapters };
+    const written: Array<{ before: Chapter; after: Chapter }> = [];
+    const putBack = async (): Promise<void> => {
+      for (const { before, after } of written.reverse()) {
+        await this.commitChapterMeta(bookId, after, { order: before.order }, after.version + 1).catch(() => {});
+      }
+    };
+    try {
+      for (const { chapter, order } of writes) {
+        const result = await this.commitChapterMeta(bookId, chapter, { order }, chapter.version + 1);
         if (result.status === "conflict") {
-          for (const previous of written.reverse()) {
-            await this.updateChapterMetaUnlocked(
-              bookId,
-              previous.chapter.id,
-              { order: previous.order },
-              { baseVersion: previous.chapter.version, baseHash: previous.chapter.hash }
-            ).catch(() => {});
-          }
+          await putBack();
           return result;
         }
-        written.push({ chapter: result.chapter, order: item.chapter.order });
+        written.push({ before: chapter, after: result.chapter });
       }
-
-      return { status: "saved", chapters: await this.readChapters(bookId) };
-    });
+    } catch (error) {
+      await putBack();
+      throw error;
+    } finally {
+      await this.rebuildCatalog();
+    }
+    return { status: "saved", chapters: await this.readChapters(bookId) };
   }
 
   private async updateChapterMetaUnlocked(
@@ -603,7 +637,23 @@ export class LibraryService {
     if (disk.version > expected.baseVersion) return conflict("newer-version", expected.baseVersion + 1);
     if (disk.hash !== expected.baseHash) return conflict("external-edit", expected.baseVersion + 1);
 
-    const { content, path: _path, wordCount: _wordCount, hash: _hash, ...stored } = disk;
+    const result = await this.commitChapterMeta(bookId, disk, patch, expected.baseVersion + 1);
+    if (result.status === "saved") await this.rebuildCatalog();
+    return result;
+  }
+
+  /**
+   * Write `patch` into the front matter of a chapter file as it was read: one atomic write checked
+   * against that file's hash, so a file another writer changed since is kept as a conflict copy and
+   * never written over. The catalog is the caller's to rebuild.
+   */
+  private async commitChapterMeta(
+    bookId: string,
+    disk: Chapter,
+    patch: ChapterMetaPatch,
+    localVersion: number
+  ): Promise<SaveChapterResult> {
+    const { content, path: fileName, wordCount: _wordCount, hash: _hash, ...stored } = disk;
     const meta = chapterMetaSchema.parse({
       ...stored,
       ...patch,
@@ -617,9 +667,8 @@ export class LibraryService {
     });
     if (result.status === "changed") {
       const current = await this.chapterFromSnapshot(bookId, fileName, result.current);
-      return this.preserveConflictingVersion(bookId, current, fileName, disk.content, "external-edit", expected.baseVersion + 1);
+      return this.preserveConflictingVersion(bookId, current, fileName, content, "external-edit", localVersion);
     }
-    await this.rebuildCatalog();
     return { status: "saved", chapter: chapterFrom(meta, content, fileName, result.snapshot.sha256) };
   }
 
@@ -964,13 +1013,14 @@ export class LibraryService {
 
     for (const directory of directories) {
       for (const entry of await this.env.storage.listDirectory(directory.path)) {
-        if (entry.kind !== "file" || !entry.name.endsWith(".md")) continue;
+        // A `.json` copy is the Story Bible's: an editor's `book.json` kept beside another writer's.
+        if (entry.kind !== "file" || !/\.(md|json)$/.test(entry.name)) continue;
         if (!isConflictCopyName(entry.name)) continue;
         // Never read: a copy named as one is a copy whatever it holds, and is never a chapter.
         conflicts.push({
           bookId,
           chapterId: "",
-          chapterTitle: entry.name.replace(/\.md$/, ""),
+          chapterTitle: entry.name.replace(/\.(md|json)$/, ""),
           savedAs: directory.display(entry.name),
           reason: "provider-conflict-copy",
           diskVersion: 0,
@@ -1205,7 +1255,9 @@ export class LibraryService {
       claimed.add(chapter.id);
       chapters.push(chapter);
     }
-    chapters.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+    // Two chapters on one number, which a move cut short can leave, read by file name: the same on
+    // every device, and unchanged by a rename (docs/FORMAT.md).
+    chapters.sort((a, b) => a.order - b.order || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     chapterReadIssues.sort(
       (a, b) =>
         (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) ||
@@ -1279,10 +1331,17 @@ export class LibraryService {
     throw new LibraryError("io", "Could not keep a conflict copy. Your changes were not saved; keep them and try again.");
   }
 
-  /** Keeps one writer per book, so two calls cannot interleave a read and a write. */
+  /**
+   * Keeps one writer per book, so two calls cannot interleave a read and a write. Every write first
+   * checks the book's schema, so a book another device upgraded is refused before anything is written.
+   */
   private serializeWrite<T>(bookId: string, work: () => Promise<T>): Promise<T> {
+    const checked = async () => {
+      await assertBookWritable(this.env.storage, bookId);
+      return work();
+    };
     const previous = this.writes.get(bookId) ?? Promise.resolve();
-    const next = previous.then(work, work);
+    const next = previous.then(checked, checked);
     this.writes.set(
       bookId,
       next.catch(() => {})
@@ -1402,18 +1461,6 @@ function parseBookJson(raw: string, path: string): BookMeta {
     );
   }
   return parsed.data;
-}
-
-function assertSchemaVersion(version: unknown, path: string): void {
-  if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
-    throw new LibraryError("invalid", `${path} has no schemaVersion. It may not be an Open Book Studio file.`);
-  }
-  if (version > SCHEMA_VERSION) {
-    throw new LibraryError(
-      "newer-schema",
-      `${path} was written by a newer version of Open Book Studio (schema ${version}). Update the app before opening this library, so no fields are dropped.`
-    );
-  }
 }
 
 function validDate(value: string | null, fallback: string): string {

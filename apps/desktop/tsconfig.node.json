@@ -71,6 +71,9 @@
     "tests/chapter-read-issues.test.tsx",
     "tests/chapter-rail.test.tsx",
     "tests/chapter-reorder-conflict.test.tsx",
+    "tests/story-bible-conflict-copy.test.tsx",
+    "tests/format-save-order.test.tsx",
+    "tests/book-actions-conflict-copy.test.tsx",
     "tests/chat-composer.test.tsx",
     "tests/connection-cards.test.tsx",
     "tests/licenses-dialog.test.tsx",
@@ -83,6 +86,7 @@
     "tests/chat-elements.test.tsx",
     "tests/chat-tools.test.tsx",
     "tests/editor-sync.test.tsx",
+    "tests/move-open-chapter.test.tsx",
     "tests/failed-save.test.tsx",
     "tests/support/dom.ts"
   ]
