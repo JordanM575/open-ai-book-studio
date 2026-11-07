@@ -114,7 +114,7 @@ interface FormatDialogProps {
   /** Saved chapter text. The dialog never edits or writes chapters. */
   chapters: Chapter[];
   /** Persists one manuscript patch; rejects when the write fails. */
-  onSaveSettings: (next: ManuscriptSettings) => Promise<void>;
+  onSaveSettings: (patch: Partial<ManuscriptSettings>) => Promise<void>;
   /** Saves the open chapter before an export; null when no chapter is open. */
   onFlush: () => Promise<SaveStatus | null>;
 }
@@ -220,7 +220,9 @@ export function FormatDialog({
   const change = (patch: Partial<ManuscriptSettings>): void => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    void onSaveSettings(next).catch(() => setDraft(settings));
+    // Only the fields this change touched are sent, so a save waiting its turn cannot carry a stale
+    // value for a field the author did not change.
+    void onSaveSettings(patch).catch(() => setDraft(settings));
   };
 
   /** Shows why the matter did not save; after the dialog has closed, the workspace says it too. */

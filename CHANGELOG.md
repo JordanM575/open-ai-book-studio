@@ -67,6 +67,9 @@ Update the `Unreleased` section before every commit.
   Changing a format control several times before the first save returns saves in turn, each from the
   settings the one before returned, so the last choice stays and an earlier one is not mistaken for another
   writer's change.
+  Each of those saves carries only the field its control changed, so a field changed outside meanwhile is
+  kept, and a format change that clashes with an outside one lists the author's copy so the saved-copies
+  banner can show it.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
   build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
   chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict

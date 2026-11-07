@@ -557,18 +557,23 @@ export function WorkspaceView({
   const exportDocx = (): Promise<void> => runExport(() => window.studio.books.exportDocx(bookId));
   const exportMarkdown = (): Promise<void> => runExport(() => window.studio.books.exportMarkdown(bookId));
 
-  const saveFormatSettings = (manuscript: ManuscriptSettings): Promise<void> => {
+  const saveFormatSettings = (patch: Partial<ManuscriptSettings>): Promise<void> => {
     const run = async (): Promise<void> => {
-      // Each save starts from the book the one before it returned, so changing a control twice quickly
-      // is two edits in a row and not an edit against settings that have already moved on.
+      // Each save starts from the book the one before it returned, and applies only the fields its
+      // control changed, so a field changed outside meanwhile is not put back to what the dialog showed.
       const base = latestBook.current;
       if (!base) return;
       try {
         // Merged with the settings as they are on disk, so an agent setting changed meanwhile is kept.
+        const manuscript = { ...base.settings.manuscript, ...patch };
         const result = await editBook(base, { settings: { ...base.settings, manuscript } });
         latestBook.current = result.book;
         setDetail((current) => (current ? { ...current, book: result.book } : current));
-        if (result.status === "conflict") throw new Error(keptCopyText("The format settings"));
+        if (result.status === "conflict") {
+          // The author's version is on disk: list it so the saved-copies banner can show it.
+          await refreshConflicts();
+          throw new Error(keptCopyText("The format settings"));
+        }
       } catch (error) {
         onNotice(error);
         throw error;

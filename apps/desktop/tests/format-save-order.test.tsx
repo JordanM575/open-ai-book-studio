@@ -21,8 +21,9 @@ afterEach(() => testing.cleanup());
 /**
  * The Format dialog sends a save for every control change without waiting for the last one. Each save
  * is an edit against the settings the book had, so two quick changes must run one after the other,
- * the second starting from what the first returned. Started together they would both start from the
- * original, and the second would look like another writer's conflicting change.
+ * the second starting from what the first returned and carrying only the field its control changed.
+ * Started together they would both start from the original, and the second would look like another
+ * writer's conflicting change; carrying the whole dialog would put back a field changed outside.
  */
 
 const NOW = "2026-11-03T00:00:00.000Z";
@@ -41,10 +42,12 @@ type Pending = { changes: BookChanges; finish: () => void };
 function mockWorkspace() {
   const book = bookSchema.parse({ id: BOOK, title: "The Salt Road", createdAt: NOW, updatedAt: NOW });
   let disk: BookMeta = book;
+  const copies: { savedAs: string }[] = [];
   const pending: Pending[] = [];
   const calls: BookChanges[] = [];
-  // A book on disk that merges like the library: an edit that started from other settings than the
-  // disk now holds is a conflicting change and leaves the disk as it is.
+  // A book on disk that merges like the library, field by field: a field the edit changed is applied
+  // when the disk still holds what the edit started from, and is a conflict when the disk moved on;
+  // a field the edit did not change keeps what the disk holds.
   const edit = mock(
     (_bookId: string, changes: BookChanges) =>
       new Promise((resolve) => {
@@ -53,14 +56,23 @@ function mockWorkspace() {
           changes,
           finish: () => {
             const settings = changes.settings;
-            const same = JSON.stringify(settings?.from) === JSON.stringify(disk.settings);
-            if (settings && same) disk = { ...disk, settings: settings.to };
-            resolve({
-              ok: true,
-              data: same
-                ? { status: "saved", book: disk }
-                : { status: "conflict", book: disk, savedAs: `books/${BOOK}/conflicts/book.conflict-external-edit.d.json`, fields: ["settings"] }
-            });
+            const from = (settings?.from.manuscript ?? {}) as Record<string, unknown>;
+            const to = (settings?.to.manuscript ?? {}) as Record<string, unknown>;
+            const now = { ...(disk.settings.manuscript as Record<string, unknown>) };
+            let clash = false;
+            for (const key of Object.keys(to)) {
+              if (to[key] === from[key]) continue;
+              if (now[key] === from[key] || now[key] === to[key]) now[key] = to[key];
+              else clash = true;
+            }
+            if (!clash) {
+              disk = { ...disk, settings: { ...disk.settings, manuscript: now as typeof disk.settings.manuscript } };
+              resolve({ ok: true, data: { status: "saved", book: disk } });
+              return;
+            }
+            const savedAs = `books/${BOOK}/conflicts/book.conflict-external-edit.d.json`;
+            copies.push({ savedAs });
+            resolve({ ok: true, data: { status: "conflict", book: disk, savedAs, fields: ["settings"] } });
           }
         });
       })
@@ -79,7 +91,7 @@ function mockWorkspace() {
       delete: mock(() => Promise.resolve({ ok: true, data: null })),
       save: mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: CHAPTER } }))
     },
-    conflicts: { list: mock(() => Promise.resolve({ ok: true, data: [] })), reveal: mock(() => Promise.resolve({ ok: true, data: null })) },
+    conflicts: { list: mock(() => Promise.resolve({ ok: true, data: [...copies] })), reveal: mock(() => Promise.resolve({ ok: true, data: null })) },
     drafts: {
       set: mock(() => Promise.resolve({ ok: true, data: null })),
       clear: mock(() => Promise.resolve({ ok: true, data: null })),
@@ -108,7 +120,11 @@ function mockWorkspace() {
       onSchemaRefusal: () => {}
     })
   );
-  return { calls, pending, onNotice, disk: () => disk };
+  /** A change made outside the studio: it lands on disk with no save from this window. */
+  const outside = (manuscript: Record<string, unknown>): void => {
+    disk = { ...disk, settings: { ...disk.settings, manuscript: { ...disk.settings.manuscript, ...manuscript } } };
+  };
+  return { calls, pending, onNotice, disk: () => disk, outside };
 }
 
 describe("changing a format control twice before the first save returns", () => {
@@ -138,5 +154,59 @@ describe("changing a format control twice before the first save returns", () => 
 
     await testing.waitFor(() => expect(mocks.disk().settings.manuscript.bodyFont).toBe("Garamond"));
     expect(mocks.onNotice).not.toHaveBeenCalled();
+  });
+
+  test("a save waiting its turn carries only its own field, so a field changed outside meanwhile is kept", async () => {
+    const mocks = mockWorkspace();
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getAllByTestId("chapter-row")).toHaveLength(1));
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Format book" }));
+    const font = (await testing.waitFor(() => view.getByLabelText("Font"))) as HTMLSelectElement;
+    // The book starts at 12 pt; another window moves it to 14 pt.
+    expect((view.getByLabelText("Size") as HTMLSelectElement).value).toBe("12");
+    testing.fireEvent.change(font, { target: { value: "Georgia" } });
+    testing.fireEvent.change(font, { target: { value: "Garamond" } });
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(1));
+
+    // The size is changed in another window while the first save is still out.
+    mocks.outside({ bodyFontSize: 14 });
+    mocks.pending[0]?.finish();
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(2));
+
+    // The second save changes the font only: the size stays what the disk holds, not what the dialog showed.
+    expect(mocks.calls[1]?.settings?.from.manuscript.bodyFontSize).toBe(14);
+    expect(mocks.calls[1]?.settings?.to.manuscript.bodyFontSize).toBe(14);
+    expect(mocks.calls[1]?.settings?.to.manuscript.bodyFont).toBe("Garamond");
+    mocks.pending[1]?.finish();
+
+    await testing.waitFor(() => expect(mocks.disk().settings.manuscript.bodyFont).toBe("Garamond"));
+    expect(mocks.disk().settings.manuscript.bodyFontSize).toBe(14);
+    expect(mocks.onNotice).not.toHaveBeenCalled();
+  });
+
+  test("a format change that clashes with an outside one keeps the author's copy and shows it as a saved copy", async () => {
+    const mocks = mockWorkspace();
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getAllByTestId("chapter-row")).toHaveLength(1));
+    expect(view.queryByText(/saved cop/)).toBeNull();
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Format book" }));
+    const font = (await testing.waitFor(() => view.getByLabelText("Font"))) as HTMLSelectElement;
+    testing.fireEvent.change(font, { target: { value: "Georgia" } });
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(1));
+
+    // Another writer changed the same font first.
+    mocks.outside({ bodyFont: "Arial" });
+    mocks.pending[0]?.finish();
+
+    await testing.waitFor(() => expect(mocks.onNotice).toHaveBeenCalledTimes(1));
+    const notice = mocks.onNotice.mock.calls[0]?.[0];
+    expect(notice instanceof Error ? notice.message : "").toContain("format settings");
+    // The other writer's font stays, and the copy is listed so it can be shown in the folder.
+    expect(mocks.disk().settings.manuscript.bodyFont).toBe("Arial");
+    await testing.waitFor(() => expect(view.getByText(/1 saved copy/)).toBeTruthy());
+    // The banner sits behind the open dialog, so it is out of the accessibility tree until that closes.
+    expect(view.getByRole("button", { name: "Show in folder", hidden: true })).toBeTruthy();
   });
 });
