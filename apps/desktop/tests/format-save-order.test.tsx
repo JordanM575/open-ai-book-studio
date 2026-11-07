@@ -209,4 +209,35 @@ describe("changing a format control twice before the first save returns", () => 
     // The banner sits behind the open dialog, so it is out of the accessibility tree until that closes.
     expect(view.getByRole("button", { name: "Show in folder", hidden: true })).toBeTruthy();
   });
+
+  test("a queued change to a field another writer changed meanwhile is a clash, not a write over it", async () => {
+    const mocks = mockWorkspace();
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getAllByTestId("chapter-row")).toHaveLength(1));
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Format book" }));
+    const font = (await testing.waitFor(() => view.getByLabelText("Font"))) as HTMLSelectElement;
+    const size = view.getByLabelText("Size") as HTMLSelectElement;
+    expect(size.value).toBe("12");
+    // The author changes the font and then the size; the size save waits for the font save.
+    testing.fireEvent.change(font, { target: { value: "Georgia" } });
+    testing.fireEvent.change(size, { target: { value: "13" } });
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(1));
+
+    // Another writer sets the size to 14 while the font save is still out.
+    mocks.outside({ bodyFontSize: 14 });
+    mocks.pending[0]?.finish();
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(2));
+
+    // The size change still starts from the 12 the author saw, so the merge sees both sides changed it.
+    expect(mocks.calls[1]?.settings?.from.manuscript.bodyFontSize).toBe(12);
+    expect(mocks.calls[1]?.settings?.to.manuscript.bodyFontSize).toBe(13);
+    mocks.pending[1]?.finish();
+
+    await testing.waitFor(() => expect(mocks.onNotice).toHaveBeenCalledTimes(1));
+    // The other writer's size stays, the author's font landed, and the author's size is a saved copy.
+    expect(mocks.disk().settings.manuscript.bodyFontSize).toBe(14);
+    expect(mocks.disk().settings.manuscript.bodyFont).toBe("Georgia");
+    await testing.waitFor(() => expect(view.getByText(/1 saved copy/)).toBeTruthy());
+  });
 });

@@ -98,6 +98,17 @@ function destination({ target }: LegacyEntry): string {
   return target ? `${kindLabel(target)}, ${kindPosition(target)} matter` : "not placed; copy it in by hand";
 }
 
+/**
+ * One control change: the fields it sets, and the value each had when the author changed it (the
+ * saved value, or an earlier change of the same control that is still waiting to save). The save
+ * applies `patch` and treats `from` as the settings the author started from, so another writer's
+ * change to the same field meanwhile is a clash and not something to write over.
+ */
+export interface FormatChange {
+  patch: Partial<ManuscriptSettings>;
+  from: Partial<ManuscriptSettings>;
+}
+
 interface FormatDialogProps {
   open: boolean;
   onClose: () => void;
@@ -113,8 +124,8 @@ interface FormatDialogProps {
   settings: ManuscriptSettings;
   /** Saved chapter text. The dialog never edits or writes chapters. */
   chapters: Chapter[];
-  /** Persists one manuscript patch; rejects when the write fails. */
-  onSaveSettings: (patch: Partial<ManuscriptSettings>) => Promise<void>;
+  /** Persists one manuscript change; rejects when the write fails. */
+  onSaveSettings: (change: FormatChange) => Promise<void>;
   /** Saves the open chapter before an export; null when no chapter is open. */
   onFlush: () => Promise<SaveStatus | null>;
 }
@@ -220,9 +231,11 @@ export function FormatDialog({
   const change = (patch: Partial<ManuscriptSettings>): void => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    // Only the fields this change touched are sent, so a save waiting its turn cannot carry a stale
-    // value for a field the author did not change.
-    void onSaveSettings(patch).catch(() => setDraft(settings));
+    // Only the fields this change touched are sent, each with the value the author started from, so a
+    // save waiting its turn neither carries a stale value for another field nor forgets which value
+    // of this one the author was looking at.
+    const from = Object.fromEntries(Object.keys(patch).map((key) => [key, draft[key as keyof ManuscriptSettings]]));
+    void onSaveSettings({ patch, from: from as Partial<ManuscriptSettings> }).catch(() => setDraft(settings));
   };
 
   /** Shows why the matter did not save; after the dialog has closed, the workspace says it too. */

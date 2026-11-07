@@ -4,8 +4,7 @@ import type {
   BookDetail,
   Chapter,
   ChapterConflict,
-  ChapterReadIssueReason,
-  ManuscriptSettings
+  ChapterReadIssueReason
 } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { RecoveredDraft } from "@ai-book-studio/core/ipc";
@@ -21,7 +20,7 @@ import { AgentDialog } from "../components/AgentDialog";
 import { AmbientPanel } from "../components/AmbientPanel";
 import { StoryBibleDialog } from "../components/StoryBibleDialog";
 import { SearchDialog } from "../components/SearchDialog";
-import { FormatDialog } from "../components/FormatDialog";
+import { FormatDialog, type FormatChange } from "../components/FormatDialog";
 import { ChatPanel } from "../components/ChatPanel";
 import { SettingsDialog, type SettingsSection } from "../components/SettingsDialog";
 import {
@@ -557,16 +556,19 @@ export function WorkspaceView({
   const exportDocx = (): Promise<void> => runExport(() => window.studio.books.exportDocx(bookId));
   const exportMarkdown = (): Promise<void> => runExport(() => window.studio.books.exportMarkdown(bookId));
 
-  const saveFormatSettings = (patch: Partial<ManuscriptSettings>): Promise<void> => {
+  const saveFormatSettings = ({ patch, from }: FormatChange): Promise<void> => {
     const run = async (): Promise<void> => {
-      // Each save starts from the book the one before it returned, and applies only the fields its
-      // control changed, so a field changed outside meanwhile is not put back to what the dialog showed.
+      // Each save applies only the fields its control changed, to the book the one before it returned,
+      // so a field changed outside meanwhile is not put back to what the dialog showed. Those fields
+      // start from the value the author saw, not the returned one: if another writer changed the same
+      // field, it is a clash and the author's choice becomes a copy.
       const base = latestBook.current;
       if (!base) return;
       try {
         // Merged with the settings as they are on disk, so an agent setting changed meanwhile is kept.
+        const startedFrom = { ...base, settings: { ...base.settings, manuscript: { ...base.settings.manuscript, ...from } } };
         const manuscript = { ...base.settings.manuscript, ...patch };
-        const result = await editBook(base, { settings: { ...base.settings, manuscript } });
+        const result = await editBook(startedFrom, { settings: { ...base.settings, manuscript } });
         latestBook.current = result.book;
         setDetail((current) => (current ? { ...current, book: result.book } : current));
         if (result.status === "conflict") {
