@@ -767,6 +767,7 @@ describe("the agent", () => {
   });
 
   /** Another device writes `book.json` between the handler's read and its save. */
+  // biome-ignore lint/suspicious/noExplicitAny: these checks reshape raw book.json the way another writer would
   function racingEdit(library: Library, root: string, bookId: string, change: (raw: Record<string, any>) => void): void {
     const edit = library.editBook.bind(library);
     let raced = false;
