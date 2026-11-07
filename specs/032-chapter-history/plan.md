@@ -6,7 +6,8 @@
 
 In progress. D-175/D-176 accepted the storage/retention decisions on November 3, 2026
 with delivery deferred until after submission. W01 implements the saved-only library core and
-format/schema follow-through. IPC/UI, restore/undo, cleanup and end-to-end acceptance remain open.
+format/schema follow-through. W02 adds the bounded checked restore/undo/recovery core. IPC/UI,
+live draft/save integration, cleanup and end-to-end acceptance remain open.
 
 ## Shape
 
@@ -57,6 +58,10 @@ chapter save operation with the current read's `baseVersion` and `baseHash`. The
 historical source version/hash prove provenance; they are never used as the restore's write base.
 
 The normal writer remains responsible for atomic replacement and stale-write conflict handling.
+W02 extracts its unlocked publication helper so history can hold the existing book queue without
+re-entering it. History exact-checks both version and hash before equal-body handling; its deliberate
+equal-body operations also increment the version. Preparation preserves raw supported metadata,
+including unknown fields whose names overlap the runtime Chapter view.
 Before starting it, persist both the safety snapshot and a prepared restore intent that identifies
 the selected snapshot and checked base. If either cannot be committed, do not start the chapter
 write. If the chapter write fails or reports a conflict, keep the selected snapshot, any committed
@@ -66,7 +71,10 @@ this flow.
 On a confirmed restore, finalize the intent as an undo action that refers to the pre-restore body
 and exact version/hash just written. If finalization is interrupted after chapter commit, leave the
 prepared intent durable. On the next history read, reconcile it with a checked chapter read before
-offering retry or undo; never replay the restore blindly. Undo reads the current chapter again and
+offering retry or undo; never replay the restore blindly. Optional additive `plannedResult` and
+`plannedUndoResult` contain precomputed complete-file identities (ADR 0016), permitting read-only
+reconciliation even when finalization is interrupted. Matching bodies alone confer no authority.
+Undo reads the current chapter again and
 uses that exact post-restore version/hash as its checked base. A mismatch refuses the undo; it never
 overwrites intervening text. The snapshot used for the restore remains intact.
 

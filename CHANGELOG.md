@@ -40,6 +40,13 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Add bounded chapter-history restore, durable restore-specific undo and conservative read-only
+  recovery through Library. Verify a visible safety snapshot and prepared exact-result intent before
+  the existing journal-aware checked writer replaces a body; preserve current metadata, exact-check
+  version/hash even for equal text, retain all recovery files on failures, and never replay uncertain
+  writes. Add synthetic core/desktop fault, concurrency, reload, archive and racing-draft tests.
+  Live draft/save gating, IPC, confirmation/recovery UI and whole-feature acceptance remain open.
+
 - Correct history codec admission before new recovery writers use it: reject unpreservable YAML
   metadata without changing the file, and keep all history source-resolution diagnostics quiet.
   Verify saved-source UTF-8/raw hashes, snapshot metadata before asynchronous serialization, and

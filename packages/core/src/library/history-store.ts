@@ -2,7 +2,7 @@ import { normalizeBody, slugify } from "../markdown";
 import type { Chapter } from "../schema";
 import { LibraryError, LibraryPortError } from "./errors";
 import { chapterPath } from "./paths";
-import type { CommitFileResult, LibraryEnvironment, LibraryPath } from "./port";
+import type { CommitFileResult, FileExpectation, LibraryEnvironment, LibraryPath } from "./port";
 import {
   HistoryError,
   historyCaptureSchema,
@@ -17,6 +17,7 @@ import {
   type HistoryListing,
   type HistoryReadInput,
   type HistoryScope,
+  type HistoryRecord,
   type StoredHistoryRecord
 } from "./history";
 
@@ -28,7 +29,7 @@ export class ChapterHistoryStore {
   constructor(
     private readonly env: LibraryEnvironment,
     private readonly readChapter: (bookId: string, chapterId: string) => Promise<Chapter>,
-    private readonly commit: (path: LibraryPath, text: string) => Promise<CommitFileResult>
+    private readonly commit: (path: LibraryPath, text: string, expected: FileExpectation) => Promise<CommitFileResult>
   ) {}
 
   async capture(input: HistoryCaptureInput): Promise<StoredHistoryRecord> {
@@ -51,18 +52,27 @@ export class ChapterHistoryStore {
       sourceHash: chapter.hash,
       bodyHash: await this.env.runtime.sha256(encoder.encode(chapter.content))
     };
-    const text = await serializeHistoryRecord({ meta, content: chapter.content }, this.env.runtime);
+    return this.create({ meta, content: chapter.content }, async () => {
+      const current = await this.savedChapter(scope);
+      if (current.version !== source.version || current.hash !== source.hash) throw staleSource();
+    });
+  }
+
+  /** Internal: the caller already holds the service's book queue. */
+  async create(record: HistoryRecord, beforePublish: () => Promise<void>): Promise<StoredHistoryRecord> {
+    const { meta, content } = record;
+    const scope = { bookId: meta.bookId, chapterId: meta.chapterId };
+    const text = await serializeHistoryRecord(record, this.env.runtime);
     const bytes = encoder.encode(text);
     const base = `${meta.capturedAt.replace(/[:.]/g, "-")}-${slugify(meta.label)}`;
     await this.env.storage.ensureDirectory(historyDirectory(scope));
     for (let attempt = 0; attempt < 100; attempt += 1) {
       // Re-resolve identity and raw hash, including after a collision with another writer.
-      const current = await this.savedChapter(scope);
-      if (current.version !== source.version || current.hash !== source.hash) throw staleSource();
+      await beforePublish();
       const fileName = `${base}${attempt === 0 ? "" : `-${attempt + 1}`}.md`;
       let committed: CommitFileResult;
       try {
-        committed = await this.commit(historyFilePath({ ...scope, fileName }), text);
+        committed = await this.commit(historyFilePath({ ...scope, fileName }), text, { kind: "absent" });
       } catch (error) {
         // A port can publish successfully and then fail to read back. Never retry that write
         // automatically or remove the possibly complete file. Policy preflight errors are definite.
@@ -72,19 +82,35 @@ export class ChapterHistoryStore {
         throw new HistoryError("io", message);
       }
       if (committed.status === "changed") continue;
-      if (committed.snapshot.bytes.length !== bytes.length ||
+      if (committed.snapshot.sha256 !== await this.env.runtime.sha256(bytes) || committed.snapshot.bytes.length !== bytes.length ||
           !bytes.every((byte, index) => committed.snapshot.bytes[index] === byte)) {
         throw new HistoryError("io", "The snapshot write could not be verified. Review history before trying again; the chapter was not changed.");
       }
-      return { meta, content: chapter.content, fileName, hash: committed.snapshot.sha256 };
+      return { meta, content, fileName, hash: committed.snapshot.sha256 };
     }
     throw new HistoryError("io", "No free snapshot filename was found. Try a different label; existing history was kept.");
+  }
+
+  async update(previous: StoredHistoryRecord, record: HistoryRecord): Promise<StoredHistoryRecord> {
+    const text = await serializeHistoryRecord(record, this.env.runtime);
+    const bytes = encoder.encode(text);
+    const committed = await this.commit(historyFilePath({ bookId: previous.meta.bookId,
+      chapterId: previous.meta.chapterId, fileName: previous.fileName }), text, { kind: "sha256", value: previous.hash });
+    if (committed.status === "changed") throw staleSource();
+    if (committed.snapshot.sha256 !== await this.env.runtime.sha256(bytes) ||
+        committed.snapshot.bytes.length !== bytes.length || !bytes.every((byte, i) => committed.snapshot.bytes[i] === byte)) {
+      throw new HistoryError("io", "The intent update could not be verified. Keep all history files and review recovery.");
+    }
+    return { ...record, fileName: previous.fileName, hash: committed.snapshot.sha256 };
   }
 
   async read(input: HistoryReadInput): Promise<StoredHistoryRecord> {
     const path = historyFilePath(input);
     const snapshot = await this.env.storage.readFile(path);
     if (!snapshot) throw new HistoryError("not-found", "This history file is missing. Check that the library folder has finished syncing.");
+    if (await this.env.runtime.sha256(snapshot.bytes) !== snapshot.sha256) {
+      throw new HistoryError("corrupt", "The history file hash could not be verified. Keep the file for recovery.");
+    }
     let raw: string;
     try {
       raw = decoder.decode(snapshot.bytes);
@@ -139,7 +165,7 @@ export class ChapterHistoryStore {
     };
   }
 
-  private async savedChapter(scope: HistoryScope): Promise<Chapter> {
+  async savedChapter(scope: HistoryScope): Promise<Chapter> {
     const chapter = await this.readChapter(scope.bookId, scope.chapterId);
     const snapshot = await this.env.storage.readFile(chapterPath(scope.bookId, chapter.path));
     if (!snapshot || snapshot.sha256 !== chapter.hash) throw staleSource();

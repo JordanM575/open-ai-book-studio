@@ -247,8 +247,28 @@ Intent metadata additionally contains `selected` and `safety` references, each w
 `sourceVersion`/`sourceHash` identify its checked pre-restore base. Its `state` is `prepared`,
 `applied` (requires `result: { version, hash }`), or `undone` (requires both `result` and
 `undoResult: { version, hash }`). Prepared intents have neither result; applied intents
-have no undo result. Intent bodies are empty. These schema forms reserve recoverable
-restore material; restore/undo execution is not implemented in the saved-only core.
+have no undo result. Intent bodies are empty.
+
+The restore core adds optional loose `plannedResult: { version, hash }` and
+`plannedUndoResult: { version, hash }`. These hold the next complete serialized chapter's exact
+version and raw-file SHA-256, computed before the respective write, not just its body hash.
+`plannedResult` remains through applied/undone states; `plannedUndoResult` is allowed only on
+applied/undone intents. When present, finalized results must equal their plans. Older records
+remain readable; a prepared intent without an exact plan is uncertain. Recovery reads never replay
+writes or infer ownership from matching prose. Exact identity matches permit checked undo of a
+restore, including interrupted finalization; an interrupted undo plan is reported for review, not
+silently retried. Identity is not authenticated provenance.
+
+Restore verifies a visible safety record and prepared intent before starting the chapter writer.
+Undo persists its plan in that intent first. Updates are expected-raw-hash guarded, with unknown
+supported fields preserved. Both operations exact-check current version and raw hash within the
+existing book queue, including equal bodies, and use the journal-aware checked writer. They preserve
+current metadata values and replace only the body plus normal version/update-time bookkeeping;
+even equal-body operations increment the version. Cancellation before history publication changes
+nothing; after safety publication it retains safety and prepares the intent before stopping. Once
+chapter writing starts, the actual saved/conflict/uncertain outcome wins over cancellation. Failed or
+uncertain writes never delete selected, safety or intent material. IPC/UI and live host draft/save
+gating are separate obligations; the core cannot observe editor state.
 
 All known metadata objects are loose: supported unknown fields survive codec round-trips,
 including nested references/results. Supported metadata contains plain string-keyed mappings,

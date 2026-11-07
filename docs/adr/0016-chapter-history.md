@@ -1,7 +1,7 @@
 # ADR 0016: Saved-text chapter history
 
 **Status:** Accepted, 2026-11-07, under the author's delegated implementation authority.
-**Scope:** Spec 032 T001/T003/T004; implements accepted D-175/D-176.
+**Scope:** Spec 032 T001/T003/T004 and bounded T007–T009 core; implements accepted D-175/D-176.
 
 ## Context and evidence
 
@@ -35,8 +35,8 @@ YAML document parsing permits errors/warnings to be inspected without logging au
 - Validate loose metadata for `snapshot`, `safety`, and bodyless `intent` records.
   Intents describe `prepared`, `applied`, or `undone` state, with selected/safety
   references (filename, record ID, raw-file hash), intended body hash, and exact
-  result version/hash for applied/undone states. This is a data contract only; W02
-  owns persistence, reconciliation, restore and undo. Unknown fields, including nested
+   result version/hash for applied/undone states. W01 reserves this data contract; the W02
+   core below adds persistence, reconciliation, restore and undo. Unknown fields, including nested
   reference/result fields, survive codec round-trips within the supported value domain below. Unsupported/corrupt records
   remain untouched and are reported individually rather than becoming an empty list.
 - Require a caller's confirmed `saved` state plus exact source version/hash; read the
@@ -51,10 +51,34 @@ YAML document parsing permits errors/warnings to be inspected without logging au
   and equality; presentation of changes belongs to W02. Lists include per-file
   unavailable states and stat-derived size, newest valid records first with deterministic
   filename ties. No body/count quota, pruning, expiry, compaction or deletion API.
-- Use the existing book lock, checked commit and sync-journal hooks. Do not flush
-  drafts, save chapters, rebuild catalogs, or add an IPC/UI/agent entry point.
+- Use the existing book lock, checked commit and sync-journal hooks. Saved-only operations do not
+  flush drafts, save chapters or rebuild catalogs. The restore core below adds no IPC/UI/agent entry point.
 
 ## Consequences
+
+### Bounded restore/undo core, November 7
+
+Accepted under delegated implementation authority before W02 persistence: add optional loose
+`plannedResult: { version, hash }` and `plannedUndoResult: { version, hash }` to intents. Each
+is computed from the **complete exact serialized next chapter file**, including current metadata,
+incremented version and fixed update time, before its respective chapter write. A body hash alone
+cannot distinguish an interrupted restore from an unrelated writer's similar text. Existing records
+without these fields remain readable; prepared legacy intents cannot establish a committed result.
+No chapter operation marker or additional metadata is introduced. These hashes prove byte identity,
+not authorship; recovery reports a matching result, never who wrote it.
+
+Restore and undo run within the existing book queue, use its journal-aware checked chapter writer,
+and exact-check version **and** raw hash even for equal bodies. They increment the version for equal
+bodies as well. Preserve current raw metadata values (including names shared with runtime Chapter
+properties), changing only body plus the normal version/update-time bookkeeping. Safety and prepared
+intent publication must be verified before replacement. Intent transitions use expected raw hashes;
+conflict or uncertainty keeps all recovery material. Undo first durably prepares its exact result in
+the same intent. Read-only reconciliation compares complete identities without replay or mutation;
+an interrupted undo is not retried automatically. Host draft/save gating and confirmation remain
+required before these APIs can become author-facing.
+History skips the ordinary post-save disposable catalog rebuild, which scans unrelated chapters
+through the legacy diagnostic parser. It returns the committed chapter directly; the catalog is
+never read as truth. This keeps successful restore/undo on the same quiet boundary as capture.
 
 ### Codec review correction, November 7
 
@@ -83,7 +107,7 @@ Snapshots remain ordinary recovery material across archives and trash. Integrity
 accidental body changes, not authenticated provenance: an author can edit these files.
 Headerless chapters must first be saved normally to gain stable identity. Existing archive
 transport caps remain transport-only; future/corrupt history bytes can travel unchanged and
-are refused on history read. Restore, deletion dependency policy, UI and end-to-end draft
+are refused on history read. Deletion dependency policy, UI and end-to-end draft
 gating remain separate tasks. See [FORMAT](../FORMAT.md#chapter-history).
 
 The existing filesystem port's expectation-check/write/readback sequence is not cross-process
