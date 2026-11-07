@@ -49,6 +49,13 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- An export no longer hands over a book with chapters missing. When some chapter files cannot be read (the workspace
+  already reports them), the Word, Markdown, PDF and EPUB exports now refuse before asking for a destination, building
+  a file or writing anything, and say "The manuscript was not exported because some chapter files could not be read.
+  Reopen the book and review the affected files." Source files and any earlier export stay exactly as they were. The
+  plain `bookwriter read` chapter list now says "(readable files only)" for such a book, names the affected files on
+  stderr and exits 1; `--json` keeps its payload. Eight export tests (two kinds of damaged front matter across the four
+  exports, each checking that nothing was asked or written) and three toolkit tests cover it.
 - The release record script no longer replaces a record that already exists: a second run for the same path is
   refused (exit 3) and the earlier record is left as it was. A new record is written to a temporary file beside the
   target and hard-linked into place, so the final path never holds a half-written record. On a file system that

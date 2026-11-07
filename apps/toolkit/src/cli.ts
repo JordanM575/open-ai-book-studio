@@ -134,9 +134,16 @@ export async function runCli(
         if (json) return print(io, book);
         io.stdout.write(`# ${book.book.title}\n`);
         if (book.book.description) io.stdout.write(`${book.book.description}\n`);
-        io.stdout.write("\nChapters:\n");
+        const unreadable = book.chapterReadIssues ?? []; // an older studio backend does not send the field
+        io.stdout.write(unreadable.length > 0 ? "\nChapters (readable files only):\n" : "\nChapters:\n");
         for (const chapter of book.chapters) {
           io.stdout.write(`  ${chapter.id}  ${chapter.title} (${chapter.wordCount} words)\n`);
+        }
+        if (unreadable.length > 0) {
+          // A plain list that looks complete would hide the damage: say it is partial, name the files and exit nonzero.
+          io.stderr.write("Some chapter files could not be read. Reopen the book and review these files:\n");
+          for (const issue of unreadable) io.stderr.write(`  ${JSON.stringify(issue.fileName)} (${issue.reason})\n`);
+          return 1;
         }
         return 0;
       }
