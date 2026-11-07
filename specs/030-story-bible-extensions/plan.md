@@ -11,7 +11,9 @@ save. It never accesses the filesystem. Preserve the current manuscript, chapter
 journeys unless a requirement in `spec.md` calls out a specific extension.
 
 The current Story Bible uses D-190's field-aware `books.edit`; `updateBook` also checks its fresh
-read at commit. Both preserve unknown supported fields. Planning instead uses D-164's dedicated
+read at commit but replaces requested whole fields, so omitted nested values may be removed.
+Loose parsing and edits that carry unknown values preserve them; `updateBook` is not a nested patch API.
+Planning instead uses D-164's dedicated
 all-or-stale sidecar contract because FR-006 forbids an implicit merge or retry.
 
 ## Accepted decisions — implementation prerequisites

@@ -34,18 +34,23 @@ capabilities and each included book's applicable consent. Any change returns to 
 sends. There is no implicit refresh, fallback, retry or background authority. Stop prevents later
 dispatch best-effort and states that already-sent text cannot be recalled.
 
-On Start, the request, exact selected text, results, citations, attribution and answer belong in the
+For **037 conversational review**, on Start the request, exact selected text, results, citations, attribution and answer belong in the
 existing conversation, with visible disclosure that selected full chapters can therefore be retained
 and travel with the book. Unsent previews stay transient. Rerun has a new identity and authorization;
 same prompt text is insufficient to reuse a request. Later ordinary agent replay must not silently
 expand review-source parts into its prompt.
 
-**Persistence prerequisite:** current thread updates/deletion do not yet prove checked/recoverable
+**037 persistence prerequisite:** current thread updates/deletion do not yet prove checked/recoverable
 storage. Before enabling durable review parts, deliver a separately reviewed shared thread-safety
 contract and format change: expected-hash updates, conflict preservation, recoverable deletion,
 versioned parts, safe legacy reads and future-version refusal. This ADR authorizes the pure envelope
 and evidence modules now; it does not bless the existing unchecked thread writer or choose an
 untested migration by implication.
+
+**039 structured reader/continuity runs** reuse the envelope, citation and execution contracts but
+keep selected snapshots, reports and profile versions only in volatile run state. They do not append
+review payloads/results to conversations or any other durable store until U-039-03/D-171 are
+individually accepted. The volatile 039 slice does not depend on implementing 037 conversation storage.
 
 ## Exact evidence
 

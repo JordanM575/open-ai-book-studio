@@ -128,8 +128,9 @@ def validate():
             assert path.is_file() and path.read_text().strip(), f"Missing/empty {path}"
         status = re.search(r"^\*\*Status:\*\* (.+)$", specs[number].read_text(), re.M)
         assert status, f"Missing feature status: {number}"
-        assert status[1].startswith(("Draft / Planned", "In progress", "Implemented")), f"Unknown feature status: {number}"
-        if status[1].startswith("Draft / Planned"):
+        feature_status = re.fullmatch(r"(Draft / Planned|In progress|Implemented)(?: — .+)?", status[1])
+        assert feature_status, f"Unknown feature status: {number}"
+        if feature_status[1] == "Draft / Planned":
             assert "[x]" not in (specs[number].parent / "tasks.md").read_text(), f"Planned feature has completed tasks: {number}"
         assert str(specs[number].relative_to(ROOT / "specs")) in index, number
     edges = set()

@@ -62,6 +62,10 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Resolve the contract review: scope conversation persistence to 037, explicitly keep 039 runs
+  volatile, qualify whole-field book replacement semantics, and validate exact new-spec status
+  tokens with an optional description rather than accepting arbitrary prefixes.
+
 - Accept D-163–D-168 under delegated authority with ADR 0017: checked planning/organization sidecars,
   explicit bounds and identities, scoped recents, complete saved-word goals and exact source anchors.
   Reconcile current D-190 premises and the decision-only tasks without claiming feature implementation.
