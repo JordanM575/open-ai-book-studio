@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   MAX_SPEECH_DURATION_MS,
   inspectWav,
+  openRouterSpeechRequest,
+  OPENROUTER_STT_MODELS,
+  parseOpenRouterSpeechResponse,
   parseSpeechResponse,
   speechCapability,
+  speechModels,
   speechForm
 } from "../src/providers/speech";
 
@@ -123,6 +127,19 @@ describe("Meta speech request", () => {
     });
     expect(speechCapability("openai", "https://api.openai.com/v1")).toBeNull();
   });
+
+  test("lists the curated OpenRouter models and builds JSON/base64 audio requests", () => {
+    expect(speechModels("openrouter").map((choice) => choice.id)).toEqual([...OPENROUTER_STT_MODELS]);
+    expect(speechCapability("openrouter", undefined, "openai/whisper-large-v3-turbo")).toMatchObject({
+      endpoint: "https://openrouter.ai/api/v1/audio/transcriptions",
+      model: "openai/whisper-large-v3-turbo"
+    });
+    expect(openRouterSpeechRequest(new Uint8Array([82, 73, 70, 70]), "openai/whisper-1")).toEqual({
+      model: "openai/whisper-1",
+      input_audio: { data: "UklGRg==", format: "wav" }
+    });
+    expect(() => openRouterSpeechRequest(new Uint8Array(), "unlisted/model")).toThrow(/supported OpenRouter/i);
+  });
 });
 
 describe("Meta speech response", () => {
@@ -152,5 +169,21 @@ describe("Meta speech response", () => {
 
   test("refuses a response without a transcript", () => {
     expect(() => parseSpeechResponse({ turns: [] })).toThrow(/without a transcript/);
+  });
+});
+
+describe("OpenRouter speech response", () => {
+  test("preserves only provider-reported usage and trims text", () => {
+    expect(parseOpenRouterSpeechResponse({
+      text: "  The words are here. ",
+      usage: { seconds: 1.25, cost: 0.0004 }
+    })).toEqual({ text: "The words are here.", durationMs: 1250, costUsd: 0.0004 });
+  });
+
+  test("leaves usage unknown when the provider did not report it", () => {
+    expect(parseOpenRouterSpeechResponse({ text: "Hello." })).toEqual({
+      text: "Hello.", durationMs: null, costUsd: null
+    });
+    expect(() => parseOpenRouterSpeechResponse({ usage: { seconds: 1 } })).toThrow(/without a transcript/i);
   });
 });

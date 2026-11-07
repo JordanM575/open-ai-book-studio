@@ -7,6 +7,7 @@ import {
   DEFAULT_TTS_VOICE,
   joinAudio,
   MAX_TTS_CHARACTERS,
+  OPENROUTER_TTS_MODELS,
   OPENROUTER_TTS_MODEL,
   TTS_VOICES,
   ttsCapability,
@@ -15,8 +16,9 @@ import {
 } from "../src/providers/tts";
 
 describe("the voice service", () => {
-  test("is available for OpenAI and nothing else", () => {
+  test("is available for the documented OpenAI and OpenRouter adapters", () => {
     expect(canSpeak("openai")).toBe(true);
+    expect(canSpeak("openrouter")).toBe(true);
     expect(canSpeak("meta")).toBe(false);
     expect(canSpeak("anthropic")).toBe(false);
   });
@@ -141,23 +143,37 @@ describe("joining the audio", () => {
   });
 });
 
-describe("the free path", () => {
-  test("OpenRouter uses the same audio/speech endpoint as OpenAI", () => {
-    const capability = ttsCapability("openrouter");
+describe("curated OpenRouter speech models", () => {
+  test("each model uses the shared endpoint and its own documented voice and format", () => {
+    const capability = ttsCapability("openrouter", undefined, "heygen/heygen-voice-1");
     expect(capability?.endpoint).toBe("https://openrouter.ai/api/v1/audio/speech");
-    expect(capability?.model).toBe(OPENROUTER_TTS_MODEL);
-    expect(OPENROUTER_TTS_MODEL).toContain(":free");
+    expect(capability).toMatchObject({
+      model: "heygen/heygen-voice-1",
+      responseFormat: "pcm",
+      sampleRate: 44_100,
+      defaultVoice: "nadine"
+    });
+    expect(capability?.voices).toContain("vincent");
+    const mistral = ttsCapability("openrouter", undefined, "mistralai/voxtral-mini-tts-2603");
+    expect(mistral).toMatchObject({ model: "mistralai/voxtral-mini-tts-2603", responseFormat: "mp3" });
+    expect(mistral?.voices).toContain("gb_jane_sarcasm");
+    expect(ttsCapability("openrouter", undefined, "unlisted/model")).toBeNull();
+    expect(OPENROUTER_TTS_MODELS).toHaveLength(3);
   });
 
-  test("names a default voice only where the provider requires one", () => {
-    // OpenAI rejects a request without a voice; OpenRouter's free model does not want one.
+  test("names a default voice for every voice-selecting model", () => {
     expect(ttsCapability("openai")?.defaultVoice).toBe(DEFAULT_TTS_VOICE);
-    expect(ttsCapability("openrouter")?.defaultVoice).toBeUndefined();
+    expect(ttsCapability("openrouter")?.defaultVoice).toBe("nadine");
   });
 
-  test("omits the voice when the caller did not choose one", () => {
+  test("request output format is selected for the exact model", () => {
     expect(ttsRequestBody("Hello.")).not.toHaveProperty("voice");
     expect(ttsRequestBody("Hello.", { voice: "onyx" }).voice).toBe("onyx");
+    expect(ttsRequestBody("Hello.", { model: OPENROUTER_TTS_MODEL, voice: "nadine", responseFormat: "pcm" })).toMatchObject({
+      model: OPENROUTER_TTS_MODEL,
+      voice: "nadine",
+      response_format: "pcm"
+    });
   });
 
   test("wraps raw samples in a playable WAV, for providers that answer with PCM", () => {
