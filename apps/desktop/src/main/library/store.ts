@@ -19,6 +19,9 @@ import {
   type KeepConflictCopyResult
 } from "@ai-book-studio/core/library/service";
 import type { BookMatter, SaveMatterResult } from "@ai-book-studio/core/matter";
+import type {
+  HistoryCaptureInput, HistoryComparison, HistoryListing, HistoryReadInput, HistoryScope, StoredHistoryRecord
+} from "@ai-book-studio/core/library/history";
 import { ThreadStore } from "@ai-book-studio/core/agent/threads";
 import type { LocationHealth } from "@ai-book-studio/core/sync/health";
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
@@ -135,6 +138,22 @@ export class Library {
 
   readChapter(bookId: string, chapterId: string): Promise<Chapter> {
     return this.service.readChapter(bookId, chapterId);
+  }
+
+  captureChapterHistory(input: HistoryCaptureInput): Promise<StoredHistoryRecord> {
+    return this.service.captureChapterHistory(input);
+  }
+
+  listChapterHistory(scope: HistoryScope): Promise<HistoryListing> {
+    return this.service.listChapterHistory(scope);
+  }
+
+  readChapterHistory(input: HistoryReadInput): Promise<StoredHistoryRecord> {
+    return this.service.readChapterHistory(input);
+  }
+
+  compareChapterHistory(input: HistoryReadInput): Promise<HistoryComparison> {
+    return this.service.compareChapterHistory(input);
   }
 
   createChapter(

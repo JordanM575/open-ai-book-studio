@@ -87,6 +87,17 @@ import {
 import { scanLibrary } from "../sync/scan";
 import { detectDrift } from "../sync/detector";
 import type { DriftReport } from "../sync/types";
+import { ChapterHistoryStore } from "./history-store";
+import {
+  HistoryError,
+  historyDirectory,
+  type HistoryCaptureInput,
+  type HistoryComparison,
+  type HistoryListing,
+  type HistoryReadInput,
+  type HistoryScope,
+  type StoredHistoryRecord
+} from "./history";
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
@@ -464,6 +475,48 @@ export class LibraryService {
     const base = `front-and-back-matter.conflict-${reason}.${this.device.id}.${stamp}`;
     const savedName = await this.writeConflictCopy(bookId, base, ".json", `${JSON.stringify({ matter }, null, 2)}\n`);
     return { status: "conflict", reason, savedAs: conflictDisplayPath(bookId, savedName), book };
+  }
+
+  /* ----------------------------------------------------------- chapter history */
+
+  captureChapterHistory(input: HistoryCaptureInput): Promise<StoredHistoryRecord> {
+    return this.serializeWrite(input.bookId, async () => {
+      await this.requireHistoryBook(input);
+      return this.chapterHistoryStore(input).capture(input);
+    });
+  }
+
+  async listChapterHistory(scope: HistoryScope): Promise<HistoryListing> {
+    await this.requireHistoryBook(scope);
+    return this.chapterHistoryStore(scope).list(scope);
+  }
+
+  async readChapterHistory(input: HistoryReadInput): Promise<StoredHistoryRecord> {
+    await this.requireHistoryBook(input);
+    return this.chapterHistoryStore(input).read(input);
+  }
+
+  async compareChapterHistory(input: HistoryReadInput): Promise<HistoryComparison> {
+    await this.requireHistoryBook(input);
+    return this.chapterHistoryStore(input).compare(input);
+  }
+
+  private async requireHistoryBook(scope: HistoryScope): Promise<void> {
+    historyDirectory({ bookId: scope.bookId, chapterId: scope.chapterId });
+    const { book } = await this.readBookFile(scope.bookId);
+    if (book.id !== scope.bookId) throw new HistoryError("identity", "The book file does not match its history folder.");
+  }
+
+  private chapterHistoryStore(scope: HistoryScope): ChapterHistoryStore {
+    return new ChapterHistoryStore(
+      this.env,
+      (bookId, chapterId) => this.readChapter(bookId, chapterId),
+      async (path, text) => {
+        // Capture may have awaited storage or a filename collision since its initial preflight.
+        await this.requireHistoryBook(scope);
+        return this.commitText(path, text, { kind: "absent" });
+      }
+    );
   }
 
   /* ----------------------------------------------------------------- chapters */

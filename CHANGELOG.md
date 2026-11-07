@@ -36,6 +36,15 @@ Update the `Unreleased` section before every commit.
   tone/answer-length guidance and the system-prompt budget. The initial candidate retained spec 031's
   demo/script condition; the subsequent delivery update above replaces its event-only re-shoot hold.
 
+### Added
+
+- Add the saved-only chapter history core: explicitly capture named versions, list/open their
+  ordinary book-scoped Markdown files, and compare with current saved text through Library.
+  Records validate stable identity, provenance and body hashes, preserve unknown metadata, report
+  unavailable files, and survive archive/trash journeys without changing chapters or flushing drafts.
+  Document the format and ADR 0016; retain every snapshot, safety record and intent without automatic
+  pruning. IPC/UI, restoration, undo and explicit cleanup remain separate follow-through.
+
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at
   launch on Electron's sandbox helper. After that was fixed and the browser smoke check was made to wait for the
