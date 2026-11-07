@@ -1,7 +1,10 @@
 # Open Book Studio — product completion lanes
 
-Evidence baseline: public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab`.
-Spec/ownership reconciliation dated 2026-11-04; this change is not a fresh runtime audit.
+Original review baseline: public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab`, November 4.
+Current-state reconciliation: November 7, 2026, public `main` at
+`55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34`. The JSON retains both dates/baselines. Merged changes
+and [dated automated results](TESTING.md#recorded-baseline) inform this update; it is not a fresh
+runtime audit, live-provider/device check or release sign-off.
 This is a dependency map for remaining work, not a statement that every proposed capability is
 implemented or approved. The machine-readable graph is [product-completion.json](product-completion.json).
 The [distilled requirements](completion-requirements.json) record stable IDs, current classifications
@@ -18,7 +21,7 @@ existing or new spec, including the four new Draft/Planned proposals 039–042.
   feature and platform lane. Each new capability still needs an accepted spec and relevant decisions.
 
 The published CLI/MCP and ambient voice workflows are existing capabilities. Their lanes finish
-conformance, preferences and gaps; they do not rebuild those features from scratch. The ambient
+conformance and gaps; integrated spec 038 owns the voice preferences. They do not rebuild those features from scratch. The ambient
 workflow records on the author's action and speaks the completed answer automatically. Always-on
 listening, wake words and barge-in are separate, unimplemented behavior.
 
@@ -124,21 +127,70 @@ The broad research themes are proposals until the applicable spec/decision is ac
 particular, automatic dispatch/fallback, hard spend ceilings, autonomous multi-turn authority,
 cross-device trust, real-device distribution and glasses transport are not implied by a graph edge.
 
+### Dependency questions still open
+
+- **L06 → L24 coverage:** the graph has no unconditional path from Story Bible/series extensions to
+  the roadmap-complete milestone. Its conditional review/casting edges cannot prove completion of
+  the whole lane. Resolve whether to add a direct edge or record an explicit scope deferral before
+  closing L24; do not silently omit L06.
+- **Claim-scoped dependencies:** cover inputs for publishing, voice for Android and the supported
+  desktop matrix need explicit acceptance scope. The graph's coarse lanes are not permission to
+  make every future capability a desktop release blocker, or to skip a prerequisite of a claimed
+  capability. Record these interpretations with the acceptance slice before implementation.
+
+The 62 solid and three conditional edges are retained pending that reconciliation. Acyclicity and
+ownership validation prove structural consistency, not that these scope questions are settled.
+
 ## Current next work
 
-Research reconciliation reuses existing specs rather than duplicating them. New Draft/Planned
-specs now define structured reader/continuity review (039), Android (040), dedicated cover design
-(041), and narrator/character casting with audiobook creation (042), each with a plan, unchecked
-tasks, acceptance scenarios and explicit decision gates. These are proposals, not implemented
-features or accepted decisions. 038 remains owned by the voice-options candidate. Publishing validation extends 035 and depends
-on measured output/rule contracts; conversational review remains distinct under 037.
+### What the November 7 baseline closes
 
-- Reconcile spec headers/index/task evidence and remove stale claims of missing implementations.
-- Finish the Open Book Studio display rename without changing credential or data identities.
-- Integrate the tested voice-options candidate and recheck the supported flow in the public checkout.
-- Complete a film with library-to-book navigation, distinct features and labelled multi-chapter
-  fixture flips; preserve the submitted upload while its replacement is reviewed.
-- Prioritize unresolved data-safety contracts before broadening agent authority or remote surfaces.
+Display branding, damaged-book export refusal, safe chapter moves/restores, book-schema guards,
+field-level metadata merging and conflict-copy presentation are merged. Spec 038's profile-local
+voice choices are integrated under D-192; it is no longer a reserved candidate. Linux e2e failures
+now fail the manual workflow. These completed slices leave wider safety/platform acceptance open.
+
+The README uses [the current demo](https://youtu.be/0RsFzUq97xU); the
+[original submission](../hackathon/SUBMISSION.md) retains its original link and dated evidence.
+Short cuts, captions, credits and exact-upload playback/privacy/provenance review still need an
+artifact-by-artifact record. A link does not establish that the upload matches an inspected draft.
+
+### Proposed delivery sequence
+
+Each row is a bounded next slice in an existing spec, not approval of an unresolved decision or a
+promise that all rows must run serially. Start with file-safety contracts and explicit author control;
+features with independent contracts can advance without waiting for unrelated roadmap work.
+
+| Work / owner | First deliverable | Prerequisites and acceptance before broadening |
+| --- | --- | --- |
+| Voice acceptance · 038 / L12 | Complete the author's review of T022's automated record; inventory live microphone/provider/playback gaps separately | T022 stays unchecked until the author closes it. Decide `marin`/`cedar` separately; current catalogs are model-specific. Any paid check needs explicit scope/budget. |
+| Named history · 032 / L07 | T001 format/ADR follow-through, T003 record schema, then T004–T006 saved-only capture/list/compare | D-175/D-176 already accepted. Prove identity, body hashes, no draft flush, unknown-field preservation and archive/trash travel. Add T007–T010 checked restore/undo only after fault and interruption boundaries are defined. |
+| Agent interaction · 031 / L05 | Enforce the accepted Discuss/Edit boundary and expose the composer choice together | D-177–D-179 already accepted; T004/T010 exist. T006–T009 must prove no writes/plugins in Discuss, unchanged Edit approvals and correct mode attribution. Retain the decisions' matching demo/script/runbook condition; plans and new-turn continuation follow, with no live steering. |
+| Planning and organization · 030/033 / L06–L07 | Decision packets for storage/conflicts/bounds and collections/notes, then one manual record journey at a time | D-163–D-168 remain open/proposed. Pin current D-190 premises before using older research. Test failed writes, two writers, foreign identities and stale anchors before persistence/UI. No automatic series authority. |
+| Formatting · 035 / L11 | T014 Markdown folder export from the saved ordered book, with failure-safe destination handling | Keep existing exports usable. Separate future physical layout, templates and named publishing rules; unknown measurements cannot pass KDP/EPUB/PDF readiness. |
+| Review · 034/037/039 / L08–L09 | Finish deterministic saved-text evidence; develop the explicit foreground, selected-source review boundary before structured readers | D-171 gates report persistence/export; 037 scope/consent questions and U-039-01/02/04 gate dependent model work. Start with one volatile selected-source report, then attributed rereads and explicit cross-book scope. No automatic edits or routing. |
+| Routing · 036 / L14 | Resolve taxonomy, capability/price evidence and author selection around the existing offline preview | Preview remains zero-call/zero-write. Dispatch, fallback, retry and hard spend enforcement each need their accepted policy; D-116 is not an implemented ceiling. |
+| Cover design · 041 / L10 | Existing art → saved front-cover composition → approximate preview → independently measured export | U-041-01/02 govern storage/output. Prove original-asset/manuscript preservation and failed-export recovery. Print wraps need measured pagination/paper inputs; generation waits on U-041-03. |
+| Audiobooks · 042 / L13 | Stock narrator/script approval, then one recoverable chapter render | Reuse integrated 038 and lower-level TTS helpers; U-042-01/03 gate requests, U-042-02 storage/recovery and U-042-04 packaging. Test partial/uncertain requests, no paid retry without consent, stale audio and reuse of successful chapters before optional character casting. |
+| Desktop release · 009/013 / L20–L23 | Accepted support/lifecycle matrix and candidate-specific install/upgrade/recovery evidence | D-115 and D-172–D-174 retain their scopes. Recheck D-174 against D-189's profile recovery text before any cleanup design. Signing/distribution need approval; test library/profile preservation and newer-schema refusal. L23 can close without Android/glasses/audiobooks. |
+| Browser, iOS, Android, glasses · 010/014/016/026/040 / L16–L19 | Per-target capability/refusal matrix; Android shell/storage decision packet and editor-only slice | Resolve actual storage/permission/credential limits; 040 U-01/02 before Android writes, U-03 before providers/voice, U-04 before release. Keep emulator, real-device and distribution evidence distinct. D-160's private companion transport is not implemented by a responsive demo. |
+
+### Decision packets and handoff contract
+
+For each open decision, prepare: the current source/spec premise, alternatives, recommended outcome
+with tradeoffs, affected tasks, and a synthetic acceptance/failure matrix. Keep the recommendation
+labelled proposed until accepted in `DECISIONS.md`; do not choose a storage path, quota, SDK, voice
+policy or release target by implication. The expanded plans in 039–042 specify these research outputs
+and their first delivery checkpoints.
+
+An implementation handoff names its base commit, owned files, applicable accepted decisions, one
+author-visible deliverable and exact acceptance tests. Completion evidence names the tested commit
+and target, commands/results and remaining limits. Mock/provider contracts, live requests, native
+devices and release approval get their own records. Retain failed results and contested remedies.
+
+The U-039-04 gate remains on T003 as currently written: overflow can affect a single large selected
+chapter as well as multi-book work. Whether to split that task into a separately approved bounded
+single-book slice is still an open review question, not a gate removed by this plan.
 
 Release links belong in the repository only when their artifacts are ready. A configured installer,
 responsive viewport, Simulator capture or successful submission is not by itself release evidence.

@@ -1,9 +1,10 @@
 # Completion spec ownership and DAG
 
-This map adds proposed scope to the evidence baseline in [PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md);
-it does not re-audit or promote implementation status. All new 039–042 tasks are unchecked. Existing
-specs remain authoritative for their implemented slices and open decisions. 038 is reserved for the
-voice-options candidate, which has not been integrated or accepted by this documentation change.
+This map reconciles ownership against the November 7 status baseline in
+[PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md). All new 039–042 tasks are unchecked. Existing specs
+remain authoritative for their implemented slices and open decisions. Spec 038 is integrated through
+PR #26 under D-192; its final verification task T022 remains open. The original review baseline and
+results in [SPEC-REVIEW.md](SPEC-REVIEW.md) remain historical evidence.
 
 ## Requirement ownership
 
@@ -17,21 +18,22 @@ they are not replacement implementations. Acceptance criteria in
 | REQ-REVIEW-001 | 034 | Saved-only local metrics, stale/cancel/coverage and byte-identical sources; D-171 gates persistence | L08 |
 | REQ-REVIEW-002 | 037 | 011/022/024/025; exact outgoing scope, zero-send cancel and read-only execution | L05 |
 | REQ-REVIEW-003 | 039 (new) | 034/037 evidence and review boundaries; optional 030 planning sources; quote/profile/rerun attribution | L09 |
-| REQ-VOICE-001 | 017 | Reserved 038 owns preferences; recording visibility, truthful fallback, no implied always-on listening | L12 |
+| REQ-VOICE-001 | 017 | Integrated 038 owns preferences; recording visibility, truthful fallback/refusal, no implied always-on listening | L12 |
 | REQ-FORMAT-001 | 035 | 019 assets; immutable saved snapshot, folder export and failure-safe destinations | L11 |
 | REQ-PUBLISH-001 | 035 | Named/versioned print and eBook rules, measurable inputs and unknowns; no implied KDP acceptance | L11 |
 | REQ-ANDROID-001 | 040 (new) | 010/013/014/016/029; Android-specific save, lifecycle, credentials and supported-target matrix | L18 |
 | REQ-COVER-001 | 041 (new) | 019/035; distinct book-level composition, original asset preservation and target geometry | L10 |
-| REQ-AUDIOBOOK-001 | 042 (new) | 017/038/011/022/035; explicit stock cast/text consent, source traceability and partial-run recovery | L13 |
+| REQ-AUDIOBOOK-001 | 042 (new) | 038 preferences and existing TTS helpers; 017 background boundary, 011/022 consent and 035 snapshot concepts; stock cast/text consent and recovery | L13 |
 | REQ-LIBRARY-001 | 033 | 001/002; identity, unknown-field preservation, checked collections/notes/goals and stale anchors | L07 |
-| REQ-HISTORY-001 | 032 | D-175/D-176 before persistence; conflict-preserving restore and undo/recovery | L07 |
+| REQ-HISTORY-001 | 032 | D-175/D-176 accepted; format/schema follow-through, conflict-preserving restore and undo/recovery remain | L07 |
 | REQ-ROUTING-001 | 036 | 011/022; advisory-only preview, zero side effects and honest unknown price/capability; D-116 not a cap | L14 |
 | REQ-RELEASE-001 | 009 | 013; signing/update decision gates, unsigned provenance and install/update library preservation | L20 |
 | REQ-SURFACE-001 | 013 | 010/014/026/040; per-surface matrix and refusal before capture/request/write | L16 |
 
 No remaining requirement is dropped merely because it already has a spec. Existing primary specs
 retain their task lists; their completion must meet the additional named checks above and in the
-requirements file. This map does not mark any unchecked task done or resolve an open decision.
+requirements file. Accepted decision-only tasks may be reconciled against the register; that does
+not complete their dependent implementation or resolve an open decision.
 
 ## Lane ownership
 
@@ -42,7 +44,7 @@ must match it. The machine-readable ownership map is [completion-specs.json](com
 
 | Lane | Spec owners / supporting documents |
 | --- | --- |
-| L00 Requirements and decisions | 002, 029–037, 039–042; DECISIONS |
+| L00 Requirements and decisions | 002, 029–042; DECISIONS |
 | L01 Identity and docs | 002, 013, 023; README and credential-identity compatibility |
 | L02 Files, recovery and sync | 001, 010, 016, 028; FORMAT |
 | L03 Models, keys and usage | 011, 022, 028 |
@@ -54,8 +56,8 @@ must match it. The machine-readable ownership map is [completion-specs.json](com
 | L09 Readers and continuity | 039; 034/037 evidence, optional 030 planning records |
 | L10 Illustrations and covers | 019, 041 |
 | L11 Formatting and publishing | 035; optional 041 target inputs |
-| L12 Voice and ambient | 017, 028; reserved 038 preferences |
-| L13 Voices and audiobooks | 042; 017 and reserved 038 |
+| L12 Voice and ambient | 017, 028, 038 preferences |
+| L13 Voices and audiobooks | 042; integrated 038, TTS helpers and 017 background boundaries |
 | L14 Routing and spend policy | 036, 011, 022 |
 | L15 CLI and MCP conformance | 018, 024, 025, 026 |
 | L16 Browser product | 010, 011, 013 |
@@ -95,8 +97,8 @@ flowchart LR
   S019[019 asset provenance] --> S041[041 covers]
   S035[035 export snapshots and validation] --> S041
   S011 --> S041
-  S017[017 speech contracts] --> S042[042 audiobooks]
-  S038[038 reserved preferences contract] -. when integrated .-> S042
+  S017[017 explicit background boundary] --> S042[042 audiobooks]
+  S038[038 integrated preferences and TTS helpers] --> S042
   S011 --> S042
   S035 --> S042
   S030[030 optional new planning records] -. only when included .-> S039
@@ -108,6 +110,11 @@ snapshot/validation contracts to 041; 041 may later supply cover measurements to
 check. These are different slices, not a cycle requiring both entire specs to finish first. Likewise
 037's conversational review and 039's structured reports remain distinct; neither changes 034's
 deterministic metrics. D-171, D-115, D-116 and all new U-039…U-042 questions retain their open gates.
+
+Spec 017 explicitly excludes TTS; 038 and the existing speech services supply selection/request
+seams, not an audiobook job system. L06's missing unconditional route to L24 and claim-scoped lane
+interpretations remain [open dependency questions](PRODUCT-COMPLETION.md#dependency-questions-still-open).
+The graph is structurally valid; those acceptance-scope questions are not settled by that result.
 
 ## Validation and review
 

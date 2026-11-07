@@ -29,8 +29,8 @@ SHA-256 hash; the checked library writer refuses stale replacement and preserves
 
 **Proposed by this spec:** a separate chapter history surface for explicit, named snapshots of
 already-saved chapter bodies, with read-only browsing/comparison, a checked restore, and a
-restore-specific undo. These requirements are not claims that the feature exists or has been
-accepted or tested.
+restore-specific undo. D-175/D-176 accepted the storage and retention policies on November 3, 2026;
+the feature remains unimplemented. Premise tests support those decisions, not the history journey.
 
 ## User scenarios and acceptance
 
@@ -130,8 +130,8 @@ with typing undo or an agent-turn undo.
   restore.
 - **FR-003 — Saved library data:** Snapshot content and metadata MUST be authoritative,
   author-owned library data, not an app-profile-only cache or opaque database. Writes MUST use the
-  existing library service/storage boundary. The exact path and schema, and the archive/trash
-  representation, remain open under OQ-001; no implementation may guess them.
+  existing library service/storage boundary. D-175 resolves OQ-001's book-scoped layout and lifecycle;
+  T001's format/ADR follow-through and T003's detailed validated schema precede persistence.
 - **FR-004 — Explicit capture:** The author MUST explicitly supply a snapshot label and request
   capture. Ordinary chapter saves MUST NOT create snapshots automatically. Snapshot creation MUST
   leave the saved chapter file and editor draft unchanged.
@@ -179,14 +179,15 @@ with typing undo or an agent-turn undo.
   add an agent history tool.
 - **FR-014 — Library lifecycle:** Snapshots MUST follow the stable chapter identity through title,
   filename, or order changes. Their storage and recovery MUST remain consistent with the chosen
-  library format, archive, and existing recoverable-trash rules; OQ-001 gates that representation.
+  library format, archive, and existing recoverable-trash rules under accepted D-175.
 - **FR-015 — Local privacy:** Snapshot text MUST stay in the author's library and MUST NOT be sent
   to a provider, included in agent context, logged, or uploaded by this feature. No network request
   or telemetry is introduced.
-- **FR-016 — Retention is undecided:** The feature MUST NOT silently prune or impose an age/count
-  retention limit. Retention period, size limits, and cleanup behavior are open under OQ-002. Until
-  decided, a storage-capacity or write failure MUST be reported without deleting existing
-  snapshots; OQ-002 blocks only implementation of pruning, limits, or cleanup.
+- **FR-016 — No automatic pruning:** Under accepted D-176, the feature MUST NOT automatically prune,
+  expire, compact or impose a quota on snapshots, safety copies or intents. Explicit deletion moves
+  records to recoverable chapter trash; size visibility comes from storage stats. Storage-capacity
+  or write failure MUST be reported without deleting existing records. New numeric caps would need
+  separate measured evidence and acceptance.
 
 ## Edge cases
 
@@ -214,17 +215,17 @@ with typing undo or an agent-turn undo.
   authoritative.
 - Replacing or duplicating whole-library archive/import/export.
 - Exposing history snapshots to agents or model providers.
-- Choosing an automatic retention period, quota, or pruning policy before OQ-002 is decided.
+- Automatic retention periods, quotas or pruning; D-176 rejects them for this scope.
 
-## Open questions
+## Resolved questions and remaining design work
 
-These are spec-local open questions, not accepted public decision IDs. Each blocks only the tasks
-that depend on its answer.
+The original local question IDs are retained for traceability. Their public decisions are accepted;
+the post-submission implementation still needs the detailed format/schema and safety evidence.
 
-| ID | Open question | Evidence / decision needed | Blocks |
+| ID | Question | Accepted decision | Remaining work |
 | --- | --- | --- | --- |
-| OQ-001 | What author-owned file layout and schema store snapshot bodies, provenance, safety copies, and restore-undo records, and how do they travel through archive import/export and chapter trash/restore? | Compare readable-file and scale implications; confirm compatibility with the library port, format versioning, 010 archive rules, and existing trash lifecycle; record a public decision before persistence code. | Snapshot persistence, restore/undo persistence, and archive/trash integration tasks only. |
-| OQ-002 | What retention, size-limit, and cleanup policy applies to named and safety snapshots? | Decide whether and how authors inspect size, remove snapshots, or opt into pruning; specify what happens to restore-undo dependencies and require safe recovery for removed data. Do not select a time period by assumption. | Pruning, size-limit, and cleanup tasks only. Capture/list/open/compare/restore may proceed without automatic cleanup and must report storage failures. |
+| OQ-001 | History layout, schema and archive/trash lifecycle | D-175: book-scoped `history/<chapterId>/` records with front matter and canonical bodies, loose schemas and newer-schema refusal; archive/whole-book trash carry them, chapter trash leaves stable-ID history available. | T001 format/ADR follow-through and T003 detailed fields/label grammar, then checked storage and lifecycle tests. |
+| OQ-002 | Retention, size visibility and cleanup | D-176: no automatic pruning/quota/expiry/compaction, including unapplied intents; explicit recoverable deletion and stat-based size visibility. | T011 must implement the accepted policy and preserve restore dependencies. No new period or quota is implied. |
 
 ## Success criteria
 
@@ -248,5 +249,5 @@ that depend on its answer.
   has its own integrity hash.
 - A restore preview is read-only. A restore only becomes an editor change after author confirmation
   and a confirmed checked commit; the editor is never replaced by a merely selected snapshot.
-- Snapshot storage is author-owned data. Its exact format and lifecycle are not assumed until
-  OQ-001 is resolved.
+- Snapshot storage is author-owned data following D-175. Publish the detailed format contract before
+  its first writer; this spec update does not add history files to the current product format.

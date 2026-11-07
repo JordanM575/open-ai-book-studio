@@ -1,6 +1,9 @@
 # In-flight guidance semantics (031 T003)
 
-Status: research, not accepted. This document decides whether new guidance can
+> Status update, November 7: the recommendation was accepted on November 3 as D-179 in
+> `docs/DECISIONS.md`. It excludes live steering; the original research below is retained.
+
+Status at research: not accepted. This document decides whether new guidance can
 reach a running or paused plan and whether that revises the plan or requires a
 new turn, and proposes D-179. It authorizes no runtime, composer, or schema
 change; plan storage (T005) and controls (T006–T008) still wait on acceptance.

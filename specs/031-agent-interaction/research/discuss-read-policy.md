@@ -1,6 +1,9 @@
 # Discuss default and read-tool policy (031 T001)
 
-Status: research, not accepted. This document records the classification facts
+> Status update, November 7: the recommendation was accepted on November 3 as D-177 in
+> `docs/DECISIONS.md`. The original research below is retained; runtime delivery remains open.
+
+Status at research: not accepted. This document records the classification facts
 and the read-only subset seam behind the T001 decision, and proposes D-177. It
 authorizes no composer, runtime, or schema change; T004–T008 still wait on
 acceptance.

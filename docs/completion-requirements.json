@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "reviewedBaseline": "f3541f6750e60226ce8490e5ac192f10a1856dab",
   "date": "2026-11-04",
+  "statusBaseline": "55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34",
+  "statusDate": "2026-11-07",
   "scope": "Product requirements distilled from research; classification is evidence-scoped, not release approval.",
   "requirements": [
     {
@@ -78,7 +80,7 @@
       "acceptance": [
         "The interface identifies when recording starts and stops and makes the recognized text visible.",
         "Voice-service failure has a truthful fallback or refusal and does not silently lose the author's request.",
-        "Persistent preferences remain owned by reserved spec 038; this report does not define or implement them."
+        "Persistent preferences use integrated spec 038 and D-192: explicit catalog-validated selections, no Settings probes and no silent provider switching. T022 remains open; automated evidence does not establish live-provider acceptance."
       ]
     },
     {
@@ -174,7 +176,8 @@
     },
     {
       "id": "REQ-HISTORY-001",
-      "classification": "decision-blocked",
+      "classification": "missing",
+      "statusNote": "D-175/D-176 accepted on 2026-11-03; history implementation remains planned. Finish T001's format/ADR follow-through and T003's detailed schema before persistence.",
       "public_anchors": [
         "002",
         "032"

@@ -2,6 +2,11 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
+**Status, November 7, 2026:** the repository and original demo are public and the event form was
+submitted before the deadline, as recorded in `hackathon/SUBMISSION.md`. Remaining unchecked rows
+include deliverables or checks not established by that submission. The new README demo is a
+post-submission update, not a replacement of the original event evidence.
+
 ## Phase 1 — Sample and packet
 
 - [x] T001 Commit `samples/the-salt-road` with the original two-chapter book, Story Bible, illustration
@@ -35,9 +40,16 @@
   the floor. T007's 2026-11-03 addendum re-confirms verify/smoke on the working tree.
 - [ ] T009 Make the repository public only after the scan passes; fill the repository link and the
   private-window check.
+  Repository publication and link are recorded in the packet; this row remains open for its complete
+  check record, including the private-window check.
 - [ ] T010 Fill the video links, thumbnails and captions; check both from a private window.
-- [ ] T011 Submit the form before November 4, 9:00 PM ET; keep the confirmation and the submitted
+  The submitted master link is preserved and the November 7 current demo has a README thumbnail.
+  Short-cut/caption deliverables and the complete private-window checks remain unconfirmed here.
+- [x] T011 Submit the form before November 4, 9:00 PM ET; keep the confirmation and the submitted
   commit hash in the packet.
+  Packet records **Project Submitted** before the deadline, original video `tLFCn9V193E`, and public
+  main `f3541f6750e60226ce8490e5ac192f10a1856dab`. Reconciled from that record on November 7;
+  this checkbox does not close the remaining film/release checks.
 
 ## Dependencies
 

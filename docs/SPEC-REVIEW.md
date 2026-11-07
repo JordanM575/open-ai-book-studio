@@ -1,5 +1,10 @@
 # Completion specifications: requested model review
 
+> Historical review, November 4, 2026. The results and reservation below describe that reviewed tree.
+> November 7 reconciliation integrates 038 ownership and expands the plans; it does not retroactively
+> turn this report into a review of those changes. Current scope/questions are in
+> [PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md).
+
 ## Scope and route
 
 - Date: 2026-11-04.

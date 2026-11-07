@@ -23,6 +23,12 @@ remaining release checks continue separately; unchecked items below are still ou
 | Runnable sample | `samples/the-salt-road` |
 | License | Apache-2.0 for code; see the sample's own attribution for its text and images |
 
+**Post-submission update, November 7, 2026:** the README now features the author's newer
+[Open Book Studio demo](https://youtu.be/0RsFzUq97xU). The table above preserves the video actually
+submitted for the event. The newer link does not replace the submitted revision or certify every
+film deliverable/review. Current implementation checks are recorded separately in
+[docs/TESTING.md](../docs/TESTING.md#recorded-baseline); the verification section below is historical.
+
 ## The idea
 
 **The agent works on the actual book, and the author keeps the actual files.**

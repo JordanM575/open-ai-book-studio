@@ -2,9 +2,11 @@
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
 
+**Status:** Draft / Planned. Expanded November 7, 2026; no decision or implementation accepted here.
+
 ## Approach
 
-Reuse 037's foreground provider-disclosure and read-only execution boundary, 034's saved-source
+Build on 037's planned foreground provider-disclosure and read-only execution boundary, 034's saved-source
 evidence concepts and 011/022's configured connections. Do not merge their user-visible report types.
 Define studio-owned finding/profile/run contracts in `packages/core`; provider output is untrusted
 and validated at the runtime edge. `packages/app` owns scope selection, findings, citation navigation,
@@ -16,14 +18,47 @@ approved scope. Credentials remain in the provider service; no renderer access o
 
 ## Sequence and gates
 
-Resolve U-039-01/02 before schema and comparison work; U-039-04 before multi-book request assembly.
-Deliver a single-book volatile report first. Add cross-book inputs only through explicit selection;
+Resolve U-039-01/02 before schema and comparison work. U-039-04 currently gates T003's selected-source
+request assembly as well as T006's multi-book work; single-book input can overflow too. The proposed
+first delivery is a single-book volatile report, after those gates. Add cross-book inputs only through explicit selection;
 030 is needed only when its proposed planning records are included. Existing manuscript sources do
 not wait for all of 030. 036 remains advisory and is not a dispatch prerequisite.
 
 Resolve U-039-03 and D-171 before planning any persistence implementation. This plan adds no file
 format. If approved later, amend docs/FORMAT.md, add a storage ADR, checked Library writes, conflict,
 retention/deletion and recovery tests before implementing saved reports.
+
+## Decision work before implementation
+
+| Question / task | Required decision packet | Evidence that distinguishes alternatives |
+| --- | --- | --- |
+| U-039-01 / T002 | Finding fields, source-location representation, exact versus normalized quote matching, relation to U-037-02 | Synthetic repeated passages, Unicode/line endings, invented quotes, wrong book/revision and missing sources. Document which findings are withheld and why; never select a plausible replacement passage. |
+| U-039-02 / T002 | Reader identity/version, editable profile scope, what two runs may compare and how input changes are labelled | Two profiles across two source revisions; changed profile text cannot relabel an earlier run. Separate changed evidence from changed model interpretation. |
+| U-039-04 / T003/T006 | Explicit source bounds and overflow/refusal behavior for single- and multi-book inputs, with optional planning inclusion | Oversized one-chapter and multi-book fixtures; payload inventory must match disclosure. Compare smaller-scope refusal and any proposed reduction policy without accepting silent truncation. |
+| U-039-03 / T007 | Whether D-171 applies, excerpts/profile retention, deletion, export and archive/sync implications | Compare volatile-only and recoverable saved-report alternatives. Do not inherit 034's proposed numeric cap or a new storage directory by assumption. |
+
+The disputed proposal to exempt a bounded single-book T003 slice from U-039-04 remains unresolved.
+T001 may prepare its fixture/disclosure matrix, but the existing gate stays until an explicit task/spec
+amendment is accepted. Test design is not permission to implement a competing overflow policy.
+
+## Delivery checkpoints
+
+1. **Contract inventory (T001):** map existing 034 snapshot/evidence types and 011/022 consent to
+   037's unfinished read-only boundary. Name the modules actually reusable and the missing contracts;
+   keep 034 metrics, 037 conversation and 039 findings separate in the interface and test inventory.
+2. **One selected-source report (T002–T004/T008):** after acceptance of the schema/profile/overflow
+   decisions, disclose captured text, provider/model, profile, terms and known/unknown cost. Enforce
+   the selected-source boundary at execution, not just the picker. Exit only when cancel/absent consent
+   sends nothing, hostile content cannot widen scope and valid quotations navigate to their snapshot.
+3. **Explicit reread (T005):** retain both volatile runs with their identities and source/profile
+   versions. Recheck currency without refreshing content or sending a request automatically. Exercise
+   changed/deleted chapters and malformed provider output before comparison is described as available.
+4. **Cross-book continuity (T006):** require a visible inventory of each included book and source kind.
+   Existing manuscripts do not require 030's new records; adding those records waits for their accepted
+   schema/scope. Findings must identify missing evidence rather than invent a continuity conclusion.
+5. **Acceptance (T007–T009):** keep persistence out until separately approved. Run the built-app
+   disclosure/navigation/stop/refusal journeys and record exact-head results. A quote-valid report
+   still needs a separately agreed quality evaluation; transport tests do not prove useful critique.
 
 ## Verification
 

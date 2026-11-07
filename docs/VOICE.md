@@ -1,8 +1,10 @@
 # Voice
 
-AI Book Studio has two separate voice paths: dictation sends an author-triggered recording for
+Open Book Studio has two separate voice paths: dictation sends an author-triggered recording for
 transcription, while speaking turns visible text into audio. Their provider choices are independent
-of the writing agent's chat model.
+of the writing agent's chat model. Persistent desktop choices shipped in
+[PR #26](https://github.com/JordanM575/open-book-studio/pull/26) on November 7, 2026
+(spec 038, D-192, ADR 0015).
 
 ## Dictation
 
@@ -25,7 +27,11 @@ ignores its result but cannot recall audio already sent.
 
 In Settings → **Voice → Read-aloud and agent replies**, choose a connected speaking account, model and
 one of that model's listed voices. OpenAI's existing `gpt-4o-mini-tts`, `tts-1` and `tts-1-hd` models
-remain available with their documented voice family. The curated OpenRouter catalog offers:
+remain available with model-specific local voice lists. `gpt-4o-mini-tts` offers `alloy`, `ash`,
+`ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer` and `verse`; `tts-1` and
+`tts-1-hd` use that list without `ballad` and `verse`. `marin` and `cedar` are not enabled pending
+a separate catalog decision. These describe the checked-in catalog, not a fresh live-provider probe.
+The curated OpenRouter catalog offers:
 
 | Model | Voices | Audio returned |
 | --- | --- | --- |
@@ -69,3 +75,8 @@ is separate and does not imply browser access to provider credentials.
   profile/preload round-trip.
 
 No live provider, provider key, microphone or user profile is needed for these automated checks.
+
+The [November 7 integrated baseline](TESTING.md#recorded-baseline) records passing automated checks.
+[038 T022](../specs/038-voice-options/tasks.md) remains unchecked at the author's direction: it is
+the final automated-verification record, not a newly added live-provider task. Live availability,
+microphone permissions and audible playback need their own evidence; the merge does not establish them.

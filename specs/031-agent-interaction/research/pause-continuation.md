@@ -1,6 +1,9 @@
 # Pause acknowledgment and continuation semantics (031 T002)
 
-Status: research, not accepted. This document defines the completed-pause
+> Status update, November 7: the recommendation was accepted on November 3 as D-178 in
+> `docs/DECISIONS.md`. The original research below is retained; runtime delivery remains open.
+
+Status at research: not accepted. This document defines the completed-pause
 boundary, same-turn versus new-turn continuation, and non-background window
 close from the implemented stop/approve/turn machinery, and proposes D-178.
 It authorizes no runtime, composer, or schema change; T005+ still wait on
