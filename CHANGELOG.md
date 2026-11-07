@@ -55,6 +55,10 @@ Update the `Unreleased` section before every commit.
   cannot hard-link, nothing is published and the script says so, rather than writing the record in place. Five
   tests cover the refusal, the absence of a leftover temporary file, the new `publishRecord` helper, the
   fail-closed case and a failed write or sync, which also removes its temporary file.
+- The manual Linux workflow's end-to-end job now installs only Chromium, the one browser its stages drive, and the step
+  has its own ten-minute limit. It used to install Chromium, Firefox and WebKit with all their system packages; that
+  step stalled for the whole 45-minute job limit on two of the last six runs and cancelled the job. Firefox and WebKit
+  are only needed by `bun run matrix:web`, which the job does not run.
 
 - The manual Linux workflow's end-to-end job now uploads the smoke's failure screenshot and console log when a check
   fails (kept for seven days). The job still fails 9 of the 44 smoke checks on Linux while it passes on macOS, and
