@@ -8,6 +8,11 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 ### Changed
+- The hidden smoke run checks a damaged chapter file in the real app. While the book is open it writes a chapter file with
+  broken front matter into the disposable smoke library, as another editor might, and confirms the workspace names the
+  file in its notice, the readable chapters stay readable, a Word export and a Markdown export through the real bridge
+  are refused with the fixed message, the exports already in the folder are byte for byte unchanged, and no source file
+  changes. It then removes the file and takes the removal in. With the export refusal switched off the check fails.
 - The hidden smoke run no longer asks the operating system for protected storage. An unpackaged run started with both
   `STUDIO_TEST=1` and `STUDIO_NO_KEYCHAIN=1` uses a cipher that reports storage as unavailable and refuses to encrypt or
   decrypt before the system is asked, including the status read Settings makes on open (D-191). It is a refusal and
