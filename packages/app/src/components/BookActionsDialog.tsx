@@ -80,6 +80,10 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
       const base = saved && saved.id === book.id ? saved : book;
       const result = await editBook(base, { title: title.trim(), description: description.trim() });
       setSaved(result.book);
+      // A field the author left as it was follows the book the save returned, so the next save does not
+      // read the old text as a deliberate change back over what another writer put there.
+      if (title === base.title) setTitle(result.book.title);
+      if (description === (base.description ?? "")) setDescription(result.book.description ?? "");
       onSaved(result.book);
       if (result.status === "conflict") {
         // The book now shows the other writer's values; the note says where the author's went.

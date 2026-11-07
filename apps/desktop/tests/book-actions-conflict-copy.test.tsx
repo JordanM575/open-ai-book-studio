@@ -121,4 +121,38 @@ describe("the book settings dialog when an edit clashes with an outside one", ()
     expect(second?.title).toEqual({ from: "The Salt Causeway", to: BOOK.title });
     await testing.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
+
+  test("a field the author left alone follows the book a conflicting save returned, so a retry sends only what was edited", async () => {
+    const theirs = bookSchema.parse({
+      id: BOOK.id,
+      title: "Their Title",
+      description: "Their words.",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const edit = mock(async (_bookId: string, changes: Record<string, { from: unknown; to: unknown }>) =>
+      "description" in changes && changes.description?.to === "My words."
+        ? { ok: true, data: { status: "conflict", book: theirs, savedAs: COPY, fields: ["description"] } }
+        : { ok: true, data: { status: "saved", book: theirs } }
+    );
+    mockStudio(edit);
+    const { body, onOpenChange } = renderDialog();
+
+    // Another writer changed the title and the description; the author edits only the description.
+    testing.fireEvent.change(body.getByTestId("book-description"), { target: { value: "My words." } });
+    testing.fireEvent.click(body.getByTestId("save-book-settings"));
+    await testing.waitFor(() => body.getByTestId("book-settings-conflict"));
+    // The title the author never touched now shows the other writer's.
+    expect((body.getByTestId("book-title") as HTMLInputElement).value).toBe("Their Title");
+
+    testing.fireEvent.change(body.getByTestId("book-description"), { target: { value: "My words, revised." } });
+    testing.fireEvent.click(body.getByTestId("save-book-settings"));
+
+    await testing.waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
+    // The retry sends the description the author edited and leaves the title alone.
+    const second = edit.mock.calls[1]?.[1] ?? {};
+    expect(Object.keys(second)).toEqual(["description"]);
+    expect(second.description).toEqual({ from: "Their words.", to: "My words, revised." });
+    await testing.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
 });

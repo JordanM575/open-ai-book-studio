@@ -79,6 +79,8 @@ Update the `Unreleased` section before every commit.
   outside change. It stays open, names the fields whose version was kept as a copy, and offers Show the copy.
   After a save that applied one field and kept the other as a copy, the dialog measures its next save against what
   that save left, so changing the applied field back is saved and not dropped as no change.
+  A field the author left alone follows the book that save returned, so the retry sends only what was edited and
+  does not put the old text back over another writer's change.
 - Choosing the book's default model when another writer changed it first lists the author's copy, so the
   saved-copies banner and Show in folder appear, instead of leaving only a notice.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
