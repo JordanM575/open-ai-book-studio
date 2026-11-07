@@ -43,6 +43,9 @@ Update the `Unreleased` section before every commit.
 
 ### Agent interaction
 
+- Give failed initial approval publication a distinct action-specific error while retaining the
+  orthogonal conversation warning. Completion, visible/spoken event consumers and notifications
+  no longer receive the same persistence text as both fields; no destructive action resumes.
 - Keep Ambient controls owned through request-only Stop and show settled changes, undo availability
   and save warnings. Ignore late replies/events, expose failed Stop requests and retain typed input.
   Accumulate usage/conversation/approval persistence warnings without losing successful book effects;

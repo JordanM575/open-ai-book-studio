@@ -857,7 +857,7 @@ export class AgentRuntime {
         });
         await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text), ...state.approvals]);
         controller.signal.throwIfAborted();
-        if (state.persistenceError) throw new Error(state.persistenceError);
+        if (state.persistenceError) throw new Error("The approval request could not be saved. The proposed action was not started.");
         const active = this.active.get(turnId);
         if (active) {
           const captured = approval;

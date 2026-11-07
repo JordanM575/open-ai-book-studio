@@ -604,6 +604,40 @@ describe("D178 definitive stop boundary", () => {
     expect(terminals(events)).toHaveLength(1);
   });
 
+  test("initial approval publication failure has a distinct primary error and one persistence warning", async () => {
+    const model = memoryApprovalModel();
+    const events: AgentEvent[] = [];
+    const outcomes: AgentOutcome[] = [];
+    const updateBook = spyOn(library, "updateBook");
+    library.threads.upsertMessage = async () => { throw new Error("PRIVATE_SYNTHETIC_STORAGE_FAILURE"); };
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model,
+      (outcome) => outcomes.push(outcome));
+    try {
+      const failure: unknown = await runtime.runToCompletion({ mode: "edit", bookId: book.id, prompt: "Forget", background: true })
+        .then(() => null, (error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      if (!(failure instanceof Error)) throw new Error("Missing completion failure");
+      const terminal = events.find((event) => event.type === "error");
+      const outcome = outcomes.find((entry) => entry.kind === "error");
+      if (terminal?.type !== "error" || !outcome) throw new Error("Missing error receipts");
+      const warning = "The conversation outcome could not be fully saved. Changes to the book remain.";
+      const primary = "The approval request could not be saved. The proposed action was not started.";
+      expect(terminal.message).toBe(primary);
+      expect(terminal.persistenceError).toBe(warning);
+      expect(terminal.changed).toBe(0);
+      expect(failure.message).toContain(primary);
+      expect(failure.message.split(warning)).toHaveLength(2);
+      const notification = notificationFor(outcome);
+      expect(notification?.body).toContain(primary);
+      expect(notification?.body.split(warning)).toHaveLength(2);
+      expect(JSON.stringify(events)).not.toContain("PRIVATE_SYNTHETIC_STORAGE_FAILURE");
+      expect(events.some((event) => event.type === "approval")).toBe(false);
+      expect(terminals(events)).toHaveLength(1);
+      expect(model.doStreamCalls).toHaveLength(1);
+      expect(updateBook).not.toHaveBeenCalled();
+    } finally { updateBook.mockRestore(); }
+  });
+
   for (const failure of ["none", "checkpoint", "conversation", "reference"] as const) {
     test(`stop waits for slow persistence with failure at: ${failure}`, async () => {
       const chapter = await library.createChapter(book.id, { title: "Checkpoint", content: "The old opening.\n" });
