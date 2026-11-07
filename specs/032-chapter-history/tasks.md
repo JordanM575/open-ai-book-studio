@@ -62,6 +62,12 @@ integration, cleanup and end-to-end acceptance remain open.
   shared components and token conventions. Show labels, capture times, source versions, corrupt or
   unavailable states, and whether a comparison excludes an unsaved editor draft. Test author-visible
   outcomes and keyboard/focus behavior with synthetic chapters.
+  Partial W02 UI delivery (2026-11-07): `packages/app/src/components/chapter-history/` provides an
+  isolated injected-API dialog for saved-only capture/list/open/compare, literal bodies and changed-span
+  comparison, stat sizes, individual issues, source/draft disclosure, focus/selection and asynchronous
+  lifetime guards. See its README for the exact host contract. The entry point, real host draft gate,
+  IPC/preload/browser adapters and light/dark/reduced-transparency visual acceptance remain parent
+  integration work; T006 stays unchecked. No restore/undo or deletion action is exposed.
 
 ## Phase 3 — Checked restore and its undo
 
@@ -139,6 +145,19 @@ integration, cleanup and end-to-end acceptance remain open.
   of new core/desktop tests and their imported closure passed. Focused lint has only the existing
   LibraryService watch non-null-assertion warning. Parent owns full verify/coverage/build/e2e and
   independent candidate review. T007–T009 and T014–T015 remain unticked.
+
+### W02 isolated UI evidence (2026-11-07)
+
+- `bun test apps/desktop/tests/chapter-history-ui.test.tsx apps/desktop/tests/dialog-focus.test.tsx`:
+  **40 passed, 0 failed, 188 assertions** (36 new history UI cases and four shared focus regressions).
+  Synthetic callbacks cover individual unavailable records, literal/Unicode bodies, source/draft
+  disclosure, invalid labels, duplicate submission, uncertain capture review, read/compare failures,
+  selection and source races, navigation ABA, close/reopen, unmount and focus return.
+- Desktop `tsconfig.web.json` and `tsconfig.node.json` no-emit typechecks passed; focused Biome lint
+  passed for the new leaf and test. Only the new test's desktop include/exclude entries were added.
+- These are isolated component receipts, not IPC/host-gate, visual, browser or full application
+  acceptance. T005/T006/T014 remain open; parent owns mounting and integrated gates. Restore/undo,
+  retention cleanup and book-level size totals are not delivered by this UI leaf.
 
 ### W01 validation evidence (2026-11-07)
 

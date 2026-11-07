@@ -47,6 +47,12 @@ Update the `Unreleased` section before every commit.
   writes. Add synthetic core/desktop fault, concurrency, reload, archive and racing-draft tests.
   Live draft/save gating, IPC, confirmation/recovery UI and whole-feature acceptance remain open.
 
+- Add an isolated chapter-history dialog with named saved-only capture, per-record size and
+  unavailable notices, literal read-only bodies and saved-text comparison. Bind asynchronous results
+  to library/chapter/view lifetimes and exact source tokens; preserve dirty drafts, block duplicate
+  submissions and require history review after unconfirmed capture. Focused synthetic UI coverage
+  accompanies the leaf; parent mounting, validated host APIs, restore/undo and integrated acceptance
+  remain follow-through for spec 032.
 - Correct history codec admission before new recovery writers use it: reject unpreservable YAML
   metadata without changing the file, and keep all history source-resolution diagnostics quiet.
   Verify saved-source UTF-8/raw hashes, snapshot metadata before asynchronous serialization, and
