@@ -57,7 +57,8 @@ Update the `Unreleased` section before every commit.
   objects key by key, characters and memories record by record, rewriting only the parts that changed.
   Where both sides changed the same part, the file keeps the other writer's value, the author's version
   of the book is kept as `conflicts/book.conflict-external-edit.<device>.<time>.json` and listed with
-  the book's other conflict copies, and the author is told. The format settings, a rename, the model
+  the book's other conflict copies. The Story Bible names the fields that overlapped and offers
+  "Show the copy", and the workspace's saved-copies banner offers it too. The format settings, a rename, the model
   picker, the agent settings and the agent's book tools (and so the toolkit's) merge the same way, and
   a story arc written as lists stays as written until that part is edited. The default provider,
   connection and model merge as one choice, so a new connection is never saved beside a model another

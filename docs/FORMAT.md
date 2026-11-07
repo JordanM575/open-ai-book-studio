@@ -97,8 +97,9 @@ the agent's book tools, the `bookwriter` toolkit and other devices through a syn
 - Where another writer changed the same part since the editor read it, the file keeps their value and
   the editor's whole version of the book is kept as
   `conflicts/book.conflict-external-edit.<deviceId>.<timestamp>.json`. The parts only the editor
-  changed are saved as usual. The author is told the version was kept as a copy, and the agent's tools
-  tell the model where the copy went. The copy is listed with the book's other conflict copies.
+  changed are saved as usual. The Story Bible says which fields overlapped and offers to show the copy;
+  the agent's tools tell the model where the copy went. The copy is listed with the book's other
+  conflict copies, so the workspace's saved-copies banner offers it too.
 
 A caller with no earlier read, such as the import, replaces whole fields instead. It leaves every
 part it did not change as it was written, and if the file changed while it was saving it keeps its

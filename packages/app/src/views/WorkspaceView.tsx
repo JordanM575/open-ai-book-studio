@@ -1203,6 +1203,7 @@ export function WorkspaceView({
             book={detail.book}
             onClose={() => setBibleOpen(false)}
             onSaved={(book) => setDetail((current) => (current ? { ...current, book } : current))}
+            onConflictCopy={refreshConflicts}
             onNotice={onNotice}
           />
           <FormatDialog

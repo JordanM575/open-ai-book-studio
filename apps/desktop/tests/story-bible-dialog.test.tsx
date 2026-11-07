@@ -78,10 +78,11 @@ function renderDialog(book: BookMeta, handlers: { onSaved?: () => void; onClose?
   const onSaved = mock(handlers.onSaved ?? (() => {}));
   const onClose = mock(handlers.onClose ?? (() => {}));
   const onNotice = mock(handlers.onNotice ?? ((_error: unknown) => {}));
+  const onConflictCopy = mock(() => {});
   testing.render(
-    React.createElement(StoryBibleDialog, { open: true, book, onClose, onSaved, onNotice })
+    React.createElement(StoryBibleDialog, { open: true, book, onClose, onSaved, onConflictCopy, onNotice })
   );
-  return { onSaved, onClose, onNotice };
+  return { onSaved, onClose, onNotice, onConflictCopy };
 }
 
 describe("StoryBibleDialog", () => {
@@ -236,7 +237,7 @@ describe("StoryBibleDialog over a book another writer changes", () => {
 
   test("a character another device added while the dialog was open survives the author's outline edit", async () => {
     const { book, path } = await realStudio();
-    const { onSaved } = renderDialog(book);
+    const { onSaved, onConflictCopy } = renderDialog(book);
 
     await writtenElsewhere(path, (raw) => {
       raw.characters.push(JONAH);
@@ -250,6 +251,8 @@ describe("StoryBibleDialog over a book another writer changes", () => {
     expect(disk.outline).toBe("Two sisters and a letter.");
     expect(disk.characters.map((character: Raw) => character.name)).toEqual(["Mara", "Jonah"]);
     expect(disk.characters[0].futureTrait).toEqual({ addedBy: "a newer build" });
+    // Nothing overlapped, so no copy was kept and the workspace has nothing to list again.
+    expect(onConflictCopy).not.toHaveBeenCalled();
   });
 
   test("a memory the toolkit's add_memory saved while the dialog was open survives the author's save", async () => {
@@ -271,9 +274,9 @@ describe("StoryBibleDialog over a book another writer changes", () => {
     expect(disk.memories.map((memory: Raw) => memory.text)).toEqual(["The tide comes in early.", "The lamp was lit at dusk."]);
   });
 
-  test("when both sides change the outline, the other value stays, the author's goes to a conflict copy, and the author is told", async () => {
+  test("when both sides change the outline, the other value stays, the author's goes to a conflict copy, and the dialog says so", async () => {
     const { root, library, book, path } = await realStudio();
-    const { onClose, onNotice } = renderDialog(book);
+    const { onClose, onNotice, onConflictCopy } = renderDialog(book);
 
     await writtenElsewhere(path, (raw) => {
       raw.outline = "Three sisters.";
@@ -284,12 +287,13 @@ describe("StoryBibleDialog over a book another writer changes", () => {
     });
     testing.fireEvent.click(testing.within(document.body).getByTestId("save-story-bible"));
 
-    await testing.waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1), { timeout: 4000 });
-    const [error] = onNotice.mock.calls[0] ?? [];
-    const told = error instanceof Error ? error.message : "";
-    expect(told).toContain("The Story Bible changed on disk while you were editing");
-    expect(told).toContain("kept as a separate copy");
+    const note = await testing.waitFor(() => testing.within(document.body).getByTestId("story-bible-conflict"), { timeout: 4000 });
+    expect(note.textContent).toContain("The outline changed on disk while you were editing");
+    expect(note.textContent).toContain("kept as a separate copy");
     expect(onClose).not.toHaveBeenCalled();
+    expect(onNotice).not.toHaveBeenCalled();
+    // The workspace lists the book's conflict copies again, so its banner offers the copy too.
+    expect(onConflictCopy).toHaveBeenCalledTimes(1);
 
     const disk = await readRaw(path);
     expect(disk.outline).toBe("Three sisters.");
@@ -308,5 +312,9 @@ describe("StoryBibleDialog over a book another writer changes", () => {
     // The copy is listed with the book's other conflict copies.
     const listed = await library.listConflicts(book.id);
     expect(listed.map((entry) => entry.savedAs)).toContain(`books/${book.id}/conflicts/${name}`);
+
+    testing.fireEvent.click(testing.within(note).getByText("Show the copy"));
+    await testing.waitFor(() => expect(shown).toHaveLength(1), { timeout: 2000 });
+    expect(shown[0]).toBe(join(root, "books", book.id, "conflicts", name));
   });
 });
