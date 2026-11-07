@@ -10,9 +10,11 @@ import type { PreparationOutcome, PreparedReaderReview, ReaderReviewProps, Start
 
 let testing!: typeof import("@testing-library/react/pure");
 let ReaderReviewPanel!: typeof import("@ai-book-studio/app/components/reader-review/ReaderReviewPanel").ReaderReviewPanel;
+let navigationState!: typeof import("@ai-book-studio/app/components/reader-review/ReaderReviewResults").navigationState;
 beforeAll(async () => {
   testing = await mountDom();
   ({ ReaderReviewPanel } = await import("@ai-book-studio/app/components/reader-review/ReaderReviewPanel"));
+  ({ navigationState } = await import("@ai-book-studio/app/components/reader-review/ReaderReviewResults"));
 });
 afterEach(() => testing.cleanup());
 afterAll(async () => { await unmountDom(); });
@@ -64,6 +66,43 @@ async function complete() {
 function statusText() { return body().getByRole("status").textContent ?? ""; }
 
 describe("reviewed disclosure and cancellation regressions", () => {
+  test.each(["clean", "identity"] as const)("editor %s accessors are refused without reads by navigation and mounted Strict Mode", async (field) => {
+    const { StrictMode } = await import("react");
+    const value = await envelope();
+    const completed = await run(value);
+    let reads = 0;
+    const editor: NonNullable<ReaderReviewProps["editor"]> = { clean: true, identity: citation().identity };
+    Object.defineProperty(editor, field, { enumerable: true, get() { reads++; return field === "clean" ? true : citation().identity; } });
+    const validEditor = { clean: true, identity: citation().identity };
+    const sources = currentSources(value);
+    // Exercise malformed → valid → malformed facts without React's development prop-diff instrumentation.
+    expect(navigationState(completed, citation(), sources, editor)).toBe("stale");
+    expect(navigationState(completed, citation(), sources, validEditor)).toBe("ready");
+    expect(navigationState(completed, citation(), sources, editor)).toBe("stale");
+    expect(reads).toBe(0);
+    const onNavigate = mock(async () => "selected" as const);
+    const props: ReaderReviewProps = { open: true, bookId: saved.bookId, viewKey: "accessor-view", disclosureRevision: "facts-1",
+      supported: true, currentSources: sources, editor,
+      onPrepare: async () => ({ kind: "ready", prepared: prepared(value) }),
+      onStart: async () => ({ kind: "completed", run: completed }), onStop: async () => {}, onNavigate, onClose: () => {} };
+    const view = testing.render(<StrictMode><ReaderReviewPanel {...props} /></StrictMode>);
+    await complete();
+    expect(reads).toBe(0);
+    expect((body().getByRole("button", { name: "Show exact passage" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Show exact passage");
+    expect(onNavigate).not.toHaveBeenCalled();
+    view.unmount();
+    expect(reads).toBe(0);
+    // Separate mount: React development tracks inspect replaced nested props, outside our verifier.
+    // Keep the mounted positive control without claiming framework-wide getter-free prop replacement.
+    testing.render(<StrictMode><ReaderReviewPanel {...props} editor={validEditor} /></StrictMode>);
+    await complete();
+    expect((body().getByRole("button", { name: "Show exact passage" }) as HTMLButtonElement).disabled).toBe(false);
+    click("Show exact passage");
+    await testing.waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+    expect(reads).toBe(0);
+  });
+
   test("sparse and inherited terms never expose Start", async () => {
     const value = await envelope();
     const data = prepared(value);
