@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { ChevronRight, Plus, Trash2 } from "lucide-react";
-import type { BookMeta, Character, Memory, StoryArc } from "@ai-book-studio/core/schema";
+import type { ArcValue, BookMeta, Character, Memory, StoryArc } from "@ai-book-studio/core/schema";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-book-studio/ui/components/collapsible";
@@ -71,7 +71,7 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
     }
   };
 
-  const setArcPart = (key: keyof StoryArc, field: keyof StoryArc[keyof StoryArc], value: string): void => {
+  const setArcPart = (key: ArcValue, field: "overview" | "keyMoments" | "openQuestions", value: string): void => {
     setArc((current) => ({ ...current, [key]: { ...current[key], [field]: value } }));
   };
 

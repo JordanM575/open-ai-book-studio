@@ -84,7 +84,9 @@ enough, and it keeps the format explainable. The index exists for queries, not f
 - A chapter with no front matter is read using a deterministic fallback identity derived from its
   filename, then healed on the next save. Prose is never rejected for lacking metadata.
 - `schemaVersion` newer than the app → refuse with "This library was written by a newer version of
-  AI Book Studio. Update the app to open it." Refusing loudly beats corrupting silently.
+  Open Book Studio. Update the app to open it." Refusing loudly beats corrupting silently. Every write
+  into a book checks first (`library/schema-guard.ts`, inside `serializeWrite`, the image store's and
+  the thread store's writes), so a book another device upgrades while it is open is never written.
 - Closing the window or quitting first asks the window for its newest text, which the open editor
   saves through the normal path, then flushes the draft buffer through the normal save path (and
   therefore through the conflict protocol), once, before the window closes. The editor sends its

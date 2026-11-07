@@ -56,7 +56,7 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 | `isErotica` | boolean | Gates explicit-content affordances. |
 | `chapterRange` | `{ minimum, maximum }` | Planned length. |
 | `outline` | string | Markdown outline of the whole book. |
-| `storyArc` | object | `beginning`, `middle`, `end`, each with `overview`, `keyMoments[]`, `openQuestions[]`. |
+| `storyArc` | object | `beginning`, `middle`, `end`, each with `overview`, `keyMoments` and `openQuestions`: text, one line per item. An array of strings, the shape this page once described, is read as one line per item and is written back as text the next time the book is saved. |
 | `characters` | array | `id` (`char_…`), `name`, `role`, `description`, `motivations`, `notes`. |
 | `memories` | array | `id` (`mem_…`), `text` (≤180 chars by convention), `importance`, timestamps. |
 | `stage` | `onboarding` \| `drafting` | Setup or writing. |
@@ -71,7 +71,8 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 | `createdAt`, `updatedAt` | ISO 8601 | Written by the app. |
 
 Unknown fields are preserved when a book is written, so a newer app can add fields without the
-older one silently dropping them.
+older one silently dropping them. That holds at every level: inside each character and memory, the
+story arc and its three parts, `chapterRange` and every `settings` section, as well as at the top.
 
 ### Front and back matter
 
@@ -472,8 +473,12 @@ the original is in the trash, the copy is the only file with that `id` and opens
 `schemaVersion` is checked on read:
 
 - Missing → the file is not ours; the error names the file.
-- Greater than the app's → refused, with "This library was written by a newer version of AI Book
-  Studio. Update the app to open it."
+- Greater than the app's → refused, with "This library was written by a newer version of Open Book
+  Studio. Update the app to open it." The same check runs before every write into the book, because
+  another device may upgrade `book.json` while the book is open. A chapter save, a new, moved,
+  deleted, restored, merged or split chapter, a kept copy, the Story Bible and every settings save,
+  images, conversations, moving the book to the trash, the agent's tools and the toolkit's saves are
+  all refused with that message before anything is written.
 - Lower → accepted; the app writes the current version on the next save.
 
 A book folder that does not open is never hidden. The library shows it as a card that says why, with a

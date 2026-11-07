@@ -37,6 +37,7 @@ import {
   type SaveMatterResult
 } from "../matter";
 import { LibraryError, LibraryPortError } from "./errors";
+import { assertBookWritable, assertSchemaVersion } from "./schema-guard";
 import { planMove } from "./order";
 import { libraryPathFromArchivePath, libraryPathToArchivePath, toLibraryFilePath } from "./path";
 import type { LibraryPath } from "./path";
@@ -1248,10 +1249,17 @@ export class LibraryService {
     throw new LibraryError("io", "Could not keep a conflict copy. Your changes were not saved; keep them and try again.");
   }
 
-  /** Keeps one writer per book, so two calls cannot interleave a read and a write. */
+  /**
+   * Keeps one writer per book, so two calls cannot interleave a read and a write. Every write first
+   * checks the book's schema, so a book another device upgraded is refused before anything is written.
+   */
   private serializeWrite<T>(bookId: string, work: () => Promise<T>): Promise<T> {
+    const checked = async () => {
+      await assertBookWritable(this.env.storage, bookId);
+      return work();
+    };
     const previous = this.writes.get(bookId) ?? Promise.resolve();
-    const next = previous.then(work, work);
+    const next = previous.then(checked, checked);
     this.writes.set(
       bookId,
       next.catch(() => {})
@@ -1371,18 +1379,6 @@ function parseBookJson(raw: string, path: string): BookMeta {
     );
   }
   return parsed.data;
-}
-
-function assertSchemaVersion(version: unknown, path: string): void {
-  if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
-    throw new LibraryError("invalid", `${path} has no schemaVersion. It may not be an Open Book Studio file.`);
-  }
-  if (version > SCHEMA_VERSION) {
-    throw new LibraryError(
-      "newer-schema",
-      `${path} was written by a newer version of Open Book Studio (schema ${version}). Update the app before opening this library, so no fields are dropped.`
-    );
-  }
 }
 
 function validDate(value: string | null, fallback: string): string {

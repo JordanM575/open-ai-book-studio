@@ -49,6 +49,20 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- A book that another device upgraded to a newer schema while it was open is no longer written by this
+  build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
+  chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict
+  copy, moving the book to the trash, an image, a conversation, the agent's chapter tools and the
+  toolkit's saves all went ahead in a book whose new fields this build does not know. Now every write
+  into a book reads `book.json` first and refuses a newer `schemaVersion` with "was written by a newer
+  version of Open Book Studio" before anything changes, and leaves every byte as it was.
+- A field a newer build adds to `book.json` survives a save at every level (QA D7). A character, a
+  memory, the story arc and its three parts, the chapter range and every settings section lost any
+  field this build did not know the next time the book was saved; they are now kept and written back
+  as they were read, as `docs/FORMAT.md` already promised.
+- A book whose story arc was written the way `docs/FORMAT.md` used to describe it, with `keyMoments`
+  and `openQuestions` as lists of strings, opens again, one line per item. It used to fail the book
+  schema, so the book showed as unreadable. `docs/FORMAT.md` now describes the text shape the app writes.
 - Moving the chapter you are writing no longer turns your next save into a conflict (QA D5). A move
   rewrites `order` in every chapter file it shifts, so the open chapter's version and hash moved on
   while the editor kept the ones it loaded. Its next autosave was refused as a newer version, and
