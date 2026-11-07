@@ -7,6 +7,50 @@
   "scope": "Product requirements distilled from research; classification is evidence-scoped, not release approval.",
   "requirements": [
     {
+      "id": "REQ-AUTO-001",
+      "classification": "missing",
+      "public_anchors": ["037", "030", "031", "033"],
+      "statement": "Support brief-to-full-book authoring: roughly 100 words of direction and small onboarding lead to autonomous background drafting and revisions toward an author-visible target such as 70,000 saved words.",
+      "acceptance": [
+        "Retain the original brief, onboarding choices, outline and character direction; the approximate brief length is not a hard input cap.",
+        "An integrated synthetic journey progresses through plan, chapters, critique, revisions and completion using verified saved-word progress rather than requested/generated token counts.",
+        "Pause, restart and failure recovery preserve author edits and durable artifacts without duplicate publication; long-form quality and live-provider outcomes require their own evidence."
+      ]
+    },
+    {
+      "id": "REQ-AUTO-002",
+      "classification": "missing",
+      "public_anchors": ["037", "031", "032", "036"],
+      "statement": "Coordinate asynchronous specialist agents in a continuous background authoring workflow with revision cycles, attributable progress and human check-ins for character development and other direction.",
+      "acceptance": [
+        "Accepted contracts define worker ownership, scheduling, context, bounded runtime concurrency and one checked publication path; labels in a single prompt do not establish asynchronous workers.",
+        "Check-ins show completed work, next work and specific questions; answers update versioned direction and dependent work respects unresolved questions.",
+        "Stop/revoke, spend limits, unavailable providers, hidden-window and quit/restart behavior have truthful durable states and failure tests before unattended execution is claimed."
+      ]
+    },
+    {
+      "id": "REQ-REVIEW-004",
+      "classification": "missing",
+      "public_anchors": ["039", "034", "033", "037"],
+      "statement": "Provide AutoCrit-style editorial critique with underlined source passages, linked explanations and navigable/filterable feedback, while distinguishing deterministic metrics from subjective interpretation.",
+      "acceptance": [
+        "Underlines and finding selection resolve to exact saved-source spans, with keyboard access and clear handling of overlaps and repeated passages.",
+        "Edits, missing sources and changed revisions make feedback stale rather than silently attaching it to different words.",
+        "Any suggestion-application flow uses checked edits and undo; product-comparison research is not a claim of feature or score parity."
+      ]
+    },
+    {
+      "id": "REQ-VOICE-002",
+      "classification": "missing",
+      "public_anchors": ["017", "038", "031", "037"],
+      "statement": "Support a hands-free authoring journey with spoken direction, replies and check-ins, interruption/stop and correction, beyond existing push-to-talk transcription.",
+      "acceptance": [
+        "An accepted activation/listening contract states visible and audible capture/work states and when microphone use begins and ends.",
+        "Synthetic interaction tests cover interruption, stop, confirmation, misrecognition, provider failure and an accessible non-voice fallback.",
+        "Live microphone, provider and device evidence is recorded separately; existing voice preferences or spoken replies alone do not complete this journey."
+      ]
+    },
+    {
       "id": "REQ-TOOL-001",
       "classification": "implemented",
       "public_anchors": [

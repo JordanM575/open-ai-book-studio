@@ -8,6 +8,12 @@ U-037-01/02 were accepted November 7 as D-193 / [ADR 0018](../../docs/adr/0018-s
 Pure source-envelope/citation work can proceed; runtime/UI and the prerequisite shared thread-safety
 implementation remain open. Later autonomy decisions remain separate work.
 
+**Expanded author direction, November 7:** REQ-AUTO-001/002 explicitly retain short-brief onboarding
+toward a full ~70,000-word book, asynchronous multi-agent background work, revision cycles and human
+check-ins for character direction. See [the requirement expansion](../../docs/EXPANDED-AUTHORING-REQUIREMENTS.md).
+The foreground slice below is not the completion boundary; detailed autonomy contracts are the next
+decision packet under delegated delivery authority.
+
 ## Why
 
 An author should be able to ask for brief, grounded guidance without giving an agent permission to

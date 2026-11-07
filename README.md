@@ -77,8 +77,10 @@ there is a working slice with remaining work; **planned** means it is not availa
 | External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
 | CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
 | Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
-| Guided/autonomous authoring and task-aware routing | Planned beyond current slices | See specs 036–037; no unattended multi-turn authority or automatic cost-based dispatch is claimed |
-| Named chapter history and library organization | Planned | See specs 032–033 for retained snapshots, collections, goals and source-linked notes |
+| Inline editorial critique | Planned | AutoCrit-style review with underlined source passages and linked explanations; exact-span/stale-source handling is part of the retained scope |
+| Hands-free authoring | Planned beyond current voice controls | Continuous conversational control, interruption and spoken check-ins need their own integrated workflow |
+| Guided/autonomous authoring and task-aware routing | Planned beyond current slices | Short-brief onboarding, asynchronous multi-agent drafting toward a full ~70,000-word book, revision cycles and human direction; see specs 036–037 |
+| Named chapter history and library organization | In progress | Verified saved-history core merged in PR #33; history UI/restore and planning/goals are follow-up candidates; collections and source-linked notes remain |
 | Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
 
 ### Delivery mechanisms
@@ -94,6 +96,8 @@ there is a working slice with remaining work; **planned** means it is not availa
 | Glasses / companion | Status surface and integration groundwork | A concept/prototype surface, not a verified glasses release or native cross-device sync |
 
 The [spec roadmap](specs/README.md) records acceptance criteria and unfinished tasks. The
+[expanded authoring requirements](docs/EXPANDED-AUTHORING-REQUIREMENTS.md) track the full-book,
+hands-free and inline-review journeys and the current five-agent development queue. The
 [voice pipeline](docs/VOICE.md) distinguishes transcription from synthesis, and the
 [keychain runbook](docs/KEYCHAIN.md) explains protected storage and its platform limits.
 App store and release-download links will be posted in this repository when ready.

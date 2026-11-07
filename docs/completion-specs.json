@@ -4,6 +4,10 @@
   "reservedSpecs": {},
   "newSpecs": ["039", "040", "041", "042"],
   "requirements": {
+    "REQ-AUTO-001": {"primary": "037", "lane": "L05"},
+    "REQ-AUTO-002": {"primary": "037", "lane": "L05"},
+    "REQ-REVIEW-004": {"primary": "039", "lane": "L09"},
+    "REQ-VOICE-002": {"primary": "017", "lane": "L12"},
     "REQ-TOOL-001": {"primary": "024", "lane": "L15"},
     "REQ-REVIEW-001": {"primary": "034", "lane": "L08"},
     "REQ-REVIEW-002": {"primary": "037", "lane": "L05"},

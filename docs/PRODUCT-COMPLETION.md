@@ -11,8 +11,13 @@ The [distilled requirements](completion-requirements.json) record stable IDs, cu
 and acceptance criteria without including private research provenance.
 The [spec ownership and dependency map](SPEC-DAG.md) links every requirement and lane to its
 existing or new spec, including the four new Draft/Planned proposals 039–042.
-The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into six active agent slots,
+The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into five active agent slots,
 bounded work packages, decision packets and an event-driven continuation loop.
+
+The author's [expanded November 7 requirements](EXPANDED-AUTHORING-REQUIREMENTS.md) explicitly retain
+hands-free operation, inline-underlined critique, short-brief onboarding and continuous asynchronous
+multi-agent full-book authoring with human check-ins. Four additional requirement IDs map to
+L05/L09/L12; the earlier foreground-only review slices do not complete these journeys.
 
 ## Two completion milestones
 

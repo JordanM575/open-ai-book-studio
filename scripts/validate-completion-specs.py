@@ -53,10 +53,10 @@ def validate_execution(lanes):
         covered.update(stream["lanes"])
     assert covered == set(lanes), f"Unowned execution lanes: {set(lanes) - covered}"
     assert 1 <= execution["maxConcurrentIntegrationGates"] <= execution["maxConcurrentAgents"]
-    wave = execution["firstWave"]
-    assert len(wave) == len(set(wave)) <= execution["maxConcurrentAgents"], "Invalid first wave"
-    assert set(wave) <= set(work), "Unknown first-wave work package"
-    assert len({work[item]["stream"] for item in wave}) == len(wave), "Competing first-wave stream owners"
+    wave = execution.get("currentWave", execution["firstWave"])
+    assert len(wave) == len(set(wave)) <= execution["maxConcurrentAgents"], "Invalid current wave"
+    assert set(wave) <= set(work), "Unknown current-wave work package"
+    assert len({work[item]["stream"] for item in wave}) == len(wave), "Competing current-wave stream owners"
     active, done, edges = set(), set(), set()
 
     def visit(item_id):
@@ -78,7 +78,7 @@ def validate_execution(lanes):
     for item_id in work:
         visit(item_id)
     for item_id in wave:
-        assert not set(work[item_id]["dependsOn"]) & set(wave), "First-wave dependency race"
+        assert not set(work[item_id]["dependsOn"]) & set(wave), "Current-wave dependency race"
     assert_terminal_coverage(work, "W99")
     markdown = (ROOT / "docs" / "CONCURRENT-DELIVERY.md").read_text()
     diagram = re.search(r"```mermaid\n(.*?)```", markdown, re.S)
@@ -86,7 +86,7 @@ def validate_execution(lanes):
     shown = set(re.findall(r"\b(W\d{2})(?:\[[^\]\n]*\])?\s*-->\s*(W\d{2})", diagram[1]))
     assert edges == shown, f"Execution Mermaid mismatch: {edges ^ shown}"
     print(f"Execution valid: {len(streams)} streams, {len(work)} packages, {len(edges)} edges, "
-          f"{len(wave)} initial agents; assigned lane scopes and terminal coverage valid")
+          f"{len(wave)} queued agents; assigned lane scopes and terminal coverage valid")
 
 
 def validate():

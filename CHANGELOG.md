@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Record expanded hands-free, inline editorial review, brief-to-full-book and asynchronous
+  multi-agent requirements; set the current development queue to five concurrent agents while
+  preserving the historical six-agent dispatch and existing completion DAG.
 - Refuse lossy JSON numbers in planning/goal active files and recovery baselines; independently
   verify saved goal source bytes, UTF-8, body and identity. Retain planning drafts after observer or
   close callback failures, keep checked save outcomes intact, and restore focus after re-enabling.

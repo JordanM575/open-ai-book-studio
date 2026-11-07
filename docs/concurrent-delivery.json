@@ -4,9 +4,10 @@
   "baseline": "55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34",
   "scope": "Complete all retained planned features; accepted decisions permit dependent work, open decisions require a recorded outcome. A ready research packet is not implementation approval.",
   "agent": {"model": "openai/gpt-6-astra-ultrafast", "variant": "high"},
-  "maxConcurrentAgents": 6,
+  "maxConcurrentAgents": 5,
   "maxConcurrentIntegrationGates": 1,
   "firstWave": ["W01", "W03", "W05", "W07", "W09", "W15"],
+  "currentWave": ["W15", "W04", "W10", "W02", "W08"],
   "workLanes": {
     "W00": ["L00"],
     "W01": ["L02", "L07"],

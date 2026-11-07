@@ -14,6 +14,10 @@ they are not replacement implementations. Acceptance criteria in
 
 | Requirement | Primary spec | Supporting contracts / remaining acceptance work | Lane |
 | --- | --- | --- | --- |
+| REQ-AUTO-001 | 037 | 030/031/033; short brief/onboarding to durable ~70,000-word drafting and revision workflow | L05 |
+| REQ-AUTO-002 | 037 | 031/032/036; asynchronous specialists, background ownership/recovery and human direction | L05 |
+| REQ-REVIEW-004 | 039 | 034/033/037; AutoCrit-style editorial workflow, exact source underlines and stale feedback | L09 |
+| REQ-VOICE-002 | 017 | 038/031/037; hands-free activation, interruption, correction and spoken check-ins | L12 |
 | REQ-TOOL-001 | 024 | 018/025; parity, opted-in writes/destruction, undo and single-writer conformance, not a new CLI/MCP | L15 |
 | REQ-REVIEW-001 | 034 | Saved-only local metrics, stale/cancel/coverage and byte-identical sources; D-171 gates persistence | L08 |
 | REQ-REVIEW-002 | 037 | 011/022/024/025; exact outgoing scope, zero-send cancel and read-only execution | L05 |

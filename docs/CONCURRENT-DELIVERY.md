@@ -16,6 +16,11 @@ contracts. The first-wave table records the original dispatch; those completed r
 now feed implementation. Broader media, routing, persistence and autonomy scope remains on the
 retained roadmap, not implicitly deferred by choosing small initial slices.
 
+**Latest delivered foundation:** PR #32 merged the reviewed agent/export corrections; PR #33 merged
+the verified saved-history core as `a9997624ac28b970c0a656c50233753ad375982f`. Its exact candidate
+passed 2,500 tests and all 12 e2e suites. History restore/UI and corrected planning/goal candidates
+remain under separate review. The expanded authoring journeys remain required future delivery.
+
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
 [spec ownership map](SPEC-DAG.md). Its machine-readable work packages are in
 [concurrent-delivery.json](concurrent-delivery.json). Work-package arrows order contract delivery;
@@ -24,9 +29,13 @@ finish. Research can proceed while those decisions are open.
 
 ## Capacity and ownership
 
-- **Six active agents:** three initial builders, two decision researchers and one independent auditor.
+- **Five concurrent agents**, per the author's latest November 7 direction. The original six-agent
+  dispatch below is historical. The current wave is the requirements audit, autonomy design,
+  inline-critique design, history review and corrected planning review described in
+  [Expanded authoring requirements](EXPANDED-AUTHORING-REQUIREMENTS.md). The JSON `currentWave`
+  owns the current queue; `firstWave` preserves the initial dispatch.
   The coordinator owns the queue, integration and public completion records. Freed slots take the
-  next ready package; six is a concurrency limit, not six permanent assignments.
+  next ready package; five is a concurrency limit, not five permanent assignments.
 - **Every child uses `openai/gpt-6-astra-ultrafast`, `variant: high`.** This includes research and
   re-review. No silent model/effort substitution. The author's remaining monthly allowance is a
   capacity note, not a measured token balance or permission for paid application-provider calls.
@@ -154,7 +163,7 @@ stay disabled; their obsolete instructions and model choices do not govern this 
 At each execution, read the latest private queue/state and current public branch, consume delivered
 results once, preserve partial work, and advance or dispatch only unowned ready packages. Prioritize
 reproduced data-loss bugs, completing in-flight slices, accepted-decision work, then new packets.
-Maintain at most six active children and one integrated full-suite owner. A task awaiting an author
+Maintain at most five active children and one integrated full-suite owner. A task awaiting an author
    external access, provider quota or hardware availability parks only its dependent work. Routine
    design decisions are researched and resolved under delegated authority rather than parked for questions.
 
