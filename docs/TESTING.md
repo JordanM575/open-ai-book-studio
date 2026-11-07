@@ -157,5 +157,5 @@ Everything else in the product is above 80% of lines, and the workspace as a who
   macOS itself keeps the studio running with no window, because a visible run would take over the
   screen. `tests/requirement-map.md` lists what stays unproven.
 - **Linux.** Every end-to-end check has been run on macOS. `.github/workflows/verify.yml` has a job
-  for them on Linux, and it is allowed to fail until somebody has watched it pass and said so. The
-  typecheck, tests, builds and the coverage floor run everywhere.
+  for them on Linux. It passed three runs in a row on main, so it is no longer allowed to fail: a
+  failure there fails the workflow. The typecheck, tests, builds and the coverage floor run everywhere.
