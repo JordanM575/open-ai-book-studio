@@ -55,6 +55,10 @@ Update the `Unreleased` section before every commit.
   cannot hard-link, nothing is published and the script says so, rather than writing the record in place. Five
   tests cover the refusal, the absence of a leftover temporary file, the new `publishRecord` helper, the
   fail-closed case and a failed write or sync, which also removes its temporary file.
+- The bridge end-to-end probe no longer fails after its checks have passed. It killed the app with SIGKILL and removed
+  the throwaway profile at once; the dying app could still be writing into the profile, so the removal threw
+  `ENOTEMPTY` as an uncaught exception and the stage exited 1 on one Linux run in four. It now waits for the app to
+  exit, retries the removal, and reports a cleanup failure on stderr without failing a probe whose checks passed.
 - The manual Linux workflow's end-to-end job now installs only Chromium, the one browser its stages drive, and the step
   has its own ten-minute limit. It used to install Chromium, Firefox and WebKit with all their system packages; that
   step stalled for the whole 45-minute job limit on two of the last six runs and cancelled the job. Firefox and WebKit
