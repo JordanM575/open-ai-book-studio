@@ -58,6 +58,10 @@
       "types": "./src/review/index.ts",
       "default": "./src/review/index.ts"
     },
+    "./review/*": {
+      "types": "./src/review/*.ts",
+      "default": "./src/review/*.ts"
+    },
     "./agent": {
       "types": "./src/agent.ts",
       "default": "./src/agent.ts"
