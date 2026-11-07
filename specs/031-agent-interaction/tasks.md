@@ -19,7 +19,8 @@ authorized; no task requires a live provider, credential, paid service, real man
   exact read-tier six, the `disabledTools` subset seam, bridge denial, and the plugin
   write-capable surface against five alternatives: read-only built-ins
   only with Discuss as the new-turn default, enforced by subset offer plus bridge and writer
-  guards. T007/T008 remain unimplemented; the decision's matching demo/script/runbook condition remains.
+  guards. That initial decision record preceded T007/T008; their W03 implementation is recorded
+  below. The November 7 delivery update replaces the event-only re-shoot hold.
 - [x] T002 Define the pause acknowledgment boundary, whether Start/Resume continue the same live
   turn or create a new explicit turn from the stored plan, and how a non-background plan behaves on
   window close. Specify what the interface says while an in-flight checked tool is settling.
@@ -49,15 +50,15 @@ authorized; no task requires a live provider, credential, paid service, real man
   `guidance` (1–2,000 chars, rejected never truncated); the schema/store supports `mode` on the
   assistant message and a `guidance` part on the user message; agent settings gain `tone`
   (≤500) and `answerLength` (brief/standard/detailed, standard by default) with old books
-  gaining defaults on read. Every turn caller (composer, ambient, backend, bridge, live
+  gaining defaults on read. In this initial schema-only slice every turn caller (composer, ambient, backend, bridge, live
   checks, tests) sends `edit`, preserving current full-tool behavior until T007 applies the accepted
   composer default. `docs/FORMAT.md` documents the thread and settings contract. Covered by
   `packages/core/tests/agent-interaction-contract.test.ts` (validation, legacy reads,
   store round-trips, defaults and bounds). No runtime permission or UI behavior changes;
-  enforcement stays with T006 and the composer with T007/T011. Production runtime population of
-  stored mode/guidance and retry identity still need wiring: a same-text request with changed mode
-  or guidance must not silently reuse a different earlier request. Schema round trips alone do not
-  prove that production messages contain these fields.
+  enforcement then remained with T006 and the composer with T007/T011. W03 subsequently implemented
+  production mode/guidance and retry identity, as recorded below. A same-text request with changed
+  mode or guidance must not silently reuse a different earlier request; schema round trips alone
+  do not prove runtime population.
 - [ ] T005 Add validated plan and step state to the thread contract, with explicit parent-turn
   binding and allowed transitions. Persist proposed, active and terminal state through the existing
   thread store. Malformed or incompatible plan state must be reported without deleting the thread.

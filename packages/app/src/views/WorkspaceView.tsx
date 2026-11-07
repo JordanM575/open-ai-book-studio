@@ -175,7 +175,9 @@ export function WorkspaceView({
   const [voiceStatusRevision, setVoiceStatusRevision] = useState(0);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
-  const [exportNote, setExportNote] = useState<(ManuscriptExportReceipt & { message: string; target: string }) | null>(null);
+  const [exportNote, setExportNote] = useState<(ManuscriptExportReceipt & { bookId: string; message: string; target: string }) | null>(null);
+  const exportGeneration = useRef(0);
+  const exportPending = useRef(false);
   const formatExportPreflight = useRef<(() => Promise<void>) | null>(null);
   const registerExportPreflight = useCallback((check: () => Promise<void>) => {
     formatExportPreflight.current = check;
@@ -545,11 +547,27 @@ export function WorkspaceView({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selected, busy, moveChapter]);
 
-  useEffect(() => () => window.clearTimeout(exportNoteTimer.current), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each book view invalidates its prior export UI, including A → B → A
+  useEffect(() => {
+    exportGeneration.current++;
+    exportPending.current = false;
+    setExporting(false);
+    setExportNote(null);
+    window.clearTimeout(exportNoteTimer.current);
+    return () => {
+      exportGeneration.current++;
+      window.clearTimeout(exportNoteTimer.current);
+    };
+  }, [bookId]);
 
   /** Saves the open chapter, runs one export and names the written file for a few seconds. */
   const runExport = async (target: string, request: () => ReturnType<typeof window.studio.books.exportDocx>): Promise<void> => {
-    if (exporting) return;
+    if (exportPending.current || detail?.book.id !== bookId) return;
+    const generation = ++exportGeneration.current;
+    const originId = bookId;
+    const current = () => exportGeneration.current === generation && shownBookId.current === originId;
+    const preflight = formatExportPreflight.current;
+    exportPending.current = true;
     setExporting(true);
     setExportNote(null);
     window.clearTimeout(exportNoteTimer.current);
@@ -557,21 +575,29 @@ export function WorkspaceView({
       // An export reads the saved files, so a chapter whose latest text did not save would leave the
       // author's newest words out without a word. Stop and say so instead.
       const flushed = await editorRef.current?.flush();
+      if (!current()) return;
       if (flushed && flushed.kind !== "saved") {
         onNotice(new Error(exportBlockedMessage(flushed)));
         return;
       }
-      await formatExportPreflight.current?.();
+      await preflight?.();
+      if (!current()) return;
       const receipt = exportReceipt(await must(request()));
-      if (!receipt) return;
+      // An already-published old-book export stays published; only its obsolete UI reply is ignored.
+      if (!current() || !receipt) return;
       const name = receipt.path.split(/[\\/]/).pop() ?? receipt.path;
-      setExportNote({ ...receipt, message: `Saved ${name}`, target });
+      setExportNote({ ...receipt, bookId: originId, message: `Saved ${name}`, target });
       // A warning remains available to read until the next export, rather than timing out.
-      if (receipt.warnings.length === 0) exportNoteTimer.current = window.setTimeout(() => setExportNote(null), 8000);
+      if (receipt.warnings.length === 0) exportNoteTimer.current = window.setTimeout(() => {
+        if (current()) setExportNote(null);
+      }, 8000);
     } catch (error) {
-      onNotice(error);
+      if (current()) onNotice(error);
     } finally {
-      setExporting(false);
+      if (current()) {
+        exportPending.current = false;
+        setExporting(false);
+      }
     }
   };
 
@@ -903,7 +929,7 @@ export function WorkspaceView({
             >
               <FileSearch size={16} />
             </Button>
-            {exportNote ? (
+            {exportNote?.bookId === bookId ? (
               <div className="max-w-sm break-words text-(length:--text-caption-size) text-muted-foreground" role="status">
                 <p>{exportNote.message}</p>
                 <p>{exportNote.target} · Saved version captured when export began · {exportNote.path}</p>

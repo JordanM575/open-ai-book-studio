@@ -241,6 +241,13 @@ path of the conflict copy that holds its text (see [Saving and conflicts](#savin
 characters, never truncated) with the submitted user message; it applies to that turn only.
 The schema lives in `packages/core/src/agent/messages.ts`.
 
+Stored error explanations are limited to 2,000 UTF-16 code units. Longer provider details carry an
+explicit shortening marker; retry-wait explanations and checkpoint-loss warnings are retained.
+The numeric `retryAfterSeconds` field supports up to 86,400 seconds. A longer provider wait is
+preserved as seconds in the stored explanation instead of being clamped; the live terminal event
+still carries the original wait. Conversation validation or persistence failure cannot suppress
+the turn's terminal event.
+
 A corrupt file is never rewritten or deleted by a list operation; opening it reports the error. Thread
 writes use the library port's checked commit, so a failed write leaves the previous file intact.
 

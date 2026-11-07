@@ -279,7 +279,7 @@ describe("chat composer", () => {
     expect(view.getByText("I will write on my own.")).toBeDefined();
   });
 
-  test("a rate limit names the wait and keeps the retry offer", async () => {
+  test.each([90, 172_800])("a %s-second rate limit names the wait and releases the composer", async (retryAfterSeconds) => {
     const { start, fire } = renderComposer();
     const { input, view } = composer();
     testing.fireEvent.change(input, { target: { value: "Keep going." } });
@@ -296,14 +296,19 @@ describe("chat composer", () => {
         turnId: "turn_cmp000001",
         code: "rate-limit",
         message: "The provider asked us to slow down. Try again shortly.",
-        retryAfterSeconds: 90
+        retryAfterSeconds
       });
     });
     await testing.waitFor(() => expect(view.getByTestId("agent-rate-note")).toBeDefined());
     expect(view.getByTestId("agent-rate-note").textContent).toBe(
-      "The provider asked to wait. Try again in about 2 minutes."
+      `The provider asked to wait. Try again in about ${Math.round(retryAfterSeconds / 60)} minutes.`
     );
     expect(view.getByTestId("agent-retry-request")).toBeDefined();
+    expect(view.getByTestId("agent-mode")).toHaveProperty("disabled", false);
+    expect(view.getByTestId("agent-guidance")).toHaveProperty("disabled", false);
+    testing.fireEvent.change(input, { target: { value: "A new request." } });
+    testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
   });
 
   async function failAfterChange(

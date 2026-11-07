@@ -15,6 +15,7 @@ import type {
   AgentUndoResult
 } from "@ai-book-studio/core/agent";
 import {
+  AGENT_ERROR_LIMITS,
   agentMessageSchema,
   agentModeSchema,
   agentGuidanceTextSchema,
@@ -688,23 +689,25 @@ export class AgentRuntime {
       parts: AgentPart[],
       options: { usage?: AgentUsage; checkpoint?: boolean } = {}
     ): Promise<void> => {
-      const message = agentMessageSchema.parse({
-        id: messageId,
-        role: "assistant",
-        mode: input.mode,
-        parts,
-        model: {
-          provider,
-          modelId,
-          connectionLabel,
-          ...(state.modelName ? { name: state.modelName } : {})
-        },
-        ...(options.usage ? { usage: options.usage } : {}),
-        context: state.context,
-        turnId,
-        createdAt: state.createdAt
-      });
       try {
+        // Validation is part of best-effort persistence too. An invalid provider part must
+        // never suppress the terminal event that releases the author-facing controls.
+        const message = agentMessageSchema.parse({
+          id: messageId,
+          role: "assistant",
+          mode: input.mode,
+          parts,
+          model: {
+            provider,
+            modelId,
+            connectionLabel,
+            ...(state.modelName ? { name: state.modelName } : {})
+          },
+          ...(options.usage ? { usage: options.usage } : {}),
+          context: state.context,
+          turnId,
+          createdAt: state.createdAt
+        });
         let thread = await threadStore.upsertMessage(input.bookId, threadId, message);
         if (options.checkpoint) {
           const checkpointTurns = thread.checkpointTurns.includes(turnId)
@@ -713,7 +716,8 @@ export class AgentRuntime {
           thread = await threadStore.save({ ...thread, checkpointTurns });
         }
       } catch (error) {
-        console.warn("[agent] Could not save the conversation:", redact((error as Error).message));
+        console.warn("[agent] Could not save the conversation:",
+          error instanceof Error ? redact(error.message) : "The conversation write failed.");
       }
     };
 
@@ -971,19 +975,15 @@ export class AgentRuntime {
           normalized.code === "context" && state.contextLength
             ? ` This model's context is ${state.contextLength.toLocaleString()} tokens.`
             : "";
-        const base = `${redact(normalized.message)}${contextNote}`;
-        const message =
+        const base = `${redact(normalized.message) || "The provider returned an unexpected response."}${contextNote}`;
+        const checkpointNote =
           state.changes.length > 0 && !undoAvailable
-            ? `${base} The turn changed the book, but its undo checkpoint could not be saved. Review the affected chapters before continuing.`
-            : base;
+            ? " The turn changed the book, but its undo checkpoint could not be saved. Review the affected chapters before continuing."
+            : "";
+        const message = `${base}${checkpointNote}`;
         // Even an attempt that failed before producing text records its mode and outcome.
         // Retry reuses the matching user request, never deletes or relabels this failed attempt.
-        const failure: AgentErrorPart = {
-          type: "error",
-          code: normalized.code,
-          message,
-          ...(wait !== undefined ? { retryAfterSeconds: wait } : {})
-        };
+        const failure = storedFailure(normalized.code, base, checkpointNote, wait);
         await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, failure), ...state.approvals], {
           checkpoint: state.changes.length > 0 && undoAvailable
         });
@@ -1002,6 +1002,23 @@ export class AgentRuntime {
       if (!waiting) this.active.delete(turnId);
     }
   }
+}
+
+/** Keep the existing on-disk bounds without shortening a provider's requested wait. */
+function storedFailure(code: string, detail: string, checkpointNote: string, wait: number | undefined): AgentErrorPart {
+  const numericWait = wait !== undefined && wait <= AGENT_ERROR_LIMITS.retryAfterSeconds;
+  const waitNote = wait !== undefined && !numericWait
+    ? ` The provider requested a retry wait of ${wait} seconds.` : "";
+  const suffix = `${waitNote}${checkpointNote}`;
+  if (detail.length + suffix.length > AGENT_ERROR_LIMITS.message) {
+    const marker = "… [Error detail shortened for this conversation.]";
+    detail = detail.slice(0, AGENT_ERROR_LIMITS.message - suffix.length - marker.length)
+      .replace(/[\uD800-\uDBFF]$/, "") + marker;
+  }
+  return {
+    type: "error", code, message: `${detail}${suffix}`,
+    ...(numericWait ? { retryAfterSeconds: wait } : {})
+  };
 }
 
 /**

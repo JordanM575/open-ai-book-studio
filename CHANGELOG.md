@@ -9,6 +9,13 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Bind header export receipts, errors, preflight and busy state to the originating book view;
+  ignore obsolete completions after navigation or unmount, including a return to the same book.
+- Keep terminal agent events deliverable when conversation validation or storage fails. Retain
+  bounded, explicitly shortened error details and preserve longer provider retry waits in the
+  stored explanation without clamping the live wait or losing checkpoint warnings.
+- Update the hidden agent-panel check for the Discuss/Edit permission explanation and close the
+  panel after a failed assertion so the later retry journey starts from a clean view.
 - Connect the existing manuscript export channels to typed published-path/warning receipts, using
   the same image snapshot for rendering and omission notices. Add real-handler coverage for all
   four formats, cancellation and refusal, plus a hidden-app check of the visible Markdown warning.

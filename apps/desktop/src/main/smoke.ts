@@ -408,7 +408,19 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "explained that a connection comes first, with a way to add one";
     });
 
-    await check("the writing agent panel opens", async () => {
+    // A failed panel check must close it before a later check uses the same toggle.
+    const closeAgentPanelOnFailure = async <T>(run: () => Promise<T>): Promise<T> => {
+      try {
+        return await run();
+      } catch (error) {
+        await evaluate<boolean>(
+          win,
+          `(() => { const button = document.querySelector('[aria-label="Close the writing agent"]'); if (button) button.click(); return true; })()`
+        ).catch(() => false);
+        throw error;
+      }
+    };
+    await check("the writing agent panel opens", () => closeAgentPanelOnFailure(async () => {
       const clicked = await evaluate<boolean>(
         win,
         `(() => {
@@ -427,7 +439,11 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         win,
         `document.querySelector('[data-testid="chat-panel"]')?.innerText ?? ""`
       );
-      if (!copy.includes("Ask for a scene")) throw new Error(`panel read: ${JSON.stringify(copy.slice(0, 120))}`);
+      if (!copy.includes("Discuss reads your book without changing it.") ||
+          !copy.includes("choose Edit for a new turn") ||
+          !copy.includes("destructive changes still ask for approval.")) {
+        throw new Error(`panel did not explain Discuss/Edit permissions: ${JSON.stringify(copy.slice(0, 300))}`);
+      }
       const turnModel = await evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="agent-turn-model"]')`));
       if (!turnModel) throw new Error("the one-off model control was not found");
       const openedTurnPicker = await evaluate<boolean>(
@@ -464,8 +480,8 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         })()`
       );
       if (!closed) throw new Error("the agent panel had no close button");
-      return "empty state explained the agent";
-    });
+      return "empty state explained Discuss, explicit Edit and destructive approval";
+    }));
 
     await check("the Story Bible opens", async () => {
       const clicked = await evaluate<boolean>(
@@ -824,18 +840,6 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return `${listed.names.length} packages with react, docx and electron; docx shows its MIT text; focus returned to the button`;
     });
 
-    // A check that opens the agent panel must not leave it open when it fails: the next check toggles it.
-    const closeAgentPanelOnFailure = async <T>(run: () => Promise<T>): Promise<T> => {
-      try {
-        return await run();
-      } catch (error) {
-        await evaluate<boolean>(
-          win,
-          `(() => { const button = document.querySelector('[aria-label="Close the writing agent"]'); if (button) button.click(); return true; })()`
-        ).catch(() => false);
-        throw error;
-      }
-    };
     await check("a failed turn keeps its request for retry", () => closeAgentPanelOnFailure(async () => {
       const opened = await evaluate<boolean>(
         win,
