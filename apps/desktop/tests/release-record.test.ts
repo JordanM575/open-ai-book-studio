@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { validateRecord, buildRecordObject, hashArtifacts } from "../../../scripts/release/record.mjs";
+import { validateRecord, buildRecordObject, hashArtifacts, publishRecord } from "../../../scripts/release/record.mjs";
 
 const root = join(import.meta.dir, "..", "..", "..");
 const script = join(root, "scripts", "release", "record.mjs");
@@ -152,6 +152,77 @@ describe("release record", () => {
     expect(validateRecord({ ...valid, unsigned: false }).length).toBeGreaterThan(0);
     expect(validateRecord({ ...valid, notarization: { status: "accepted" } }).length).toBeGreaterThan(0);
     expect(validateRecord(null).length).toBeGreaterThan(0);
+  });
+
+  test("refuses to replace a record that already exists and leaves it as it was", async () => {
+    const dir = await artifactDir({ "app.zip": "bytes" });
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    await writeFile(out, "the earlier record\n");
+    const result = run(
+      ["--dir", dir, "--out", out, "--version", "0.1.0", "--commit", "abc123", "--schema", "1"],
+      root
+    );
+    expect(result.code).toBe(3);
+    expect(result.stderr).toContain("refusing to replace the existing record");
+    expect(await Bun.file(out).text()).toBe("the earlier record\n");
+    expect(await readdir(folder)).toEqual(["record.json"]);
+  });
+
+  test("publishes the record without leaving a temporary file beside it", async () => {
+    const dir = await artifactDir({ "app.zip": "bytes" });
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    const result = run(
+      ["--dir", dir, "--out", out, "--version", "0.1.0", "--commit", "abc123", "--schema", "1"],
+      root
+    );
+    expect(result.code).toBe(0);
+    expect(await readdir(folder)).toEqual(["record.json"]);
+    expect(validateRecord(JSON.parse(await Bun.file(out).text()))).toEqual([]);
+  });
+
+  test("publishRecord never replaces what is already at the path", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    await publishRecord(out, "first\n");
+    await expect(publishRecord(out, "second\n")).rejects.toThrow("refusing to replace");
+    expect(await Bun.file(out).text()).toBe("first\n");
+    expect(await readdir(folder)).toEqual(["record.json"]);
+  });
+
+  test("publishRecord fails closed when the file system cannot hard-link", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    const unsupported = async () => {
+      throw Object.assign(new Error("not supported"), { code: "ENOTSUP" });
+    };
+    await expect(publishRecord(out, "record\n", { link: unsupported })).rejects.toThrow("cannot publish the record atomically");
+    expect(await readdir(folder)).toEqual([]);
+  });
+
+  test("publishRecord removes its temporary file when writing or syncing fails", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "abs-record-out-"));
+    cleanups.push(folder);
+    const out = join(folder, "record.json");
+    const failing = (stage: "writeFile" | "sync") => async (path: string, flags: string, mode: number) => {
+      const real = await open(path, flags, mode);
+      return {
+        writeFile: stage === "writeFile" ? async () => { throw Object.assign(new Error("no space left"), { code: "ENOSPC" }); } : (data: string) => real.writeFile(data),
+        sync: stage === "sync" ? async () => { throw Object.assign(new Error("sync refused"), { code: "EIO" }); } : () => real.sync(),
+        close: () => real.close()
+      };
+    };
+    await expect(publishRecord(out, "record\n", { open: failing("writeFile") })).rejects.toThrow("no space left");
+    expect(await readdir(folder)).toEqual([]);
+    await expect(publishRecord(out, "record\n", { open: failing("sync") })).rejects.toThrow("sync refused");
+    expect(await readdir(folder)).toEqual([]);
+    await publishRecord(out, "record\n");
+    expect(await readdir(folder)).toEqual(["record.json"]);
   });
 
   test("hashArtifacts sorts by name with sizes", async () => {

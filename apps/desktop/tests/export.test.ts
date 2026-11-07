@@ -9,12 +9,16 @@ import {
   collectDocxImages,
   exportBookImages,
   exportManuscriptDocx,
+  exportManuscriptEpub,
   exportManuscriptMarkdown,
+  exportManuscriptPdf,
   isInsideLibrary,
   planImageFiles,
   suggestDocxName,
   suggestImageFolderName,
   suggestMarkdownName,
+  UNREADABLE_CHAPTERS_EXPORT_MESSAGE,
+  assertNoUnreadableChapters,
   type DocxExportDeps,
   type DocxExportState,
   type DocxImage,
@@ -1072,5 +1076,63 @@ describe("exportBookImages", () => {
     await expect(promise).rejects.toMatchObject({ code: "format", message: expect.stringContaining("images.json") });
     expect(picked).toBe(0);
     expect(await readdir(dir)).toEqual([]);
+  });
+});
+
+describe("a manuscript export refuses a book with unreadable chapter files", () => {
+  const headers = ['title: "SYNTHETIC_UNCLOSED', "order: -1"];
+  const kinds = ["docx", "markdown", "pdf", "epub"] as const;
+  for (const header of headers) {
+    for (const kind of kinds) {
+      test(`${kind} after ${JSON.stringify(header)} asks for nothing, writes nothing and leaves every file as it was`, async () => {
+        const { library, bookId } = await fixture();
+        const before = await library.readBook(bookId);
+        const chapters = join(library.root, "books", bookId, "chapters");
+        const damaged = join(chapters, before.chapters[0]!.path);
+        const healthy = join(chapters, before.chapters[1]!.path);
+        const bookFile = join(library.root, "books", bookId, "book.json");
+        const raw = `---\n${header}\n---\nSYNTHETIC SOURCE\n`;
+        await writeFile(damaged, raw);
+        const beforeHealthy = await readFile(healthy);
+        const beforeBook = await readFile(bookFile);
+        const target = join(library.root, "..", `previous-${kind}.out`);
+        const previous = Buffer.from("SYNTHETIC PREVIOUS COMPLETE EXPORT");
+        await writeFile(target, previous);
+        cleanups.push(target);
+
+        const detail = await library.readBook(bookId);
+        expect(detail.chapterReadIssues).toHaveLength(1);
+        expect(detail.chapters).toHaveLength(1);
+
+        const calls: string[] = [];
+        const deps = {
+          pickDestination: async () => { calls.push("pick"); return target; },
+          confirmReplace: async () => { calls.push("confirm"); return true; },
+          statDestination: async () => { calls.push("stat"); return null; },
+          writeFile: async () => { calls.push("write"); },
+          renderPdf: async () => { calls.push("render"); return new Uint8Array(); }
+        };
+        const attempt = {
+          docx: () => exportManuscriptDocx(detail, new Map(), library.root, deps),
+          markdown: () => exportManuscriptMarkdown(detail, library.root, deps),
+          pdf: () => exportManuscriptPdf(detail, new Map(), library.root, deps),
+          epub: () => exportManuscriptEpub(detail, new Map(), library.root, deps)
+        }[kind];
+        await expect(attempt()).rejects.toMatchObject({ code: "format", message: UNREADABLE_CHAPTERS_EXPORT_MESSAGE });
+
+        expect(calls).toEqual([]);
+        expect(await readFile(target)).toEqual(previous);
+        expect(await readFile(damaged, "utf8")).toBe(raw);
+        expect(await readFile(healthy)).toEqual(beforeHealthy);
+        expect(await readFile(bookFile)).toEqual(beforeBook);
+      });
+    }
+  }
+
+  test("a healthy book still exports, and the guard is a no-op for it", async () => {
+    const { library, bookId } = await fixture();
+    const detail = await library.readBook(bookId);
+    expect(detail.chapterReadIssues).toEqual([]);
+    expect(() => assertNoUnreadableChapters(detail)).not.toThrow();
   });
 });

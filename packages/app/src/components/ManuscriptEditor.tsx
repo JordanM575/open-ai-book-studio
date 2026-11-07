@@ -29,6 +29,17 @@ export interface EditorHandle {
   getStatus: () => SaveStatus;
   /** The hash of the chapter file this editor last loaded or saved. */
   getBaseHash: () => string;
+  /**
+   * Run `write`, such as a move, with this editor's saves held until it ends: saves already on their
+   * way finish first, and one asked for meanwhile is checked against the base `write` leaves.
+   */
+  hold: <T>(write: () => Promise<T>) => Promise<T>;
+  /**
+   * Take this chapter's file in `chapters` as the base when only its front matter moved on, as a move
+   * leaves it: the words and title are the ones this editor last loaded or saved. Unsaved words stay
+   * in the editor and save against it. False when the file's words or title changed, or it is gone.
+   */
+  rebase: (chapters: readonly Chapter[]) => boolean;
 }
 
 export interface EditorSelection {
@@ -197,14 +208,29 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const saveRef = useRef(save);
   saveRef.current = save;
 
+  // The editor remounts for another chapter, so its id is fixed for the life of these handles.
+  const chapterId = chapter.id;
   useImperativeHandle(
     ref,
     () => ({
       flush: () => saveRef.current(latest.current),
       getStatus: () => statusRef.current,
-      getBaseHash: () => base.current.hash
+      getBaseHash: () => base.current.hash,
+      hold: <T,>(write: () => Promise<T>): Promise<T> => {
+        const run = queue.current.then(write);
+        queue.current = run.catch(() => {});
+        return run;
+      },
+      rebase: (chapters: readonly Chapter[]) => {
+        const file = chapters.find((item) => item.id === chapterId);
+        if (!file) return false;
+        if (file.hash === base.current.hash) return true;
+        if (file.content !== base.current.content || file.title !== base.current.title) return false;
+        base.current = { ...base.current, version: file.version, hash: file.hash };
+        return true;
+      }
     }),
-    []
+    [chapterId]
   );
 
   // A close or quit asks for the newest text before the main process saves its drafts: the draft

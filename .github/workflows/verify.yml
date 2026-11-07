@@ -54,8 +54,13 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # The end-to-end stages drive Chromium (the glasses page) and the built Electron app; Firefox and WebKit
+      # are only used by `bun run matrix:web`, which this job does not run. Installing them pulled in their system
+      # packages too, and that step stalled for the full 45-minute job limit on two of six runs, so install
+      # Chromium alone and give the step its own limit.
       - name: Install the browser the checks drive
-        run: bunx playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 10
+        run: bunx playwright install --with-deps chromium
 
       # Electron refuses to start when its sandbox helper is not owned by root with the setuid bit,
       # which is how a fresh runner leaves it. Give it the helper's required owner and mode instead of
