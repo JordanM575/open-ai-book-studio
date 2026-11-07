@@ -1,5 +1,6 @@
 import { normalizeBody, slugify } from "../markdown";
 import type { Chapter } from "../schema";
+import { LibraryError, LibraryPortError } from "./errors";
 import { chapterPath } from "./paths";
 import type { CommitFileResult, LibraryEnvironment, LibraryPath } from "./port";
 import {
@@ -59,7 +60,17 @@ export class ChapterHistoryStore {
       const current = await this.savedChapter(scope);
       if (current.version !== source.version || current.hash !== source.hash) throw staleSource();
       const fileName = `${base}${attempt === 0 ? "" : `-${attempt + 1}`}.md`;
-      const committed = await this.commit(historyFilePath({ ...scope, fileName }), text);
+      let committed: CommitFileResult;
+      try {
+        committed = await this.commit(historyFilePath({ ...scope, fileName }), text);
+      } catch (error) {
+        // A port can publish successfully and then fail to read back. Never retry that write
+        // automatically or remove the possibly complete file. Policy preflight errors are definite.
+        if (error instanceof LibraryError || error instanceof HistoryError) throw error;
+        const message = "The snapshot write could not be confirmed. Review history before retrying: a complete snapshot may already exist. The chapter was not changed by history.";
+        if (error instanceof LibraryPortError) throw new LibraryPortError(error.code, message, false);
+        throw new HistoryError("io", message);
+      }
       if (committed.status === "changed") continue;
       if (committed.snapshot.bytes.length !== bytes.length ||
           !bytes.every((byte, index) => committed.snapshot.bytes[index] === byte)) {

@@ -357,6 +357,31 @@ describe("history failure preservation and lifecycle", () => {
     expect(listing.records[0]?.meta.id).toBe(good.meta.id);
   });
 
+  test("publication followed by readback failure keeps the complete snapshot and never retries blindly", async () => {
+    const f = await fixture();
+    const commit = f.port.commitFile.bind(f.port);
+    let historyCommits = 0;
+    f.port.commitFile = async (path, bytes, expected) => {
+      const result = await commit(path, bytes, expected);
+      if (path.includes("history")) {
+        historyCommits += 1;
+        throw new LibraryPortError("io", "Synthetic post-publication readback failure", true);
+      }
+      return result;
+    };
+    await expect(f.service.captureChapterHistory(f.input)).rejects.toMatchObject({
+      code: "io", retryable: false, message: expect.stringContaining("Review history before retrying")
+    });
+    expect(historyCommits).toBe(1);
+    const listing = await f.service.listChapterHistory(f.scope);
+    expect(listing.issues).toEqual([]);
+    expect(listing.records).toHaveLength(1);
+    const record = listing.records[0];
+    if (!record) throw new Error("Expected the complete published snapshot");
+    expect((await f.service.readChapterHistory({ ...f.scope, fileName: record.fileName })).content).toBe(f.chapter.content);
+    expect((await f.service.readChapter(f.book.id, f.chapter.id)).hash).toBe(f.chapter.hash);
+  });
+
   test("stable history identity follows title/filename/order changes and chapter trash/restore", async () => {
     const f = await fixture();
     const record = await f.service.captureChapterHistory(f.input);

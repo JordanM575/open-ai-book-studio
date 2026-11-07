@@ -23,7 +23,7 @@ YAML document parsing permits errors/warnings to be inspected without logging au
   `books/<bookId>/history/<chapterId>/<timestamp>-<label-slug>[-n].md`.
   Each has a generated `hist_…` ID independent of its filename. Use the existing slug
   algorithm (60-character hint) and absent-only commits with numeric collision suffixes.
-  Never overwrite an existing record, including a malformed one. A bounded collision
+  Never request replacement of an existing record, including a malformed one. A bounded collision
   retry is an operation failure, never a retention limit.
 - Labels are nonblank single-line strings, trimmed only at explicit capture, at most
   200 Unicode code points. Reject control characters rather than silently truncate.
@@ -62,3 +62,9 @@ Headerless chapters must first be saved normally to gain stable identity. Existi
 transport caps remain transport-only; future/corrupt history bytes can travel unchanged and
 are refused on history read. Restore, deletion dependency policy, UI and end-to-end draft
 gating remain separate tasks. See [FORMAT](../FORMAT.md#chapter-history).
+
+The existing filesystem port's expectation-check/write/readback sequence is not cross-process
+compare-and-swap. Absent-only requests and byte verification preserve the existing boundary,
+not external-writer exclusion. A mismatched readback or exception after possible publication
+reports an unconfirmed write, retains any complete record and directs review before retry;
+the core neither automatically retries that outcome nor removes its file.

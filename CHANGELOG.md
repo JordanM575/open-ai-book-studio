@@ -38,6 +38,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Clarify unconfirmed history writes after possible publication: retain the complete record,
+  disable automatic retry, and direct the author to review history first. Add injected post-write
+  readback-failure coverage and document the filesystem adapter's cross-process race limitation.
+
 - Add the saved-only chapter history core: explicitly capture named versions, list/open their
   ordinary book-scoped Markdown files, and compare with current saved text through Library.
   Records validate stable identity, provenance and body hashes, preserve unknown metadata, report

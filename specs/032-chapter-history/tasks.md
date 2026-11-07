@@ -115,7 +115,9 @@ saved-only library core. IPC/UI, restore/undo, cleanup and end-to-end acceptance
 ### W01 validation evidence (2026-11-07)
 
 - Focused command: `bun test packages/core/tests/chapter-history.test.ts packages/core/tests/chapter-history-storage-premises.test.ts packages/core/tests/chapter-history-retention-premises.test.ts packages/core/tests/library-service.test.ts packages/core/tests/archive.test.ts apps/desktop/tests/chapter-history.test.ts apps/desktop/tests/library.test.ts`.
-  Result: **81 passed, 0 failed, 439 assertions** across seven files.
+  Result: **82 passed, 0 failed, 445 assertions** across seven files, including the W15 follow-up
+  for a commit that publishes successfully and then fails readback (retain the complete record,
+  report uncertainty, no automatic retry).
 - `bun run typecheck`: passed for desktop node/web, browser and toolkit. A strict standalone
   TypeScript check of the new core test also passed with desktop/root `@types` roots supplied,
   because that file is outside desktop's test include. Focused Biome lint: four new files clean.
