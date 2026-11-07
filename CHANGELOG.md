@@ -38,6 +38,23 @@ Update the `Unreleased` section before every commit.
   tone/answer-length guidance and the system-prompt budget. The initial candidate retained spec 031's
   demo/script condition; the subsequent delivery update above replaces its event-only re-shoot hold.
 
+### Added
+
+- Correct history codec admission before new recovery writers use it: reject unpreservable YAML
+  metadata without changing the file, and keep all history source-resolution diagnostics quiet.
+  Verify saved-source UTF-8/raw hashes, snapshot metadata before asynchronous serialization, and
+  list unsupported filesystem history entries without following them or admitting them to archives.
+- Clarify unconfirmed history writes after possible publication: retain the complete record,
+  disable automatic retry, and direct the author to review history first. Add injected post-write
+  readback-failure coverage and document the filesystem adapter's cross-process race limitation.
+
+- Add the saved-only chapter history core: explicitly capture named versions, list/open their
+  ordinary book-scoped Markdown files, and compare with current saved text through Library.
+  Records validate stable identity, provenance and body hashes, preserve unknown metadata, report
+  unavailable files, and survive archive/trash journeys without changing chapters or flushing drafts.
+  Document the format and ADR 0016; retain every snapshot, safety record and intent without automatic
+  pruning. IPC/UI, restoration, undo and explicit cleanup remain separate follow-through.
+
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at
   launch on Electron's sandbox helper. After that was fixed and the browser smoke check was made to wait for the
@@ -148,6 +165,12 @@ Update the `Unreleased` section before every commit.
   Snapshot image-warning collection and visible structured export receipts are prepared; their
   production IPC wiring remains a coordinator integration step. Synthetic focused tests cover
   source/prior-output bytes, alias changes, filesystem failures and save/status behavior.
+- W01 F3 adapter repair: apply the existing no-symlinks/no-special-files policy to direct library
+  operations, both move endpoints, device metadata and watch callbacks. Preserve selected-root
+  platform aliases, atomic writes and own-write bookkeeping; a failed identity read no longer
+  triggers replacement. Synthetic history-shaped fixtures prove refusal without outside writes
+  and normal archive inclusion. This is a static-path check, not protection from concurrent
+  hostile path replacement or OS-level compare-and-swap.
 - A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
   while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
   that stale copy, so a character another device added or a memory the toolkit saved disappeared with

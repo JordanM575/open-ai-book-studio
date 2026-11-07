@@ -4,9 +4,9 @@
 
 ## Status
 
-Planned implementation. D-175/D-176 accepted the storage/retention decisions on November 3, 2026
-with delivery deferred until after submission. Existing premise tests are decision evidence;
-capture/list/restore and their end-to-end acceptance remain unimplemented.
+In progress. D-175/D-176 accepted the storage/retention decisions on November 3, 2026
+with delivery deferred until after submission. W01 implements the saved-only library core and
+format/schema follow-through. IPC/UI, restore/undo, cleanup and end-to-end acceptance remain open.
 
 ## Shape
 
@@ -23,6 +23,15 @@ intent records. Complete T001's format/ADR follow-through and T003's field-level
 grammar before persistence; do not treat the accepted layout as a finished serializer.
 
 ## Architecture
+
+### Accepted saved-only implementation contract (2026-11-07)
+
+[ADR 0016](../../docs/adr/0016-chapter-history.md) records researched field grammar,
+saved-source preconditions, unavailable-record handling and collision behavior as accepted
+under the author's delegated authority before dependent implementation. The normative
+[history format](../../docs/FORMAT.md#chapter-history) accompanies T001/T003/T004.
+This W01 slice reserves validated safety/intent data shapes; W02 owns their operations,
+draft-state integration, IPC/UI, restore and undo.
 
 ### Shared history operations
 
@@ -98,7 +107,9 @@ explicit success state.
 
 ## Proposed project areas
 
-These are implementation targets, not existing feature files or evidence of completed work:
+The saved-only core now lives in `packages/core/src/library/history.ts` and `history-store.ts`,
+with minimal `LibraryService`/desktop `Library` methods and focused synthetic tests. Remaining
+project areas are implementation targets, not evidence of completed work:
 
 - `packages/core/src/library/` — shared history records and operations over the current service/port.
 - `packages/core/tests/` — synthetic in-memory-port behavior and failure cases.

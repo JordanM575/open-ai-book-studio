@@ -87,6 +87,18 @@ import {
 import { scanLibrary } from "../sync/scan";
 import { detectDrift } from "../sync/detector";
 import type { DriftReport } from "../sync/types";
+import { ChapterHistoryStore } from "./history-store";
+import {
+  HistoryError,
+  historyDirectory,
+  readHistoryEnvelope,
+  type HistoryCaptureInput,
+  type HistoryComparison,
+  type HistoryListing,
+  type HistoryReadInput,
+  type HistoryScope,
+  type StoredHistoryRecord
+} from "./history";
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
@@ -464,6 +476,79 @@ export class LibraryService {
     const base = `front-and-back-matter.conflict-${reason}.${this.device.id}.${stamp}`;
     const savedName = await this.writeConflictCopy(bookId, base, ".json", `${JSON.stringify({ matter }, null, 2)}\n`);
     return { status: "conflict", reason, savedAs: conflictDisplayPath(bookId, savedName), book };
+  }
+
+  /* ----------------------------------------------------------- chapter history */
+
+  captureChapterHistory(input: HistoryCaptureInput): Promise<StoredHistoryRecord> {
+    return this.serializeWrite(input.bookId, async () => {
+      await this.requireHistoryBook(input);
+      return this.chapterHistoryStore(input).capture(input);
+    });
+  }
+
+  async listChapterHistory(scope: HistoryScope): Promise<HistoryListing> {
+    await this.requireHistoryBook(scope);
+    return this.chapterHistoryStore(scope).list(scope);
+  }
+
+  async readChapterHistory(input: HistoryReadInput): Promise<StoredHistoryRecord> {
+    await this.requireHistoryBook(input);
+    return this.chapterHistoryStore(input).read(input);
+  }
+
+  async compareChapterHistory(input: HistoryReadInput): Promise<HistoryComparison> {
+    await this.requireHistoryBook(input);
+    return this.chapterHistoryStore(input).compare(input);
+  }
+
+  private async requireHistoryBook(scope: HistoryScope): Promise<void> {
+    historyDirectory({ bookId: scope.bookId, chapterId: scope.chapterId });
+    let book: BookMeta;
+    try {
+      ({ book } = await this.readBookFile(scope.bookId));
+    } catch (error) {
+      if (error instanceof LibraryError && (error.code === "format" || error.code === "invalid")) {
+        throw new HistoryError("corrupt", "The book metadata could not be read for history. Keep the file and resolve its format before trying again.");
+      }
+      throw error;
+    }
+    if (book.id !== scope.bookId) throw new HistoryError("identity", "The book file does not match its history folder.");
+  }
+
+  private chapterHistoryStore(scope: HistoryScope): ChapterHistoryStore {
+    return new ChapterHistoryStore(
+      this.env,
+      (bookId, chapterId) => this.readChapterForHistory(bookId, chapterId),
+      async (path, text) => {
+        // Capture may have awaited storage or a filename collision since its initial preflight.
+        await this.requireHistoryBook(scope);
+        return this.commitText(path, text, { kind: "absent" });
+      }
+    );
+  }
+
+  /** History resolution never routes author front matter through the legacy diagnostic parser. */
+  private async readChapterForHistory(bookId: string, chapterId: string): Promise<Chapter> {
+    const found = await this.findChapterFile(bookId, chapterId, async (fileName) => {
+      const snapshot = await this.env.storage.readFile(chapterPath(bookId, fileName));
+      if (!snapshot || await this.env.runtime.sha256(snapshot.bytes) !== snapshot.sha256) {
+        throw new HistoryError("saved-source-required", "History needs a verified saved chapter. Check the source file and try again.");
+      }
+      const envelope = readHistoryEnvelope(new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes));
+      const fallback = await this.fallbackMeta(fileName, snapshot.createdAt, snapshot.modifiedAt);
+      const metadata = envelope.metadata;
+      const parsed = chapterMetaSchema.safeParse({
+        ...fallback, ...(metadata && typeof metadata === "object" ? metadata : {})
+      });
+      if (!parsed.success) throw new HistoryError("saved-source-required", "History needs readable saved chapter metadata.");
+      return chapterFrom(parsed.data, envelope.content, fileName, snapshot.sha256);
+    });
+    if ("chapter" in found) return found.chapter;
+    if (found.unreadable) {
+      throw new HistoryError("saved-source-required", "History needs a readable chapter with a saved identity. Keep the source file and resolve its format before trying again.");
+    }
+    throw new HistoryError("not-found", "The saved chapter is missing. Check the library folder before trying again.");
   }
 
   /* ----------------------------------------------------------------- chapters */
@@ -1147,13 +1232,14 @@ export class LibraryService {
    */
   private async findChapterFile(
     bookId: string,
-    chapterId: string
+    chapterId: string,
+    readFile?: (fileName: string) => Promise<Chapter>
   ): Promise<{ chapter: Chapter; fileName: string } | { unreadable: { fileName: string; error: unknown } | null }> {
     let unreadable: { fileName: string; error: unknown } | null = null;
     for (const fileName of await this.chapterFileNames(bookId)) {
       let chapter: Chapter;
       try {
-        chapter = await this.readChapterFile(bookId, fileName);
+        chapter = await (readFile ? readFile(fileName) : this.readChapterFile(bookId, fileName));
       } catch (error) {
         unreadable ??= { fileName, error };
         continue;

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `032-chapter-history`
 
-**Status**: Draft / Planned
+**Status**: In progress — saved-only library core implemented; author-facing journey planned
 
 ## Overview
 
@@ -30,7 +30,8 @@ SHA-256 hash; the checked library writer refuses stale replacement and preserves
 **Proposed by this spec:** a separate chapter history surface for explicit, named snapshots of
 already-saved chapter bodies, with read-only browsing/comparison, a checked restore, and a
 restore-specific undo. D-175/D-176 accepted the storage and retention policies on November 3, 2026;
-the feature remains unimplemented. Premise tests support those decisions, not the history journey.
+the saved-only library core now implements capture/list/open/compare. The author-facing journey,
+restore and undo remain unimplemented; premise tests alone do not establish that journey.
 
 ## User scenarios and acceptance
 
@@ -249,5 +250,5 @@ the post-submission implementation still needs the detailed format/schema and sa
   has its own integrity hash.
 - A restore preview is read-only. A restore only becomes an editor change after author confirmation
   and a confirmed checked commit; the editor is never replaced by a merely selected snapshot.
-- Snapshot storage is author-owned data following D-175. Publish the detailed format contract before
-  its first writer; this spec update does not add history files to the current product format.
+- Snapshot storage is author-owned data following D-175. ADR 0016 and the history section of
+  `docs/FORMAT.md` define the detailed contract published with the first saved-only writer.

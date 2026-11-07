@@ -216,6 +216,74 @@ Images, footnotes, endnotes, comments, page headers and footers, and the trackin
 not stored in the library. Tracked changes are imported as if accepted. The import report lists
 everything left out instead.
 
+## Chapter history
+
+`books/<bookId>/history/<chapterId>/<timestamp>-<label-slug>[-n].md` holds one saved-text
+record per ordinary file (D-175/D-176, [ADR 0016](adr/0016-chapter-history.md)). The timestamp
+is UTC ISO with milliseconds and `:`/`.` replaced by `-`; the slug is a 60-character
+filename hint, never identity. Collisions append `-2`, `-3`, etc., with absent-only atomic
+commits. No operation requests replacement of an existing record. Capture is explicit and never runs on ordinary saves.
+The filesystem adapter's existence check and rename are not a cross-process compare-and-swap;
+an external writer racing between them is outside that guarantee. Returned bytes are checked
+against the intended snapshot. A write/readback failure can leave a complete snapshot: review
+history before retrying. The core never automatically retries or deletes an unconfirmed write.
+
+Front matter is required, followed by a blank separator line and the canonical Markdown body:
+
+| Field | Contract |
+| --- | --- |
+| `schemaVersion` | `1`; future versions are refused without rewriting. |
+| `id` | Stable `hist_` plus at least six letters, digits or hyphens. |
+| `kind` | `snapshot`, `safety`, or `intent`. The current capture operation creates only `snapshot`. |
+| `bookId`, `chapterId` | Stable owning IDs; both must match the requested history directory. |
+| `label` | Nonblank single line, at most 200 Unicode code points, no control characters. Explicit capture trims surrounding whitespace; reads never trim or truncate metadata. |
+| `capturedAt` | UTC ISO 8601 with exactly millisecond precision. |
+| `sourceVersion` | Nonnegative safe integer: version of the saved source chapter. |
+| `sourceHash` | Lowercase hexadecimal SHA-256 of the raw source chapter file. Historical provenance, not a later restore base. |
+| `bodyHash` | Lowercase hexadecimal SHA-256 of the UTF-8 canonical body; intents use the empty body's hash. |
+
+Intent metadata additionally contains `selected` and `safety` references, each with
+`fileName`, `id`, and `hash` (raw history-file SHA-256), and `intendedBodyHash`.
+`sourceVersion`/`sourceHash` identify its checked pre-restore base. Its `state` is `prepared`,
+`applied` (requires `result: { version, hash }`), or `undone` (requires both `result` and
+`undoResult: { version, hash }`). Prepared intents have neither result; applied intents
+have no undo result. Intent bodies are empty. These schema forms reserve recoverable
+restore material; restore/undo execution is not implemented in the saved-only core.
+
+All known metadata objects are loose: supported unknown fields survive codec round-trips,
+including nested references/results. Supported metadata contains plain string-keyed mappings,
+dense arrays, strings, booleans, null and finite numbers. Integer numbers must be safe integers;
+negative zero and numeric tokens whose value would round or underflow during serialization are
+refused. Complex keys, unsupported YAML tags, Set/Date/Map values, cycles, `__proto__`, accessors
+and other non-data/foreign JS values are refused before schema conversion; they are never silently
+changed into another type. Acyclic alias values survive, without promising comments, anchor names
+or object-graph identity. Serialization snapshots this validated metadata before asynchronous work.
+No read writes back. Invalid YAML, missing required data,
+wrong identity, unsupported schemas and body-hash mismatches are unavailable records, left
+intact for recovery. Listing reports them individually. Parsing errors never include prose;
+the complete history source-resolution path uses quiet parsing and fatal UTF-8 decoding.
+Canonical body hashing uses the same normalization as chapter bodies; front-matter formatting
+is not covered by `bodyHash`. An open result also reports the record's raw-file hash.
+
+Capture requires a confirmed saved state and exact source version/hash, reads only the saved
+file, and requires its persisted chapter ID (headerless fallback IDs cannot anchor history).
+It verifies raw source hashes and refuses a changed, missing, unreadable or future-schema source. It never flushes a draft or
+changes chapter bytes. Hosts must check their live draft/save state before requesting capture.
+List/open work even while the chapter is in trash; comparison requires the current saved
+chapter and identifies its two bodies as saved text, excluding any draft.
+
+History follows a stable chapter ID through title, filename and order changes. Chapter trash
+leaves history in the book; whole-book trash carries it with the entire folder. Portable
+archives include ordinary files' exact bytes and hashes by the author-file rule, including
+unknown or unavailable record contents; history validation happens when those records are read.
+Filesystem links and special entries are unsupported. Direct access refuses them; metadata-only
+history inspection lists unsupported `.md` entry names as unavailable without reading their
+targets. They remain excluded from ordinary archive traversal.
+No automatic pruning, count/size quota, expiry or compaction applies, including to intents.
+List sizes come from storage stats, not a format field. Storage failures never delete recovery
+material. Future explicit deletion must move a record to recoverable chapter trash and protect
+restore dependencies; no deletion operation is provided by the saved-only core.
+
 ## Conversation files
 
 `threads/<threadId>.json` stores one agent conversation. It is written through the same atomic commit
