@@ -9,7 +9,10 @@ import {
   MAX_TTS_CHARACTERS,
   OPENROUTER_TTS_MODELS,
   OPENROUTER_TTS_MODEL,
+  openAiVoices,
   TTS_VOICES,
+  ttsModels,
+  isTtsChoice,
   ttsCapability,
   ttsRequestBody,
   wrapPcmAsWav
@@ -76,6 +79,27 @@ describe("the request", () => {
   test("offers real voices", () => {
     expect(TTS_VOICES.length).toBeGreaterThan(6);
     expect(TTS_VOICES).toContain("nova");
+  });
+
+  test("offers the older OpenAI models only the voices they support", () => {
+    // tts-1 and tts-1-hd have a smaller set than gpt-4o-mini-tts, which also has ballad and verse.
+    for (const older of ["tts-1", "tts-1-hd"]) {
+      expect(openAiVoices(older)).not.toContain("ballad");
+      expect(openAiVoices(older)).not.toContain("verse");
+      expect(openAiVoices(older)).toContain(DEFAULT_TTS_VOICE);
+      expect(ttsCapability("openai", undefined, older)?.voices).toEqual(openAiVoices(older));
+      expect(isTtsChoice("openai", older, "ballad")).toBe(false);
+      expect(isTtsChoice("openai", older, "verse")).toBe(false);
+      expect(isTtsChoice("openai", older, "nova")).toBe(true);
+    }
+    expect(openAiVoices("gpt-4o-mini-tts")).toEqual(TTS_VOICES);
+    expect(ttsCapability("openai", undefined, "gpt-4o-mini-tts")?.voices).toEqual(TTS_VOICES);
+    expect(isTtsChoice("openai", "gpt-4o-mini-tts", "ballad")).toBe(true);
+    // The catalog Settings reads says the same, model by model.
+    const catalog = Object.fromEntries(ttsModels("openai").map((choice) => [choice.id, choice.voices]));
+    expect(catalog["tts-1"]).toEqual(openAiVoices("tts-1"));
+    expect(catalog["tts-1-hd"]).toEqual(openAiVoices("tts-1-hd"));
+    expect(catalog["gpt-4o-mini-tts"]).toEqual(TTS_VOICES);
   });
 });
 

@@ -37,6 +37,17 @@ export const TTS_MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"] as const;
 
 export type TtsModel = (typeof TTS_MODELS)[number];
 
+/**
+ * The voices each model can speak with. `gpt-4o-mini-tts` offers all of them; `tts-1` and `tts-1-hd`
+ * support a smaller set, without `ballad` or `verse`, so a request that pairs those models with the
+ * other voices is refused by the provider.
+ */
+export function openAiVoices(model: string): readonly TtsVoice[] {
+  return model === "tts-1" || model === "tts-1-hd"
+    ? TTS_VOICES.filter((voice) => voice !== "ballad" && voice !== "verse")
+    : TTS_VOICES;
+}
+
 export const DEFAULT_TTS_MODEL: TtsModel = "gpt-4o-mini-tts";
 
 /**
@@ -112,7 +123,7 @@ export interface TtsModelChoice {
 
 export function ttsModels(provider: ProviderId): TtsModelChoice[] {
   if (provider === "openai") {
-    return TTS_MODELS.map((id) => ({ id, label: id, voices: TTS_VOICES }));
+    return TTS_MODELS.map((id) => ({ id, label: id, voices: openAiVoices(id) }));
   }
   if (provider === "openrouter") {
     return OPENROUTER_TTS_MODELS.map(({ id, label, voices }) => ({ id, label, voices }));
@@ -139,7 +150,7 @@ export function ttsCapability(provider: ProviderId, baseUrl?: string, model?: st
       provider,
       endpoint: `${normalizeTtsBase(baseUrl, "https://api.openai.com/v1")}/audio/speech`,
       model: selectedModel,
-      voices: TTS_VOICES,
+      voices: openAiVoices(selectedModel),
       defaultVoice: DEFAULT_TTS_VOICE,
       responseFormat: "mp3"
     };

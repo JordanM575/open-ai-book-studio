@@ -236,6 +236,9 @@ Update the `Unreleased` section before every commit.
   OpenRouter speaking models and their supported voices. Settings reads a local catalog without
   probing providers; requests use only the author's selected connection, and browser provider
   voice operations remain unsupported (spec 038, D-192).
+  The OpenAI models `tts-1` and `tts-1-hd` are offered only the voices they support (not `ballad` or `verse`, which
+  only `gpt-4o-mini-tts` has), in Settings, in saved choices and in the check before a request, so a pairing the
+  provider would refuse is never offered, saved or reported as available.
 - Front and back matter for every export (spec 035 T007–T013, D-169 and D-170, accepted on the
   author's delegation). The Format dialog has a **Front and back matter** section. The author turns
   the generated title page on or off and gives it an author and a subtitle. They add copyright,
