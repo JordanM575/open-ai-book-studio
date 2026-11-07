@@ -97,6 +97,13 @@ documentation validation and `git diff --check` passed. These are pure-contract 
 runtime/UI acceptance. The attempted wider source-plus-test TypeScript invocation lacked the
 repository's Bun test declarations; the successful typecheck is explicitly scoped to core source.
 
+Coordinator correction (November 7): the combined scoped core/leaf now passes 132 focused tests,
+741 assertions, strict source-and-test checking with the installed Bun declarations, all workspace
+typechecks and 13-file lint. Added tests cover the independent core R1–R4 and UI-R1–UI-R3 findings,
+including getter-free input, complete terms and same-view failed-stop ownership. These are local
+automated correction results; T010 still requires fresh independent exact-head review. No mounted
+runtime, storage, native/device, live-provider or semantic-quality evidence is inferred.
+
 Mock provider boundaries; use temporary synthetic multi-book fixtures. Test payload equality to
 disclosure, pre-start known/unknown price and data-use/training terms, missing-consent zero-call
 refusal, pre-send cancellation, hostile book/profile content, tool rejection, schema/quotation

@@ -1,4 +1,4 @@
-import { freeze, REVIEW_LIMITS } from "@ai-book-studio/core/review/contract";
+import { assertReviewData, freeze, REVIEW_LIMITS } from "@ai-book-studio/core/review/contract";
 import { reviewDisclosure, type CurrentSource, type ReviewEnvelope } from "@ai-book-studio/core/review/envelope";
 import { buildReaderRun, type Citation, type ReaderRun } from "@ai-book-studio/core/review/findings";
 import type { SavedIdentity } from "@ai-book-studio/core/review/sources";
@@ -54,8 +54,16 @@ export const failureCopy: Record<ReviewFailure, string> = {
   refused: "The provider refused this request. The review is incomplete. Review your scope before preparing a new request."
 };
 
+export function refusalMessage(reason: unknown): string {
+  return typeof reason === "string" && Object.hasOwn(refusalCopy, reason) ? refusalCopy[reason as ReviewRefusal] : refusalCopy.unavailable;
+}
+export function failureMessage(reason: unknown): string {
+  return typeof reason === "string" && Object.hasOwn(failureCopy, reason) ? failureCopy[reason as ReviewFailure] : failureCopy.provider;
+}
+
 /** Only core-registered envelopes enter disclosure. This does not establish host provenance. */
 export function acceptPreparation(value: PreparedReaderReview, bookId: string): PreparedReaderReview {
+  assertReviewData(value);
   const envelope = reviewDisclosure(value.envelope);
   if (envelope.kind !== "reader-review" || !envelope.profile || envelope.books.length !== 1 ||
       envelope.books[0]?.bookId !== bookId || !Array.isArray(value.terms) || value.terms.length !== 1) {
@@ -75,6 +83,7 @@ export function acceptPreparation(value: PreparedReaderReview, bookId: string): 
 
 /** Recompute evidence/subjectivity from the core run; never trust display labels or verified flags. */
 export async function acceptRun(run: ReaderRun, envelope: ReviewEnvelope): Promise<ReaderRun> {
+  assertReviewData(run);
   if (run.kind !== "reader-review" || reviewDisclosure(run.envelope).scopeDigest !== envelope.scopeDigest ||
       !Array.isArray(run.findings) || run.findings.length > REVIEW_LIMITS.findings) throw new Error("Invalid reader result");
   const findings = run.findings.map((finding) => {

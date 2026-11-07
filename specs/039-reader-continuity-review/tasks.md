@@ -18,6 +18,10 @@ task is completed. T010 retains the independent correction gate. The policy amen
 ## Inline, retained and whole-book follow-through — ADR 0020
 
 - [ ] T010 Correct and independently re-review the existing scoped core/UI boundary findings before integration.
+  - Coordinator correction covers registered-envelope evidence, plain/lossless input and canonical
+    data, strict current facts, malformed-Unicode overflow, sparse terms, malformed callback reasons
+    and same-view cancellation ownership. Focused regression files accompany the change; fresh
+    independent exact-head review and mounted/runtime gates remain required.
 - [ ] T011 Add shared exact-source/evidence identity, complete overlap index, disposition and rerun relations.
 - [ ] T012 Implement a minimal CodeMirror plain-text surface/current-source handle with the existing one
   undo owner; prove canonical roundtrip, no writes on navigation, IME/paste/voice and save fidelity.

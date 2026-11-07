@@ -1,7 +1,7 @@
 import type { z } from "zod";
-import { canonicalJson, checkBytes, freeze, idSchema, requireContract, REVIEW_LIMITS, scalarCount, textSchema, timestampSchema, validSpan, type Immutable } from "./contract";
-import { sourceComparisonKey, sourceCurrency, validateReviewEnvelope, type CurrentSource, type ReviewEnvelope } from "./envelope";
-import { sameSavedIdentity, type ChapterSource, type SavedIdentity } from "./sources";
+import { assertReviewData, canonicalJson, checkBytes, freeze, idSchema, isReviewData, requireContract, REVIEW_LIMITS, timestampSchema, validSpan, type Immutable } from "./contract";
+import { reviewDisclosure, sourceComparisonKey, sourceCurrency, validateReviewEnvelope, type CurrentSource, type ReviewEnvelope } from "./envelope";
+import { sameSavedIdentity, savedEditorSchema, type ChapterSource, type SavedIdentity } from "./sources";
 import { citationSchema, findingsOutputSchema } from "./wire-schema";
 
 export type Citation = Immutable<z.infer<typeof citationSchema>>;
@@ -15,6 +15,8 @@ function chapterLabel(source: ChapterSource, first: number, last: number): strin
 
 /** Validity is against captured text only. A matching quote does not prove the interpretation. */
 export function verifyReviewCitation(envelope: ReviewEnvelope, input: unknown): CitationResult {
+  try { reviewDisclosure(envelope); } catch { return { status: "invalid", reason: "source" }; }
+  if (!isReviewData(input)) return { status: "invalid", reason: "shape" };
   const parsed = citationSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", reason: "shape" };
   const citation = parsed.data;
@@ -60,6 +62,7 @@ export type ReaderRun = Immutable<{
 export async function buildReaderRun(input: {
   runId: string; startedAt: string; completedAt: string; envelope: ReviewEnvelope; output: string;
 }): Promise<ReaderRun> {
+  assertReviewData(input);
   checkBytes(input.output, REVIEW_LIMITS.outputBytes, "output-byte-limit");
   const runId = idSchema.parse(input.runId);
   const startedAt = timestampSchema.parse(input.startedAt);
@@ -79,9 +82,14 @@ export async function buildReaderRun(input: {
     const invalidEvidence: { index: number; reason: string }[] = [];
     finding.evidence.forEach((raw, index) => {
       // Resource overflow fails the run even when the remainder of a citation is malformed.
-      if (raw && typeof raw === "object" && "quote" in raw && typeof raw.quote === "string" && textSchema.safeParse(raw.quote).success) {
-        requireContract(scalarCount(raw.quote) <= REVIEW_LIMITS.quoteScalars, "quote-scalar-limit");
-      }
+       if (raw && typeof raw === "object" && "quote" in raw && typeof raw.quote === "string") {
+         let scalars = 0;
+         for (const scalar of raw.quote) {
+           const code = scalar.codePointAt(0) ?? 0;
+           if (code < 0xd800 || code > 0xdfff) scalars++;
+           requireContract(scalars <= REVIEW_LIMITS.quoteScalars, "quote-scalar-limit");
+         }
+       }
       const result = verifyReviewCitation(envelope, raw);
       if (result.status === "verified-captured") evidence.push(result.evidence);
       else invalidEvidence.push({ index, reason: result.reason });
@@ -105,7 +113,10 @@ export function reviewCitationNavigation(envelope: ReviewEnvelope, citation: unk
   const currency = sourceCurrency(source, current);
   if (currency !== "current") return { status: currency === "stale" ? "stale" : "unavailable", evidence: result.evidence };
   if (source.kind !== "chapter") return { status: "unavailable", evidence: result.evidence };
-  if (!editor?.clean || !sameSavedIdentity(source.identity, editor.identity)) return { status: "stale", evidence: result.evidence };
+  const destination = isReviewData(editor) ? savedEditorSchema.safeParse(editor) : null;
+  if (!destination?.success || destination.data.clean !== true || !sameSavedIdentity(source.identity, destination.data.identity)) {
+    return { status: "stale", evidence: result.evidence };
+  }
   return { status: "ready", evidence: result.evidence };
 }
 

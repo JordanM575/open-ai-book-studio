@@ -19,9 +19,20 @@ owner adds package exports.
 | `findings.ts` | `verifyReviewCitation`, `buildReaderRun`, `reviewCitationNavigation`, `compareReaderRuns`. |
 
 Builders detach and freeze nested values. Rehydration verifies schema and content digests before
-registration; synchronous serializers refuse unchecked copies. Digests are integrity/binding
+registration; synchronous serializers and citation/navigation checks refuse unchecked copies. Digests are integrity/binding
 values, **not signatures or authority tokens**. A host must independently validate every source,
 metadata label, destination and consent fact it supplies.
+
+Public builders/validation boundaries check the in-memory JSON domain before schema parsing can
+discard data: plain or null-prototype objects with own enumerable data, ordinary dense arrays,
+null/booleans/strings and finite numbers (safe integers; fractional values remain supported).
+Undefined, negative zero, nonfinite/unsafe integral numbers, foreign prototypes, accessors, symbols,
+hidden properties, sparse/extended arrays and cycles refuse without invoking getters or `toJSON`.
+Shared acyclic subvalues are allowed. Canonical encoding preserves literal strings, sorts object keys
+and retains array order, including deeply nested data without recursive traversal. It is not a raw
+JSON duplicate-key/numeric/UTF-8 reader or a durable format; text schemas independently reject malformed
+Unicode. The trusted Zod-generated schema alone projects enumerable wire fields from its root to omit
+Zod's nonenumerable `~standard` runtime hook; no caller-supplied value uses that projection.
 
 ## Source and identity rules
 
@@ -68,14 +79,18 @@ source snapshots. Empty reasons means only **no mismatch in those inputs**; it n
 send or consumes an action. Cancel returns `not-started`. Revoked/changed consent, missing/ambiguous
 or changed sources, changed endpoint/model/capability/price/tool/host facts, changed profiles and
 wrong request/digest require a new disclosure. Current sources may have a new capture timestamp.
+Action/current facts and sources are schema-checked and detached before asynchronous digest checks;
+the host must still re-resolve them immediately before dispatch. Editor readiness requires literal
+boolean `true` and a checked saved identity (or complete checked saved body), never truthiness.
 
 ## Findings and navigation
 
 Invalid top-level output, duplicate finding IDs, wrong run/profile attribution and exceeded byte,
 finding, evidence-count, interpretation-scalar or quote-scalar bounds fail the run. No repair call is
 made. Invalid individual citation shapes/ranges/revisions/quotes are withheld and counted by index
-and reason. Valid citations are labelled `verified-captured`, never implicitly current. Every
-interpretation is subjective. A continuity contradiction requires two distinct valid references;
+and reason. Valid citations are labelled `verified-captured`, never implicitly current. A
+quote with more than 500 valid scalar values fails even when other code units are malformed; a short
+malformed quote remains withheld. Every interpretation is subjective. A continuity contradiction requires two distinct valid references;
 otherwise its derived state is insufficient evidence. Empty-evidence observations are also
 insufficient, and mixed valid/invalid evidence is incomplete.
 
@@ -106,7 +121,8 @@ interpretation text. Unchanged input plus changed interpretation is model variat
 5. Before durable 037 parts: expected-hash thread writes, conflict preservation, recoverable deletion,
    versioned parts, safe legacy reads and future-version refusal. This prerequisite applies **only
    to 037 conversational retention**. 039 snapshots, profiles and results remain volatile with zero
-   ThreadStore writes pending D-171/U-039-03; volatile 039 integration does **not** wait for 037
+    ThreadStore writes. D-199/D-171 now select a separate explicit saved-review path whose detailed
+    formats/writers remain unimplemented; volatile 039 integration does **not** wait for 037
    persistence. Its runtime tests must spy on every thread/report writer during start, finish, stop
    and failure. Never automatically replay stored 037 review sources in an ordinary prompt.
 6. Independently verify exact-candidate UI/runtime journeys, clean-editor navigation races and

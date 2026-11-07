@@ -1,9 +1,10 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import { assertReviewData } from "@ai-book-studio/core/review/contract";
 import { sourceCurrency } from "@ai-book-studio/core/review/envelope";
 import type { Citation, ReaderRun } from "@ai-book-studio/core/review/findings";
 import { Button } from "@ai-book-studio/ui/button";
 import {
-  acceptPreparation, acceptRun, failureCopy, refusalCopy,
+  acceptPreparation, acceptRun, failureMessage, refusalCopy, refusalMessage,
   type PreparedReaderReview, type ReaderReviewProps
 } from "./contracts";
 import { ReviewDisclosure, reviewActionClass } from "./ReviewDisclosure";
@@ -12,6 +13,8 @@ import { navigationKey, navigationState, ReaderReviewResults } from "./ReaderRev
 type Phase = "idle" | "preparing" | "ready" | "running" | "completed" | "failed" | "stopped";
 type Operation = { controller: AbortController; requestId: string | null; revision: string; stop: ReaderReviewProps["onStop"] };
 const stoppedCopy = "Review stopped · Incomplete. Stopping prevents later dispatch best-effort; text already sent cannot be recalled. Prepare a new request to try again.";
+const stopRequestedCopy = "Review stop requested · Incomplete. Stopping prevents later dispatch best-effort; text already sent cannot be recalled. Awaiting stop confirmation.";
+const unconfirmedStopCopy = "Stop could not be confirmed · Incomplete. Late results are ignored here, but the provider may still be processing text already sent. That text cannot be recalled.";
 
 /** A leaf only: no IPC, provider, reader, storage or ordinary conversation access. */
 export function ReaderReviewPanel(props: ReaderReviewProps) {
@@ -34,6 +37,7 @@ function ReaderReviewSession(props: ReaderReviewProps) {
   const currentRevision = useRef(props.disclosureRevision);
   const seenRequests = useRef(new Set<string>());
   const startedRequests = useRef(new Set<string>());
+  const cancellation = useRef<{ message: string } | null>(null);
 
   const retire = useCallback((): Promise<boolean> => {
     generation.current++;
@@ -41,9 +45,18 @@ function ReaderReviewSession(props: ReaderReviewProps) {
     active.current = null;
     operation?.controller.abort();
     if (!operation?.requestId) return Promise.resolve(true);
+    const notice = { message: stopRequestedCopy };
+    cancellation.current = notice;
+    let result: Promise<boolean>;
     try {
-      return Promise.resolve(operation.stop({ requestId: operation.requestId })).then(() => true, () => false);
-    } catch { return Promise.resolve(false); }
+      result = Promise.resolve(operation.stop({ requestId: operation.requestId })).then(() => true, () => false);
+    } catch { result = Promise.resolve(false); }
+    return result.then((confirmed) => {
+      notice.message = confirmed ? stoppedCopy : unconfirmedStopCopy;
+      // Passive fact changes retain this notice; a new operation or closed view retires ownership.
+      if (alive.current && cancellation.current === notice && !active.current) setMessage(notice.message);
+      return confirmed;
+    });
   }, []);
 
   // Layout cleanup invalidates old callbacks before controls for a new disclosure become usable.
@@ -51,9 +64,9 @@ function ReaderReviewSession(props: ReaderReviewProps) {
     alive.current = true;
     currentRevision.current = props.disclosureRevision;
     setPrepared(null);
-    setPhase("idle");
+    setPhase(cancellation.current ? "stopped" : "idle");
     setNavigationBusy(false);
-    setMessage(props.supported ? "Prepare a fresh disclosure and inspect it before starting." : "Reader review is unavailable on this host. No source preparation or provider request can start.");
+    setMessage(cancellation.current?.message ?? (props.supported ? "Prepare a fresh disclosure and inspect it before starting." : "Reader review is unavailable on this host. No source preparation or provider request can start."));
     return () => {
       alive.current = false;
       void retire();
@@ -75,6 +88,7 @@ function ReaderReviewSession(props: ReaderReviewProps) {
 
   function begin(requestId: string | null = null): Operation {
     generation.current++;
+    cancellation.current = null;
     const operation = { controller: new AbortController(), requestId, revision: props.disclosureRevision, stop: props.onStop };
     active.current = operation;
     return operation;
@@ -94,9 +108,10 @@ function ReaderReviewSession(props: ReaderReviewProps) {
     try {
       const result = await props.onPrepare({ bookId: props.bookId, signal: operation.controller.signal, previousRunId: runs.at(-1)?.runId ?? null });
       if (!isCurrent(operation)) return;
+      assertReviewData(result);
       if (result.kind === "blocked") {
         setPhase("idle");
-        setMessage(refusalCopy[result.reason] ?? refusalCopy.unavailable);
+        setMessage(refusalMessage(result.reason));
       } else if (result.kind === "ready") {
         const value = acceptPreparation(result.prepared, props.bookId);
         if (seenRequests.current.has(value.envelope.requestId)) throw new Error("Reused request");
@@ -130,6 +145,7 @@ function ReaderReviewSession(props: ReaderReviewProps) {
     try {
       const outcome = await props.onStart({ envelope, signal: operation.controller.signal });
       if (!isCurrent(operation)) return;
+      assertReviewData(outcome);
       if (outcome.kind === "completed") {
         const run = await acceptRun(outcome.run, envelope);
         if (!isCurrent(operation)) return;
@@ -138,10 +154,10 @@ function ReaderReviewSession(props: ReaderReviewProps) {
         setMessage("Review completed · Subjective findings, with historical evidence. A rerun requires a new disclosure and Start.");
       } else if (outcome.kind === "blocked") {
         setPhase("idle");
-        setMessage(refusalCopy[outcome.reason] ?? refusalCopy.unavailable);
+        setMessage(refusalMessage(outcome.reason));
       } else if (outcome.kind === "failed") {
         setPhase("failed");
-        setMessage(failureCopy[outcome.reason] ?? failureCopy.provider);
+        setMessage(failureMessage(outcome.reason));
       } else throw new Error("Invalid result");
     } catch {
       if (!isCurrent(operation)) return;
@@ -162,11 +178,11 @@ function ReaderReviewSession(props: ReaderReviewProps) {
     setPrepared(null);
     setPhase("stopped");
     setNavigationBusy(false);
-    setMessage(wasRunning ? stoppedCopy : "Preparation cancelled · No provider request started. Prepare again when ready.");
+    setMessage(wasRunning ? stopRequestedCopy : "Preparation cancelled · No provider request started. Prepare again when ready.");
     focusStatus();
     void result.then((confirmed) => {
       if (!confirmed && alive.current && generation.current === stoppedGeneration && !active.current) {
-        setMessage("Stop could not be confirmed · Incomplete. Late results are ignored here, but the provider may still be processing text already sent. That text cannot be recalled.");
+        setMessage(unconfirmedStopCopy);
       }
     });
   }
@@ -205,7 +221,7 @@ function ReaderReviewSession(props: ReaderReviewProps) {
       {!busy ? <Button variant={phase === "ready" ? "secondary" : "primary"} className={reviewActionClass} disabled={!props.supported || navigationBusy} onClick={() => void prepare()}>
         {phase === "ready" ? "Refresh disclosure" : runs.length ? "Prepare rerun" : "Prepare review"}
       </Button> : <Button className={reviewActionClass} onClick={stop}>{phase === "running" ? "Stop review" : "Cancel preparation"}</Button>}
-      <Button variant="ghost" className={reviewActionClass} onClick={() => { void retire(); setPrepared(null); setRuns([]); setNavigationRefusals(new Map()); setPhase("idle"); props.onClose(); }}>Close review</Button>
+      <Button variant="ghost" className={reviewActionClass} onClick={() => { void retire(); cancellation.current = null; setPrepared(null); setRuns([]); setNavigationRefusals(new Map()); setPhase("idle"); props.onClose(); }}>Close review</Button>
     </div>
     <ReaderReviewResults runs={runs} currentSources={props.currentSources} editor={props.editor} navigationBusy={busy || navigationBusy || !props.supported} navigationRefusals={navigationRefusals} onNavigate={(run, citation) => void navigate(run, citation)} />
   </section>;

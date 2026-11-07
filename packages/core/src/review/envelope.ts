@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  bookIdSchema, canonicalJson, checkBytes, digestJson, freeze, hashSchema, idSchema,
+  assertReviewData, bookIdSchema, canonicalJson, checkBytes, digestJson, freeze, hashSchema, idSchema, isReviewData,
   requireContract, REVIEW_LIMITS, textSchema, timestampSchema, utf8Bytes, versionSchema, type Immutable
 } from "./contract";
 import { profileSchema, validateReaderProfile, type ReaderProfile } from "./profiles";
@@ -84,6 +84,7 @@ function validateContent(content: EnvelopeInput): void {
 
 /** Builds a detached, deep-frozen value. No host reads, current-time lookup or generated authority. */
 export async function buildReviewEnvelope(input: unknown): Promise<ReviewEnvelope> {
+  assertReviewData(input);
   const content = envelopeContentSchema.parse(input);
   validateContent(content);
   if (content.profile) await validateReaderProfile(content.profile);
@@ -97,6 +98,7 @@ export async function buildReviewEnvelope(input: unknown): Promise<ReviewEnvelop
 }
 
 export async function validateReviewEnvelope(input: unknown): Promise<ReviewEnvelope> {
+  assertReviewData(input);
   const { scopeDigest, ...content } = envelopeSchema.parse(input);
   const envelope = await buildReviewEnvelope(content);
   requireContract(scopeDigest === envelope.scopeDigest, "scope-digest");
@@ -142,8 +144,10 @@ export function serializeProviderRequest(envelope: ReviewEnvelope): string {
   const request = canonicalJson({
     contractVersion: 1,
     messages: [{ role: "system", content: REVIEW_POLICY }, { role: "user", content: serializeReviewEnvelope(envelope) }],
-    tools: offeredReviewTools(envelope).map((name) => ({ name, description: descriptions[name], inputSchema: z.toJSONSchema(reviewToolSchemas[name]) })),
-    responseContract: envelope.kind === "reader-review" ? z.toJSONSchema(requestedFindingsSchema) : { type: "string" }
+    // Zod adds a nonenumerable ~standard runtime hook to its generated root. Project only the
+    // library-generated schema's wire fields; caller data never uses this projection escape hatch.
+    tools: offeredReviewTools(envelope).map((name) => ({ name, description: descriptions[name], inputSchema: { ...z.toJSONSchema(reviewToolSchemas[name]) } })),
+    responseContract: envelope.kind === "reader-review" ? { ...z.toJSONSchema(requestedFindingsSchema) } : { type: "string" }
   });
   assertCompleteRequestBytes(request);
   return request;
@@ -155,15 +159,25 @@ export function assertCompleteRequestBytes(serialized: string): void {
 
 export type CurrentSource = { sourceId: string; status: "missing" | "ambiguous" } |
   { sourceId: string; status: "available"; source: ReviewSource };
+const currentSourcesSchema = z.array(z.discriminatedUnion("status", [
+  z.strictObject({ sourceId: idSchema, status: z.literal("missing") }),
+  z.strictObject({ sourceId: idSchema, status: z.literal("ambiguous") }),
+  z.strictObject({ sourceId: idSchema, status: z.literal("available"), source: sourceSchema })
+]));
 
 /** Capture time and request-local aliases may differ on reread; source content/revisions may not. */
 export function sourceComparisonKey(source: ReviewSource): string {
-  const { capturedAt: _capturedAt, sourceId: _sourceId, ...identityAndContent } = source;
+  assertReviewData(source);
+  const { capturedAt: _capturedAt, sourceId: _sourceId, ...identityAndContent } = sourceSchema.parse(source);
   return canonicalJson(identityAndContent);
 }
 
 export function sourceCurrency(source: ReviewSource, current: readonly CurrentSource[]): "current" | "stale" | "unavailable" {
-  const matches = current.filter((entry) => entry.sourceId === source.sourceId);
+  if (!isReviewData(source) || !isReviewData(current)) return "unavailable";
+  const captured = sourceSchema.safeParse(source);
+  const candidates = currentSourcesSchema.safeParse(current);
+  if (!captured.success || !candidates.success) return "unavailable";
+  const matches = candidates.data.filter((entry) => entry.sourceId === captured.data.sourceId);
   const match = matches[0];
   if (matches.length !== 1 || !match || match.status !== "available") return "unavailable";
   const parsed = sourceSchema.safeParse(match.source);
@@ -177,17 +191,26 @@ const currentFactsSchema = z.strictObject({
   books: z.array(bookFactsSchema).min(1).max(REVIEW_LIMITS.books), profile: profileSchema.nullable()
 });
 export type CurrentReviewFacts = Omit<z.infer<typeof currentFactsSchema>, "profile"> & { profile: ReaderProfile | null };
+const startActionSchema = z.strictObject({ kind: z.enum(["start", "cancel"]), requestId: idSchema, scopeDigest: hashSchema });
 
 /** Pure invalidation check, NOT an authorization token or a replacement for the existing send gate. */
 export async function checkReviewStart(envelopeInput: ReviewEnvelope, action: {
   kind: "start" | "cancel"; requestId: string; scopeDigest: string;
 }, currentFacts: unknown, currentSources: readonly CurrentSource[]): Promise<readonly string[]> {
-  const envelope = await validateReviewEnvelope(envelopeInput);
-  if (action.kind !== "start") return ["not-started"];
-  const reasons: string[] = [];
-  if (action.requestId !== envelope.requestId || action.scopeDigest !== envelope.scopeDigest) reasons.push("disclosure-changed");
+  if (!isReviewData(action)) return ["invalid-start-action"];
+  const parsedAction = startActionSchema.safeParse(action);
+  if (!parsedAction.success) return ["invalid-start-action"];
+  if (parsedAction.data.kind !== "start") return ["not-started"];
+  if (!isReviewData(currentFacts)) return ["invalid-current-facts"];
   const parsed = currentFactsSchema.safeParse(currentFacts);
-  if (!parsed.success) return [...reasons, "invalid-current-facts"];
+  if (!parsed.success) return ["invalid-current-facts"];
+  if (!isReviewData(currentSources)) return ["invalid-current-sources"];
+  const sources = currentSourcesSchema.safeParse(currentSources);
+  if (!sources.success) return ["invalid-current-sources"];
+  // Detach all caller facts before the asynchronous digest validation.
+  const envelope = await validateReviewEnvelope(envelopeInput);
+  const reasons: string[] = [];
+  if (parsedAction.data.requestId !== envelope.requestId || parsedAction.data.scopeDigest !== envelope.scopeDigest) reasons.push("disclosure-changed");
   const current = parsed.data;
   if (!current.environment.hostSupported || !current.environment.connectionAvailable || !current.environment.modelSupported) reasons.push("destination-unavailable");
   if (canonicalJson(current.destination) !== canonicalJson(envelope.destination)) reasons.push("destination-changed");
@@ -196,7 +219,7 @@ export async function checkReviewStart(envelopeInput: ReviewEnvelope, action: {
   if (canonicalJson(current.books) !== canonicalJson(envelope.books)) reasons.push("book-policy-changed");
   if (canonicalJson(current.profile) !== canonicalJson(envelope.profile)) reasons.push("profile-changed");
   for (const source of envelope.sources) {
-    const currency = sourceCurrency(source, currentSources);
+    const currency = sourceCurrency(source, sources.data);
     if (currency !== "current") reasons.push(`source-${currency}:${source.sourceId}`);
   }
   return reasons;
