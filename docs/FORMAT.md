@@ -114,8 +114,13 @@ operation. Counts are derived, never stored here: complete verified saved chapte
 `savedWords` and `remaining` (null without a target, otherwise floored at zero). Unreadable chapters
 yield `incomplete` with an issue count and no total/remaining; changed or unverifiable sources yield
 `unavailable`. Two saved reads must agree on book identity, chapter enumeration, IDs, paths,
-versions, raw hashes, bodies and read issues; the goal token is rechecked too. Empty books are a
-complete zero. This is a point-in-time verification, not a filesystem transaction or draft count.
+versions, raw hashes, bodies and read issues; the goal token is rechecked too. Each enumerated source
+is independently read and its exact raw SHA-256 recomputed, decoded with fatal UTF-8, and compared
+against its canonical saved body and recorded identity/version. History's quiet plain-value front
+matter reader is reused; unsupported metadata makes this count unavailable without changing the
+ordinary chapter view. Valid headerless saved text remains countable. Empty books are a complete
+zero. The host owns complete enumeration. This is point-in-time verification, not a filesystem
+transaction or draft count.
 
 ### Sidecar mutation and recovery
 
@@ -137,8 +142,12 @@ field patch is accepted in a draft. The full intended document is constructed fr
 baseline plus draft; this preserves unknown/unrelated fields without trusting an editor to resend
 them correctly. The request carries only one full baseline and bounded authored fields, within
 the ADR's two-document allowance: the raw baseline and serialized `{bookId,draft}` are each capped
-at 2,500,000 bytes. Strict control validation rejects additional keys. JSON numeric exponents that
-overflow a finite JavaScript number are refused rather than silently changed to null on save.
+at 2,500,000 bytes. Strict control validation rejects additional keys. Each unquoted JSON number
+must retain its exact mathematical decimal value when parsed and serialized as a JavaScript Number.
+Overflow, underflow, rounded decimals/integers and negative zero are refused before mutation,
+including in nested unknown fields and recovery baselines. Supported numeric spelling may change
+(for example, `1.00` to `1`); numeric-looking strings remain literal. Known revision/target fields
+additionally require safe integers. Refusal leaves the original bytes intact.
 
 Under the owning Library's existing book queue, validate the actual book and independently
 supported sidecar, then compare exact absence/hash **and** revision. Only a current semantic

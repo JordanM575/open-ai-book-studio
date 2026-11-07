@@ -31,6 +31,12 @@ library changes and external close actions through the same guard. The host must
 session until close authorization, and block navigation while pending. A forced unmount cannot keep
 an in-memory draft or cancel an already-sent operation.
 
+These observer/close callbacks are synchronous. Their thrown exceptions are contained and visibly
+reported separately from checked write outcomes: a state-observer failure retains the draft, a
+failed close restores the editable session, and a result-observer failure cannot relabel a known
+save or trigger a retry. Host navigation must start blocked and remain blocked if guard registration
+fails. Keep editing returns focus after the form is enabled in the committed DOM.
+
 Advance `viewGeneration` for every view/library lifetime, including A → B → A and a new session for
 the same book. The components also invalidate old operations on unmount. Reads, writes and result
 notifications are pinned to initiating callbacks; replacing props in a live session never rebases
@@ -50,9 +56,9 @@ confirmation, and a failed reload keeps the draft. Later edits after a conflict 
 described as part of the already-kept copy. `onResult` supplies the copy path for central discovery.
 
 The host must implement validated Library/API/IPC bindings, verified raw-source goal reading,
-conflict-copy inspection and navigation guards before product exposure. The inherited core candidate
-still requires its independently reviewed unsafe-number and verified-goal-source corrections. These
-UI leaves do not fix or accept that candidate, and do not deliver full specs 030/033.
+conflict-copy inspection and navigation guards before product exposure. The combined follow-up
+contains numeric-admission and independently checked raw goal-source corrections; these require
+fresh review with the UI corrections. These leaves do not deliver full specs 030/033.
 
 Focused synthetic tests: `apps/desktop/tests/planning-dialogs.test.tsx`. Design uses the existing
 shared Dialog/Button, native labelled controls, token surfaces and 44px minimum local controls.

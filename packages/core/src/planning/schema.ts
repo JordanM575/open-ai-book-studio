@@ -82,15 +82,35 @@ export function serializeDocument(data: SidecarDocument, limit = SIDECAR_BYTES):
 
 export function parseJson(bytes: Uint8Array): unknown {
   try {
-    return JSON.parse(decoder.decode(checkBytes(bytes)), (_key, value: unknown) => {
-      // JSON permits exponents outside IEEE-754's range; stringify would silently turn them into null.
-      if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Unrepresentable JSON number");
-      return value;
-    }) as unknown;
+    const text = decoder.decode(checkBytes(bytes));
+    // Walk string literals as whole tokens, so numeric-looking authored text is never interpreted.
+    // This is portable to hosts without JSON.parse's newer reviver source-context argument.
+    for (const match of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g)) {
+      const token = match[1];
+      if (token === undefined) continue;
+      const value = Number(token);
+      if (!Number.isFinite(value) || Object.is(value, -0) || decimalValue(token) !== decimalValue(String(value))) {
+        throw new LibraryError("format", "The sidecar contains a JSON number this version cannot preserve. Nothing was written.");
+      }
+    }
+    return JSON.parse(text) as unknown;
   } catch (error) {
     if (error instanceof LibraryError) throw error;
     throw new LibraryError("format", "The sidecar is not valid UTF-8 JSON. Nothing was written.");
   }
+}
+
+/** A decimal coefficient/exponent identity, without first rounding the original token. */
+function decimalValue(token: string): string | null {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  if (!match) return null;
+  const fraction = match[3] ?? "";
+  const digits = `${match[2]}${fraction}`.replace(/^0+/, "");
+  if (!digits) return "0";
+  const significant = digits.replace(/0+$/, "");
+  const power = Number(match[4] ?? 0) - fraction.length + digits.length - significant.length;
+  if (!Number.isSafeInteger(power)) return null;
+  return `${match[1]}${significant}e${power}`;
 }
 
 /** Validate the raw JSON, but retain it rather than a parser's reconstructed/defaulted object. */

@@ -22,6 +22,17 @@ a renderer write path. Preserve the unchecked task states until those complete j
 
 ## Phase 1 — Resolve public format and save decisions
 
+### Corrected core/editor candidate — November 7, 2026
+
+The combined W08 follow-up refuses lossy numeric tokens before either active or recovery writes,
+and preserves supported numeric-looking strings/unknown values. The isolated editor now contains
+state/result/close callback exceptions without losing the draft or relabelling checked results;
+Keep editing focuses only after the fieldset is enabled. Planning/goal focused checks pass **166
+tests**, all workspace and strict new-core-test typechecks pass, and focused lint is clean. The
+retained native Chromium reproduction passes **14/14 assertions**, including all four reviewed
+failures. Fresh independent review and Library/API/workspace integration remain required; no broad
+task is marked complete by this leaf evidence.
+
 - [x] T001 Compare ordinary-file storage alternatives and decide the versioning, backward-compatibility,
   unknown-field and archive behavior for the optional typed planning extension. Separately decide the
   planning revision boundary, source snapshot, stale-draft/conflict representation, adapter

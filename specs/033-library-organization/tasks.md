@@ -23,6 +23,17 @@ All broad tasks remain unchecked because this leaf delivery does not complete th
 
 ## Phase 1 — Resolve dependent decisions
 
+### Corrected goal/editor candidate — November 7, 2026
+
+The combined W08 follow-up independently reads each enumerated source, checks exact raw hashes,
+uses fatal UTF-8 decoding and verifies its canonical body and recorded identity/version. Invalid
+bytes and false port hashes cannot produce a confirmed total; valid replacement characters and
+headerless text remain countable. Two detached reads retain enumeration/change detection. Goal
+and planning sidecars share lossless numeric admission, including recovery baselines. **166 focused
+core/component tests** pass; workspace and strict new-core-test typechecks pass; focused lint is
+clean. The shared editor correction passes **14/14 native Chromium assertions**. Fresh independent
+review, real Library composition, API/IPC and workspace exposure still remain.
+
 - [x] T001 Resolve OD-033-01 with a per-data-type storage/versioning matrix for collections, recent
   entries, goals and annotations. Keep collections, goals and annotations in ordinary library
   files; decide whether recent pointers are library-scoped or disposable local preferences. Define

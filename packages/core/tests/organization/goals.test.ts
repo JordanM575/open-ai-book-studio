@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bookFilePath, chaptersPath } from "../../src/library/paths";
+import { bookFilePath, chapterPath, chaptersPath } from "../../src/library/paths";
 import { toLibraryPath, libraryPathFromArchivePath } from "../../src/library/path";
 import { GoalService } from "../../src/organization/goals";
 import { SidecarWriteError } from "../../src/planning/checked-sidecar";
@@ -7,6 +7,66 @@ import { countWords } from "../../src/words";
 import { envelope, fixture } from "../planning/fixture";
 
 describe("checked goals and verified saved progress", () => {
+  test("invalid source UTF-8 is unavailable, while a real replacement character remains countable", async () => {
+    const f = await fixture();
+    const chapter = await f.library.createChapter(f.book.id, { title: "Saved", content: "One two �" });
+    const path = chapterPath(f.book.id, chapter.path);
+    const before = await f.port.readFile(path);
+    if (!before) throw new Error("Missing source");
+    expect(await f.goals.progress(f.book.id)).toMatchObject({ status: "complete", savedWords: 3 });
+    const invalid = new Uint8Array([...before.bytes, 0x20, 0xff]);
+    await f.port.commitFile(path, invalid, { kind: "any" });
+    expect(await f.goals.progress(f.book.id)).toMatchObject({ status: "unavailable", reason: "unreadable" });
+    expect((await f.port.readFile(path))?.bytes).toEqual(invalid);
+    expect(f.commits).toHaveLength(0);
+  });
+
+  test("a syntactically valid false raw source hash cannot confirm progress", async () => {
+    const f = await fixture();
+    await f.library.createChapter(f.book.id, { title: "Saved", content: "One two" });
+    const read = f.port.readFile.bind(f.port);
+    f.port.readFile = async (path) => {
+      const snapshot = await read(path);
+      return snapshot && path.includes("chapters") ? { ...snapshot, sha256: "f".repeat(64) } : snapshot;
+    };
+    expect(await f.goals.progress(f.book.id)).toMatchObject({ status: "unavailable", reason: "unreadable" });
+    expect(f.commits).toHaveLength(0);
+  });
+
+  test.each(["body", "id", "version"] as const)("two matching host reads cannot misattribute raw source %s", async (field) => {
+    const f = await fixture();
+    await f.library.createChapter(f.book.id, { title: "Saved", content: "One two" });
+    const saved = await f.library.readBook(f.book.id);
+    const chapter = saved.chapters[0];
+    if (!chapter) throw new Error("Missing source");
+    if (field === "body") chapter.content = "One two three\n";
+    if (field === "id") chapter.id = "ch_foreign0001";
+    if (field === "version") chapter.version += 1;
+    f.host.readSavedBook = async () => saved;
+    expect(await f.goals.progress(f.book.id)).toMatchObject({ status: "unavailable", reason: "unreadable" });
+    expect(f.commits).toHaveLength(0);
+  });
+
+  test("raw changes after enumeration and before the second verification cannot confirm an old count", async () => {
+    const f = await fixture();
+    const chapter = await f.library.createChapter(f.book.id, { title: "Saved", content: "One two" });
+    const saved = await f.library.readBook(f.book.id);
+    let reads = 0;
+    f.host.readSavedBook = async () => {
+      if (++reads === 2) await f.writeRaw(chapterPath(f.book.id, chapter.path), "Changed external body");
+      return saved;
+    };
+    expect(await f.goals.progress(f.book.id)).toMatchObject({ status: "unavailable", reason: "unreadable" });
+    expect(f.commits).toHaveLength(0);
+  });
+
+  test("headerless saved text remains countable using canonical body normalization", async () => {
+    const f = await fixture();
+    await f.writeRaw(toLibraryPath([...chaptersPath(f.book.id), "0001-legacy.md"]), "\r\nOne two\r\nthree\r\n");
+    expect(await f.goals.progress(f.book.id)).toMatchObject({ status: "complete", savedWords: 3 });
+    expect(f.commits).toHaveLength(0);
+  });
+
   test("absent clear is lazy; target set/read/no-op/clear roundtrip preserves unknown fields", async () => {
     const f = await fixture();
     const before = await f.raw(bookFilePath(f.book.id));

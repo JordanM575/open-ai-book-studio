@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { SidecarRead } from "@ai-book-studio/core/planning/checked-sidecar";
 import { SIDECAR_BYTES } from "@ai-book-studio/core/planning/schema";
 import { Button } from "@ai-book-studio/ui/button";
@@ -38,6 +38,11 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
   const [preview, setPreview] = useState<SidecarRead<T> | null>(null);
   const [conflictCopy, setConflictCopy] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [sessionWarning, setSessionWarning] = useState(false);
+  const [resultWarning, setResultWarning] = useState(false);
+  const [closeWarning, setCloseWarning] = useState(false);
+  const [focusRevision, setFocusRevision] = useState(0);
+  const focusRequested = useRef(false);
   const lifetime = useRef(0);
   const busy = useRef(false);
   const closed = useRef(false);
@@ -88,11 +93,28 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
     if (confirm) confirmation.current?.focus();
   }, [confirm]);
 
+  // Focus only after React has removed the disabled confirmation state from the fieldset.
+  useLayoutEffect(() => {
+    if (focusRevision > 0 && focusRequested.current && !confirm && !pending) {
+      focusRequested.current = false;
+      form.current?.querySelector<HTMLElement>("input, textarea")?.focus();
+    }
+  }, [focusRevision, confirm, pending]);
+
   const close = useCallback(() => {
     if (busy.current || closed.current) return;
     closed.current = true;
-    lifetime.current += 1;
-    session.onClose(session.view);
+    const generation = ++lifetime.current;
+    try {
+      session.onClose(session.view);
+    } catch {
+      if (generation !== lifetime.current) return;
+      closed.current = false;
+      setCloseWarning(true);
+      setConfirm(null);
+      focusRequested.current = true;
+      setFocusRevision((value) => value + 1);
+    }
   }, [session]);
   const requestClose = useCallback(() => {
     if (busy.current || closed.current) return;
@@ -101,12 +123,18 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
   }, [dirty, needsReload, close]);
 
   useEffect(() => {
-    session.onSessionState?.(session.view, { dirty, pending, needsReload, requestClose });
+    try {
+      session.onSessionState?.(session.view, { dirty, pending, needsReload, requestClose });
+      setSessionWarning(false);
+    } catch {
+      setSessionWarning(true);
+    }
   }, [session, dirty, pending, needsReload, requestClose]);
 
   const keepEditing = () => {
+    focusRequested.current = true;
+    setFocusRevision((value) => value + 1);
     setConfirm(null);
-    form.current?.querySelector<HTMLElement>("input, textarea")?.focus();
   };
 
   const readAgain = async (inspect: boolean) => {
@@ -192,7 +220,12 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
     }
     // Consumer notification is outside the write catch: a UI callback cannot turn Saved into uncertain.
     if (result && result.status !== "refused" && generation === lifetime.current && !closed.current) {
-      session.onResult?.(session.view, result);
+      try {
+        session.onResult?.(session.view, result);
+        setResultWarning(false);
+      } catch {
+        if (generation === lifetime.current && !closed.current) setResultWarning(true);
+      }
     }
   };
 
@@ -212,6 +245,9 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
         </DialogFooter>}>
         <div className="space-y-4">
           <p id={statusId} role={failure ? "alert" : "status"} className="whitespace-pre-wrap break-words">{message}</p>
+          {sessionWarning && <p role="alert">The workspace could not receive this editor’s state. Keep this view open; your draft is still here.</p>}
+          {resultWarning && <p role="alert">The workspace could not receive the checked save result. The result above still applies; no retry was made.</p>}
+          {closeWarning && <p role="alert">The workspace could not close this editor. Your draft is still here. You can keep editing or try Close editor again.</p>}
           {conflictCopy && <p className="break-words">Submitted draft copy: {conflictCopy}. Later edits stay only in this editor.</p>}
           {needsReload && <>
             <p>Saving is paused until you explicitly reload. Keep editing preserves the original baseline.</p>

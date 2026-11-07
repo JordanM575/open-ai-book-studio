@@ -63,6 +63,65 @@ function conflict(): SidecarSave<Planning> & { status: "conflict" } {
 }
 
 describe("worldbuilding leaf", () => {
+  test("a throwing state observer retains the dirty editor and exact baseline", async () => {
+    const original = planning();
+    const save = mock(async (_request: PlanningSaveRequest): Promise<DraftSaveResult<Planning>> => ({ status: "refused", message: "Synthetic refusal" }));
+    const onClose = mock(() => {});
+    testing.render(<WorldbuildingDialog {...basic} recordId={recordId} read={async () => original} save={save} onClose={onClose}
+      onSessionState={(_view, state) => { if (state.dirty) throw new Error("Synthetic observer failure"); }} />);
+    await ready();
+    change("Name", "Exact observer draft  ");
+    expect(page().getByRole("alert").textContent).toContain("could not receive this editor’s state");
+    expect(input("Name").value).toBe("Exact observer draft  ");
+    click("Close editor");
+    click("Keep editing");
+    expect(onClose).not.toHaveBeenCalled();
+    click("Save changes");
+    await page().findByText(/Not saved. Synthetic refusal/);
+    expect(save.mock.calls[0]?.[0].baselineJson).toBe(original.baselineJson);
+    expect(save.mock.calls[0]?.[0].draft.fields.name).toBe("Exact observer draft  ");
+  });
+
+  test.each([false, true])("failed close leaves a usable retained session (dirty %s)", async (dirty) => {
+    const original = planning();
+    const save = mock(async (_request: PlanningSaveRequest): Promise<DraftSaveResult<Planning>> => ({ status: "refused", message: "Synthetic refusal" }));
+    let fail = true;
+    const onClose = mock(() => { if (fail) throw new Error("Synthetic close failure"); });
+    testing.render(<WorldbuildingDialog {...basic} recordId={recordId} read={async () => original} save={save} onClose={onClose} />);
+    await ready();
+    if (dirty) change("Notes", "Uncommitted notes  ");
+    click("Close editor");
+    if (dirty) click("Discard draft and close");
+    expect(page().getByRole("alert").textContent).toContain("could not close this editor");
+    expect(page().queryByRole("group", { name: "Confirm draft discard" })).toBeNull();
+    expect(input("Notes").value).toBe(dirty ? "Uncommitted notes  " : "  notes  ");
+    change("Name", "After failed close");
+    click("Save changes");
+    await page().findByText(/Not saved. Synthetic refusal/);
+    expect(save.mock.calls[0]?.[0].baselineJson).toBe(original.baselineJson);
+    expect(save.mock.calls[0]?.[0].draft.fields.name).toBe("After failed close");
+    fail = false;
+    click("Close editor");
+    click("Discard draft and close");
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  test.each(["saved", "unchanged", "conflict"] as const)("throwing result observer cannot relabel %s or replay its write", async (status) => {
+    const save = mock(async (): Promise<SidecarSave<Planning>> => status === "conflict" ? conflict() : { status, current: planning() });
+    const onResult = mock(() => { throw new Error("Synthetic result failure"); });
+    testing.render(<WorldbuildingDialog {...basic} recordId={recordId} read={async () => planning()} save={save} onResult={onResult} />);
+    await ready();
+    change("Name", "Submitted draft");
+    click("Save changes");
+    await page().findByText(/could not receive the checked save result/);
+    expect(page().getByText(status === "conflict" ? /Your submitted draft was kept/ : status === "saved" ? "Saved." : "Already current · no file was written.")).toBeTruthy();
+    expect(page().queryByText(/The save outcome is uncertain/)).toBeNull();
+    change("Name", "Still editable");
+    expect(input("Name").value).toBe("Still editable");
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledTimes(1);
+  });
+
   test("opening is read-only; a literal create has no caller ID and duplicate submits/close are blocked", async () => {
     const call = deferred<SidecarSave<Planning>>();
     const save = mock((_request: PlanningSaveRequest) => call.promise);

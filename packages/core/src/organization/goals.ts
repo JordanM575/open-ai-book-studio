@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { BookDetail } from "../schema";
 import { countWords } from "../words";
+import { normalizeBody } from "../markdown";
+import { chapterPath } from "../library/paths";
+import { readHistoryEnvelope } from "../library/history";
 import { bookIdSchema, hashSchema, revisionSchema } from "../planning/schema";
 import {
   assertSidecarOwner, CheckedSidecar, envelopeFields, parseRequest, sameSource,
@@ -18,7 +21,7 @@ export const goalSaveSchema = z.strictObject({
 export type GoalSaveRequest = z.infer<typeof goalSaveSchema>;
 
 export interface GoalHost extends SidecarHost {
-  /** Fresh full saved reads, including chapterReadIssues, inside withBook; never a summary/draft/cache. */
+  /** Fresh complete enumeration inside withBook; raw bytes are independently verified below. Never a summary/draft/cache. */
   readSavedBook(bookId: string): Promise<BookDetail>;
 }
 
@@ -46,23 +49,44 @@ export class GoalService {
       return await this.host.withBook(bookId, async () => {
         await assertSidecarOwner(this.host, bookId);
         const goal = await this.sidecar.readCurrent(bookId);
-        const first = await this.host.readSavedBook(bookId);
+        const first = structuredClone(await this.host.readSavedBook(bookId));
         // Materialize before awaiting: even a host reusing a mutable object cannot mask a change.
         const fingerprint = savedFingerprint(first, bookId);
         const savedWords = first.chapters.reduce((total, chapter) => total + countWords(chapter.content), 0);
         const issues = first.chapterReadIssues.length;
-        const second = await this.host.readSavedBook(bookId);
+        if (!await this.verifySavedSources(first, bookId)) return { status: "unavailable", bookId, reason: "unreadable" };
+        const second = structuredClone(await this.host.readSavedBook(bookId));
         const after = await this.sidecar.readCurrent(bookId);
         await assertSidecarOwner(this.host, bookId);
         if (fingerprint !== savedFingerprint(second, bookId) || !sameSource(goal.source, after.source)) {
           return { status: "unavailable", bookId, reason: "changed" };
         }
+        if (!await this.verifySavedSources(second, bookId)) return { status: "unavailable", bookId, reason: "unreadable" };
         const targetWords = goal.data?.targetWords ?? null;
         if (issues > 0) return { status: "incomplete", bookId, targetWords, unreadableChapters: issues };
         if (!Number.isSafeInteger(savedWords)) return { status: "unavailable", bookId, reason: "unreadable" };
         return { status: "complete", bookId, targetWords, savedWords, remaining: targetWords === null ? null : Math.max(0, targetWords - savedWords) };
       });
     } catch { return { status: "unavailable", bookId, reason: "unreadable" }; }
+  }
+
+  private async verifySavedSources(detail: BookDetail, bookId: string): Promise<boolean> {
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    for (const chapter of detail.chapters) {
+      const snapshot = await this.host.storage.readFile(chapterPath(bookId, chapter.path));
+      if (!snapshot || snapshot.sha256 !== chapter.hash || await this.host.runtime.sha256(snapshot.bytes) !== chapter.hash) return false;
+      const raw = decoder.decode(snapshot.bytes);
+      let content: string;
+      if (/^---[ \t]*\r?\n/.test(raw)) {
+        const envelope = readHistoryEnvelope(raw);
+        const meta = envelope.metadata;
+        if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+        if (("id" in meta && meta.id !== chapter.id) || ("version" in meta && meta.version !== chapter.version)) return false;
+        content = envelope.content;
+      } else content = normalizeBody(raw);
+      if (content !== chapter.content) return false;
+    }
+    return true;
   }
 }
 

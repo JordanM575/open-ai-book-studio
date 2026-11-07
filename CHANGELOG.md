@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Refuse lossy JSON numbers in planning/goal active files and recovery baselines; independently
+  verify saved goal source bytes, UTF-8, body and identity. Retain planning drafts after observer or
+  close callback failures, keep checked save outcomes intact, and restore focus after re-enabling.
 - Invalidate Format dialog export continuations after close, navigation or unmount; delayed
   chapter/matter saves cannot submit an obsolete export, and late replies cannot update a new visit.
 - Bind header export receipts, errors, preflight and busy state to the originating book view;
