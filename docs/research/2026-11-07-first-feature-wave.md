@@ -37,6 +37,14 @@ preserved; these corrections do not rewrite their exact-head verdicts.
 
 ## Remaining acceptance
 
-Obtain independent focused rechecks of the corrected mode/export lifecycle paths and run the final
-candidate's integrated gates before merging. The full spec 031 plan lifecycle and remaining spec 035
-folder-export/conformance work stay open; this review does not claim either whole spec complete.
+The f2bdf100 follow-up passed full verify (**2,404 tests**), coverage (**92.93% / 94.73%**),
+all **47 smoke checks** and **12 e2e suites**. Independent review accepted the agent correction and
+header export correction. A retained Format-dialog gap was then reproduced: a delayed save could
+submit an old-book export after navigation. The next correction applies visit/request ownership
+before and after every export await, with 24 all-format delayed chapter/matter-save scenarios
+covering navigation, return to the same book and unmount. Its focused run passed **84 tests**;
+all workspace typechecks and focused lint passed. This last change requires its own affected
+integrated gates and independent recheck before merge.
+
+The full spec 031 plan lifecycle and remaining spec 035 folder-export/conformance work stay open;
+this review does not claim either whole spec complete.

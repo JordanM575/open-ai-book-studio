@@ -30,6 +30,7 @@ afterEach(() => testing.cleanup());
 
 const NOW = "2026-11-03T00:00:00.000Z";
 const BOOK = "book_fx000002";
+const OTHER_BOOK = "book_fx000003";
 
 function chapter(id: string, title: string, order: number, content: string): Chapter {
   return {
@@ -49,14 +50,15 @@ interface Setup {
   platform?: string;
   save?: () => Promise<unknown>;
   edit?: () => Promise<unknown>;
+  matter?: (input: Parameters<typeof window.studio.books.saveMatter>[0]) => Promise<unknown>;
   answers?: Partial<Record<"exportDocx" | "exportMarkdown" | "exportPdf" | "exportEpub", () => Promise<Answer>>>;
 }
 
 function mockWorkspace(setup: Setup = {}) {
   const order: string[] = [];
-  const detail = () => ({
-    book: bookSchema.parse({ id: BOOK, title: "Exported", createdAt: NOW, updatedAt: NOW }),
-    chapters: [CHAPTER],
+  const detail = (id = BOOK) => ({
+    book: bookSchema.parse({ id, title: id === BOOK ? "Exported" : "Other export book", createdAt: NOW, updatedAt: NOW }),
+    chapters: [id === BOOK ? CHAPTER : { ...CHAPTER, id: "ch_fx000011", title: "Other" }],
     chapterReadIssues: []
   });
   const exporter = (name: "exportDocx" | "exportMarkdown" | "exportPdf" | "exportEpub", file: string) =>
@@ -75,12 +77,17 @@ function mockWorkspace(setup: Setup = {}) {
     return setup.save?.() ?? Promise.resolve({ ok: true, data: { status: "saved", chapter: CHAPTER } });
   });
   const onNotice = mock((_error: unknown) => {});
+  const saveMatter = mock((input: Parameters<typeof window.studio.books.saveMatter>[0]) => {
+    order.push("matter");
+    return setup.matter?.(input) ?? Promise.resolve({ ok: true, data: { status: "saved", book: { ...detail(input.bookId).book, matter: input.matter } } });
+  });
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: setup.platform ?? "darwin",
     books: {
-      open: mock(() => Promise.resolve({ ok: true, data: detail() })),
+      open: mock((id: string) => Promise.resolve({ ok: true, data: detail(id) })),
       update: mock(() => Promise.resolve({ ok: true, data: detail().book })),
       edit: mock(() => setup.edit?.() ?? Promise.resolve({ ok: true, data: { status: "saved", book: detail().book } })),
+      saveMatter,
       ...exports
     },
     chapters: {
@@ -112,18 +119,18 @@ function mockWorkspace(setup: Setup = {}) {
       speakers: mock(async () => ({ ok: true, data: { available: false, connectionLabel: null, endpoint: null, model: null, voices: [] } }))
     }
   };
-  testing.render(
+  const component = (bookId: string) =>
     React.createElement(WorkspaceView, {
-      bookId: BOOK,
+      bookId,
       theme: { choice: "light" as const, set: () => {}, cycle: () => {} },
       libraryRoot: "/tmp/studio-library",
       libraryStorage: undefined,
       onBack: () => {},
       onNotice,
       onSchemaRefusal: () => {}
-    })
-  );
-  return { order, save, onNotice, ...exports };
+    });
+  const mounted = testing.render(component(BOOK));
+  return { order, save, saveMatter, onNotice, mounted, component, ...exports };
 }
 
 async function openFormat() {
@@ -143,6 +150,49 @@ function choose(view: ReturnType<typeof testing.within>, target: string): void {
 }
 
 describe("format dialog export", () => {
+  for (const [target, channel] of [
+    ["DOCX", "exportDocx"], ["PDF", "exportPdf"], ["EPUB", "exportEpub"], ["Markdown", "exportMarkdown"]
+  ] as const) {
+    for (const phase of ["chapter", "matter"] as const) {
+      test.each(["switch", "switch-back", "unmount"] as const)(`${target} ignores a delayed ${phase} save after %s`, async (leave) => {
+        let finish!: () => void;
+        const held = new Promise<void>((resolve) => { finish = resolve; });
+        const setup = mockWorkspace(phase === "chapter" ? {
+          save: async () => { await held; return { ok: true, data: { status: "saved", chapter: CHAPTER } }; }
+        } : {
+          matter: async (input) => {
+            await held;
+            return { ok: true, data: { status: "saved", book: bookSchema.parse({
+              id: BOOK, title: "Exported", createdAt: NOW, updatedAt: NOW, matter: input.matter
+            }) } };
+          }
+        });
+        const view = await openFormat();
+        if (phase === "chapter") {
+          testing.fireEvent.change(view.getByTestId("manuscript-text"), { target: { value: "Pending synthetic edit." } });
+        } else {
+          testing.fireEvent.change(view.getByLabelText("Author"), { target: { value: "Synthetic author" } });
+        }
+        choose(view, target);
+        testing.fireEvent.click(view.getByTestId("format-export"));
+        await testing.waitFor(() => expect(phase === "chapter" ? setup.save : setup.saveMatter).toHaveBeenCalledTimes(1));
+        expect(setup[channel]).not.toHaveBeenCalled();
+        if (leave === "unmount") setup.mounted.unmount();
+        else {
+          setup.mounted.rerender(setup.component(OTHER_BOOK));
+          await testing.waitFor(() => expect(view.getByTestId("workspace-view").querySelector("header h1")?.textContent).toBe("Other export book"));
+          if (leave === "switch-back") {
+            setup.mounted.rerender(setup.component(BOOK));
+            await testing.waitFor(() => expect(view.getByTestId("workspace-view").querySelector("header h1")?.textContent).toBe("Exported"));
+          }
+        }
+        await testing.act(async () => { finish(); await held; });
+        expect(setup[channel]).not.toHaveBeenCalled();
+        expect(setup.onNotice).not.toHaveBeenCalled();
+      });
+    }
+  }
+
   const entrypoints = [
     { target: "DOCX", channel: "exportDocx", header: "export-docx" },
     { target: "Markdown", channel: "exportMarkdown", header: "export-markdown" },
