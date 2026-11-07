@@ -73,6 +73,8 @@ Update the `Unreleased` section before every commit.
   outside change to that same field meanwhile is a clash and not written over.
   While any of those saves is out the dialog keeps the values the author chose, so a third change starts from
   the author's own last choice and does not clash with it.
+  A format save waiting its turn belongs to the book it was made in: if the workspace moves to another book
+  meanwhile, that save still goes to its own book, and the next one starts from the book now shown.
 - The book settings dialog no longer closes behind a plain notice when a title or description edit clashes with an
   outside change. It stays open, names the fields whose version was kept as a copy, and offers Show the copy.
   After a save that applied one field and kept the other as a copy, the dialog measures its next save against what

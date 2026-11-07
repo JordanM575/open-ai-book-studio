@@ -133,9 +133,16 @@ export function WorkspaceView({
   const handledRequest = useRef<number | null>(null);
   const handledConversation = useRef<number | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
-  /** The newest book this view knows, so a save that was waiting starts from what the one before it returned. */
-  const latestBook = useRef<BookDetail["book"] | null>(null);
-  latestBook.current = detail?.book ?? null;
+  /**
+   * The newest copy this view knows of each book it has shown, so a save that was waiting starts from what
+   * the one before it returned. The workspace can move to another book without remounting, so a book's
+   * baseline is kept apart from the others'.
+   */
+  const latestBooks = useRef<Map<string, BookDetail["book"]>>(new Map());
+  if (detail) latestBooks.current.set(detail.book.id, detail.book);
+  /** The book on screen now, which a save that finishes later checks before it touches the screen. */
+  const shownBookId = useRef(bookId);
+  shownBookId.current = bookId;
   /** Format saves run one at a time: the dialog sends a change per control change, without waiting for the last. */
   const formatSaves = useRef<Promise<unknown>>(Promise.resolve());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -557,23 +564,27 @@ export function WorkspaceView({
   const exportMarkdown = (): Promise<void> => runExport(() => window.studio.books.exportMarkdown(bookId));
 
   const saveFormatSettings = ({ patch, from }: FormatChange): Promise<void> => {
+    // The book the author changed the setting in, which the save belongs to even if the workspace has
+    // moved to another book by the time it runs.
+    const originId = bookId;
     const run = async (): Promise<void> => {
       // Each save applies only the fields its control changed, to the book the one before it returned,
       // so a field changed outside meanwhile is not put back to what the dialog showed. Those fields
       // start from the value the author saw, not the returned one: if another writer changed the same
       // field, it is a clash and the author's choice becomes a copy.
-      const base = latestBook.current;
+      const base = latestBooks.current.get(originId);
       if (!base) return;
       try {
         // Merged with the settings as they are on disk, so an agent setting changed meanwhile is kept.
         const startedFrom = { ...base, settings: { ...base.settings, manuscript: { ...base.settings.manuscript, ...from } } };
         const manuscript = { ...base.settings.manuscript, ...patch };
         const result = await editBook(startedFrom, { settings: { ...base.settings, manuscript } });
-        latestBook.current = result.book;
-        setDetail((current) => (current ? { ...current, book: result.book } : current));
+        latestBooks.current.set(originId, result.book);
+        // Only the book on screen changes on screen; another book's save leaves the one shown alone.
+        setDetail((current) => (current && current.book.id === result.book.id ? { ...current, book: result.book } : current));
         if (result.status === "conflict") {
           // The author's version is on disk: list it so the saved-copies banner can show it.
-          await refreshConflicts();
+          if (shownBookId.current === originId) await refreshConflicts();
           throw new Error(keptCopyText("The format settings"));
         }
       } catch (error) {
