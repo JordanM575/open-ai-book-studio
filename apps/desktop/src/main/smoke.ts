@@ -1289,11 +1289,34 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         return after[0] === before[1] && after[1] === before[0];
       }, "the chapter order to change");
 
-      const book = (await studio.requireLibrary().listBooks())[0];
+      const library = studio.requireLibrary();
+      const book = (await library.listBooks())[0];
       if (!book) throw new Error("the smoke book disappeared");
-      const detail = await studio.requireLibrary().readBook(book.id);
+      const detail = await library.readBook(book.id);
       if (detail.chapters[0]?.id !== before[1]) throw new Error("the file order did not follow the shortcut");
-      return "⌘⌥↓ moved The Light below The Door";
+
+      // The move rewrote the open chapter's file; the next words still save normally (QA D5).
+      const copies = (await library.listConflicts(book.id)).length;
+      const sentence = `The keeper read on after the move at ${Date.now()}.`;
+      const openId = await evaluate<string>(
+        win,
+        `(() => {
+          const el = document.querySelector('[data-testid="manuscript-text"]');
+          const row = document.querySelector('[data-testid="chapter-row"][aria-current="page"]');
+          if (!el || !row) return "";
+          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+          setter.call(el, el.value + "\\n" + ${JSON.stringify(sentence)});
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          return row.getAttribute("data-chapter-id") ?? "";
+        })()`
+      );
+      if (openId !== before[0]) throw new Error("the moved chapter is not the open one");
+      await waitUntil(
+        async () => (await library.readChapter(book.id, openId)).content.includes(sentence),
+        "the words typed after the move to save"
+      );
+      if ((await library.listConflicts(book.id)).length !== copies) throw new Error("the save after the move left a conflict copy");
+      return "⌘⌥↓ moved The Light below The Door, and the next words saved with no conflict copy";
     });
 
     await check("a chapter can be dragged to a new position", async () => {

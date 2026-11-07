@@ -211,6 +211,41 @@ describe("chapter tools", () => {
     expect(detail.chapters[0]?.content).toBe("One.\n\nTwo.\n");
   });
 
+  test("merges the chapters either side of a deleted one, which are next to each other in the book", async () => {
+    const { tools, chapter, library, book } = await fixture("One.\n");
+    const gone = await library.createChapter(book.id, { title: "Gone", content: "Gone.\n" });
+    const third = await library.createChapter(book.id, { title: "Three", content: "Three.\n" });
+    // A deleted chapter leaves a gap in the numbers, and moves no longer close it.
+    await library.deleteChapter(book.id, gone.id);
+    expect((await library.readBook(book.id)).chapters.map((entry) => entry.order)).toEqual([1, 3]);
+
+    const result = await run(tools, "merge_chapters", { firstChapterId: chapter.id, secondChapterId: third.id });
+
+    expect(result.ok).toBe(true);
+    const detail = await library.readBook(book.id);
+    expect(detail.chapters.map((entry) => entry.content)).toEqual(["One.\n\nThree.\n"]);
+  });
+
+  test("a split in a book with a gap puts the new half right after the chapter it came from", async () => {
+    const { tools, library, book } = await fixture("One.\n");
+    const gone = await library.createChapter(book.id, { title: "Gone", content: "Gone.\n" });
+    const door = await library.createChapter(book.id, { title: "Door", content: "Open.\nShut.\n" });
+    await library.createChapter(book.id, { title: "Four", content: "Four.\n" });
+    await library.createChapter(book.id, { title: "Five", content: "Five.\n" });
+    await library.deleteChapter(book.id, gone.id);
+
+    const result = await run(tools, "split_chapter", { chapterId: door.id, line: 2 });
+
+    expect(result.ok).toBe(true);
+    expect((await library.readBook(book.id)).chapters.map((entry) => entry.title)).toEqual([
+      "The Door",
+      "Door",
+      "Door (continued)",
+      "Four",
+      "Five"
+    ]);
+  });
+
   test("notes what a paused call rewrites, and nothing for a chapter that is gone or a call that rewrites none", async () => {
     const { library, book, chapter } = await fixture("One.\n");
     const second = await library.createChapter(book.id, { title: "Two", content: "Two.\n" });

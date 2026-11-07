@@ -220,7 +220,11 @@ archive have landed; the real-browser folder-picker matrix and the shared UI ext
   remounting the editor. The studio's own changes reach the open editor from the surface that made
   them: the workspace reloads after a turn or an undo from the chat or the ambient strip, and after a
   turn that failed once it had changed a chapter, and remounts the editor only when the open chapter's
-  file no longer holds what the editor last loaded or saved. Writes the studio makes for the toolkit's control plane or the phone bridge
+  words or title are no longer what the editor last loaded or saved. A file whose front matter alone
+  moved on, as a move leaves it, becomes the editor's base instead (`EditorHandle.rebase`), so unsaved
+  words stay and save normally. A move from the rail, the keyboard or a drag runs with the editor's
+  saves held (`EditorHandle.hold`) and rebases the same way. In the library, a move rewrites only the
+  chapter files it shifts (`library/order.ts`), with one catalog rebuild. Writes the studio makes for the toolkit's control plane or the phone bridge
   run outside that record, so the window hears about them too. The save-time hash check remains the
   final guard. The main process keeps the draft buffer, keychain and single-instance lock.
 - `apps/desktop/src/main/library/store.ts` is now a thin desktop facade over the shared service; the
@@ -290,6 +294,11 @@ so the authoritative device id should move to the host profile.
   over a real library in a temporary folder: turns and undo from either reach the open editor, an
   outside edit right after a save is announced, and a quit 50 ms after the last key saves it. `apps/desktop/tests/own-writes.test.ts`
   runs the real recursive watch over a temporary folder.
+- `apps/desktop/tests/move-open-chapter.test.tsx` does the same for moves: the rail's button, ⌘⌥↓ and
+  a drag, words typed while a move is on its way, and agent turns that move or merge the open chapter
+  all end in ordinary saves. `apps/desktop/tests/chapter-move.test.ts` counts what a move in a
+  300-chapter book writes and reads, and cuts moves short after every file to show the order that is
+  read back and repaired.
 - `apps/desktop/tests/manuscript-editor.test.ts` renders the real editor under happy-dom and Testing
   Library for the debounce and conflict states. `apps/desktop/tsconfig.json` declares the `@renderer`
   path so Bun resolves the renderer modules outside Vite.

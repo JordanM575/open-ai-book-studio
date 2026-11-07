@@ -4,7 +4,8 @@ import type {
   BookDetail,
   Chapter,
   ChapterConflict,
-  ChapterReadIssueReason
+  ChapterReadIssueReason,
+  ReorderChapterResult
 } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import type { RecoveredDraft } from "@ai-book-studio/core/ipc";
@@ -388,56 +389,55 @@ export function WorkspaceView({
     }
   };
 
-  const moveChapter = useCallback(
-    async (chapter: Chapter, direction: "up" | "down"): Promise<void> => {
+  /**
+   * A move from the rail, the keyboard or a drag. It rewrites `order` in every chapter file it shifts,
+   * the open one's included, without touching their words (QA D5). The newest words save first, and
+   * the editor's saves wait while the move runs; the open chapter's new file then becomes the editor's
+   * base, so the author's next words save normally and the caret, focus and undo stay. This is the
+   * turn reload's rule below for a file whose front matter alone changed: no remount is needed.
+   */
+  const runMove = useCallback(
+    async (chapter: Chapter, write: () => Promise<ReorderChapterResult>): Promise<void> => {
       if (busy) return;
       setBusy(true);
       try {
-        await editorRef.current?.flush();
-        const result = await must(window.studio.chapters.reorder(bookId, chapter.id, direction));
-        if (result.status === "conflict") {
-          onNotice(
-            new Error(
-              `The chapter order changed outside the studio. ${result.conflict.savedAs ? `Your version is in ${result.conflict.savedAs}.` : "Reopen the book and try again."}`
-            )
-          );
-          await load(chapter.id);
-          return;
-        }
-        setDetail((current) => (current ? { ...current, chapters: result.chapters } : current));
-        setSelectedId(chapter.id);
+        const editor = editorRef.current;
+        await editor?.flush();
+        const move = async (): Promise<void> => {
+          const result = await write();
+          if (result.status === "conflict") {
+            onNotice(
+              new Error(
+                `The chapter order changed outside the studio. ${result.conflict.savedAs ? `Your version is in ${result.conflict.savedAs}.` : "Reopen the book and try again."}`
+              )
+            );
+            // Putting the move back rewrote files too.
+            const next = await load(chapter.id);
+            if (next) editor?.rebase(next.chapters);
+            return;
+          }
+          editor?.rebase(result.chapters);
+          setDetail((current) => (current ? { ...current, chapters: result.chapters } : current));
+          setSelectedId(chapter.id);
+        };
+        await (editor ? editor.hold(move) : move());
       } catch (error) {
         onNotice(error);
       } finally {
         setBusy(false);
       }
     },
-    [busy, bookId, load, onNotice]
+    [busy, load, onNotice]
   );
 
-  const moveChapterTo = async (chapter: Chapter, targetIndex: number): Promise<void> => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await editorRef.current?.flush();
-      const result = await must(window.studio.chapters.move(bookId, chapter.id, targetIndex));
-      if (result.status === "conflict") {
-        onNotice(
-          new Error(
-            `The chapter order changed outside the studio. ${result.conflict.savedAs ? `Your version is in ${result.conflict.savedAs}.` : "Reopen the book and try again."}`
-          )
-        );
-        await load(chapter.id);
-        return;
-      }
-      setDetail((current) => (current ? { ...current, chapters: result.chapters } : current));
-      setSelectedId(chapter.id);
-    } catch (error) {
-      onNotice(error);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const moveChapter = useCallback(
+    (chapter: Chapter, direction: "up" | "down") =>
+      runMove(chapter, () => must(window.studio.chapters.reorder(bookId, chapter.id, direction))),
+    [runMove, bookId]
+  );
+
+  const moveChapterTo = (chapter: Chapter, targetIndex: number): Promise<void> =>
+    runMove(chapter, () => must(window.studio.chapters.move(bookId, chapter.id, targetIndex)));
 
   /**
    * Show the chapter as it is on disk: Refresh on the outside-change banner, and "Load the version on
@@ -506,17 +506,23 @@ export function WorkspaceView({
   /**
    * After an agent turn or its undo, from the chat or the ambient strip. The turn may have rewritten
    * the open chapter, and the library watcher stays quiet for the studio's own writes, so the
-   * workspace reloads itself. The author's unsaved words are kept first. The editor remounts only when
-   * the file no longer holds what it last loaded or saved, and only once the new text is in state, as
-   * refreshFromDisk does: remounting first would seed it with the old chapter and its old hash. A turn
-   * that left the chapter alone keeps the caret and the undo history.
+   * workspace reloads itself, with the editor's saves held. A file whose words and title are still the
+   * editor's, such as one a move renumbered, becomes its base; then the author's unsaved words are
+   * kept, saved against it. The editor remounts only when the file's words or title changed, and only
+   * once the new text is in state, as refreshFromDisk does: remounting first would seed it with the old
+   * chapter and its old hash. A turn that changed no words keeps the caret and the undo history.
    */
   const reloadAfterAgent = useCallback(async () => {
-    await editorRef.current?.flush();
-    const next = await load(selectedId ?? undefined);
-    const open = next?.chapters.find((chapter) => chapter.id === selectedId);
-    if (!open || open.hash === editorRef.current?.getBaseHash()) return;
-    clearEditorHistory(open.id);
+    const editor = editorRef.current;
+    const reload = async (): Promise<Chapter | null> => {
+      const next = await load(selectedId ?? undefined);
+      const open = next?.chapters.find((chapter) => chapter.id === selectedId);
+      return open && !editor?.rebase(next?.chapters ?? []) ? open : null;
+    };
+    const changed = await (editor ? editor.hold(reload) : reload());
+    await editor?.flush();
+    if (!changed) return;
+    clearEditorHistory(changed.id);
     setReloadKey((key) => key + 1);
   }, [load, selectedId]);
 
