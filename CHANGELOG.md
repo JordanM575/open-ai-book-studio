@@ -7,6 +7,17 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Hands-free pure core
+
+- Add an unmounted, platform-independent voice-session reducer with explicit activation, pinned
+  scope/routes, exact named confirmations, correction/interruption, distinct stop controls and
+  request/chunk gates that retain uncertain external settlement. Add trusted-frame audio-grant
+  predicates, bound 037 answer intents and literal selection-preserving dictation insertion.
+- Add memory-bounded injected PCM/VAD segmentation with the accepted 1.2s silence, 250ms preroll
+  and 60s utterance defaults, explicit one-STT holds and unconsumed-suffix reporting. Synthetic
+  tests and a local integration contract cover the pure slice; microphone, permission-handler,
+  transport, UI and acoustic/device integration remain open, including 038 T022.
+
 ### Integration
 
 - Accept individually researched full-book authoring, inline editorial-review and hands-free
