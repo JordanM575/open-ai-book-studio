@@ -285,7 +285,8 @@ describe("StoryBibleDialog over a book another writer changes", () => {
     testing.fireEvent.click(testing.within(document.body).getByTestId("save-story-bible"));
 
     await testing.waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1), { timeout: 4000 });
-    const told = (onNotice.mock.calls[0]?.[0] as Error).message;
+    const [error] = onNotice.mock.calls[0] ?? [];
+    const told = error instanceof Error ? error.message : "";
     expect(told).toContain("The Story Bible changed on disk while you were editing");
     expect(told).toContain("kept as a separate copy");
     expect(onClose).not.toHaveBeenCalled();
