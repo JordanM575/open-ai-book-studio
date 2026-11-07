@@ -159,6 +159,12 @@ Update the `Unreleased` section before every commit.
   Snapshot image-warning collection and visible structured export receipts are prepared; their
   production IPC wiring remains a coordinator integration step. Synthetic focused tests cover
   source/prior-output bytes, alias changes, filesystem failures and save/status behavior.
+- W01 F3 adapter repair: apply the existing no-symlinks/no-special-files policy to direct library
+  operations, both move endpoints, device metadata and watch callbacks. Preserve selected-root
+  platform aliases, atomic writes and own-write bookkeeping; a failed identity read no longer
+  triggers replacement. Synthetic history-shaped fixtures prove refusal without outside writes
+  and normal archive inclusion. This is a static-path check, not protection from concurrent
+  hostile path replacement or OS-level compare-and-swap.
 - A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
   while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
   that stale copy, so a character another device added or a memory the toolkit saved disappeared with

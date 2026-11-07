@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { watch as watchFiles } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { lstatSync, watch as watchFiles, type Stats } from "node:fs";
+import { lstat, mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { dirname, sep } from "node:path";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { devicePath } from "@ai-book-studio/core/library/paths";
 import { toLibraryPath, type LibraryPath } from "@ai-book-studio/core/library/path";
@@ -16,7 +16,7 @@ import type {
   LibraryPort
 } from "@ai-book-studio/core/library/port";
 import { writeFileAtomic } from "./atomic";
-import { noteOwnFile, noteOwnRemoval, sha256 } from "./own-writes";
+import { noteOwnFile, noteOwnRemoval } from "./own-writes";
 import { isoNow, safeJoin } from "./paths";
 
 /**
@@ -24,16 +24,53 @@ import { isoNow, safeJoin } from "./paths";
  *
  * It owns atomic replacement and device identity; the shared service owns every promise about
  * the book format. The renderer never sees this class or a host path.
+ *
+ * The selected root may use platform aliases (or itself be a symlink). Below that boundary,
+ * existing symlinks and special files are unsupported, just as in archive enumeration. These
+ * pathname checks do not prevent hostile concurrent path swaps or provide OS-level CAS.
  */
 export class FileSystemLibraryPort implements LibraryPort {
   constructor(readonly root: string) {}
 
   private absolute(path: LibraryPath): string {
-    return safeJoin(this.root, ...path);
+    return safeJoin(this.root, ...toLibraryPath(path));
+  }
+
+  private descendants(path: LibraryPath): string[] {
+    const segments = toLibraryPath(path);
+    return segments.map((_, index) => safeJoin(this.root, ...segments.slice(0, index + 1)));
+  }
+
+  private async checkedAbsolute(path: LibraryPath): Promise<string> {
+    const descendants = this.descendants(path);
+    for (const [index, absolute] of descendants.entries()) {
+      try {
+        assertSupportedEntry(await lstat(absolute), index < descendants.length - 1);
+      } catch (error) {
+        // lstat sees broken links themselves; only a truly missing suffix is allowed.
+        if (errorCode(error) === "ENOENT") break;
+        throw toPortError(error);
+      }
+    }
+    return this.absolute(path);
+  }
+
+  /** Watch registration is synchronous; use the same policy before arming it. */
+  private checkedAbsoluteSync(path: LibraryPath): string {
+    const descendants = this.descendants(path);
+    for (const [index, absolute] of descendants.entries()) {
+      try {
+        assertSupportedEntry(lstatSync(absolute), index < descendants.length - 1);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") break;
+        throw toPortError(error);
+      }
+    }
+    return this.absolute(path);
   }
 
   async readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null> {
-    const absolute = this.absolute(path);
+    const absolute = await this.checkedAbsolute(path);
     try {
       const [bytes, info] = await Promise.all([readFile(absolute), stat(absolute)]);
       return {
@@ -49,7 +86,7 @@ export class FileSystemLibraryPort implements LibraryPort {
   }
 
   async listDirectory(path: LibraryPath): Promise<LibraryEntry[]> {
-    const absolute = this.absolute(path);
+    const absolute = await this.checkedAbsolute(path);
     try {
       const entries = await readdir(absolute, { withFileTypes: true });
       const result: LibraryEntry[] = [];
@@ -67,7 +104,7 @@ export class FileSystemLibraryPort implements LibraryPort {
 
   async stat(path: LibraryPath): Promise<{ size: number; createdAt: string | null; modifiedAt: string | null } | null> {
     try {
-      const info = await stat(this.absolute(path));
+      const info = await stat(await this.checkedAbsolute(path));
       if (!info.isFile()) return null;
       return { size: info.size, createdAt: dateOrNull(info.birthtime), modifiedAt: dateOrNull(info.mtime) };
     } catch (error) {
@@ -78,7 +115,7 @@ export class FileSystemLibraryPort implements LibraryPort {
 
   async ensureDirectory(path: LibraryPath): Promise<void> {
     try {
-      await mkdir(this.absolute(path), { recursive: true });
+      await mkdir(await this.checkedAbsolute(path), { recursive: true });
     } catch (error) {
       throw toPortError(error);
     }
@@ -95,7 +132,7 @@ export class FileSystemLibraryPort implements LibraryPort {
 
     if (!matches) return { status: "changed", current };
 
-    const absolute = this.absolute(path);
+    const absolute = await this.checkedAbsolute(path);
     try {
       await mkdir(dirname(absolute), { recursive: true });
       await writeFileAtomic(absolute, bytes);
@@ -111,8 +148,8 @@ export class FileSystemLibraryPort implements LibraryPort {
   }
 
   async moveFile(from: LibraryPath, to: LibraryPath): Promise<void> {
-    const source = this.absolute(from);
-    const destination = this.absolute(to);
+    const source = await this.checkedAbsolute(from);
+    const destination = await this.checkedAbsolute(to);
     if (await this.readFile(to)) {
       throw new LibraryPortError("already-exists", "The destination already exists.");
     }
@@ -128,8 +165,8 @@ export class FileSystemLibraryPort implements LibraryPort {
   }
 
   async moveDirectory(from: LibraryPath, to: LibraryPath): Promise<void> {
-    const source = this.absolute(from);
-    const destination = this.absolute(to);
+    const source = await this.checkedAbsolute(from);
+    const destination = await this.checkedAbsolute(to);
     try {
       await stat(destination);
       throw new LibraryPortError("already-exists", "The destination already exists.");
@@ -154,7 +191,7 @@ export class FileSystemLibraryPort implements LibraryPort {
     // Linux reports the new files under their destination paths after a directory rename. Keep
     // those events from looking like an outside writer by recording each file's bytes as our own.
     try {
-      await noteOwnFiles(destination);
+      await this.noteOwnFiles(to);
     } catch {
       // The move has already landed; failed bookkeeping must not report the successful move as a
       // failed delete. Unreadable paths remain visible to the watcher as outside changes.
@@ -164,26 +201,28 @@ export class FileSystemLibraryPort implements LibraryPort {
   }
 
   async removeDirectory(path: LibraryPath): Promise<void> {
+    const absolute = await this.checkedAbsolute(path);
     try {
-      await rm(this.absolute(path), { recursive: true, force: false });
+      await rm(absolute, { recursive: true, force: false });
     } catch (error) {
       throw toPortError(error);
     }
-    noteOwnRemoval(this.absolute(path), true);
+    noteOwnRemoval(absolute, true);
   }
 
   async removeFile(path: LibraryPath): Promise<void> {
+    const absolute = await this.checkedAbsolute(path);
     try {
-      await unlink(this.absolute(path));
+      await unlink(absolute);
     } catch (error) {
       throw toPortError(error);
     }
-    noteOwnRemoval(this.absolute(path));
+    noteOwnRemoval(absolute);
   }
 
   /** Advisory: the caller still checks versions and hashes before every write. */
   watch(path: LibraryPath, onChange: (changedPath: LibraryPath) => void): () => void {
-    const absolute = this.absolute(path);
+    const absolute = this.checkedAbsoluteSync(path);
     let watcher: ReturnType<typeof watchFiles>;
     try {
       watcher = watchFiles(absolute, { recursive: true }, (_event, filename) => {
@@ -192,9 +231,11 @@ export class FileSystemLibraryPort implements LibraryPort {
         if (segments.length === 0) return;
         try {
           // `filename` is relative to the watched directory; the port reports library-relative paths.
-          onChange(toLibraryPath([...path, ...segments]));
+          const changed = toLibraryPath([...path, ...segments]);
+          this.checkedAbsoluteSync(changed);
+          onChange(changed);
         } catch {
-          // A provider can create names the library format refuses; they are not book files.
+          // Unsupported/unreadable paths are not book files. Missing paths still notify deletions.
         }
       });
     } catch {
@@ -205,9 +246,10 @@ export class FileSystemLibraryPort implements LibraryPort {
   }
 
   async deviceInfo(): Promise<LibraryDeviceInfo> {
-    const path = this.absolute(devicePath());
+    // Filesystem failures must not be mistaken for a damaged or absent identity.
+    const snapshot = await this.readFile(devicePath());
     try {
-      const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<LibraryDeviceInfo>;
+      const parsed = JSON.parse(new TextDecoder().decode(snapshot?.bytes)) as Partial<LibraryDeviceInfo>;
       if (parsed.id && parsed.name) {
         return { id: parsed.id, name: parsed.name, createdAt: parsed.createdAt ?? isoNow() };
       }
@@ -219,19 +261,21 @@ export class FileSystemLibraryPort implements LibraryPort {
       name: hostname(),
       createdAt: isoNow()
     };
-    await mkdir(dirname(path), { recursive: true });
-    await writeFileAtomic(path, `${JSON.stringify(device, null, 2)}\n`);
+    await this.commitFile(devicePath(), new TextEncoder().encode(`${JSON.stringify(device, null, 2)}\n`), {
+      kind: "any"
+    });
     return device;
   }
-}
 
-async function noteOwnFiles(directory: string): Promise<void> {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      await noteOwnFiles(path);
-    } else if (entry.isFile()) {
-      noteOwnFile(path, sha256(await readFile(path)));
+  private async noteOwnFiles(directory: LibraryPath): Promise<void> {
+    for (const entry of await this.listDirectory(directory)) {
+      const path = toLibraryPath([...directory, entry.name]);
+      if (entry.kind === "directory") {
+        await this.noteOwnFiles(path);
+      } else {
+        const snapshot = await this.readFile(path);
+        if (snapshot) noteOwnFile(this.absolute(path), snapshot.sha256);
+      }
     }
   }
 }
@@ -249,6 +293,15 @@ export function createFileSystemEnvironment(root: string): LibraryEnvironment {
 }
 
 /* -------------------------------------------------------------------- helpers */
+
+function assertSupportedEntry(info: Stats, parent: boolean): void {
+  if (!info.isFile() && !info.isDirectory()) {
+    throw new LibraryPortError("unsupported", "Symbolic links and special files are not supported inside a library.");
+  }
+  if (parent && !info.isDirectory()) {
+    throw new LibraryPortError("io", "A library path component is not a directory.");
+  }
+}
 
 async function renameAcrossDevices(from: string, to: string): Promise<void> {
   try {
