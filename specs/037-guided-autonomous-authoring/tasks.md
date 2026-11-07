@@ -6,6 +6,9 @@ Tasks are ordered by their actual prerequisites. D-193 and D-194–D-196 accept 
 full-book contracts; reviewed shared storage/host integration remains required before execution.
 Decision completion does not check implementation tasks.
 
+W10 (2026-11-07) implements the pure envelope/citation/read-facade portions in new core leaf modules;
+see the plan's implementation slice. No whole runtime/UI task below is completed by those modules.
+
 ## Phase 0 — settle the Phase 1 contracts
 
 - [x] T001 Resolve U-037-01: agree and record the exact source payload, pre-send disclosure and local

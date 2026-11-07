@@ -79,6 +79,14 @@ Update the `Unreleased` section before every commit.
   Saved goal progress distinguishes complete, incomplete and unavailable sources. Document the
   sidecar/recovery format and add synthetic boundary/failure tests; host/API/UI integration remains
   a separate delivery slice.
+- Add D-193 / ADR 0018 pure review contracts: immutable selected-text envelopes and bounded
+  provider-neutral serialization, snapshot-only read tools, exact saved-body UTF-16 quotations,
+  versioned fictional reader profiles, subjective finding validation and explicit pre-start
+  invalidation inputs. Focused synthetic tests cover scope sentinels, source/profile identity and
+  byte/scalar/count boundaries: 64 tests pass, with focused core typecheck and lint. This is pure
+  core only; runtime/UI integration remains pending. Conversation retention/thread safety applies
+  only to 037; 039 stays volatile with zero ThreadStore writes and does not wait for 037 persistence.
+  The 034 deterministic metrics are unchanged.
 
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at

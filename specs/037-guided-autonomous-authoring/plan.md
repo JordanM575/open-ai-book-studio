@@ -85,6 +85,17 @@ verified saved text, including independent overlapping transports, revisions, qu
 
 ## Verification approach
 
+### W10 pure-core implementation slice (2026-11-07)
+
+New leaf modules under `packages/core/src/review/` implement D-193 envelope capture/validation,
+serialization, exact saved-body citations and snapshot-only read tools. API details, trust boundaries
+and integration prerequisites are in
+[`SCOPED-CONTRACTS.md`](../../packages/core/src/review/SCOPED-CONTRACTS.md).
+Focused synthetic tests are `scoped-sources.test.ts`, `scoped-envelope.test.ts` and
+`scoped-readers.test.ts` under `packages/core/tests/review/`. This is **pure core only**: T003–T011
+remain unchecked because runtime/provider/IPC/conversation/UI integration and acceptance have not
+run. Existing `review/index.ts` (034), runtime, ThreadStore and global seams are not part of this slice.
+
 - Use synthetic isolated books and mocked library/provider boundaries only.
 - Assert that the provider-bound payload matches the visible, author-selected scope; a pre-send cancel
   makes no request.
