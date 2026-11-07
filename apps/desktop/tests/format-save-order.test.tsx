@@ -240,4 +240,36 @@ describe("changing a format control twice before the first save returns", () => 
     expect(mocks.disk().settings.manuscript.bodyFont).toBe("Georgia");
     await testing.waitFor(() => expect(view.getByText(/1 saved copy/)).toBeTruthy());
   });
+
+  test("a change made while an earlier one is saved and a later one waits starts from the author's own last choice", async () => {
+    const mocks = mockWorkspace();
+    const view = testing.within(document.body);
+    await testing.waitFor(() => expect(view.getAllByTestId("chapter-row")).toHaveLength(1));
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Format book" }));
+    const size = (await testing.waitFor(() => view.getByLabelText("Size"))) as HTMLSelectElement;
+    expect(size.value).toBe("12");
+    // 12 to 13 goes out; 14 waits behind it.
+    testing.fireEvent.change(size, { target: { value: "13" } });
+    testing.fireEvent.change(size, { target: { value: "14" } });
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(1));
+
+    // The 13 is acknowledged, and the 14 save starts. The dialog must keep showing the author's 14.
+    mocks.pending[0]?.finish();
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(2));
+    expect(size.value).toBe("14");
+
+    // A third change, while the 14 is still out, starts from that 14 and not from the acknowledged 13.
+    testing.fireEvent.change(size, { target: { value: "11" } });
+    mocks.pending[1]?.finish();
+    await testing.waitFor(() => expect(mocks.calls).toHaveLength(3));
+    expect(mocks.calls[2]?.settings?.from.manuscript.bodyFontSize).toBe(14);
+    expect(mocks.calls[2]?.settings?.to.manuscript.bodyFontSize).toBe(11);
+    mocks.pending[2]?.finish();
+
+    // Nothing the author did clashed with their own earlier choice, and the dialog follows the saved size.
+    await testing.waitFor(() => expect(mocks.disk().settings.manuscript.bodyFontSize).toBe(11));
+    await testing.waitFor(() => expect(size.value).toBe("11"));
+    expect(mocks.onNotice).not.toHaveBeenCalled();
+  });
 });

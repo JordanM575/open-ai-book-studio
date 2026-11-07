@@ -155,6 +155,8 @@ export function FormatDialog({
 }: FormatDialogProps) {
   const [target, setTarget] = useState<FormatTarget>("DOCX");
   const [draft, setDraft] = useState<ManuscriptSettings>(settings);
+  const settingsOut = useRef(0);
+  const [answered, setAnswered] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<ExportNote | null>(null);
   const [matter, setMatter] = useState<BookMatter | null>(() => readMatter(book).matter);
@@ -183,9 +185,13 @@ export function FormatDialog({
   const legacy = unreadable ? [] : pendingLegacyMatter(book.frontMatter, matter);
 
   // Only the draft follows saved settings while open.
+  // While a save is out the draft keeps what the author chose, so the next change to the same control
+  // starts from the author's own earlier choice and not from an older acknowledgement; once every save
+  // is answered the draft follows the saved settings again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `answered` only makes this run again when a save is answered
   useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+    if (settingsOut.current === 0) setDraft(settings);
+  }, [settings, answered]);
 
   // The target and the last export's note are this visit's alone: every open starts at DOCX. The
   // matter is read from the saved book on open, and a change still waiting is saved on close.
@@ -235,7 +241,14 @@ export function FormatDialog({
     // save waiting its turn neither carries a stale value for another field nor forgets which value
     // of this one the author was looking at.
     const from = Object.fromEntries(Object.keys(patch).map((key) => [key, draft[key as keyof ManuscriptSettings]]));
-    void onSaveSettings({ patch, from: from as Partial<ManuscriptSettings> }).catch(() => setDraft(settings));
+    settingsOut.current += 1;
+    onSaveSettings({ patch, from: from as Partial<ManuscriptSettings> })
+      // The workspace has already told the author why a save failed; the draft goes back to the saved settings.
+      .catch(() => {})
+      .finally(() => {
+        settingsOut.current -= 1;
+        setAnswered((count) => count + 1);
+      });
   };
 
   /** Shows why the matter did not save; after the dialog has closed, the workspace says it too. */

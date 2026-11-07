@@ -71,6 +71,10 @@ Update the `Unreleased` section before every commit.
   kept, and a format change that clashes with an outside one lists the author's copy so the saved-copies
   banner can show it. A change still waiting its turn keeps the value the author saw for its own field, so an
   outside change to that same field meanwhile is a clash and not written over.
+  While any of those saves is out the dialog keeps the values the author chose, so a third change starts from
+  the author's own last choice and does not clash with it.
+- The book settings dialog no longer closes behind a plain notice when a title or description edit clashes with an
+  outside change. It stays open, names the fields whose version was kept as a copy, and offers Show the copy.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
   build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
   chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict

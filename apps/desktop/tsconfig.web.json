@@ -63,6 +63,7 @@
     "tests/chapter-reorder-conflict.test.tsx",
     "tests/story-bible-conflict-copy.test.tsx",
     "tests/format-save-order.test.tsx",
+    "tests/book-actions-conflict-copy.test.tsx",
     "tests/chat-composer.test.tsx",
     "tests/connection-cards.test.tsx",
     "tests/licenses-dialog.test.tsx",

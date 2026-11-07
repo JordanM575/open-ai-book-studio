@@ -4,7 +4,7 @@ import type { ImageExportNote, ImageExportResult } from "@ai-book-studio/core/ip
 import type { BookMeta, BookSummary } from "@ai-book-studio/core/schema";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
-import { editBook, formatCount, keptCopyText, must } from "../lib/utils";
+import { conflictFieldsText, editBook, formatCount, keptCopyText, must } from "../lib/utils";
 
 interface Props {
   book: BookSummary | null;
@@ -47,6 +47,8 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
   const [confirming, setConfirming] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<ExportNote | null>(null);
+  // Where the author's version went after a clash with an outside edit, for the book it belongs to.
+  const [copy, setCopy] = useState<{ bookId: string; savedAs: string; fields: string[] } | null>(null);
   // The book on screen, so an export that finishes after the dialog closed or moved on leaves its note out.
   const shown = useRef<string | null>(null);
   // Image export writes files through the main process, which the browser build does not have.
@@ -54,7 +56,10 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
 
   useEffect(() => {
     shown.current = book?.id ?? null;
-    if (!book) return;
+    if (!book) {
+      setCopy(null);
+      return;
+    }
     setTitle(book.title);
     setDescription(book.description ?? "");
     setBusy(false);
@@ -69,7 +74,12 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
     try {
       const result = await editBook(book, { title: title.trim(), description: description.trim() });
       onSaved(result.book);
-      if (result.status === "conflict") throw new Error(keptCopyText());
+      if (result.status === "conflict") {
+        // The book now shows the other writer's values; the note says where the author's went.
+        setCopy({ bookId: book.id, savedAs: result.savedAs, fields: result.fields });
+        setBusy(false);
+        return;
+      }
       onOpenChange(false);
     } catch (error) {
       onNotice(error);
@@ -116,19 +126,35 @@ export function BookActionsDialog({ book, onOpenChange, onSaved, onDeleted, onNo
             : "Rename this book, or move the whole folder to the library trash."
         }
         footer={
-          <DialogFooter className="mt-0">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => void save()}
-              disabled={!title.trim() || busy || exporting}
-              data-testid="save-book-settings"
-            >
-              Save changes
-            </Button>
-          </DialogFooter>
+          <>
+            {book && copy && copy.bookId === book.id ? (
+              <div role="status" data-testid="book-settings-conflict" className="mb-3 flex items-start gap-3">
+                <p className="min-w-0 flex-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]">
+                  {keptCopyText(conflictFieldsText(copy.fields))}
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void must(window.studio.conflicts.reveal(book.id, copy.savedAs)).catch(onNotice)}
+                >
+                  Show the copy
+                </Button>
+              </div>
+            ) : null}
+            <DialogFooter className="mt-0">
+              <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+                {copy ? "Close" : "Cancel"}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void save()}
+                disabled={!title.trim() || busy || exporting}
+                data-testid="save-book-settings"
+              >
+                Save changes
+              </Button>
+            </DialogFooter>
+          </>
         }
       >
         <div className="space-y-4">

@@ -19,6 +19,24 @@ export function editBook(book: { id: string }, next: Partial<BookMeta>): Promise
   return must(window.studio.books.edit(book.id, bookChanges(book as BookMeta, next)));
 }
 
+const FIELD_NAMES: Record<string, string> = {
+  title: "the title",
+  description: "the description",
+  genres: "the genres",
+  influences: "the influences",
+  outline: "the outline",
+  storyArc: "the story arc",
+  characters: "the cast",
+  memories: "the memories"
+};
+
+/** The book fields a conflict copy covers, as the start of a sentence: "The title and the description". */
+export function conflictFieldsText(fields: string[]): string {
+  const names = fields.map((field) => FIELD_NAMES[field] ?? "the details");
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "the details");
+  return `${list.charAt(0).toUpperCase()}${list.slice(1)}`;
+}
+
 /** Another writer had changed the same fields: theirs stayed in the book and the author's is a copy. */
 export function keptCopyText(subject = "This"): string {
   return `${subject} changed on disk while you were editing, so your version was kept as a separate copy instead of overwriting the change.`;

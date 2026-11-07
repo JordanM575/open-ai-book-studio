@@ -5,7 +5,7 @@ import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-book-studio/ui/components/collapsible";
 import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
-import { editBook, keptCopyText, must } from "../lib/utils";
+import { conflictFieldsText, editBook, keptCopyText, must } from "../lib/utils";
 
 interface Props {
   open: boolean;
@@ -18,17 +18,6 @@ interface Props {
 }
 
 /** How the conflict note names a field another writer changed too. */
-const FIELD_NAMES: Record<string, string> = {
-  title: "the title",
-  description: "the description",
-  genres: "the genres",
-  influences: "the influences",
-  outline: "the outline",
-  storyArc: "the story arc",
-  characters: "the cast",
-  memories: "the memories"
-};
-
 const EMPTY_ARC: StoryArc = {
   beginning: { overview: "", keyMoments: "", openQuestions: "" },
   middle: { overview: "", keyMoments: "", openQuestions: "" },
@@ -116,7 +105,7 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onConflictCopy,
             {copy ? (
               <div role="status" data-testid="story-bible-conflict" className="mb-3 flex items-start gap-3">
                 <p className="min-w-0 flex-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]">
-                  {keptCopyText(sentence(copy.fields.map((field) => FIELD_NAMES[field] ?? "the details")))}
+                  {keptCopyText(conflictFieldsText(copy.fields))}
                 </p>
                 <Button
                   variant="secondary"
@@ -339,11 +328,6 @@ function blankMemory(): Memory {
 }
 
 /** "The outline", "The outline and the cast", "The title, the outline and the cast". */
-function sentence(names: string[]): string {
-  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "the details");
-  return `${list.charAt(0).toUpperCase()}${list.slice(1)}`;
-}
-
 function randomId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 }

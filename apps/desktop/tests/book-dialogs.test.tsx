@@ -198,7 +198,7 @@ describe("book settings", () => {
     expect(edit).toHaveBeenCalledWith(BOOK_ID, { title: { from: "The Salt Road", to: "The Salt Crossing" } });
   });
 
-  test("a rename another writer overlapped keeps their title, says so and stays open", async () => {
+  test("a rename another writer overlapped keeps their title, says so in the dialog and stays open", async () => {
     const theirs = { ...SUMMARY, title: "The Salt Causeway" };
     const edit = mock(async () => ({
       ok: true,
@@ -208,9 +208,13 @@ describe("book settings", () => {
     testing.fireEvent.change(page.getByRole("textbox", { name: "Title" }), { target: { value: "The Salt Crossing" } });
     testing.fireEvent.click(page.getByRole("button", { name: "Save changes" }));
 
-    await testing.waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));
+    // The note names the field and sits beside Show the copy, so it is not a notice that fades.
+    const note = await testing.waitFor(() => page.getByTestId("book-settings-conflict"));
     expect(onSaved).toHaveBeenCalledWith(theirs);
-    expect(noticed(onNotice)).toContain("your version was kept as a separate copy");
+    expect(note.textContent).toContain("The title");
+    expect(note.textContent).toContain("your version was kept as a separate copy");
+    expect(page.getByRole("button", { name: "Show the copy" })).toBeTruthy();
+    expect(onNotice).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
