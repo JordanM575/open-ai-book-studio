@@ -5,23 +5,26 @@ import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ai-book-studio/ui/components/collapsible";
 import { NativeSelect, NativeSelectOption } from "@ai-book-studio/ui/components/native-select";
-import { must } from "../lib/utils";
+import { conflictFieldsText, editBook, keptCopyText, must } from "../lib/utils";
 
 interface Props {
   open: boolean;
   book: BookMeta;
   onClose: () => void;
   onSaved: (book: BookMeta) => void;
+  /** A copy of the author's version was kept, so the workspace lists the book's conflict copies again. */
+  onConflictCopy?: () => void;
   onNotice: (error: unknown) => void;
 }
 
+/** How the conflict note names a field another writer changed too. */
 const EMPTY_ARC: StoryArc = {
   beginning: { overview: "", keyMoments: "", openQuestions: "" },
   middle: { overview: "", keyMoments: "", openQuestions: "" },
   end: { overview: "", keyMoments: "", openQuestions: "" }
 };
 
-export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Props) {
+export function StoryBibleDialog({ open, book, onClose, onSaved, onConflictCopy, onNotice }: Props) {
   const [title, setTitle] = useState(book.title);
   const [description, setDescription] = useState(book.description);
   const [genres, setGenres] = useState(book.genres.join(", "));
@@ -31,9 +34,14 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
   const [characters, setCharacters] = useState<Character[]>(book.characters);
   const [memories, setMemories] = useState<Memory[]>(book.memories);
   const [saving, setSaving] = useState(false);
+  /** Where the author's version went when another writer had changed the same fields. */
+  const [copy, setCopy] = useState<{ savedAs: string; fields: string[] } | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setCopy(null);
+      return;
+    }
     setTitle(book.title);
     setDescription(book.description);
     setGenres(book.genres.join(", "));
@@ -49,22 +57,33 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
     if (saving || !title.trim()) return;
     setSaving(true);
     try {
-      const updated = await must(
-        window.studio.books.update(book.id, {
-          title: title.trim(),
-          description: description.trim(),
-          genres: splitList(genres),
-          influences: splitList(influences),
-          outline,
-          storyArc: arc,
-          characters: characters
-            .map((character) => ({ ...character, name: character.name.trim() }))
-            .filter((character) => character.name.length > 0),
-          memories: memories.map((memory) => ({ ...memory, text: memory.text.trim() })).filter((memory) => memory.text.length > 0)
+      // Only what the author changed is sent, with what it was when the dialog opened, and merged onto
+      // the file as it is now: another device or the agent may have written it since. Only what the
+      // author touched is tidied; anything else goes back exactly as it was read, so it is no change.
+      const result = await editBook(book, {
+        title: title === book.title ? title : title.trim(),
+        description: description === book.description ? description : description.trim(),
+        genres: genres === book.genres.join(", ") ? book.genres : splitList(genres),
+        influences: influences === book.influences.join(", ") ? book.influences : splitList(influences),
+        outline,
+        storyArc: arc,
+        characters: characters.flatMap((character) => {
+          if (book.characters.includes(character)) return [character];
+          const name = character.name.trim();
+          return name ? [{ ...character, name }] : [];
+        }),
+        memories: memories.flatMap((memory) => {
+          if (book.memories.includes(memory)) return [memory];
+          const text = memory.text.trim();
+          return text ? [{ ...memory, text }] : [];
         })
-      );
-      onSaved(updated);
-      onClose();
+      });
+      onSaved(result.book);
+      if (result.status === "saved") return onClose();
+      // The book now shows the other writer's values; the note says where the author's went.
+      setCopy(result);
+      onConflictCopy?.();
+      setSaving(false);
     } catch (error) {
       onNotice(error);
       setSaving(false);
@@ -82,14 +101,30 @@ export function StoryBibleDialog({ open, book, onClose, onSaved, onNotice }: Pro
         description="The facts the studio and the writing agent should keep straight. Nothing here is shown to a reader."
         className="w-[calc(100vw-48px)] max-w-[680px]"
         footer={
-          <DialogFooter className="mt-0">
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={() => void save()} disabled={saving || !title.trim()} data-testid="save-story-bible">
-              {saving ? "Saving…" : "Save changes"}
-            </Button>
-          </DialogFooter>
+          <>
+            {copy ? (
+              <div role="status" data-testid="story-bible-conflict" className="mb-3 flex items-start gap-3">
+                <p className="min-w-0 flex-1 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)]">
+                  {keptCopyText(conflictFieldsText(copy.fields))}
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void must(window.studio.conflicts.reveal(book.id, copy.savedAs)).catch(onNotice)}
+                >
+                  Show the copy
+                </Button>
+              </div>
+            ) : null}
+            <DialogFooter className="mt-0">
+              <Button variant="ghost" onClick={onClose}>
+                {copy ? "Close" : "Cancel"}
+              </Button>
+              <Button variant="primary" onClick={() => void save()} disabled={saving || !title.trim()} data-testid="save-story-bible">
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </>
         }
       >
         <div className="space-y-6">
@@ -292,6 +327,7 @@ function blankMemory(): Memory {
   return { id: `mem_${randomId()}`, text: "", importance: "medium", createdAt: now, updatedAt: now };
 }
 
+/** "The outline", "The outline and the cast", "The title, the outline and the cast". */
 function randomId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 }

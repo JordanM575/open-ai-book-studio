@@ -6,7 +6,7 @@ import { canRunAgent, unavailableReason } from "@ai-book-studio/core/providers/m
 import { contributorWarning, isContributorModel } from "@ai-book-studio/core/providers/compatibility";
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
-import { must } from "../lib/utils";
+import { editBook, keptCopyText, must } from "../lib/utils";
 
 interface Props {
   open: boolean;
@@ -20,9 +20,11 @@ interface Props {
   initial?: { connectionId: string; modelId: string } | null;
   /** Open Settings on the provider connections, so an author with no key is not stuck. */
   onOpenSettings?: (() => void) | undefined;
+  /** A copy of the author's choice was kept, so the workspace lists the book's conflict copies again. */
+  onConflictCopy?: (() => void) | undefined;
 }
 
-export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial, onOpenSettings }: Props) {
+export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial, onOpenSettings, onConflictCopy }: Props) {
   const turnMode = Boolean(onPick);
   const initialConnectionId = initial?.connectionId ?? book.defaultConnectionId;
   const initialModelId = initial?.modelId ?? book.defaultModelId;
@@ -186,15 +188,18 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
     setSaving(true);
     setError(null);
     try {
-      const updated = await must(
-        window.studio.books.update(book.id, {
-          defaultProvider: connection.provider,
-          defaultConnectionId: connection.id,
-          defaultModelId: chosen,
-          allowContributorTraining: contributor ? allowContributor : book.allowContributorTraining
-        })
-      );
-      onSaved(updated);
+      // Only the choices that changed are sent, so a consent changed elsewhere is never put back.
+      const result = await editBook(book, {
+        defaultProvider: connection.provider,
+        defaultConnectionId: connection.id,
+        defaultModelId: chosen,
+        allowContributorTraining: contributor ? allowContributor : book.allowContributorTraining
+      });
+      onSaved(result.book);
+      if (result.status === "conflict") {
+        onConflictCopy?.();
+        return setError(keptCopyText());
+      }
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

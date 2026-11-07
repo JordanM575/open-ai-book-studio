@@ -2,7 +2,9 @@ import {
   bookSchema,
   chapterMetaSchema,
   SCHEMA_VERSION,
+  type BookChanges,
   type BookDetail,
+  type BookEditResult,
   type BookListing,
   type BookMeta,
   type BookReadIssue,
@@ -37,6 +39,7 @@ import {
   type SaveMatterResult
 } from "../matter";
 import { LibraryError, LibraryPortError } from "./errors";
+import { atomicOverlaps, mergeValue, rewrite, sameValue } from "./book-merge";
 import { assertBookWritable, assertSchemaVersion } from "./schema-guard";
 import { planMove } from "./order";
 import { libraryPathFromArchivePath, libraryPathToArchivePath, toLibraryFilePath } from "./path";
@@ -308,7 +311,9 @@ export class LibraryService {
         createdAt: current.createdAt,
         updatedAt: this.env.runtime.now()
       });
-      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(next, null, 2)}\n`, {
+      // Only the parts this patch changed are rewritten; the rest keep the shape another writer gave them.
+      const out = rewrite(JSON.parse(textDecoder.decode(snapshot.bytes)), current, next);
+      const result = await this.commitText(bookFilePath(bookId), `${JSON.stringify(out, null, 2)}\n`, {
         kind: "sha256",
         value: snapshot.sha256
       });
@@ -319,6 +324,82 @@ export class LibraryService {
       await this.rebuildCatalog();
       return next;
     });
+  }
+
+  /**
+   * Save the fields an editor changed, each with the value it started from. They are merged onto a
+   * fresh read of `book.json`: a field the editor did not change is never written, and the cast and
+   * memories merge record by record. Where another writer changed the same thing since the editor's
+   * read, the file keeps that writer's value and the editor's whole version goes to `conflicts/`.
+   * `updateBook` is for a caller that holds no earlier read, such as the import.
+   */
+  async editBook(bookId: string, changes: BookChanges): Promise<BookEditResult> {
+    return this.serializeWrite(bookId, async () => {
+      const overlaps: string[] = [];
+      const { book, savedAs } = await this.writeBook(bookId, (fresh) => {
+        overlaps.length = 0;
+        const next: Record<string, unknown> = { ...fresh };
+        const mine: Record<string, unknown> = { ...fresh };
+        for (const [key, change] of Object.entries(changes)) {
+          if (!change) continue;
+          const merged = mergeValue(change.from, change.to, next[key], [key], overlaps);
+          next[key] = merged.value;
+          mine[key] = merged.mine;
+        }
+        // A choice made of several fields, such as the default model, comes from one writer: where
+        // another writer changed any part of it, the file keeps all of theirs and the copy all of ours.
+        for (const key of atomicOverlaps(changes, fresh)) {
+          next[key] = (fresh as Record<string, unknown>)[key];
+          mine[key] = changes[key as keyof BookChanges]?.to;
+          overlaps.push(key);
+        }
+        return overlaps.length > 0 ? { next, copy: mine } : { next };
+      });
+      if (savedAs === undefined) return { status: "saved", book };
+      return { status: "conflict", book, savedAs, fields: [...new Set(overlaps.map((path) => path.split(".")[0] ?? path))] };
+    });
+  }
+
+  /**
+   * The one writer of `book.json` for `editBook`. It reads the file, builds the next version from that
+   * read, and commits only while the file is still the read; if another writer got in between, it
+   * builds again from the new read. Only the fields that changed are rewritten. A `copy` is the
+   * editor's own version where it overlapped another writer, kept after the commit so a retry never
+   * leaves two.
+   */
+  private async writeBook(
+    bookId: string,
+    build: (fresh: BookMeta) => { next: Record<string, unknown>; copy?: Record<string, unknown> }
+  ): Promise<{ book: BookMeta; savedAs?: string }> {
+    const path = bookFilePath(bookId);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { snapshot, book: fresh } = await this.readBookFile(bookId);
+      const text = textDecoder.decode(snapshot.bytes);
+      const { next, copy } = build(fresh);
+      const fixed = { id: fresh.id, schemaVersion: fresh.schemaVersion, createdAt: fresh.createdAt };
+      let book = bookSchema.parse({ ...next, ...fixed, updatedAt: fresh.updatedAt });
+      const now = this.env.runtime.now();
+      // Both versions are checked before anything is written.
+      const kept = copy ? bookSchema.parse({ ...copy, ...fixed, updatedAt: now }) : null;
+      if (!sameValue(book, fresh)) {
+        const out = rewrite(JSON.parse(text), fresh, { ...book, updatedAt: now });
+        book = bookSchema.parse(out);
+        const result = await this.commitText(path, `${JSON.stringify(out, null, 2)}\n`, { kind: "sha256", value: snapshot.sha256 });
+        if (result.status === "changed") continue;
+        await this.rebuildCatalog();
+      }
+      if (!kept) return { book };
+      await this.ensureBookLayout(bookId);
+      const stamp = now.replace(/[:.]/g, "-");
+      const name = await this.writeConflictCopy(
+        bookId,
+        `book.conflict-external-edit.${this.device.id}.${stamp}`,
+        ".json",
+        `${JSON.stringify(kept, null, 2)}\n`
+      );
+      return { book, savedAs: conflictDisplayPath(bookId, name) };
+    }
+    throw new LibraryError("io", "book.json kept changing while it was being saved. Nothing was written; try again.");
   }
 
   private async keepBookMetadataCopy(bookId: string, book: BookMeta): Promise<void> {
@@ -932,13 +1013,14 @@ export class LibraryService {
 
     for (const directory of directories) {
       for (const entry of await this.env.storage.listDirectory(directory.path)) {
-        if (entry.kind !== "file" || !entry.name.endsWith(".md")) continue;
+        // A `.json` copy is the Story Bible's: an editor's `book.json` kept beside another writer's.
+        if (entry.kind !== "file" || !/\.(md|json)$/.test(entry.name)) continue;
         if (!isConflictCopyName(entry.name)) continue;
         // Never read: a copy named as one is a copy whatever it holds, and is never a chapter.
         conflicts.push({
           bookId,
           chapterId: "",
-          chapterTitle: entry.name.replace(/\.md$/, ""),
+          chapterTitle: entry.name.replace(/\.(md|json)$/, ""),
           savedAs: directory.display(entry.name),
           reason: "provider-conflict-copy",
           diskVersion: 0,

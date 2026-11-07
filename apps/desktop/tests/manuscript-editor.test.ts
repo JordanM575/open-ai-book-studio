@@ -555,8 +555,14 @@ describe("ModelPickerDialog contributor consent", () => {
       createdAt: "2026-10-26T12:00:00.000Z",
       updatedAt: "2026-10-26T12:00:00.000Z"
     });
-    const update = mock((_bookId: string, patch: Record<string, unknown>) =>
-      Promise.resolve({ ok: true as const, data: { ...parsed, ...patch } })
+    const edit = mock((_bookId: string, changes: Record<string, { to: unknown }>) =>
+      Promise.resolve({
+        ok: true as const,
+        data: {
+          status: "saved" as const,
+          book: { ...parsed, ...Object.fromEntries(Object.entries(changes).map(([key, change]) => [key, change.to])) }
+        }
+      })
     );
     (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
       providers: {
@@ -598,7 +604,7 @@ describe("ModelPickerDialog contributor consent", () => {
           })
         )
       },
-      books: { update }
+      books: { edit }
     };
     const onSaved = mock(() => {});
     testing.render(
@@ -622,11 +628,11 @@ describe("ModelPickerDialog contributor consent", () => {
     await testing.waitFor(() => expect(use.disabled).toBe(false));
     testing.fireEvent.click(use);
     await testing.waitFor(() =>
-      expect(update).toHaveBeenCalledWith(BOOK, {
-        defaultProvider: "meta",
-        defaultConnectionId: "conn_meta0001",
-        defaultModelId: "muse-spark-1.3-contributor",
-        allowContributorTraining: true
+      expect(edit).toHaveBeenCalledWith(BOOK, {
+        defaultProvider: { from: null, to: "meta" },
+        defaultConnectionId: { from: null, to: "conn_meta0001" },
+        defaultModelId: { from: null, to: "muse-spark-1.3-contributor" },
+        allowContributorTraining: { from: false, to: true }
       })
     );
     expect(onSaved).toHaveBeenCalled();

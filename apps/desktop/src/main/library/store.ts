@@ -1,5 +1,7 @@
 import type {
+  BookChanges,
   BookDetail,
+  BookEditResult,
   BookListing,
   BookMeta,
   BookSummary,
@@ -116,6 +118,11 @@ export class Library {
 
   updateBook(bookId: string, patch: BookPatch): Promise<BookMeta> {
     return this.service.updateBook(bookId, patch);
+  }
+
+  /** Merge the fields an editor changed onto `book.json` as it is now; see `LibraryService.editBook`. */
+  editBook(bookId: string, changes: BookChanges): Promise<BookEditResult> {
+    return this.service.editBook(bookId, changes);
   }
 
   saveMatter(

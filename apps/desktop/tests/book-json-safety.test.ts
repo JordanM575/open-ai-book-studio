@@ -193,6 +193,17 @@ describe("the shapes FORMAT.md documents", () => {
     expect((await library.listBooks()).map((summary) => summary.id)).toContain(bookId);
   });
 
+  test("a save elsewhere in the book leaves those arrays as they were written", async () => {
+    const { library, bookId, path } = await fixture();
+    await writeRaw(path, withArcArrays);
+
+    await library.updateBook(bookId, { title: "The Salt Crossing" });
+
+    const raw = await readRaw(path);
+    expect(raw.title).toBe("The Salt Crossing");
+    expect(raw.storyArc.beginning.keyMoments).toEqual(["The storm arrives.", "The lamp will not turn."]);
+    expect(raw.storyArc.end.keyMoments).toEqual(["The door closes."]);
+  });
 });
 
 describe("a book upgraded to a newer schema by another device", () => {
@@ -259,6 +270,7 @@ describe("a book upgraded to a newer schema by another device", () => {
     ["a restore from the trash", ({ library, bookId, gone, trashedAt }) => library.restoreChapter(bookId, gone.id, trashedAt)],
     ["a kept conflict copy", ({ library, bookId, one }) => library.keepConflictCopy(bookId, one.id, { baseVersion: one.version, baseHash: one.hash })],
     ["the book's details", ({ library, bookId }) => library.updateBook(bookId, { title: "Renamed" })],
+    ["a Story Bible or settings save", ({ library, bookId }) => library.editBook(bookId, { outline: { from: "Two sisters.", to: "Three sisters." } })],
     ["moving the book to the trash", ({ library, bookId }) => library.deleteBook(bookId)],
     ["a new image", ({ library, bookId }) => library.addImage(bookId, { bytes: PNG, kind: "other", prompt: "The lamp", provider: "meta", model: "muse-image" })],
     ["attaching an image", ({ library, bookId, image, one }) => library.attachImage(bookId, image.id, one.id)],
@@ -309,5 +321,68 @@ describe("a book upgraded to a newer schema by another device", () => {
     );
 
     expect(await snapshot(book.root)).toEqual(before);
+  });
+});
+
+describe("the agent's book tools when another writer changed the same details", () => {
+  /** A library whose first read of the book is followed by another writer's edit, before the tool writes. */
+  function racing(library: Library, path: string, change: (raw: Raw) => void): Library {
+    let raced = false;
+    return new Proxy(library, {
+      get(target, property) {
+        if (property === "readBook") {
+          return async (bookId: string) => {
+            const detail = await target.readBook(bookId);
+            if (!raced) {
+              raced = true;
+              await writeRaw(path, change);
+            }
+            return detail;
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+  }
+
+  test("update_book_details keeps the other writer's outline, saves its own as a copy and says where", async () => {
+    const { root, library, bookId, path } = await fixture();
+    const tools = createChapterTools(
+      racing(library, path, (raw) => {
+        raw.outline = "Three sisters.";
+      }),
+      bookId
+    );
+
+    const outcome = await run(tools, "update_book_details", { outline: "Two sisters and a letter." });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.message).toContain("I kept their version and saved mine as");
+    expect((await readRaw(path)).outline).toBe("Three sisters.");
+    const copies = await readdir(join(root, "books", bookId, "conflicts"));
+    expect(copies).toHaveLength(1);
+    expect(outcome.message).toContain(copies[0] ?? "no copy");
+    const copy = await readRaw(join(root, "books", bookId, "conflicts", copies[0] ?? ""));
+    expect(copy.outline).toBe("Two sisters and a letter.");
+  });
+
+  test("add_memory lands beside a character the other writer added in between", async () => {
+    const { library, bookId, path } = await fixture();
+    const tools = createChapterTools(
+      racing(library, path, (raw) => {
+        raw.characters = [
+          { id: "char_mara000001", name: "Mara", role: "Keeper", description: "", motivations: "", notes: "" }
+        ];
+      }),
+      bookId
+    );
+
+    const outcome = await run(tools, "add_memory", { text: "The lamp was lit at dusk." });
+
+    expect(outcome.ok).toBe(true);
+    const raw = await readRaw(path);
+    expect(raw.characters.map((entry: Raw) => entry.name)).toEqual(["Mara"]);
+    expect(raw.memories.map((entry: Raw) => entry.text)).toEqual(["The lamp was lit at dusk."]);
   });
 });

@@ -56,7 +56,7 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 | `isErotica` | boolean | Gates explicit-content affordances. |
 | `chapterRange` | `{ minimum, maximum }` | Planned length. |
 | `outline` | string | Markdown outline of the whole book. |
-| `storyArc` | object | `beginning`, `middle`, `end`, each with `overview`, `keyMoments` and `openQuestions`: text, one line per item. An array of strings, the shape this page once described, is read as one line per item and is written back as text the next time the book is saved. |
+| `storyArc` | object | `beginning`, `middle`, `end`, each with `overview`, `keyMoments` and `openQuestions`: text, one line per item. An array of strings, the shape this page once described, is read as one line per item and stays an array on disk until that part is edited. |
 | `characters` | array | `id` (`char_…`), `name`, `role`, `description`, `motivations`, `notes`. |
 | `memories` | array | `id` (`mem_…`), `text` (≤180 chars by convention), `importance`, timestamps. |
 | `stage` | `onboarding` \| `drafting` | Setup or writing. |
@@ -73,6 +73,37 @@ in `conflicts/`. Browser storage can be cleared by the browser; export a portabl
 Unknown fields are preserved when a book is written, so a newer app can add fields without the
 older one silently dropping them. That holds at every level: inside each character and memory, the
 story arc and its three parts, `chapterRange` and every `settings` section, as well as at the top.
+
+### Saving `book.json`
+
+Several writers share `book.json`: the Story Bible, the book and format settings, the model picker,
+the agent's book tools, the `bookwriter` toolkit and other devices through a sync folder. It has no
+`version`, so a save works field by field:
+
+- The editor sends only the top-level fields it changed, each with the value it started from.
+- The main process reads the file again under the book's write lock and merges each change onto that
+  read. A field the editor did not change is never written. Unknown keys survive at every level, and
+  a part nobody changed keeps the shape another writer gave it. The exception is a list of records
+  that is written: each of its records is written in this build's shape, so a missing default such
+  as `notes: ""` is filled in.
+- Objects merge key by key. `characters` and `memories` merge record by record, by `id`, so an added
+  memory and an edited character never collide. A record's `updatedAt` takes the later stamp.
+- The default provider, connection and model (`defaultProvider`, `defaultConnectionId`,
+  `defaultModelId`) are one choice. An editor that changes any of them sends all three, and if another
+  writer changed any of them since the editor read, the file keeps all of their choice and the
+  editor's whole choice goes to the copy, so a connection is never paired with a model it does not serve.
+- The file is replaced atomically, and only while it is still the version that was read. If another
+  writer got in between, the merge runs again on the new read.
+- Where another writer changed the same part since the editor read it, the file keeps their value and
+  the editor's whole version of the book is kept as
+  `conflicts/book.conflict-external-edit.<deviceId>.<timestamp>.json`. The parts only the editor
+  changed are saved as usual. The Story Bible says which fields overlapped and offers to show the copy;
+  the agent's tools tell the model where the copy went. The copy is listed with the book's other
+  conflict copies, so the workspace's saved-copies banner offers it too.
+
+A caller with no earlier read, such as the import, replaces whole fields instead. It leaves every
+part it did not change as it was written, and if the file changed while it was saving it keeps its
+update as a conflict copy rather than writing over the change.
 
 ### Front and back matter
 
@@ -291,7 +322,10 @@ writer, compares them with what is on disk:
 
 A conflict never overwrites the other writer. The local text is written to
 `conflicts/<name>.conflict-<reason>.<deviceId>.<timestamp>.md`, the UI shows both versions, and the
-author chooses: *Show the saved copy* or *Load the version on disk*.
+author chooses: *Show the saved copy* or *Load the version on disk*. A Story Bible or settings save
+that overlaps another writer keeps the author's `book.json` the same way, as
+`conflicts/book.conflict-external-edit.<deviceId>.<timestamp>.json` (see
+[Saving `book.json`](#saving-bookjson)).
 
 One conflicted save writes one copy. The editor never saves words a copy already holds against the
 same base again, and drops the draft it held for them, so loading the version on disk, closing and

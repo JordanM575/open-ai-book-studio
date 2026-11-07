@@ -40,6 +40,7 @@ const LISTED = {
 interface Options {
   models?: () => Promise<unknown>;
   addModel?: (connectionId: string, modelId: string) => Promise<unknown>;
+  edit?: (bookId: string, changes: Record<string, { to: unknown }>) => Promise<unknown>;
   platform?: string;
 }
 
@@ -48,7 +49,16 @@ function mockStudio(options: Options = {}) {
     options.addModel ?? (async (_connectionId: string, modelId: string) => ({ ok: true, data: manualModel("meta", modelId) }))
   );
   const models = mock(options.models ?? (async () => ({ ok: true, data: { models: [LISTED], fetchedAt: NOW } })));
-  const update = mock(async (_bookId: string, patch: Record<string, unknown>) => ({ ok: true, data: { ...BOOK, ...patch } }));
+  const edit = mock(
+    options.edit ??
+      (async (_bookId: string, changes: Record<string, { to: unknown }>) => ({
+        ok: true,
+        data: {
+          status: "saved",
+          book: { ...BOOK, ...Object.fromEntries(Object.entries(changes).map(([key, change]) => [key, change.to])) }
+        }
+      }))
+  );
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: options.platform ?? "darwin",
     providers: {
@@ -57,15 +67,16 @@ function mockStudio(options: Options = {}) {
       addModel
     },
     connections: { list: mock(async () => ({ ok: true, data: [META] })) },
-    books: { update }
+    books: { edit }
   };
-  return { addModel, models, update };
+  return { addModel, models, edit };
 }
 
 function renderPicker() {
   const onSaved = mock(() => {});
-  testing.render(React.createElement(ModelPickerDialog, { open: true, book: BOOK, onClose: () => {}, onSaved }));
-  return { view: testing.within(document.body), onSaved };
+  const onConflictCopy = mock(() => {});
+  testing.render(React.createElement(ModelPickerDialog, { open: true, book: BOOK, onClose: () => {}, onSaved, onConflictCopy }));
+  return { view: testing.within(document.body), onSaved, onConflictCopy };
 }
 
 function button(view: ReturnType<typeof testing.within>, label: string): HTMLButtonElement {
@@ -127,11 +138,11 @@ describe("entering a model id by hand", () => {
     await testing.waitFor(() => expect(use.disabled).toBe(false));
     testing.fireEvent.click(use);
     await testing.waitFor(() =>
-      expect(mocks.update).toHaveBeenCalledWith(BOOK.id, {
-        defaultProvider: "meta",
-        defaultConnectionId: "conn_metapick0001",
-        defaultModelId: "muse-spark-1.3-contributor",
-        allowContributorTraining: true
+      expect(mocks.edit).toHaveBeenCalledWith(BOOK.id, {
+        defaultProvider: { from: null, to: "meta" },
+        defaultConnectionId: { from: null, to: "conn_metapick0001" },
+        defaultModelId: { from: null, to: "muse-spark-1.3-contributor" },
+        allowContributorTraining: { from: false, to: true }
       })
     );
     expect(onSaved).toHaveBeenCalled();
@@ -156,11 +167,11 @@ describe("entering a model id by hand", () => {
     expect(view.getByTestId("manual-model-result").textContent).toBe("Muse Spark 1.3 answered, so it is saved on Meta.");
     testing.fireEvent.click(button(view, "Use this model"));
     await testing.waitFor(() =>
-      expect(mocks.update).toHaveBeenCalledWith(BOOK.id, {
-        defaultProvider: "meta",
-        defaultConnectionId: "conn_metapick0001",
-        defaultModelId: "muse-spark-1.3",
-        allowContributorTraining: false
+      // Consent did not change here, so it is not sent: a choice made elsewhere is never put back.
+      expect(mocks.edit).toHaveBeenCalledWith(BOOK.id, {
+        defaultProvider: { from: null, to: "meta" },
+        defaultConnectionId: { from: null, to: "conn_metapick0001" },
+        defaultModelId: { from: null, to: "muse-spark-1.3" }
       })
     );
   });
@@ -205,5 +216,28 @@ describe("entering a model id by hand", () => {
 
     expect(view.queryByTestId("enter-model-id")).toBeNull();
     expect(view.queryByTestId("manual-model")).toBeNull();
+  });
+});
+
+describe("choosing the book's model when another writer changed it first", () => {
+  test("keeps their choice, says the author's is a copy and tells the workspace to list it", async () => {
+    const theirs = { ...BOOK, defaultModelId: "their-model" };
+    mockStudio({
+      edit: async () => ({
+        ok: true,
+        data: { status: "conflict", book: theirs, savedAs: `books/${BOOK.id}/conflicts/book.conflict-external-edit.d.json`, fields: ["defaultModelId"] }
+      })
+    });
+    const { view, onSaved, onConflictCopy } = renderPicker();
+    await testing.waitFor(() => view.getByText("Listed model"));
+
+    testing.fireEvent.click(button(view, "Listed model"));
+    await testing.act(async () => {
+      testing.fireEvent.click(button(view, "Use this model"));
+    });
+
+    await testing.waitFor(() => expect(onConflictCopy).toHaveBeenCalledTimes(1));
+    expect(onSaved).toHaveBeenCalledWith(theirs);
+    expect(document.body.textContent).toContain("your version was kept as a separate copy");
   });
 });
