@@ -3,7 +3,7 @@
 **Status:** Draft / Planned — not implemented or accepted
 **Number:** 042
 **Requirement:** REQ-AUDIOBOOK-001
-**Depends on:** 017 speech boundaries; reserved 038 voice preferences when integrated;
+**Depends on:** integrated 038 voice preferences and existing TTS helpers; 017 explicit background boundaries;
 011/022 provider/model consent; 035 immutable export concepts; 002 checked Library writes.
 030 is required only if optional character references use its new records.
 **Completion lane:** L13; not a desktop release prerequisite.

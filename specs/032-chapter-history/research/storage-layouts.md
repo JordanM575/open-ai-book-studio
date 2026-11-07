@@ -1,6 +1,9 @@
 # Storage layouts for chapter history (032 T001, OQ-001)
 
-Status: research, not accepted. This document compares layouts and records a
+> Status update, November 7: the recommendation was accepted on November 3 as D-175 in
+> `docs/DECISIONS.md`. Format/schema follow-through and implementation remain open; research below is retained.
+
+Status at research: not accepted. This document compares layouts and records a
 recommendation for D-175. It authorizes no persistence code; T003+ still wait
 on acceptance.
 

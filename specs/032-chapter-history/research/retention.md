@@ -1,6 +1,9 @@
 # Retention, size limits, and cleanup (032 T002, OQ-002)
 
-Status: research, not accepted. This document records the retention facts and
+> Status update, November 7: the recommendation was accepted on November 3 as D-176 in
+> `docs/DECISIONS.md`. No automatic pruning is authorized; implementation remains open and research below is retained.
+
+Status at research: not accepted. This document records the retention facts and
 a no-automatic-pruning recommendation for D-176. It sets no period, quota, or
 pruning rule; OQ-002 forbids choosing one by assumption.
 

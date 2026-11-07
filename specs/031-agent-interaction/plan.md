@@ -1,7 +1,8 @@
 # Plan: agent interaction and guidance
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
-**Status:** Draft — planned only; implementation has not started.
+**Status:** Draft / In progress — T004 contracts and T010 tone/length controls implemented;
+runtime permissions, request wiring and plan lifecycle remain planned.
 
 ## Shape
 
@@ -28,8 +29,8 @@ and checked Library writer.
 
 ## Runtime and persistence
 
-- Extend `AgentTurnInput` with a required mode and bounded guidance values; validate them at the main
-  process boundary. Keep the mode attached to the submitted/stored turn so reloads cannot infer a
+- T004 already extends `AgentTurnInput` with mode and bounded guidance. Finish validating/enforcing
+  them at the runtime boundary. Keep the mode attached to the submitted/stored turn so reloads cannot infer a
   different permission level from the current composer.
 - Add studio-owned plan data and events to the thread/message contract, not AI SDK UI-message types.
   Validate plan identity, bounded step text and state transitions. Store plans with their originating
@@ -51,20 +52,24 @@ and checked Library writer.
   implementation writes them. Preserve older threads by displaying their mode as unrecorded rather
   than guessing.
 
-## Open decisions and task gates
+## Accepted decisions and remaining sequence
 
-The spec's Open decisions table is authoritative. Resolve each decision in the corresponding Phase 0
-task before starting only its dependent implementation:
+D-177–D-179 are accepted in `docs/DECISIONS.md`. Reuse their decisions rather than reopening them as
+missing research. Their matching demo/script/runbook delivery condition still applies.
 
-- Discuss default and read-only tool availability gate the Discuss tool set and composer default; the
-  no-write/deny-unknown invariant is not gated.
-- Pause acknowledgment and continuation semantics gate pause/resume runtime controls. Plan status,
-  cancel, expiry and ordinary Edit behavior are not gated.
-- Mid-run plan guidance semantics gate only live steering. Pre-send guidance and editing a proposed
-  plan remain in scope.
+1. Deliver the mode portion of T006 with T007–T009: default Discuss, the exact six read-tier tools,
+   bridge denial and excluded plugins. Do not expose the toggle ahead of enforcement. Verify ordinary
+   Edit writes, destructive approvals and undo with a scripted model and byte-checked fixtures.
+2. Finish T011 request wiring for existing book preferences and one-turn guidance. Assert the exact
+   prompt scope and unchanged tool/model authority; T010's controls alone do not prove this.
+3. Define T005's bounded plan states and allowed transitions before T012–T018 controls. Pause confirms
+   only at terminal `stopped`; continuation is a new explicit turn with fresh approvals. Persist
+   actual partial outcomes and expire plans on runtime loss; never auto-resume.
+4. Complete T019–T021 accessibility, end-to-end synthetic journeys and exact-candidate evidence,
+   including the matching feature description and film/runbook update.
 
-Record outcomes in the public decision register, and add an ADR only if an outcome makes a hard-to-
-reverse architectural choice. This authoring task does not edit those records.
+D-179 excludes live steering. New guidance for running/paused work travels by stop plus a new turn;
+it does not authorize a guidance queue, a scheduler or a larger autonomy scope under 037.
 
 ## Likely implementation surfaces
 

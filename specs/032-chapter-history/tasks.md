@@ -2,8 +2,9 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
-Tasks are ordered. `[P]` means safe to do in parallel within a phase. All tasks are unchecked; the
-feature is planned, not implemented or accepted.
+Tasks are ordered. `[P]` means safe to do in parallel within a phase. Storage and retention decisions
+are accepted; T002 records decision completion only. T001 still needs format/ADR follow-through and
+all implementation/acceptance tasks remain unchecked. Named chapter history is not built.
 
 ## Phase 0 — Resolve only the decisions needed by each task
 
@@ -12,29 +13,30 @@ feature is planned, not implemented or accepted.
   existing archive and chapter trash/restore lifecycle. Record a public decision (and ADR/format
   changes where needed) before starting dependent persistence work. This task does not authorize
   editing those documents as part of spec authoring.
-  Research recorded 2026-11-03 (not accepted): `research/storage-layouts.md` pins the
-  book/chapter/conflict/trash/archive facts against six alternatives and proposes D-175:
+  Accepted 2026-11-03 in D-175: `research/storage-layouts.md` pins the
+  book/chapter/conflict/trash/archive facts against six alternatives:
   book-scoped `books/<bookId>/history/<chapterId>/` records mirroring chapter files (front
   matter plus body, loose schemas, newer-schema refusal), riding archive and whole-book trash
   by construction, staying keyed by stable id across chapter trash, with author deletion to
-  chapter trash. T003/T004/T007–T009 remain blocked.
-- [ ] T002 [P] Research and resolve **OQ-002**: decide retention, size-limit, and cleanup behavior,
+  chapter trash. The decision portion is complete; the required format/ADR follow-through remains
+  before dependent persistence, so T001 stays unchecked.
+- [x] T002 [P] Research and resolve **OQ-002**: decide retention, size-limit, and cleanup behavior,
   including restore-undo dependencies and safe recovery. Do not choose an age/count period by
   assumption. This decision blocks only T011; it is not a prerequisite for core snapshot and
   restore work.
-  Research recorded 2026-11-03 (not accepted): `research/retention.md` pins unbounded
+  Accepted 2026-11-03 in D-176: `research/retention.md` pins unbounded
   trash/conflicts, failure preservation, and transport-only caps against auto-prune, count,
-  age, and quota alternatives and proposes D-176: no automatic pruning with trash-based
-  explicit deletion and stat-based size visibility. T011 remains blocked.
+  age, and quota alternatives: no automatic pruning with trash-based
+  explicit deletion and stat-based size visibility. T011's implementation remains open.
 
 ## Phase 1 — Shared snapshot contract
 
-- [ ] T003 **Blocked on OQ-001.** Define validated history record and operation types in the
+- [ ] T003 **After T001's format/ADR work under D-175.** Define validated history record and operation types in the
   existing shared library service. Bind each record to book ID, chapter ID, source version, raw
   chapter-file hash, body hash, label, and capture time. Keep bodies and metadata in the decided
   author-owned format; reject wrong identity, unsupported schema, and corrupt bodies without
   rewriting them. Add synthetic tests through the in-memory library port.
-- [ ] T004 **Blocked on OQ-001.** Implement explicit snapshot creation and chapter-scoped list,
+- [ ] T004 **After T003.** Implement explicit snapshot creation and chapter-scoped list,
   open, and compare operations using only the existing checked library service/port. Verify
   creation requires a confirmed saved source and that list/open/compare do not mutate chapter
   bytes or flush drafts. Cover duplicate labels and malformed/missing records with synthetic
@@ -52,16 +54,16 @@ feature is planned, not implemented or accepted.
 
 ## Phase 3 — Checked restore and its undo
 
-- [ ] T007 **Blocked on OQ-001.** Implement restore preflight and confirmation: require explicit
+- [ ] T007 **After snapshot storage under D-175.** Implement restore preflight and confirmation: require explicit
   resolution of pending drafts, show the saved current body and selected snapshot, and retain the
   current saved body as a visible safety snapshot before writing. If safety-snapshot creation
   fails, prove that the chapter remains unchanged.
-- [ ] T008 **Blocked on OQ-001.** Restore only the snapshot body with the current read's
+- [ ] T008 **After T007.** Restore only the snapshot body with the current read's
   `baseVersion` and `baseHash` through the existing checked chapter writer. Preserve metadata and
   normal conflict behavior. Test stale/external changes, cancellation before and after the safety
   snapshot, write failure, delayed result, and draft preservation with the in-memory writer and
   isolated synthetic libraries.
-- [ ] T009 **Blocked on OQ-001.** Persist a restore-specific undo tied to the exact committed
+- [ ] T009 **Required with T008 before exposing restore.** Persist a restore-specific undo tied to the exact committed
   post-restore version/hash. Persist a prepared intent before chapter commit and reconcile it after
   interrupted finalization; undo through the same checked writer, refuse a stale undo, and retain
   all snapshot material. Test success, reload, interrupted finalization, stale base, second writer,
@@ -73,11 +75,11 @@ feature is planned, not implemented or accepted.
 
 ## Phase 4 — Retention, lifecycle, and integration
 
-- [ ] T011 **Blocked only on OQ-002.** Implement the accepted snapshot size/retention/cleanup
+- [ ] T011 **Under accepted D-176.** Implement the accepted snapshot size/retention/cleanup
   behavior. Preserve required restore-undo data, make any destructive cleanup author-visible and
-  recoverable, and test policy boundaries with synthetic snapshots. Do not infer a retention
-  period if the decision is still open.
-- [ ] T012 **Blocked on OQ-001.** Verify the selected snapshot layout follows chapter identity
+  recoverable, and test policy boundaries with synthetic snapshots. No automatic pruning, quota,
+  expiry or compaction is authorized; include unapplied intents in preservation tests.
+- [ ] T012 **Under accepted D-175, after storage exists.** Verify the selected snapshot layout follows chapter identity
   through rename/reorder and follows existing trash/restore behavior; verify portable archive
   export/import preserves history records and hashes without making archive import a chapter
   history action. Update format/archive documentation only as required by the accepted decision.
@@ -97,10 +99,9 @@ feature is planned, not implemented or accepted.
 
 ## Dependency notes
 
-- OQ-001 blocks only tasks that persist history or integrate its archive/trash lifecycle (T003,
-  T004, T007–T009, and T012). It does not block decision research or independent interface/contract
-  work.
-- OQ-002 blocks only T011. It does not block snapshot creation, browsing, comparison, restore, or
-  restore-specific undo; those paths must report storage failures without pruning existing data.
+- OQ-001 is resolved by D-175. T001's format/ADR follow-through and T003's schema still precede
+  persistence; archive/trash tests accompany the first durable snapshot slice.
+- OQ-002 is resolved by D-176. T011 implements that policy; all paths report storage failures
+  without pruning existing data. The decision checkbox is not implementation acceptance.
 - Every test fixture is synthetic and isolated. No task authorizes access to real manuscripts,
   credentials, live providers, paid services, or devices.

@@ -13,6 +13,82 @@ def load(name):
     return json.loads((ROOT / "docs" / name).read_text())
 
 
+def assert_terminal_coverage(nodes, terminal):
+    """Every retained node must be required by the final milestone, not only optional edges."""
+    required = set()
+
+    def collect(node_id):
+        if node_id in required:
+            return
+        required.add(node_id)
+        for parent in nodes[node_id]["dependsOn"]:
+            collect(parent)
+
+    assert terminal in nodes, f"Missing terminal {terminal}"
+    collect(terminal)
+    assert required == set(nodes), f"Not covered by {terminal}: {sorted(set(nodes) - required)}"
+
+
+def validate_execution(lanes):
+    execution = load("concurrent-delivery.json")
+    streams = {stream["id"]: stream for stream in execution["streams"]}
+    work = {item["id"]: item for item in execution["work"]}
+    assert len(streams) == len(execution["streams"]), "Duplicate stream ID"
+    assert len(work) == len(execution["work"]), "Duplicate work-package ID"
+    work_lanes = execution["workLanes"]
+    assert set(work_lanes) == set(work), "Work-package lane coverage mismatch"
+    assigned = {stream_id: set() for stream_id in streams}
+    for item_id, item in work.items():
+        assert item["stream"] in streams, f"Unknown stream: {item_id}"
+        scope = work_lanes[item_id]
+        assert scope and len(scope) == len(set(scope)), f"Invalid work lane scope: {item_id}"
+        assert set(scope) <= set(streams[item["stream"]]["lanes"]), f"Work outside stream scope: {item_id}"
+        assigned[item["stream"]].update(scope)
+    covered = set()
+    for stream in streams.values():
+        assert stream["lanes"], f"Empty stream: {stream['id']}"
+        assert len(stream["lanes"]) == len(set(stream["lanes"])), "Duplicate lane in stream"
+        assert set(stream["lanes"]) <= set(lanes), f"Unknown lane in {stream['id']}"
+        assert assigned[stream["id"]] == set(stream["lanes"]), f"Stream lanes without assigned work: {stream['id']}"
+        covered.update(stream["lanes"])
+    assert covered == set(lanes), f"Unowned execution lanes: {set(lanes) - covered}"
+    assert 1 <= execution["maxConcurrentIntegrationGates"] <= execution["maxConcurrentAgents"]
+    wave = execution["firstWave"]
+    assert len(wave) == len(set(wave)) <= execution["maxConcurrentAgents"], "Invalid first wave"
+    assert set(wave) <= set(work), "Unknown first-wave work package"
+    assert len({work[item]["stream"] for item in wave}) == len(wave), "Competing first-wave stream owners"
+    active, done, edges = set(), set(), set()
+
+    def visit(item_id):
+        assert item_id not in active, f"Execution cycle at {item_id}"
+        if item_id in done:
+            return
+        active.add(item_id)
+        item = work[item_id]
+        assert item["stream"] in streams, f"Unknown stream: {item_id}"
+        assert item["gate"].strip(), f"Missing gate: {item_id}"
+        assert len(item["dependsOn"]) == len(set(item["dependsOn"])), f"Duplicate dependency: {item_id}"
+        for parent in item["dependsOn"]:
+            assert parent in work, f"Unknown work prerequisite: {parent}"
+            edges.add((parent, item_id))
+            visit(parent)
+        active.remove(item_id)
+        done.add(item_id)
+
+    for item_id in work:
+        visit(item_id)
+    for item_id in wave:
+        assert not set(work[item_id]["dependsOn"]) & set(wave), "First-wave dependency race"
+    assert_terminal_coverage(work, "W99")
+    markdown = (ROOT / "docs" / "CONCURRENT-DELIVERY.md").read_text()
+    diagram = re.search(r"```mermaid\n(.*?)```", markdown, re.S)
+    assert diagram, "Missing execution diagram"
+    shown = set(re.findall(r"\b(W\d{2})(?:\[[^\]\n]*\])?\s*-->\s*(W\d{2})", diagram[1]))
+    assert edges == shown, f"Execution Mermaid mismatch: {edges ^ shown}"
+    print(f"Execution valid: {len(streams)} streams, {len(work)} packages, {len(edges)} edges, "
+          f"{len(wave)} initial agents; assigned lane scopes and terminal coverage valid")
+
+
 def validate():
     graph = load("product-completion.json")
     requirements = load("completion-requirements.json")["requirements"]
@@ -73,6 +149,7 @@ def validate():
 
     for lane_id in lanes:
         visit(lane_id)
+    assert_terminal_coverage(lanes, "L24")
     markdown = (ROOT / "docs" / "PRODUCT-COMPLETION.md").read_text()
     diagram = re.search(r"```mermaid\n(.*?)```", markdown, re.S)
     assert diagram, "Missing lane diagram"
@@ -106,8 +183,9 @@ def validate():
         visit_union(lane_id)
     print(f"Valid: {len(lanes)} lanes, {len(edges)} edges, {len(req_ids)} requirements, "
           f"{len(conditional_edges)} conditional edges, "
-          f"{len(ownership['newSpecs'])} new spec triplets; reserved {', '.join(reserved)}")
+          f"{len(ownership['newSpecs'])} new spec triplets; reserved {', '.join(reserved) or 'none'}")
     print("Topological order: " + " -> ".join(order))
+    validate_execution(lanes)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
 # Tasks: agent interaction and guidance
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
-**Status:** Draft — every task is planned and unchecked.
+**Status:** Draft / In progress — decision tasks T001–T003 reconciled to accepted D-177–D-179;
+T004 and T010 implemented. Other implementation/verification tasks remain open.
 
 Tasks are ordered. An unresolved decision blocks only the task that depends on it. All tests use
 temporary synthetic libraries, fixture chapters and scripted model responses unless separately
@@ -9,33 +10,33 @@ authorized; no task requires a live provider, credential, paid service, real man
 
 ## Phase 0 — Resolve interaction semantics
 
-- [ ] T001 Decide and record the Discuss default and read-tool policy. Keep the no-write and
+- [x] T001 Decide and record the Discuss default and read-tool policy. Keep the no-write and
   deny-unknown invariant. Decide whether positively read-only built-in tools are available; plugins
   remain unavailable unless their public contract explicitly establishes a read-only capability.
   Blocks only the Discuss tool set and initial composer default.
-  Research recorded 2026-11-03 (not accepted): `research/discuss-read-policy.md` pins the
+  Accepted 2026-11-03 in D-177: `research/discuss-read-policy.md` pins the
   exact read-tier six, the `disabledTools` subset seam, bridge denial, and the plugin
-  write-capable surface against five alternatives and proposes D-177: read-only built-ins
+  write-capable surface against five alternatives: read-only built-ins
   only with Discuss as the new-turn default, enforced by subset offer plus bridge and writer
-  guards. T007/T008 remain blocked.
-- [ ] T002 Define the pause acknowledgment boundary, whether Start/Resume continue the same live
+  guards. T007/T008 remain unimplemented; the decision's matching demo/script/runbook condition remains.
+- [x] T002 Define the pause acknowledgment boundary, whether Start/Resume continue the same live
   turn or create a new explicit turn from the stored plan, and how a non-background plan behaves on
   window close. Specify what the interface says while an in-flight checked tool is settling.
   Preserve the rule that Start/Resume cannot answer a destructive approval. Blocks only plan
   execution, pause/resume continuation and non-background window-close handling.
-  Research recorded 2026-11-03 (not accepted): `research/pause-continuation.md` pins
+  Accepted 2026-11-03 in D-178: `research/pause-continuation.md` pins
   terminal-stop facts, mid-write atomicity with reported outcome, and new-turn continuation
-  against five alternatives and proposes D-178: pause completes on the terminal `stopped`
+  against five alternatives: pause completes on the terminal `stopped`
   event ("Stopping…" until then), continuation is always a new turn, approvals stay per
-  turn, close stops non-background turns and restart expires plans. T006 remains blocked.
-- [ ] T003 Decide whether new guidance can be added to a running or paused plan and whether that
+  turn, close stops non-background turns and restart expires plans. Runtime implementation remains open.
+- [x] T003 Decide whether new guidance can be added to a running or paused plan and whether that
   action revises the same plan or requires a new turn. Blocks only in-flight plan guidance; proposed
   plan guidance and pre-send controls can proceed.
-  Research recorded 2026-11-03 (not accepted): `research/inflight-guidance.md` pins
+  Accepted 2026-11-03 in D-179: `research/inflight-guidance.md` pins
   prompt fixity in-thread and the stop-plus-new-turn guidance journey against five
-  alternatives and proposes D-179: no live steering — revised guidance travels by new
+  alternatives: no live steering — revised guidance travels by new
   turns, with editing staying in pre-send, proposed-plan review, and `SKILLS.md`.
-  In-flight guidance remains blocked.
+  Live steering is excluded by the accepted decision; this checkbox records the decision, not runtime delivery.
 
 ## Phase 1 — Persist the interaction contract
 
@@ -44,15 +45,18 @@ authorized; no task requires a live provider, credential, paid service, real man
   with mode shown as unrecorded. Add the corresponding `docs/FORMAT.md` contract before writing the
   new fields. Test migrations and round trips with temporary synthetic libraries.
   Implemented: `AgentTurnInput` requires `mode` (`discuss`/`edit`) with optional bounded
-  `guidance` (1–2,000 chars, rejected never truncated); stored turns carry `mode` on the
+  `guidance` (1–2,000 chars, rejected never truncated); the schema/store supports `mode` on the
   assistant message and a `guidance` part on the user message; agent settings gain `tone`
   (≤500) and `answerLength` (brief/standard/detailed, standard by default) with old books
   gaining defaults on read. Every turn caller (composer, ambient, backend, bridge, live
-  checks, tests) sends `edit`, preserving current full-tool behavior until T007 chooses the
+  checks, tests) sends `edit`, preserving current full-tool behavior until T007 applies the accepted
   composer default. `docs/FORMAT.md` documents the thread and settings contract. Covered by
   `packages/core/tests/agent-interaction-contract.test.ts` (validation, legacy reads,
   store round-trips, defaults and bounds). No runtime permission or UI behavior changes;
-  enforcement stays with T006 and the composer with T007/T011.
+  enforcement stays with T006 and the composer with T007/T011. Production runtime population of
+  stored mode/guidance and retry identity still need wiring: a same-text request with changed mode
+  or guidance must not silently reuse a different earlier request. Schema round trips alone do not
+  prove that production messages contain these fields.
 - [ ] T005 Add validated plan and step state to the thread contract, with explicit parent-turn
   binding and allowed transitions. Persist proposed, active and terminal state through the existing
   thread store. Malformed or incompatible plan state must be reported without deleting the thread.
@@ -96,14 +100,14 @@ authorized; no task requires a live provider, credential, paid service, real man
   into the next turn. Verify it cannot alter mode, tools, approvals or 011 model attribution. Use a
   synthetic thread and mock model inputs.
 - [ ] T012 Add guidance to a proposed plan and require a refreshed visible proposal before **Start
-  plan**. No tool may write during this refresh. Keep live guidance disabled until T003 is resolved.
+  plan**. No tool may write during this refresh. Keep live steering disabled under D-179.
 
 ## Phase 4 — Visible plan lifecycle
 
 - [ ] T013 Add the explicit Plan first control for Edit turns and show a bounded, readable plan with
   ordered steps. Persist the proposed state and prove with a synthetic fixture that no write occurs
   before **Start plan**.
-- [ ] T014 Add Start plan and confirmed per-step progress after T002 resolves the continuation
+- [ ] T014 Add Start plan and confirmed per-step progress using D-178's accepted new-turn continuation
   semantics. The model/runtime must report only observed outcomes; tests cover completed, skipped
   and not-completed steps using scripted events.
 - [ ] T015 Add Pause and Resume according to T002. A requested pause is not shown as complete until

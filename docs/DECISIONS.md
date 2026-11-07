@@ -7,6 +7,13 @@ significant, hard to reverse, or likely to be relitigated.
 **Rule:** a spec may depend only on a decision that is `Accepted` or on an assumption listed in the
 spec's Assumptions section. An `Open` decision blocks the task that needs it, not the whole spec.
 
+**Delivery authority (2026-11-07):** the author delegated autonomous completion and approved the
+coordinator's recommendations. For remaining feature decisions, research the current premises,
+choose and document an evidenced recommendation with alternatives, record its accepted scope under
+this authority, and proceed without a routine approval question. Existing data-protection, spending,
+credential and release-access restrictions remain. This process does not mass-accept older proposals;
+each entry still needs its own recorded outcome before dependent implementation.
+
 ## Status vocabulary
 
 | Status | Meaning |
@@ -421,6 +428,7 @@ enforcement, and the D-124 device-identity question stands.
 | **Recommendation** | Offer a separate, optional, in-app profile cleanup (Settings), available any time — not tied to the uninstall moment, identical on all targets. The profile is exactly `studio.json` (settings pointers) and `credentials.json` (encrypted vault) under the per-app `userData` root: it holds no manuscript (proven), regenerates from defaults, and deletes closedly per file. Rules: explicit opt-in, never default-on, never bundled; itemized confirmation naming each file with its plain description and full path; cancel removes nothing; the library is never listed or touched; no telemetry of the choice. Rejected: no cleanup ever, per-platform uninstaller hooks, a single delete-everything button, any library scope. Keeping profile data and the library remains the default either way. |
 | **Evidence** | `specs/009-packaging-release/research/profile-cleanup.md`; `apps/desktop/tests/profile-cleanup-premises.test.ts` (pointer-not-prose settings, missing-file defaults, vault under the same root); T023/T024 premises (shared version-free root, builder targets). |
 | **Needed** | Author acceptance of the in-app optional cleanup with the itemization and cancellation rules. |
+| **Current-premise update (2026-11-07)** | D-189 now keeps unsaved recovery text under `userData/recovery/`, and D-192 adds voice preferences to `studio.json`. The earlier claim that the whole profile holds no manuscript is no longer true. Re-audit the exact cleanup scope and preservation/recovery behavior before acceptance; the recommendation remains Proposed and authorizes no deletion. |
 | **Blocks** | spec 009 optional cleanup implementation only (T028); preservation-only uninstall is unblocked regardless |
 | **Owner** | spec 009 |
 
@@ -433,8 +441,8 @@ enforcement, and the D-124 device-identity question stands.
 | **Question** | What author-owned file layout and schema store chapter-history snapshot bodies, provenance, safety copies, and restore-undo records, and how do they travel through archive import/export and chapter trash/restore? |
 | **Recommendation** | Book-scoped `books/<bookId>/history/<chapterId>/<timestamp>-<label-slug>[-n].md`, one file per record, YAML front matter plus canonical body — the chapter-file shape. Front matter carries `schemaVersion: 1`, `kind` (`snapshot`, `safety`, `intent`), identity, `sourceVersion`/`sourceHash`/`bodyHash`/`capturedAt`, and intent state; intents carry no body. Loose schemas with spread round-trips, newer-schema refusal, never reset-to-empty. Archive and whole-book trash carry history by construction; chapter trash leaves it keyed by stable id; author deletion moves the record to chapter trash. Rejected: `.studio/history/` (archive-excluded device scope), reusing `checkpoints/` (D-113 owns it), one `history.json` per book (single-point failure), JSON-plus-body pairs (orphan risk), history inside chapter files (rewrites saved bytes). |
 | **Evidence** | `specs/032-chapter-history/research/storage-layouts.md`; `packages/core/tests/chapter-history-storage-premises.test.ts` (trash/restore travel, archive manifest ride, chapter-trash separation, stable identity across rename/reorder, atomic hash-guarded record writes); FORMAT archive/trash rules; D-112 (accepted archive); D-163/D-166 loose-schema and sidecar precedents. |
-| **Needed** | Author acceptance of the layout, record kinds, and lifecycle rules, or a named alternative. Field-level schema and label grammar stay with T003. |
-| **Blocks** | spec 032 snapshot persistence, restore/undo persistence, and archive/trash integration (T003/T004/T007–T009) |
+| **Remaining after acceptance** | Spec 032 T001's format/ADR follow-through, then T003's field-level schema and label grammar. The post-submission implementation remains planned; accepted layout is not persistence evidence. |
+| **Unblocks** | The layout decision for spec 032 snapshot persistence, restore/undo and archive/trash integration, subject to that format/schema work and its safety suite. |
 | **Owner** | spec 032 |
 
 ### D-176 · Chapter history retention and cleanup
@@ -446,8 +454,8 @@ enforcement, and the D-124 device-identity question stands.
 | **Question** | What retention, size-limit, and cleanup policy applies to named and safety snapshots, given that no period or quota may be chosen by assumption? |
 | **Recommendation** | No automatic pruning, quota, expiry, or compaction for snapshots, safety copies, or intents — including unapplied intents, which are recovery material. Explicit author deletion moves the record to chapter trash; storage/write failures report without deleting. Size visibility comes from storage stats at list time, not a new format field. Numeric caps only later, with measured evidence and acceptance. Rejected: count/age/quota auto-rules (assumed numbers that pick the author's loss), delete-means-unlink (violates the no-permanent-delete rule). D-171's 20-cap stays scoped to review reports. |
 | **Evidence** | `specs/032-chapter-history/research/retention.md`; `packages/core/tests/chapter-history-retention-premises.test.ts` (unbounded conflicts and trash, failed writes preserve bytes); 034 T013 volatility precedent; FORMAT transport-only caps. |
-| **Needed** | Author acceptance of no-automatic-pruning with trash-based deletion, or a named evidenced alternative. |
-| **Blocks** | spec 032 pruning, size-limit, and cleanup implementation only (T011); capture, browse, compare, checked restore, and restore undo proceed without it |
+| **Remaining after acceptance** | Implement and test size visibility, explicit recoverable deletion and preservation of restore dependencies under spec 032 T011; no automatic pruning or quota is authorized. |
+| **Unblocks** | Spec 032's retention-policy decision task T002 and the policy for T011; implementation and lifecycle verification remain outstanding. |
 | **Owner** | spec 032 |
 
 ### D-177 · Discuss default and read-tool policy
@@ -459,8 +467,8 @@ enforcement, and the D-124 device-identity question stands.
 | **Question** | In Discuss mode, are positively read-only built-in tools available or does the model receive no tools — and what is the initial composer mode? |
 | **Recommendation** | Read-only built-ins only, Discuss as the new-turn default. A Discuss turn is offered exactly the six read-tier tools (`table_of_contents`, `read_story_bible`, `read_chapter`, `chapter_stats`, `find_in_chapter`, `find_in_chapters`) and no plugin tools; write, destructive, unclassified, and future tools are unoffered and bridge-denied if invoked. Enforcement is the existing three layers: the read-only subset via the `disabledTools` seam, bridge denial of unknown/withheld names, and the checked writer below. A Discuss turn that needs a write explains the Edit-mode next step; nothing is queued or written. The submitted mode is fixed for the turn. Rejected: no tools in Discuss (forces read-only questions into Edit), write tools on a promise (not a boundary), plugins on self-declaration (no declaration field; handlers receive writers — needs 025 first), Edit as default (unsafe default). |
 | **Evidence** | `specs/031-agent-interaction/research/discuss-read-policy.md`; `apps/desktop/tests/discuss-read-policy-premises.test.ts` (exact read-tier six, subset seam, plugin write default); `tool-bridge.test.ts` (unknown/destructive refusal); `tool-set.test.ts` (withdrawal, no-shadow, plugin writers); `agent-runtime.test.ts` (approval flow). |
-| **Needed** | Author acceptance of the read-only six and the Discuss default, or a named alternative (no-tools Discuss, plugin inclusion with a 025 capability). |
-| **Blocks** | spec 031 Discuss tool set and composer default only (T007/T008); mode persistence (T004–T006) and plan/guidance (T002/T003) are separate decisions |
+| **Remaining after acceptance** | Enforce the read-only six and expose the Discuss default together in spec 031 T006–T009, preserving the re-shoot/script/runbook condition above. Mode fields alone do not enforce permissions. |
+| **Unblocks** | Spec 031 decision task T001; Discuss implementation follows the accepted policy. Plan/guidance semantics remain owned by D-178/D-179. |
 | **Owner** | spec 031 |
 
 ### D-178 · Pause acknowledgment and continuation semantics
@@ -472,8 +480,8 @@ enforcement, and the D-124 device-identity question stands.
 | **Question** | What counts as a completed pause, does Start/Resume continue the live turn or start a new turn, and what happens on non-background window close? |
 | **Recommendation** | Pause completes on the terminal `stopped` event, not the stop call's return: by then no tool can start and the in-flight tool has its definitive outcome recorded. The composer shows "Stopping…" until the event, then "Paused" with the change count and undo availability. Continuation is always a new explicit turn from the stored plan (no live-turn continuation exists to resurrect); approvals stay strictly per turn and are re-raised, never inherited. Non-background window close stops the turn like an author stop; restart expires unfinished plans visibly, never resumable; a plan never grants background. Rejected: pause-on-return (races the settling tail), same-turn resume (no machinery; re-enters unknown tool state), approval inheritance (breaks the per-turn gate), close-as-park (frozen close/quit behavior plus a second lifecycle). |
 | **Evidence** | `specs/031-agent-interaction/research/pause-continuation.md`; `apps/desktop/tests/pause-boundary-premises.test.ts` (per-turn approval death, mid-write atomic stop with reported outcome, new-turn continuation); `agent-runtime.test.ts` (approval waits, stop expiry); `AgentTurnInput.background` and 017 FR-012/FR-015/FR-017 (explicit per-turn background). |
-| **Needed** | Author acceptance of the event boundary, new-turn continuation, and close-stops/restart-expires rules, or a named alternative. |
-| **Blocks** | spec 031 pause/resume runtime controls only (T006); plan display, cancel, expiry, and ordinary Edit turns are not blocked |
+| **Remaining after acceptance** | Spec 031 must implement and verify terminal-stop acknowledgment, new-turn continuation, per-turn approvals and close/restart behavior. Keep the delivery condition above. |
+| **Unblocks** | Spec 031 decision task T002; runtime and plan controls remain implementation tasks, not acceptance evidence. |
 | **Owner** | spec 031 |
 
 ### D-179 · In-flight guidance semantics
@@ -485,8 +493,8 @@ enforcement, and the D-124 device-identity question stands.
 | **Question** | Can new guidance be added to a running or paused plan, and does that revise the same plan or require a new turn? |
 | **Recommendation** | No live steering: a running or paused plan cannot receive new guidance. The submitted prompt is fixed in the thread for the life of the turn; revised guidance travels by stopping and starting a new turn in the same conversation, which revalidates everything it touches. Guidance editing stays in the pre-send composer, proposed-plan review, `SKILLS.md` between turns, and each new turn's prompt. Rejected: same-plan mid-run revision (no live object to revise; races dispatch), a standing guidance queue (alternative A with extra state and staleness questions), live loop steering (no channel; breaks the D-178 event boundary and approval isolation), guidance-as-approval-answers (corrupts the audit trail). |
 | **Evidence** | `specs/031-agent-interaction/research/inflight-guidance.md`; `apps/desktop/tests/inflight-guidance-premises.test.ts` (prompt fixity in-thread, stop-plus-new-turn guidance journey); `agent-threads.test.ts` (retry reuse); D-178 (event boundary, new-turn continuation). |
-| **Needed** | Author acceptance of new-turn-only guidance, or a named alternative with a steer-capable protocol and trust-boundary design. |
-| **Blocks** | spec 031 in-flight plan guidance only; pre-send guidance and proposed-plan editing proceed now |
+| **Remaining after acceptance** | Wire bounded pre-send/proposed-plan guidance and explicit stop-plus-new-turn behavior under spec 031. Live steering is excluded by this decision, not merely awaiting implementation. |
+| **Unblocks** | Spec 031 decision task T003; request wiring and lifecycle verification remain open. |
 | **Owner** | spec 031 |
 
 ### D-180 · Legacy import idempotency by content fingerprint

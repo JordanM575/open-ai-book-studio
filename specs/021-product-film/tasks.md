@@ -2,6 +2,12 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
+**Status, November 7, 2026:** the original submitted master and newer author-supplied demo link exist.
+Later captures, Weston narration and film assemblies supersede the old “not started/no voice chosen”
+notes. Unchecked rows below retain their full deliverable/acceptance scope; publication of a URL does
+not prove every caption, short cut, licence, timing or privacy check. Reconcile exact artifacts before
+closing them, with the spec's later author direction taking precedence over the original storyboard.
+
 ## Phase 1 — Story and brand
 
 - [x] T001 Record the competitor/brand review in `docs/research/branding-2026-10-26.md` and add the
@@ -17,10 +23,10 @@
   `video/fixture/library` through the real `Library`/`ImageStore`, with deterministic PNGs; the test
   covers the book, cast, chapters, illustration, cutout and manifest.
 - [ ] T005 Record the library, workspace, Story Bible, agent turn, save status, dictation, background
-  toggle, notification, illustration dialog, SAM match picker, cutout, CLI, MCP and DOCX export.
-  Blocked on a manual screen-recording session; the fixture and hidden capture harness are ready.
-- [ ] T006 Capture the Finder/file-tree proof and the export result. Blocked on the same capture
-  session; it uses the fixture folder and a throwaway profile.
+  toggle, notification, illustration dialog, CLI, MCP and DOCX export. SAM/cutout is superseded by
+  D-158. Captures exist; map the delivered shots to their build/source before closing the full row.
+- [ ] T006 Capture the Finder/file-tree proof and the export result. Reconcile existing captures and
+  their privacy checks; any remaining capture uses synthetic books and a throwaway profile.
 
 ## Phase 3 — Motion and voice
 
@@ -28,15 +34,16 @@
   through Playwright. `video/motion/index.html` has eight scenes; `render.mjs` renders preview stills
   or deterministic PNG sequences; previews were checked at 1920×1080.
 - [ ] T008 Record the narration or generate the licensed synthetic track; transcribe it with Muse
-  Voice Transcribe and lock the timing. Blocked on a recorded voice or a licensed synthetic voice;
-  none is chosen yet. Use the fixture book only for any follow-up capture.
-- [ ] T009 Licence and credit the music; mix to −14 LUFS / −1 dBTP. Blocked on D-136 (a paid
-  royalty-free track or an original cue); no track ships without a recorded licence.
+  Voice Transcribe and lock the timing. Weston was selected and generated narration exists. Match
+  the final cut's transcript/timing/disclosure before closing; no fresh paid transcription is implied.
+- [ ] T009 Licence and credit the music; mix to −14 LUFS / −1 dBTP. Village Consort and the Creative
+  Commons sound pack were selected; reconcile their exact credits/licences and measured final mix.
 
 ## Phase 4 — Edit and deliver
 
 - [ ] T010 Edit the 3:00 master, 0:30 cut and 0:15 vertical; add burned-in captions and export SRT.
-  Blocked on T005–T009 (capture, motion, voice and music). The tooling is ready.
+  The original 2:59 submission and newer demo exist; complete the deliverable inventory for short/
+  vertical/silent cuts and caption files. The original repository tooling is described below.
   `video/edit/film.json` is the edit list. `node video/edit/assemble.mjs` builds the master and its
   SRT, and `--cut30` builds the 0:30 cut; each shows a footage-pending slate until its clip exists.
   `--check` compares the edit list with the script, fails over 3:00 and measures loudness. The
@@ -47,9 +54,11 @@
   `video/assets.md`.
 - [ ] T012 Upload the master and short cut, check both links in a private window, and attach them to
   the submission.
+  The original master was submitted; the newer author-provided master link is in the README.
+  Short-cut delivery and the complete playback/link record remain open. This row authorizes no new upload.
 
 ## Dependencies
 
-- T004 needs the image/SAM surfaces from 019/020.
-- T008 needs a quiet recording space or a licensed voice; Muse Voice Transcribe needs a Meta key.
-- T012 waits on the public repository and the submission form.
+- T004's historical cutout fixture does not establish a current SAM capability; 020 is superseded.
+- T008's remaining timing work should reuse existing narration/evidence; any paid call needs explicit scope.
+- T012 now needs remaining-deliverable reconciliation and playback evidence; the original form is submitted.

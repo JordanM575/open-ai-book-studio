@@ -1,6 +1,6 @@
 # Testing
 
-Three layers, and each one catches what the others cannot.
+Four layers, and each one catches what the others cannot.
 
 | Layer | What it proves | Command | Cost |
 | --- | --- | --- | --- |
@@ -24,10 +24,31 @@ journey), `node scripts/browser-matrix.mjs` (multi-engine findings), `bun run a1
 all-up run), `bun run smoke:packaged` (packaged app), and `bun run release` (the release
 gate). `bun run live:check` is further out still: opt-in, cheapest call, real cost.
 
+## Recorded baseline
+
+Status reconciled November 7, 2026 against public `main` at
+`55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34`. These are recorded implementation runs, not tests
+rerun by the documentation update. Counts describe their tested commits, not every later checkout.
+
+| Commit / target | Recorded result | Evidence and limits |
+| --- | --- | --- |
+| `98571e5`, macOS, November 7 | `verify`: 2,280 pass, 0 fail; coverage passes; hidden smoke: 47/47 | Integrated main after PR #26 and the safety/smoke fixes; synthetic libraries and fake providers. |
+| `98571e5`, Linux | Both `verify` and `e2e` succeeded in three consecutive runs | [42390238521](https://github.com/JordanM575/open-book-studio/actions/runs/42390238521), [42390615705](https://github.com/JordanM575/open-book-studio/actions/runs/42390615705), [42390940623](https://github.com/JordanM575/open-book-studio/actions/runs/42390940623); job conclusions, not the then-advisory overall result. |
+| `55b55b8`, Linux | Both jobs succeeded after advisory e2e was removed in PR #29 | [42391731698](https://github.com/JordanM575/open-book-studio/actions/runs/42391731698); a failing e2e job now fails the workflow. macOS-only import/offline checks remain platform-specific. |
+
+The workflow is manual-dispatch only, not an enforced PR merge gate. Passing runs do not prove every
+flake is eliminated: the earlier welcome-screen failure was not reproduced; later card-loading races
+were reproduced and fixed. Failure output now records the observed page state.
+
+Spec 038's final automated-verification task T022 remains unchecked by author direction. Its
+implementation is merged; live-provider, audible-playback, device and release acceptance are separate
+evidence. The [submission packet](../hackathon/SUBMISSION.md#verification-evidence) keeps the older
+event results without relabelling them as checks of this baseline.
+
 ## The unit layer
 
-`bun test` runs 560-odd tests across the workspaces. They are fast and they cover the things that
-have a contract: the library service, the Markdown format, the conflict copies, the tool schemas,
+`bun test` runs unit and component tests across the workspaces (2,280 in the recorded baseline).
+They cover the things that have a contract: the library service, the Markdown format, the conflict copies, the tool schemas,
 the chunking rules, the schema migrations.
 
 Two of them are worth knowing about because they guard decisions rather than functions:
@@ -40,7 +61,8 @@ Two of them are worth knowing about because they guard decisions rather than fun
 ## The coverage ratchet
 
 `bun run coverage` measures the unit layer and fails below a floor: **85% of functions, 92% of
-lines** at the time of writing, against a measured 86.0 and 93.0. The floor only moves up — a
+lines**, as configured in `scripts/coverage-check.mjs`. The recorded baseline passes this gate;
+read an exact run's report for measured percentages. The floor only moves up — a
 change that raises coverage is expected to raise the floor in the same commit — and a change that
 drops it below the floor has to say why.
 
@@ -127,17 +149,19 @@ with `{ ...process.env }`, so the app inherits it, and every provider request co
 `NODE_OPTIONS` and the `HEADROOM_*` variables first. A check must measure the product, not the
 agent's proxy.
 
-## Where it is still thin
+## Coverage limits
 
-The floor is a ratchet, not a ceiling. At the time of writing these are the modules below 70% of
-lines, and they are the honest answer to "what is not covered":
+The floor is a ratchet, not a ceiling. An aggregate pass does not prove every interface path. Use
+the exact run's coverage report for per-file percentages; the earlier 86.0/93.0 totals and list of
+files below 70% are historical, not a measurement of the November 7 tree. Important boundary checks
+include:
 
 - `packages/app/src/components/ManuscriptEditor.tsx` — the editor's formatting and paste paths.
   History, debounce and save are covered; the rest needs a real contenteditable.
 - `packages/app/src/components/VoiceButton.tsx` — it records through the microphone, which the test
   DOM does not provide.
 
-Everything else in the product is above 80% of lines, and the workspace as a whole is at 93.0%.
+The real-app smoke complements component coverage; neither proves microphone or speaker hardware.
 
 ## What is not covered
 
@@ -156,6 +180,5 @@ Everything else in the product is above 80% of lines, and the workspace as a who
   it was closed. It cannot show that a visible window comes to the front and takes focus, or that
   macOS itself keeps the studio running with no window, because a visible run would take over the
   screen. `tests/requirement-map.md` lists what stays unproven.
-- **Linux.** Every end-to-end check has been run on macOS. `.github/workflows/verify.yml` has a job
-  for them on Linux. It passed three runs in a row on main, so it is no longer allowed to fail: a
-  failure there fails the workflow. The typecheck, tests, builds and the coverage floor run everywhere.
+- **Platform completeness.** Linux has the passing job evidence above, with macOS-only journeys
+  skipped explicitly. This is not Windows installer, Linux installer or real-device release evidence.

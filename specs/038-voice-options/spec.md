@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-04
 
-**Status**: In progress — isolated implementation candidate; integration and verification pending
+**Status**: In progress — implementation merged in PR #26 on 2026-11-07; automated checks recorded, final task T022 remains open
 
 **Input**: User description: "Add OpenRouter speech-to-text and text-to-speech, offer Meta for transcription, and let authors choose the voice used by the agent. Persist choices in the local profile; preserve the existing audio safety rules and do not change the book format."
 

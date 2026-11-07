@@ -1,7 +1,7 @@
 # Feature Specification: Agent interaction and guidance
 
 **Feature Branch**: `031-agent-interaction`
-**Status**: Draft
+**Status**: Draft / In progress — interaction contracts and tone/length controls implemented; remaining runtime and composer work planned
 **Input**: User description: "Author-facing discuss/edit interaction, a visible plan lifecycle and guidance controls."
 
 ## Overview
@@ -19,7 +19,9 @@ remain with [024](../024-agent-tool-parity/spec.md); `SKILLS.md` and plugins rem
 The public product contract describes an agent turn that may read and edit through tools, pauses for
 approval on destructive actions, can be stopped, and leaves a turn-level undo checkpoint. The
 conversation is stored in the book. The current composer does not distinguish a discussion-only turn
-from an editing turn, expose a first-class plan state, or offer author guidance controls. Background
+from an editing turn or expose a first-class plan state. T004's mode/guidance contracts and T010's
+per-book tone/answer-length controls are implemented; runtime inclusion of those preferences and
+one-turn composer guidance still await wiring. Background
 work, where available, is an explicit per-turn choice under [017](../017-voice-and-background/spec.md).
 
 ### Proposed behavior in this spec
@@ -30,18 +32,20 @@ pause, resume or cancel that plan under the boundaries below. Per-book tone and 
 plus optional one-turn guidance, help authors shape responses without changing the model, its
 permissions or the existing tool protocol.
 
-Everything in this section is proposed, not present public behavior.
+The remaining mode, plan and request-guidance behavior is planned, not current public behavior.
 
-## Open decisions
+## Accepted decisions and delivery conditions
 
-These are unresolved product semantics. The tasks that depend on them are named explicitly; they do
-not block unrelated work in this spec.
+The public register accepted D-177–D-179 on November 3, 2026. Their research remains the rationale;
+it is not a claim that the runtime controls exist. The decisions retain a matching demo re-shoot,
+script and runbook condition for delivering the changed interaction. The November 7 video URL does
+not by itself prove that condition for an implementation not yet built.
 
-| Question | Safe invariant and recommendation | Blocks |
+| Decision | Accepted behavior | Remaining implementation |
 | --- | --- | --- |
-| In Discuss mode, should positively read-only built-in tools be available, or should the model receive no tools? What should the initial mode be? | Discuss never receives a write, destructive, unclassified or side-effecting capability. Until decided, unknown capabilities are denied. Recommend read-only built-ins only and Discuss as the visible default for a new turn. Existing plugins are excluded because their contract does not declare read-only behavior. | The Discuss tool set and initial composer default only. |
-| What exactly counts as a completed pause boundary, do Start/Resume continue the same live turn or create a new explicit turn from the stored plan, and what happens when a non-background window closes? | A pause request stops dispatching later tools; it does not undo completed work. The interface must not say “Paused” until the runtime confirms that no tool can still start. Start/Resume are always author actions and cannot bypass an approval. A plan cannot grant background permission. | Plan execution, pause/resume continuation and non-background window-close handling only. Plan display, cancellation, process-restart expiry and ordinary Edit turns are not blocked. |
-| Can an author add guidance to a running or paused plan, and if so, is that a continuation or a new turn? | Guidance is editable before a turn is sent and while a proposed plan has not started. No live steering is available until this is decided; the author can cancel and send a new turn. | Optional in-flight guidance only. |
+| D-177 · Discuss default and tools | Discuss is the new-turn default; exactly the six read-tier built-ins are offered. Writes, destructive/unclassified/future tools and plugins are withheld and denied at the bridge. The mode is fixed for the turn. | T006–T009 runtime enforcement and composer; fields alone do not grant protection. |
+| D-178 · Pause and continuation | Show Stopping until the terminal `stopped` event, then Paused with actual changes/undo availability. Start/Resume creates a new explicit turn; approvals never carry over. Non-background close stops; restart expires plans. | Plan state and runtime/control tasks, including T005–T006 and T013–T018. |
+| D-179 · Guidance | No live steering. Edit guidance before sending or while a plan is proposed; a running/paused turn needs stop and a new explicit turn for revised guidance. | T011–T012 and lifecycle wiring; no in-flight guidance queue. |
 
 ## User scenarios & testing
 
@@ -197,10 +201,10 @@ data, and never changes the available tools.
 ### Visible plans
 
 - **FR-006**: Plan first MUST be an explicit, per-turn option available only for Edit. A proposed
-  plan MUST NOT execute a write before the author explicitly chooses **Start plan**. A plan is one
-  author-requested interaction, not a job or schedule. If execution uses a separate runtime turn,
-  it MUST be an explicit Start/Resume action linked to the same stored plan; it MUST NOT run as an
-  automatic follow-up.
+   plan MUST NOT execute a write before the author explicitly chooses **Start plan**. A plan is one
+   author-requested interaction, not a job or schedule. Start/Resume MUST create a new explicit turn
+   linked to the same stored plan under D-178; it MUST NOT run as an automatic follow-up or inherit
+   an earlier turn's approvals.
 - **FR-007**: A plan MUST show a short purpose, ordered steps, and an honest state for each step:
   pending, in progress, completed or not completed. It MUST use chapter/entity names where known,
   not internal identifiers, tool names or hidden reasoning. Progress MUST come from confirmed
@@ -214,7 +218,8 @@ data, and never changes the available tools.
 - **FR-010**: Pause MUST stop dispatch of later steps and MUST NOT roll back successful earlier
   steps. The interface MUST distinguish a requested pause from a confirmed pause. Resume MUST be an
   explicit author action and MUST re-enter through the checked writer and current approval policy.
-  Exact safe-boundary and same-turn continuation semantics are gated by the open decision above.
+   D-178 requires terminal `stopped` acknowledgment and a new explicit continuation turn with fresh
+   approvals; the stop call returning is not sufficient acknowledgment.
 - **FR-011**: Cancel MUST be terminal for that plan and stop any runtime turn linked to it. It MUST
   prevent new tool calls, expire any pending approval through the existing 002 protocol, and report
   partial work. Cancel MUST NOT silently undo edits; the existing turn checkpoint and Undo action
@@ -284,8 +289,8 @@ data, and never changes the available tools.
   mandatory plan card.
 - The existing background option is not a scheduler. No plan may start without an author-submitted
   turn and the existing explicit background choice remains unchanged.
-- The conservative Discuss invariant (no writes and deny unknown capabilities) applies even while
-  the read-only tool decision remains open.
+- D-177's no-write/deny-unknown boundary must be implemented before presenting Discuss as available.
+  D-179 excludes live steering; revised guidance uses a new explicit turn.
 
 ## Non-goals
 

@@ -4,8 +4,8 @@
 
 Tasks are ordered. `[x]` means the behavior exists and has been exercised; it does not mean every
 future test case in that row is complete. Counts move, so they live in one place: `docs/TESTING.md`.
-At this writing the suite is 835 Bun tests, `bun run e2e` is 8/8, the desktop smoke is 18/18, the web
-smoke is 13/13, and coverage is 86.0% of functions and 93.0% of lines.
+The [dated baseline](../../docs/TESTING.md#recorded-baseline) records the November 7 integrated
+results and Linux job evidence. Older task-local counts below remain evidence of their original runs.
 
 ## Phase 1 — Inventory and fast truth
 

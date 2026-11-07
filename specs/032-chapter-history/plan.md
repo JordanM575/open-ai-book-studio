@@ -4,7 +4,9 @@
 
 ## Status
 
-Planned. This is a proposed implementation plan; no code, tests, or acceptance are claimed.
+Planned implementation. D-175/D-176 accepted the storage/retention decisions on November 3, 2026
+with delivery deferred until after submission. Existing premise tests are decision evidence;
+capture/list/restore and their end-to-end acceptance remain unimplemented.
 
 ## Shape
 
@@ -16,8 +18,9 @@ introduced.
 
 The snapshot body is the canonical saved Markdown body. Its provenance records the stable book and
 chapter IDs, source version, and raw chapter-file hash. A separate body hash verifies the stored
-snapshot. Exact on-disk paths and schema wait for OQ-001; the implementation must not invent them
-while that question is open.
+snapshot. D-175 chooses `books/<bookId>/history/<chapterId>/` with separate snapshot, safety and
+intent records. Complete T001's format/ADR follow-through and T003's field-level schema and label
+grammar before persistence; do not treat the accepted layout as a finished serializer.
 
 ## Architecture
 
@@ -35,7 +38,7 @@ Add a chapter-history operation to the existing shared library service over `Lib
 All file access remains library-relative and path-validated. Snapshot records are ordinary,
 author-owned library data, not a disposable index. The chosen layout must participate in the
 portable archive and existing chapter trash/restore lifecycle; update `docs/FORMAT.md` and the
-archive contract as required by the accepted OQ-001 decision.
+archive contract as required by D-175 (the accepted OQ-001 decision).
 
 ### Checked restore and undo
 
@@ -78,14 +81,20 @@ restore, retain that draft and mark it for normal reconciliation; never replace 
 part of history. Only after a confirmed commit may a clean editor show the restored body, with an
 explicit success state.
 
-### Open-decision gates
+### Accepted policies and delivery checkpoints
 
-- **OQ-001** gates the history storage schema/path, persistence, restore/undo persistence, and
-  archive/trash integration. A public decision and any needed format/ADR updates precede those
-  dependent implementation tasks.
-- **OQ-002** gates only automatic pruning, count/byte limits, and cleanup behavior. Its resolution
-  is not a prerequisite for capture, browse, compare, checked restore, or restore undo. Until then,
-  do not silently remove snapshots; storage write failures remain visible and non-destructive.
+1. **Contract first (T001/T003):** carry accepted D-175 into the format/ADR and detailed schema,
+   including collision-safe labels, record identity, body hashes and intent states. Test malformed,
+   foreign, newer-schema and unknown-field records without rewriting them.
+2. **Saved-only history (T004–T006):** capture/list/open/compare through the library port and shared
+   UI; prove unchanged chapter bytes and drafts. Validate archive and chapter/whole-book trash
+   behavior with T012 before presenting history as durable author-owned data.
+3. **Restore and recovery (T007–T010/T013):** commit safety copy and prepared intent before the
+   checked chapter write; prove cancel, conflict, uncertain response and failed finalization cases.
+   Offer undo only against the confirmed post-restore version/hash. Retain every recovery record.
+4. **Retention and acceptance (T011–T015):** D-176 allows stat-based size visibility and explicit
+   deletion to trash, not automatic pruning or quotas. Test dependency preservation, keyboard paths,
+   existing undo/archive journeys and exact-candidate gates before marking the feature implemented.
 
 ## Proposed project areas
 
@@ -129,14 +138,14 @@ Required checks include:
 | The editor has a draft that differs from saved text. | Never flush it from history; block restore until explicit resolution and retain any draft that races with the operation. |
 | Restore replaces text but loses the prior saved body. | Commit a visible safety snapshot first; abort restore if that write fails. |
 | Snapshot record is corrupt or attached to another chapter. | Validate stable identity and body hash; report unavailable and do not rewrite it or the chapter. |
-| Snapshot persistence is hidden from library backup or trash. | OQ-001 requires ordinary author-owned data and archive/trash semantics before dependent implementation. |
-| History growth consumes storage. | Do not invent a retention period. OQ-002 blocks only pruning, size-limit, and cleanup work; report write failures without deleting existing data. |
+| Snapshot persistence is hidden from library backup or trash. | Implement D-175's ordinary-file layout and prove archive/whole-book trash travel and stable chapter identity. |
+| History growth consumes storage. | D-176 requires size visibility and explicit recoverable deletion, with no automatic pruning/quota; report write failures without deleting existing data. |
 | Restore-specific undo overwrites later prose. | Bind undo to the exact post-restore version/hash and refuse stale undo. |
 
 ## Constitution check
 
 - **Author's files are the product:** Pass only if snapshot data is ordinary author-owned library
-  data and is covered by the chosen format/archive lifecycle (OQ-001).
+  data and is covered by the accepted D-175 format/archive lifecycle.
 - **One writer, checked:** Pass. Every persistent operation uses the current library service/port;
   chapter restore and undo use the existing checked writer.
 - **Local-first, no custody:** Pass. Snapshots remain local library data; no network or telemetry is

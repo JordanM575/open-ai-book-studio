@@ -2,7 +2,7 @@
 
 All unchecked; proposed work only.
 
-- [ ] T001 Reconcile 017/038/provider ownership and define a stock-narrator foreground slice.
+- [ ] T001 Reconcile integrated 038 preferences, existing TTS helpers and provider ownership; retain 017's background boundary and define a stock-narrator foreground slice. Spec 017 excludes TTS and is not the audiobook implementation.
 - [ ] T002 Resolve U-042-01; define source/cast/script versions, pronunciation and author-reviewed assignments.
 - [ ] T003 Resolve U-042-03; implement disclosed audition/chapter authorization with exact stock voice IDs and mocked zero-send cancellation.
 - [ ] T004 Resolve U-042-02; record storage ADR/docs/FORMAT.md and implement checked recoverable run/audio assets.

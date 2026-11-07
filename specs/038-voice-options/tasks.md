@@ -63,6 +63,14 @@ description: "Task list for voice provider and speaking options"
 
 **Still open**: T022 is the final verification record for this task list: focused tests, typecheck, full `verify` and `bun run smoke`, with any environment limits written here. It is left unticked. The pull request description lists the results of those commands on its head, and the author decides when this task is recorded as done.
 
+**Integrated evidence, 2026-11-07:** PR #26 merged as `98571e5`. The final integration head `43d3bc2`
+passed typecheck and `verify` (2,280 tests, zero failures), coverage and smoke (47/47); the same
+verify/coverage/smoke results were recorded on merged main `98571e5`. See
+[the dated testing record](../../docs/TESTING.md#recorded-baseline) for subsequent Linux job evidence.
+Earlier isolated-candidate failures do not describe this merged baseline. No live provider or
+microphone was exercised by these checks. A future live check is separate evidence, not an added
+condition silently changing T022's automated scope. The author has explicitly kept T022 unchecked.
+
 ## Dependencies and order
 
 - T001–T004 establish the shared catalog/contracts before profile validation and service use.

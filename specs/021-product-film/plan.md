@@ -2,6 +2,19 @@
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
 
+## Current delivery checkpoint — November 7, 2026
+
+The original demo was submitted and a newer author-supplied upload is linked from the README.
+Later device-film captures, Weston narration and assemblies exist. The repository pipeline below
+records the original production approach, not proof that a published upload was made by that exact
+assembler or has passed all its checks. Follow the spec's current author direction when reconciling it.
+
+Next, inventory each delivered master/short/vertical, caption/transcript and source version; map it to
+its actual footage, narration and music credits. Match claims and provenance to the recorded build,
+then review the exact upload for timing, audible narration, privacy and captions. Preserve source
+clips and prior review evidence. Do not regenerate audio or commission a paid capture merely to
+fill an old unchecked row when the needed asset already exists. A further upload needs author approval.
+
 ## Production shape
 
 ```
@@ -32,8 +45,8 @@ Use the existing hidden-window and capture harness where possible. Record the re
   recorded real call from the event with the key and account data removed.
 - Cursor: hardware cursor, click highlights, slow deliberate moves. Zooms are 1.2–1.6×.
 - UI states to capture: library, workspace, Story Bible, agent tool call, diff/checkpoint, save
-  status, dictation, background toggle, notification, illustration dialog, SAM match picker, cutout
-  in the chapter, CLI `bookwriter books`, MCP `tools/list`, DOCX export, Finder.
+   status, dictation, background toggle, notification, illustration dialog,
+   CLI `bookwriter books`, MCP `tools/list`, DOCX export, Finder. The old SAM/cutout beat is superseded.
 
 Screen recording on macOS: QuickTime or `screencapture -v` at 60 fps; crop to the window; keep the
 menu bar out. If the hidden harness is used, render at a fixed window size and capture frames rather
@@ -50,7 +63,7 @@ plates are:
 - chapter card and word-count ticker;
 - “checked save” and “undo checkpoint” callouts;
 - “after the window closes” timeline;
-- “Muse Image → SAM 3.1 → transparent PNG” strip;
+- Muse Image illustration strip (the old SAM/cutout plate is historical, not a current feature claim);
 - CLI/MCP diagram with a loopback token, no cloud;
 - close card with the tagline.
 
@@ -65,11 +78,12 @@ files, trust, background, visuals, voice, interop and close.
 ## Voice
 
 1. Lock `script.md`.
-2. Record the author’s voice in a quiet room, 48 kHz/24-bit WAV, one line per take.
+2. Reuse the selected Weston narration where it matches the approved script; record the exact source
+   and synthetic-voice disclosure. The earlier author-voice preference is superseded.
 3. Transcribe the final track with Muse Voice Transcribe (spec 017 service or the event console) to
    produce a timing transcript.
 4. Edit for pace and breath; target 145–160 wpm.
-5. If a licensed synthetic voice is chosen, keep the same script and add the disclosure note.
+5. Verify the selected synthetic track's provenance, permitted use and disclosure for the exact cut.
 6. Mix narration, music and light UI sound; target −14 LUFS and −1 dBTP.
 
 ## Edit and delivery

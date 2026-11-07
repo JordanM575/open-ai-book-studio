@@ -1,10 +1,29 @@
 # Product film and voiceover
 
-**Status:** Planned (2026-10-26)
+**Status:** In progress — original event demo published; newer author-supplied demo linked November 7, 2026
 **Number:** 021
 **Depends on:** the product surfaces in [002](../002-studio-v1/spec.md), [017](../017-voice-and-background/spec.md),
-[018](../018-agent-toolkit/spec.md), [019](../019-illustrations/spec.md) and [020](../020-sam-cutout/spec.md);
-branding research in [`docs/research/branding-2026-10-26.md`](../../docs/research/branding-2026-10-26.md).
+[018](../018-agent-toolkit/spec.md) and [019](../019-illustrations/spec.md); 020 is superseded by D-158;
+historical branding work recorded in [tasks.md](tasks.md).
+
+## Current production state and direction
+
+The [submission packet](../../hackathon/SUBMISSION.md) preserves the original 2:59 event cut.
+The author supplied [the current demo](https://youtu.be/0RsFzUq97xU) on November 7; it is now the
+README's linked thumbnail. Later capture, narration and edit work exists, so this is not a film
+waiting to begin. Exact-upload review and the remaining deliverables stay open in `tasks.md`.
+
+Later author direction supersedes the original production preferences below: use **Open Book Studio**
+as the spoken/final name, the selected **Weston** stock narration, moving device presentations,
+library-to-book navigation, speech-synced typography and restrained zoom. Remove device stands and
+on-screen draft/provenance footers; keep truthful generated-content/provider/device provenance in the
+description and asset record. Do not infer native mobile, automatic sync or implemented audiobook/
+character-voice/cover features from the film. SAM is not in the current build.
+
+The selected music is **Village Consort**, beginning 90 seconds into its source, very faint (about
+−36 LUFS), plus the requested Creative Commons sound pack. Exact-file attribution, rights, final mix,
+captions and human playback/privacy checks still need a recorded match to each delivered upload.
+An earlier draft's automated frame screening is not clearance of a different upload.
 
 ## Why
 
@@ -29,7 +48,7 @@ rather than claimed.
 The submission video is the master. The others are derived from the same timeline, not separate
 productions.
 
-## Story
+## Original event storyboard (historical)
 
 1. **Problem (0:00–0:12).** A book scattered across tools and a chat window that cannot touch it.
 2. **Reveal (0:12–0:25).** The studio opens; the book is a folder, not an account.
@@ -52,7 +71,7 @@ Every shot carries one benefit line. Feature names alone are not enough.
   segment shows only event work.
 - Spec 020 is superseded (D-158), so the cutout beat is gone.
 
-The current shot list, capture order and fallbacks are in
+The event-era shot list, capture order and fallbacks are in
 [`video/script.md`](../../video/script.md) (draft 2).
 
 ## Requirements
@@ -112,7 +131,8 @@ The current shot list, capture order and fallbacks are in
 
 ## Non-goals
 
-- Actors, a filmed founder story, a studio set or 3D animation.
+- Actors, a filmed founder story or a studio set. Later author direction permits animated device
+  presentation around real captured application footage.
 - A live coding demo or a terminal-only developer film.
 - Feature-by-feature parity with any competitor.
 - Cloned celebrity or competitor voices.

@@ -16,29 +16,37 @@ event. The public history preserves a labelled October 26 implementation baselin
 the event additions. The [submission packet](hackathon/SUBMISSION.md) explains the rewrite,
 the dated baseline, Meta integration and what the demo actually verifies.
 
-[Watch the three-minute hackathon demo](https://www.youtube.com/watch?v=tLFCn9V193E).
+[![Watch the Open Book Studio demo](https://img.youtube.com/vi/0RsFzUq97xU/hqdefault.jpg)](https://youtu.be/0RsFzUq97xU)
+
+[Watch the current demo](https://youtu.be/0RsFzUq97xU) ·
+[Original submitted hackathon cut](https://www.youtube.com/watch?v=tLFCn9V193E)
 
 ## Current state
 
-Open Book Studio is a working desktop writing studio; macOS is the reference environment. The
-Feature status table below says what is complete, in progress and planned.
+As of November 7, 2026, Open Book Studio is a working desktop writing studio; macOS is the reference
+environment. This summary reflects public `main` at `55b55b8`, after PRs #17–#29 merged. The feature
+status table below says what is complete, in progress and planned.
 
 - **Name.** The product is Open Book Studio wherever an author or a tool sees it. The packaged
   app bundle, its profile folder, the bundle identifier and the stored keys keep their earlier
   internal names on purpose, so existing profiles and installs keep working.
-- **Hardening since the hackathon.** A save whose journal note was interrupted is still recognised
-  as this device's own save; a book-details update that races an outside edit is kept as a
-  conflict copy; trailing whitespace in front-matter values survives a save; and the OpenRouter
-  sign-in is guarded against replay, expiry and cancellation races in both the desktop and the
-  browser builds.
+- **File safety.** Damaged chapter files are named and block incomplete manuscript exports. Chapter
+  moves and restores preserve concurrent edits. Book details merge non-overlapping field changes,
+  retain overlapping edits as visible conflict copies, preserve unknown nested fields and refuse
+  writes to a newer book schema. Failed close/quit saves have recoverable draft copies.
+- **Voice choices.** Desktop Settings now saves separate dictation and speaking connections, models
+  and voices. Meta and OpenRouter transcription and OpenAI/OpenRouter speech use those explicit
+  choices; a failure never silently switches to another paid provider.
 - **Models.** Muse Wonder 1.0 is recognised as a tool-capable writing model alongside Muse
   Spark 1.3.
-- **Checks.** 2,081 unit and component tests; a 44-check smoke of the built app, a 55-check agent
-  turn against a fake provider and a 7-check second-copy test, all on macOS; and a Linux
-  workflow (see [Verification](#verification)).
+- **Checks.** The November 7 integrated macOS baseline passed 2,280 unit/component tests, coverage
+  and 47 hidden-app smoke checks. Linux `verify` and `e2e` both passed on `55b55b8`; either job
+  failing now fails the workflow. See the [dated evidence](docs/TESTING.md#recorded-baseline).
 - **Still ahead.** Signed and notarised releases, Android, character voices and audiobooks,
-  dedicated cover design, and the guided-authoring and review work in specs 036 to 042 are
-  planned, not built.
+  dedicated cover design, named chapter history, library organization and scoped model review.
+  Routing already has an offline advisory preview; automatic dispatch and autonomous multi-turn
+  authoring remain planned. The [next-work plan](docs/PRODUCT-COMPLETION.md#current-next-work)
+  names the first slices and their decision gates.
 
 ## What it does
 
@@ -57,9 +65,9 @@ there is a working slice with remaining work; **planned** means it is not availa
 | Writing agent and tool approvals | Complete | 22 manuscript tools, visible actions, conversation history and one-turn undo |
 | Model choice and usage | Complete | Per-turn provider/model attribution, reported usage/cost and informational spending warnings; unknown cost is not a free turn |
 | Protected desktop credentials | Complete | Electron safeStorage, macOS login Keychain protection, encrypted profile file, explicit keychain status/check and no plaintext fallback |
-| Dictation / speech-to-text (STT) | Complete for Meta | Muse Voice Transcribe inserts text at the caret or transcribes an ambient question; audio stays in memory for the request |
-| Read aloud / text-to-speech (TTS) | Complete for the current adapters | OpenRouter and OpenAI speech output, sentence-based chunking, playback controls and a disclosed device-voice fallback |
-| Voice provider, model and agent-voice preferences | In progress | Existing per-call voice choice is limited; persistent choices and OpenRouter transcription alongside Meta are being added |
+| Dictation / speech-to-text (STT) | Complete for the desktop adapters | Choose Meta Muse Voice Transcribe or a curated OpenRouter Whisper model; audio stays in memory, and missing/stale choices are refused before sending |
+| Read aloud / text-to-speech (TTS) | Complete for the current adapters | OpenRouter and OpenAI speech output, sentence-based chunking and playback controls; disclosed device speech only when no provider is selected |
+| Voice provider, model and agent-voice preferences | Implemented; acceptance record open | Spec 038 merged in PR #26: profile-local Settings choices, model-specific voices and no provider probes; T022 remains unchecked at the author's direction |
 | Character voices, narrator casting and audiobooks | Planned / coming soon | Assign distinct voices to characters and a narrator, then create an audiobook; this is a roadmap item, not current export functionality |
 | Background agent turns | Complete on desktop | Explicit opt-in, reopening the active conversation, and notification when a reply or approval is ready |
 | Illustrations | Complete on desktop | Muse Image generation, chapter attachments and embedded Word illustrations; no SAM cutout claim |
@@ -95,7 +103,8 @@ App store and release-download links will be posted in this repository when read
 - **Your library is a folder.** Each book is a folder of `book.json` and one Markdown file per chapter.
 - **A manuscript sheet** with a chapter rail, autosave, a visible save state and book search.
 - **A Story Bible** for the description, outline, three-act arc, characters and memories.
-- **Dictation** at the caret with Muse Voice Transcribe 1.0. The recording is never written to disk.
+- **Dictation** at the caret with Meta Muse Voice Transcribe or OpenRouter transcription, chosen in
+  **Settings → Voice** independently of the writing model. The recording is never written to disk.
 
 ### Work with the agent
 
@@ -107,9 +116,10 @@ App store and release-download links will be posted in this repository when read
   approval, and one undo restores every chapter a turn changed.
 - **Background turns.** Tick **Background** and close the window; a macOS notification tells you
   when the reply is ready or needs your approval.
-- **The ambient strip** says where you are, what changed and what the agent would do next. It listens
-  with Muse Voice Transcribe 1.0 and replies aloud through OpenRouter's text-to-speech, which is not a
-  Meta model. A 600×600 glasses page shows the same status; it has not been run on glasses.
+- **The ambient strip** says where you are, what changed and what the agent would do next. It uses
+  the saved dictation and speaking choices. Speaking is supplied by OpenRouter/OpenAI or an explicitly
+  disclosed device voice, not a Meta speech model. A 600×600 glasses page shows the same status;
+  it has not been run on glasses.
 - **Plain reporting.** Each turn names its model and shows its usage, with spending warnings, offline
   and rate-limit notes, and hand-typed model ids that are checked before they are kept.
 - **Your rules.** Per book, turn any tool off for every agent, see per-tool call counts and give the
@@ -144,8 +154,9 @@ and stop keep the manuscript usable without staying in the full chat panel.
 
 Recording is explicitly started and stopped by the author. Continuous listening, wake words and
 speaking over an active reply are not implemented. Transcription and speaking are separate services:
-Meta handles the current dictation adapter, and OpenRouter/OpenAI or the device voice supplies
-read-aloud. Persistent provider/model/voice choices and OpenRouter transcription are being integrated.
+Meta or OpenRouter handles the selected dictation path; OpenRouter/OpenAI supplies provider speech.
+When no speaking provider is selected, a disclosed device voice may be used. A failed or unavailable
+saved provider choice is reported rather than replaced. Persistent choices are available in Settings.
 See [docs/VOICE.md](docs/VOICE.md) for the exact supported flow.
 
 ### Trust
@@ -166,7 +177,7 @@ See [docs/VOICE.md](docs/VOICE.md) for the exact supported flow.
 | Cheap agent testing | Muse Spark 1.3 Contributor | Off by default and refused until the book opts in, because it may train on prompts and outputs; intended for the sample only |
 | Illustration | Muse Image 1.0 | Chapter illustrations, priced on the button before you generate |
 | Dictation and listening | Muse Voice Transcribe 1.0 | Dictation at the caret, and questions spoken to the ambient strip |
-| Spoken replies | OpenRouter text-to-speech | **Not a Meta model.** A partner service that voices the strip's replies |
+| Spoken replies | Selected OpenRouter/OpenAI speech model, or device voice when no provider is selected | **Not a Meta model.** Configured separately from dictation and writing |
 
 The cutout feature is not in the build. SAM 3.1 cutouts were built, but every request returned no
 records, so they were removed ([D-158](docs/DECISIONS.md)).
@@ -251,8 +262,9 @@ keeps books in browser storage or a folder you pick; the agent, dictation and ex
 
 There is no account, no telemetry and no server-side copy. Your text leaves the computer only when you
 ask: an agent turn sends what the agent needs to the provider you chose, dictation sends the
-recording to Meta, an illustration sends its prompt to Muse Image, and a spoken reply sends its text
-to the voice service you connected. Keys never appear in the library, logs or exports. The browser
+recording to the selected Meta or OpenRouter service, an illustration sends its prompt to Muse Image,
+and a spoken reply sends its text to the voice service you connected. Keys never appear in the library,
+logs or exports. The browser
 build keeps an OpenRouter sign-in in that browser's own storage and does not run the agent yet.
 
 ## Verification
@@ -260,8 +272,8 @@ build keeps an OpenRouter sign-in in that browser's own storage and does not run
 The checks run locally, and none needs a provider key. The repository also has a manually started
 GitHub Actions workflow, `verify`: one job runs `bun run verify` and the coverage floor on Linux,
 and an end-to-end job drives the built app under a virtual display. Either job failing fails the
-workflow. The end-to-end smoke skips the manuscript-import
-checks off macOS, because only macOS offers the import, and when a smoke check fails there the job
+workflow. It is manual-dispatch only, not an enforced pull-request merge gate. The end-to-end smoke
+skips the manuscript-import checks off macOS, because only macOS offers the import, and when a smoke check fails there the job
 keeps its screenshot and console log for seven days.
 
 | Command | What it proves |
@@ -271,8 +283,8 @@ keeps its screenshot and console log for seven days.
 | `bun run e2e` | The desktop and browser builds end to end: the CLI and MCP server against the running app, one agent turn against a fake provider on loopback, writing through export with outbound connections denied (macOS), and a refused second copy |
 | `bun run coverage` | Function and line coverage stay at or above a floor that only moves up |
 
-The latest results are in [the submission packet](hackathon/SUBMISSION.md#verification-evidence), and
-[docs/TESTING.md](docs/TESTING.md) explains the layers.
+The current recorded results and their limits are in [docs/TESTING.md](docs/TESTING.md#recorded-baseline).
+The [submission packet](hackathon/SUBMISSION.md#verification-evidence) retains the historical event evidence.
 
 ## Documentation
 
@@ -286,6 +298,7 @@ The latest results are in [the submission packet](hackathon/SUBMISSION.md#verifi
 - [docs/DECISIONS.md](docs/DECISIONS.md) and [docs/adr/](docs/adr/) — settled and open decisions
 - [specs/README.md](specs/README.md) — the spec index and roadmap
 - [docs/PRODUCT-COMPLETION.md](docs/PRODUCT-COMPLETION.md) — remaining work, lane dependencies and completion gates
+- [docs/CONCURRENT-DELIVERY.md](docs/CONCURRENT-DELIVERY.md) — concurrent work packages, ownership and delivery sequence
 - [hackathon/SUBMISSION.md](hackathon/SUBMISSION.md) — the submission packet
 - [samples/README.md](samples/README.md) — the sample library
 

@@ -40,6 +40,28 @@ Update the `Unreleased` section before every commit.
 
 ### Documentation
 
+- Address the independent delivery audit: distinguish supported turn schemas from runtime message
+  population, correct the already-fixed header export refusal note, and require each advertised
+  execution-stream lane to have explicitly assigned work. File-write ownership remains a separate
+  coordinator responsibility; graph validation does not claim runtime or release acceptance.
+
+- Record the author's November 7 delegated feature-delivery authority: resolve evidenced design
+  recommendations and merge reviewed, validated feature PRs without routine approval stalls,
+  preserving existing data-protection, spending and release-access restrictions.
+
+- Add the all-features concurrent delivery DAG: six agent slots, explicit work-package ownership,
+  first-wave deliverables, scoped decision gates and a continuation protocol. Include Story Bible/
+  series work directly in L24 completion and validate both DAGs, terminal coverage and stream ownership.
+
+- Refresh the November 7 public state at `55b55b8`: link the author's new README demo with a clickable
+  thumbnail, preserve the original submitted video, and record merged voice/file-safety work and dated
+  macOS/Linux verification. Reconcile integrated spec 038 ownership while leaving T022 unchecked and
+  keeping live-provider/device/release evidence separate.
+- Reconcile 031/032 with accepted D-175–D-179, record only completed decision tasks and the already
+  documented form submission, and retain outstanding implementation and film acceptance tasks.
+  Expand the remaining-work sequence and 039–042 decision packets/delivery checkpoints; preserve
+  open storage, consent, lifecycle and output decisions, the U-039-04 gate and unresolved DAG scope.
+
 - Update the README's current state: a short status section (the name, hardening since the hackathon,
   models, checks and what is still ahead), a Verification section that describes the manual GitHub Actions
   workflow instead of saying there is no public CI, Muse Wonder 1.0 in the Meta models table, and one stale
