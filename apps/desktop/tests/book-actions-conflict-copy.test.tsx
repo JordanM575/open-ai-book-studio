@@ -37,7 +37,7 @@ const BOOK: BookSummary = {
 };
 const COPY = "books/book_ca000001/conflicts/book.conflict-external-edit.d.json";
 
-function mockStudio(edit: () => Promise<unknown>) {
+function mockStudio(edit: (bookId: string, changes: Record<string, { from: unknown; to: unknown }>) => Promise<unknown>) {
   const reveal = mock(() => Promise.resolve({ ok: true, data: null }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
@@ -91,5 +91,34 @@ describe("the book settings dialog when an edit clashes with an outside one", ()
 
     await testing.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(body.queryByTestId("book-settings-conflict")).toBeNull();
+  });
+
+  test("after a save that kept one field and applied another, changing the applied one back is still saved", async () => {
+    const afterFirst = bookSchema.parse({ id: BOOK.id, title: "The Salt Causeway", description: "Their words.", createdAt: NOW, updatedAt: NOW });
+    const afterSecond = bookSchema.parse({ id: BOOK.id, title: BOOK.title, description: "Their words.", createdAt: NOW, updatedAt: NOW });
+    const edit = mock(async (_bookId: string, changes: Record<string, { from: unknown; to: unknown }>) =>
+      "title" in changes && changes.title?.to === BOOK.title
+        ? { ok: true, data: { status: "saved", book: afterSecond } }
+        : { ok: true, data: { status: "conflict", book: afterFirst, savedAs: COPY, fields: ["description"] } }
+    );
+    mockStudio(edit);
+    const { body, onOpenChange } = renderDialog();
+
+    // The rename lands; the description clashes with an outside edit and becomes a copy.
+    testing.fireEvent.change(body.getByTestId("book-title"), { target: { value: "The Salt Causeway" } });
+    testing.fireEvent.change(body.getByTestId("book-description"), { target: { value: "My words." } });
+    testing.fireEvent.click(body.getByTestId("save-book-settings"));
+    await testing.waitFor(() => body.getByTestId("book-settings-conflict"));
+
+    // The author takes the title back and keeps what is on disk for the description.
+    testing.fireEvent.change(body.getByTestId("book-title"), { target: { value: BOOK.title } });
+    testing.fireEvent.change(body.getByTestId("book-description"), { target: { value: "Their words." } });
+    testing.fireEvent.click(body.getByTestId("save-book-settings"));
+
+    await testing.waitFor(() => expect(edit).toHaveBeenCalledTimes(2));
+    // The second save starts from the title the first one saved, so the change back is sent and not dropped.
+    const second = edit.mock.calls[1]?.[1];
+    expect(second?.title).toEqual({ from: "The Salt Causeway", to: BOOK.title });
+    await testing.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 });

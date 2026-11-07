@@ -75,6 +75,10 @@ Update the `Unreleased` section before every commit.
   the author's own last choice and does not clash with it.
 - The book settings dialog no longer closes behind a plain notice when a title or description edit clashes with an
   outside change. It stays open, names the fields whose version was kept as a copy, and offers Show the copy.
+  After a save that applied one field and kept the other as a copy, the dialog measures its next save against what
+  that save left, so changing the applied field back is saved and not dropped as no change.
+- Choosing the book's default model when another writer changed it first lists the author's copy, so the
+  saved-copies banner and Show in folder appear, instead of leaving only a notice.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
   build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
   chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict

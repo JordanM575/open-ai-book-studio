@@ -1201,6 +1201,7 @@ export function WorkspaceView({
               : undefined
           }
           onClose={() => setModelOpen(false)}
+          onConflictCopy={refreshConflicts}
           onOpenSettings={() => {
             setModelOpen(false);
             openSettings("providers");

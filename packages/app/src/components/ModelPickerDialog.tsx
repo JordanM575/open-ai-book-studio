@@ -20,9 +20,11 @@ interface Props {
   initial?: { connectionId: string; modelId: string } | null;
   /** Open Settings on the provider connections, so an author with no key is not stuck. */
   onOpenSettings?: (() => void) | undefined;
+  /** A copy of the author's choice was kept, so the workspace lists the book's conflict copies again. */
+  onConflictCopy?: (() => void) | undefined;
 }
 
-export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial, onOpenSettings }: Props) {
+export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initial, onOpenSettings, onConflictCopy }: Props) {
   const turnMode = Boolean(onPick);
   const initialConnectionId = initial?.connectionId ?? book.defaultConnectionId;
   const initialModelId = initial?.modelId ?? book.defaultModelId;
@@ -194,7 +196,10 @@ export function ModelPickerDialog({ open, book, onClose, onSaved, onPick, initia
         allowContributorTraining: contributor ? allowContributor : book.allowContributorTraining
       });
       onSaved(result.book);
-      if (result.status === "conflict") return setError(keptCopyText());
+      if (result.status === "conflict") {
+        onConflictCopy?.();
+        return setError(keptCopyText());
+      }
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
