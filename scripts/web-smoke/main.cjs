@@ -63,8 +63,12 @@ app.whenReady().then(async () => {
   };
   const WELCOME = `document.querySelector('[data-testid="web-welcome"]')`;
   const LIBRARY = `document.querySelector('[data-testid="library-view"]')`;
-  // Load the page again as a returning author would: wait for whichever first screen it draws, then
-  // choose browser storage if that screen is the welcome.
+  // The library draws at once and its book cards when the listing comes back, so a script that is
+  // about to click the book waits for its card instead of assuming the listing has finished.
+  const BOOK_CARD = `[...document.querySelectorAll('[data-testid="book-card"]')].some((entry) => (entry.textContent ?? "").includes("Web Smoke Book"))`;
+  // Load the page again as a returning author would: wait for whichever first screen it draws, choose
+  // browser storage if that screen is the welcome, then wait for the smoke book's card (every reload in
+  // this script comes after the book was created).
   const reloadPage = async () => {
     await window.loadURL(url);
     await waitPage(`${WELCOME} || ${LIBRARY}`, "welcome or library screen");
@@ -73,6 +77,7 @@ app.whenReady().then(async () => {
         `document.querySelector('[data-testid="use-browser-storage"]')?.click()`
       );
     }
+    await waitPage(BOOK_CARD, "Web Smoke Book card");
   };
 
   const { createRunDir, redactLine } = await import(
