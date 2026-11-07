@@ -239,6 +239,9 @@ Update the `Unreleased` section before every commit.
   The OpenAI models `tts-1` and `tts-1-hd` are offered only the voices they support (not `ballad` or `verse`, which
   only `gpt-4o-mini-tts` has), in Settings, in saved choices and in the check before a request, so a pairing the
   provider would refuse is never offered, saved or reported as available.
+  OpenRouter transcription encodes the recording a slice at a time instead of appending four characters per three
+  bytes, so a ten-minute dictation no longer holds about 800 MB of strings or stalls the main process while it is
+  encoded (about 1 s and 820 MB before, 40 ms and 60 MB after in a Node measurement of 19 MB).
 - Front and back matter for every export (spec 035 T007–T013, D-169 and D-170, accepted on the
   author's delegation). The Format dialog has a **Front and back matter** section. The author turns
   the generated title page on or off and gives it an author and a subtitle. They add copyright,

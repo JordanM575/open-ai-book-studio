@@ -134,19 +134,28 @@ export function openRouterSpeechRequest(audio: Uint8Array, model: string): OpenR
   return { model, input_audio: { data: bytesToBase64(audio), format: "wav" } };
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let encoded = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const a = bytes[index] ?? 0;
-    const b = bytes[index + 1];
-    const c = bytes[index + 2];
-    encoded += alphabet[a >> 2];
-    encoded += alphabet[((a & 3) << 4) | ((b ?? 0) >> 4)];
-    encoded += b === undefined ? "=" : alphabet[((b & 15) << 2) | ((c ?? 0) >> 6)];
-    encoded += c === undefined ? "=" : alphabet[c & 63];
+/** Bytes per slice: a multiple of three, so only the last slice can need base64 padding. */
+const BASE64_SLICE = 3 * 8192;
+/** Characters handed to `String.fromCharCode` at once, well under the engine's argument limit. */
+const CHAR_BATCH = 8192;
+
+/**
+ * Standard base64 with padding, built a bounded slice at a time. A recording can be many megabytes,
+ * and appending four characters per three bytes makes millions of short-lived string pieces in the
+ * main process, which holds hundreds of megabytes while it runs. `btoa` is available in Node, Bun
+ * and browsers, so this needs no `Buffer`.
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
+  const parts: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += BASE64_SLICE) {
+    const slice = bytes.subarray(offset, Math.min(offset + BASE64_SLICE, bytes.length));
+    let binary = "";
+    for (let index = 0; index < slice.length; index += CHAR_BATCH) {
+      binary += String.fromCharCode(...slice.subarray(index, index + CHAR_BATCH));
+    }
+    parts.push(btoa(binary));
   }
-  return encoded;
+  return parts.join("");
 }
 
 /**
