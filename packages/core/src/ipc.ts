@@ -1,5 +1,7 @@
 import type {
+  BookChanges,
   BookDetail,
+  BookEditResult,
   BookListing,
   BookMeta,
   BookSummary,
@@ -121,6 +123,7 @@ export const IPC = {
     importManuscript: "books:importManuscript",
     pickImportSource: "books:pickImportSource",
     update: "books:update",
+    edit: "books:edit",
     saveMatter: "books:saveMatter",
     delete: "books:delete",
     open: "books:open",
@@ -449,6 +452,12 @@ export interface StudioApi {
     /** Choose a manuscript file and read it in the main process. Nothing is written. */
     pickImportSource(): Promise<Result<ImportSourcePick>>;
     update(bookId: string, patch: Partial<BookMeta>): Promise<Result<BookMeta>>;
+    /**
+     * Save the fields an editor changed, each with the value it started from, merged onto the file as
+     * it is now. Where another writer changed the same field, theirs stays and the editor's goes to a
+     * conflict copy.
+     */
+    edit(bookId: string, changes: BookChanges): Promise<Result<BookEditResult>>;
     /**
      * Save the front and back matter (spec 035). Carries the version and hash of the matter the
      * author edited; a mismatch keeps their version in `conflicts/` and returns the newer one.

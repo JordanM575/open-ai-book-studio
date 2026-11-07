@@ -1,6 +1,7 @@
 import { asSchema, tool } from "ai";
 import { z } from "zod";
-import type { BookMeta, Chapter } from "@ai-book-studio/core/schema";
+import type { BookChanges, BookMeta, Chapter } from "@ai-book-studio/core/schema";
+import { bookChanges } from "@ai-book-studio/core/library/book-merge";
 import type { ToolDescriptor, ToolTier } from "@ai-book-studio/core/agent/tools";
 import { countWords } from "@ai-book-studio/core/words";
 import { newId } from "../library/paths";
@@ -195,6 +196,17 @@ export function createChapterTools(
       });
     }
     return saved;
+  };
+
+  /**
+   * Write Story Bible fields against the copy the tool just read, so a change another writer made in
+   * between is merged rather than replaced. Where both changed the same thing, theirs stays and this
+   * tool's version is kept as a conflict copy, which the model is told about.
+   */
+  const editBook = async (changes: BookChanges, done: (book: BookMeta) => ToolResult): Promise<ToolResult> => {
+    const saved = await library.editBook(bookId, changes);
+    if (saved.status === "saved") return done(saved.book);
+    return result(false, `Someone changed the same details at the same time, so I kept their version and saved mine as ${saved.savedAs}.`);
   };
 
   /** A chapter's 1-based place in the book's current order, or undefined if it is not listed. */
@@ -781,8 +793,8 @@ export function createChapterTools(
         if (genres !== undefined) patch.genres = genres.map((genre) => genre.trim()).filter(Boolean);
         if (outline !== undefined) patch.outline = outline.trim();
         if (Object.keys(patch).length === 0) return result(false, "No change was given.");
-        const book = await library.updateBook(bookId, patch);
-        return result(true, `Updated “${book.title}”.`, { title: book.title });
+        const { book } = await library.readBook(bookId);
+        return editBook(bookChanges(book, patch), (saved) => result(true, `Updated “${saved.title}”.`, { title: saved.title }));
       }
     }),
 
@@ -823,8 +835,9 @@ export function createChapterTools(
             notes: notes ?? ""
           });
         }
-        await library.updateBook(bookId, { characters });
-        return result(true, index >= 0 ? `Updated ${wanted}.` : `Added ${wanted} to the cast.`, { name: wanted });
+        return editBook({ characters: { from: book.characters, to: characters } }, () =>
+          result(true, index >= 0 ? `Updated ${wanted}.` : `Added ${wanted} to the cast.`, { name: wanted })
+        );
       }
     }),
 
@@ -844,8 +857,9 @@ export function createChapterTools(
           createdAt: now,
           updatedAt: now
         };
-        await library.updateBook(bookId, { memories: [...book.memories, memory] });
-        return result(true, "Saved that detail for later.", { memoryId: memory.id });
+        return editBook({ memories: { from: book.memories, to: [...book.memories, memory] } }, () =>
+          result(true, "Saved that detail for later.", { memoryId: memory.id })
+        );
       }
     }),
 
@@ -873,8 +887,7 @@ export function createChapterTools(
           ...(importance !== undefined ? { importance } : {}),
           updatedAt: new Date().toISOString()
         };
-        await library.updateBook(bookId, { memories });
-        return result(true, "Updated that memory.", { memoryId });
+        return editBook({ memories: { from: book.memories, to: memories } }, () => result(true, "Updated that memory.", { memoryId }));
       }
     }),
 
@@ -886,10 +899,9 @@ export function createChapterTools(
         const { book } = await library.readBook(bookId);
         const memory = book.memories.find((entry) => entry.id === memoryId);
         if (!memory) return result(false, "That memory was not found. Read the Story Bible for the current list.");
-        await library.updateBook(bookId, {
-          memories: book.memories.filter((entry) => entry.id !== memoryId)
-        });
-        return result(true, `Removed the memory “${memory.text.slice(0, 80)}”.`, { memoryId });
+        return editBook({ memories: { from: book.memories, to: book.memories.filter((entry) => entry.id !== memoryId) } }, () =>
+          result(true, `Removed the memory “${memory.text.slice(0, 80)}”.`, { memoryId })
+        );
       }
     })
   };

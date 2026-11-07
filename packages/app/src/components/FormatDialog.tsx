@@ -98,6 +98,17 @@ function destination({ target }: LegacyEntry): string {
   return target ? `${kindLabel(target)}, ${kindPosition(target)} matter` : "not placed; copy it in by hand";
 }
 
+/**
+ * One control change: the fields it sets, and the value each had when the author changed it (the
+ * saved value, or an earlier change of the same control that is still waiting to save). The save
+ * applies `patch` and treats `from` as the settings the author started from, so another writer's
+ * change to the same field meanwhile is a clash and not something to write over.
+ */
+export interface FormatChange {
+  patch: Partial<ManuscriptSettings>;
+  from: Partial<ManuscriptSettings>;
+}
+
 interface FormatDialogProps {
   open: boolean;
   onClose: () => void;
@@ -113,8 +124,8 @@ interface FormatDialogProps {
   settings: ManuscriptSettings;
   /** Saved chapter text. The dialog never edits or writes chapters. */
   chapters: Chapter[];
-  /** Persists one manuscript patch; rejects when the write fails. */
-  onSaveSettings: (next: ManuscriptSettings) => Promise<void>;
+  /** Persists one manuscript change; rejects when the write fails. */
+  onSaveSettings: (change: FormatChange) => Promise<void>;
   /** Saves the open chapter before an export; null when no chapter is open. */
   onFlush: () => Promise<SaveStatus | null>;
 }
@@ -144,6 +155,8 @@ export function FormatDialog({
 }: FormatDialogProps) {
   const [target, setTarget] = useState<FormatTarget>("DOCX");
   const [draft, setDraft] = useState<ManuscriptSettings>(settings);
+  const settingsOut = useRef(0);
+  const [answered, setAnswered] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<ExportNote | null>(null);
   const [matter, setMatter] = useState<BookMatter | null>(() => readMatter(book).matter);
@@ -172,9 +185,13 @@ export function FormatDialog({
   const legacy = unreadable ? [] : pendingLegacyMatter(book.frontMatter, matter);
 
   // Only the draft follows saved settings while open.
+  // While a save is out the draft keeps what the author chose, so the next change to the same control
+  // starts from the author's own earlier choice and not from an older acknowledgement; once every save
+  // is answered the draft follows the saved settings again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `answered` only makes this run again when a save is answered
   useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+    if (settingsOut.current === 0) setDraft(settings);
+  }, [settings, answered]);
 
   // The target and the last export's note are this visit's alone: every open starts at DOCX. The
   // matter is read from the saved book on open, and a change still waiting is saved on close.
@@ -220,7 +237,18 @@ export function FormatDialog({
   const change = (patch: Partial<ManuscriptSettings>): void => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    void onSaveSettings(next).catch(() => setDraft(settings));
+    // Only the fields this change touched are sent, each with the value the author started from, so a
+    // save waiting its turn neither carries a stale value for another field nor forgets which value
+    // of this one the author was looking at.
+    const from = Object.fromEntries(Object.keys(patch).map((key) => [key, draft[key as keyof ManuscriptSettings]]));
+    settingsOut.current += 1;
+    onSaveSettings({ patch, from: from as Partial<ManuscriptSettings> })
+      // The workspace has already told the author why a save failed; the draft goes back to the saved settings.
+      .catch(() => {})
+      .finally(() => {
+        settingsOut.current -= 1;
+        setAnswered((count) => count + 1);
+      });
   };
 
   /** Shows why the matter did not save; after the dialog has closed, the workspace says it too. */

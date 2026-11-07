@@ -70,21 +70,24 @@ function detail() {
   };
 }
 
-function mockWorkspace(overrides: { update?: (bookId: string, patch: unknown) => Promise<unknown> } = {}) {
+function mockWorkspace(overrides: { edit?: (bookId: string, changes: unknown) => Promise<unknown> } = {}) {
   const onNotice = mock((_error: unknown) => {});
-  const update =
-    overrides.update ??
-    ((_bookId: string, patch: unknown) =>
-      Promise.resolve({
-        ok: true,
-        data: { ...detail().book, ...(patch as Record<string, unknown>), updatedAt: NOW }
-      }));
+  const edit =
+    overrides.edit ??
+    ((_bookId: string, changes: unknown) => {
+      const wanted = Object.fromEntries(
+        Object.entries(changes as Record<string, { to: unknown }>).map(([key, change]) => [key, change.to])
+      );
+      return Promise.resolve({ ok: true, data: { status: "saved", book: { ...detail().book, ...wanted, updatedAt: NOW } } });
+    });
   const save = mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: CHAPTERS[0] } }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
     books: {
       open: mock(() => Promise.resolve({ ok: true, data: detail() })),
-      update: mock(update),
+      edit: mock(edit),
+      // The format settings save through `edit`; a whole-object `update` would be the stale write.
+      update: mock(() => Promise.reject(new Error("The format settings must not be saved whole."))),
       exportDocx: mock(() => Promise.resolve({ ok: true, data: null }))
     },
     chapters: {
@@ -156,20 +159,25 @@ describe("format dialog contract", () => {
     expect(article.getAttribute("style") ?? "").toContain("Georgia");
   });
 
-  test("a typography change persists a full-settings merge without dropping sections", async () => {
+  test("a typography change sends the settings it started from, so the merge keeps every other section", async () => {
     mockWorkspace();
     const view = await openFormat();
 
     const font = view.getByLabelText("Font") as HTMLSelectElement;
     testing.fireEvent.change(font, { target: { value: "Arial" } });
 
-    const studio = (globalThis as unknown as { window: { studio: { books: { update: { mock: { calls: unknown[][] } } } } } }).window.studio;
+    const studio = (globalThis as unknown as {
+      window: { studio: { books: { edit: { mock: { calls: unknown[][] } }; update: { mock: { calls: unknown[][] } } } } };
+    }).window.studio;
     await testing.waitFor(() => {
-      expect(studio.books.update.mock.calls.length).toBe(1);
+      expect(studio.books.edit.mock.calls.length).toBe(1);
     });
-    const [bookId, patch] = studio.books.update.mock.calls[0] as [string, { settings: Record<string, unknown> }];
+    expect(studio.books.update.mock.calls.length).toBe(0);
+    const [bookId, changes] = studio.books.edit.mock.calls[0] as [string, { settings: { from: unknown; to: unknown } }];
     expect(bookId).toBe(BOOK);
-    expect(patch.settings).toEqual({
+    expect(Object.keys(changes)).toEqual(["settings"]);
+    expect(changes.settings.from).toEqual(detail().book.settings);
+    expect(changes.settings.to).toEqual({
       manuscript: { ...SAVED_MANUSCRIPT, bodyFont: "Arial" },
       agent: {
         disabledTools: ["web_search"],
@@ -185,7 +193,7 @@ describe("format dialog contract", () => {
 
   test("the disclosure stays visible across change and failure", async () => {
     mockWorkspace({
-      update: () => Promise.reject(new Error("Disk is full."))
+      edit: () => Promise.reject(new Error("Disk is full."))
     });
     const view = await openFormat();
     expect(view.getByTestId("format-disclosure").textContent).toContain("Approximate preview");

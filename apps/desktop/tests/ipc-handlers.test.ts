@@ -766,6 +766,61 @@ describe("the agent", () => {
     expect(saved.settings.cache.prefixMode).toBe("off");
   });
 
+  /** Another device writes `book.json` between the handler's read and its save. */
+  // biome-ignore lint/suspicious/noExplicitAny: these checks reshape raw book.json the way another writer would
+  function racingEdit(library: Library, root: string, bookId: string, change: (raw: Record<string, any>) => void): void {
+    const edit = library.editBook.bind(library);
+    let raced = false;
+    library.editBook = async (...args: Parameters<Library["editBook"]>) => {
+      if (!raced) {
+        raced = true;
+        const path = join(root, "books", bookId, "book.json");
+        const raw = JSON.parse(await readFile(path, "utf8"));
+        change(raw);
+        await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
+      }
+      return edit(...args);
+    };
+  }
+
+  test("an agent setting another writer changed meanwhile is refused with a note, and the author's goes to a copy", async () => {
+    const { root, library } = await setup();
+    const { bookId } = await book(library);
+    racingEdit(library, root, bookId, (raw) => {
+      raw.settings.agent.tone = "Theirs.";
+    });
+
+    const result = await call(IPC.agent.setSettings, { bookId, patch: { tone: "Mine." } });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("agent settings changed on disk while you were editing");
+    expect(result.error.message).toContain("kept as a separate copy");
+    const onDisk = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf8"));
+    expect(onDisk.settings.agent.tone).toBe("Theirs.");
+    const copies = await readdir(join(root, "books", bookId, "conflicts"));
+    expect(copies).toHaveLength(1);
+    expect(result.error.message).toContain(copies[0] ?? "no copy");
+    const kept = JSON.parse(await readFile(join(root, "books", bookId, "conflicts", copies[0] ?? ""), "utf8"));
+    expect(kept.settings.agent.tone).toBe("Mine.");
+  });
+
+  test("an agent setting saves beside a format change another writer made meanwhile", async () => {
+    const { root, library } = await setup();
+    const { bookId } = await book(library);
+    racingEdit(library, root, bookId, (raw) => {
+      raw.settings.manuscript = { ...raw.settings.manuscript, bodyFont: "Garamond" };
+    });
+
+    const after = await data<Record<string, unknown>>(IPC.agent.setSettings, { bookId, patch: { tone: "Mine." } });
+
+    expect(after).toEqual(expect.objectContaining({ tone: "Mine." }));
+    const onDisk = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf8"));
+    expect(onDisk.settings.agent.tone).toBe("Mine.");
+    expect(onDisk.settings.manuscript.bodyFont).toBe("Garamond");
+    expect(await readdir(join(root, "books", bookId, "conflicts")).catch(() => [])).toEqual([]);
+  });
+
   test("a book's spending and tool use come from its own logs, and warn past the author's limits", async () => {
     const { root, library } = await setup();
     const { bookId } = await book(library);

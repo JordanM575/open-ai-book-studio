@@ -14,6 +14,14 @@ Update the `Unreleased` section before every commit.
   not a fallback: nothing is written, either flag alone changes nothing, and a packaged build ignores it. The smoke run
   also starts the app with an allowlisted environment, so a provider key or a STUDIO_ flag in the caller's shell never
   reaches it.
+- The browser smoke check waits for the page the way an author would: it polls for the screen it expects, up to ten
+  seconds, instead of sleeping 1.2 seconds after each load and looking once. After a reload it waits for whichever
+  first screen the page draws, the welcome or the library, chooses browser storage only if it is the welcome, and
+  then waits for the book's card, because the library draws at once and its cards when the listing comes back.
+  When a wait times out, the failure now says what the page showed and how many page errors there were, so a failure
+  on a slow runner can be told from a broken page. One Linux run failed the welcome check two seconds after the
+  load, on a commit whose other runs passed; the cause was not reproduced locally, so this makes the check
+  tolerant of a slow first draw and its next failure self-explanatory.
 - Rename the product to Open Book Studio everywhere an author, a command line or a file reader sees the name: the library header, the
   window title, error and refusal messages, the `bookwriter` usage banner and MCP server text, the sign-in loopback page, the glasses page,
   open/save dialog filters, the exported EPUB creator fallback, the licenses dialog and the microphone permission text. Identifiers stay as
@@ -55,6 +63,40 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
+  while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
+  that stale copy, so a character another device added or a memory the toolkit saved disappeared with
+  no conflict copy. Editors now send only the fields they changed, each with the value they started
+  from, and the main process merges them onto a fresh read of the file under the book's write lock:
+  objects key by key, characters and memories record by record, rewriting only the parts that changed.
+  Where both sides changed the same part, the file keeps the other writer's value, the author's version
+  of the book is kept as `conflicts/book.conflict-external-edit.<device>.<time>.json` and listed with
+  the book's other conflict copies. The Story Bible names the fields that overlapped and offers
+  "Show the copy", and the workspace's saved-copies banner offers it too. The format settings, a rename, the model
+  picker, the agent settings and the agent's book tools (and so the toolkit's) merge the same way, and
+  a story arc written as lists stays as written until that part is edited. The default provider,
+  connection and model merge as one choice, so a new connection is never saved beside a model another
+  writer picked for the old one, and an agent setting that overlaps another writer's is refused with a
+  note that says where the author's version went, instead of answering as if it had been saved.
+  Changing a format control several times before the first save returns saves in turn, each from the
+  settings the one before returned, so the last choice stays and an earlier one is not mistaken for another
+  writer's change.
+  Each of those saves carries only the field its control changed, so a field changed outside meanwhile is
+  kept, and a format change that clashes with an outside one lists the author's copy so the saved-copies
+  banner can show it. A change still waiting its turn keeps the value the author saw for its own field, so an
+  outside change to that same field meanwhile is a clash and not written over.
+  While any of those saves is out the dialog keeps the values the author chose, so a third change starts from
+  the author's own last choice and does not clash with it.
+  A format save waiting its turn belongs to the book it was made in: if the workspace moves to another book
+  meanwhile, that save still goes to its own book, and the next one starts from the book now shown.
+- The book settings dialog no longer closes behind a plain notice when a title or description edit clashes with an
+  outside change. It stays open, names the fields whose version was kept as a copy, and offers Show the copy.
+  After a save that applied one field and kept the other as a copy, the dialog measures its next save against what
+  that save left, so changing the applied field back is saved and not dropped as no change.
+  A field the author left alone follows the book that save returned, so the retry sends only what was edited and
+  does not put the old text back over another writer's change.
+- Choosing the book's default model when another writer changed it first lists the author's copy, so the
+  saved-copies banner and Show in folder appear, instead of leaving only a notice.
 - A book that another device upgraded to a newer schema while it was open is no longer written by this
   build (QA D6). The schema was checked only when the book was opened or its details were saved, so a
   chapter save, a new, moved, deleted, restored or split chapter, a chapter's details, a kept conflict
@@ -496,6 +538,11 @@ Update the `Unreleased` section before every commit.
 
 ### Changed
 
+- Restoring a chapter from the trash checks whether that chapter is already in the book inside the book's write
+  lock, before it reads the trash file. A restore that races another one, or an undo that finds the chapter
+  already returned, now gets "that chapter is already in the book" and nothing is moved, instead of a missing-file
+  error. A test also covers a merge whose first save conflicts: the second chapter comes back from the trash
+  with its id, synopsis and notes, and the author's combined text is kept as a conflict copy.
 - The film script's 0:00 capture note also removes the copy's empty `checkpoints/`, `conflicts/` and
   `threads/` folders, so Finder shows only what existed before the event.
 - The web build leaves out code the browser never runs, so the SC-009 perf gate has room again
