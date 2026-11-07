@@ -3,6 +3,7 @@ import {
   type AgentApprovalPart,
   type AgentErrorPart,
   type AgentMessage,
+  type AgentMode,
   type AgentUsage
 } from "@ai-book-studio/core/agent/messages";
 import type { ContextBreakdown } from "@ai-book-studio/core/agent/context";
@@ -36,6 +37,8 @@ export interface Message {
   role: "user" | "assistant";
   text: string;
   tools: ToolNote[];
+  mode?: AgentMode | undefined;
+  guidance?: string | undefined;
   note?: string | undefined;
   failed?: boolean | undefined;
   retryable?: boolean | undefined;
@@ -213,6 +216,8 @@ export function toChatMessage(message: AgentMessage, latestCheckpointTurn: strin
     id: message.id,
     role: message.role,
     text: messageText(message),
+    mode: message.mode,
+    guidance: message.parts.filter((part) => part.type === "guidance").map((part) => part.text).join("\n") || undefined,
     tools,
     ...(approvals.length > 0 ? { approvals } : {}),
     ...(message.context ? { context: message.context } : {}),

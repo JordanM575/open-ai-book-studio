@@ -115,12 +115,14 @@ export const agentApprovalPartSchema = z.object({
   resolvedAt: isoDate.optional()
 });
 
+export const AGENT_ERROR_LIMITS = { message: 2_000, retryAfterSeconds: 86_400 } as const;
+
 export const agentErrorPartSchema = z.object({
   type: z.literal("error"),
   code: z.string().min(1).max(80),
-  message: z.string().min(1).max(2_000),
+  message: z.string().min(1).max(AGENT_ERROR_LIMITS.message),
   /** Seconds the provider asked the studio to wait before asking again, when it named one. */
-  retryAfterSeconds: z.number().int().nonnegative().max(86_400).optional()
+  retryAfterSeconds: z.number().int().nonnegative().max(AGENT_ERROR_LIMITS.retryAfterSeconds).optional()
 });
 
 export const agentPartSchema = z.discriminatedUnion("type", [

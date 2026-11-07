@@ -138,6 +138,72 @@ function composer(): { input: HTMLElement; view: ReturnType<typeof testing.withi
 }
 
 describe("chat composer", () => {
+  test("Discuss is the default; Edit is explicit, fixed on retry, and reset for the next turn", async () => {
+    const { start } = renderComposer(null, () => Promise.resolve({ ok: false, error: { code: "offline", message: "Synthetic offline" } }));
+    const { input, view } = composer();
+    const select = view.getByRole("combobox", { name: "Mode for next turn" }) as HTMLSelectElement;
+    expect(select.value).toBe("discuss");
+    select.focus();
+    expect(document.activeElement).toBe(select);
+    testing.fireEvent.change(select, { target: { value: "edit" } });
+    testing.fireEvent.change(input, { target: { value: "Append a line" } });
+    testing.fireEvent.change(view.getByTestId("agent-guidance"), { target: { value: "Plain words only" } });
+    testing.fireEvent.keyDown(input, { key: "Enter" });
+    await testing.waitFor(() => expect(view.getByTestId("agent-retry-request")).toBeDefined());
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ mode: "edit", guidance: "Plain words only" });
+    expect(select.value).toBe("discuss");
+    expect(view.getByTestId("agent-guidance")).toHaveProperty("value", "");
+    expect(view.getAllByTestId("agent-message-mode").map((node: HTMLElement) => node.textContent)).toEqual(["Edit", "Edit"]);
+    testing.fireEvent.click(view.getByTestId("agent-retry-request"));
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+    expect(start.mock.calls[1]?.[0]).toMatchObject({ mode: "edit", guidance: "Plain words only" });
+    await testing.waitFor(() => expect(view.getByTestId("chat-send")).toBeDefined());
+    testing.fireEvent.change(input, { target: { value: "Explain instead" } });
+    testing.fireEvent.keyDown(input, { key: "Enter" });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(3));
+    expect(start.mock.calls[2]?.[0]).toMatchObject({ mode: "discuss" });
+    expect(start.mock.calls[2]?.[0]).not.toHaveProperty("guidance");
+  });
+
+  test("oversized guidance blocks both button and Enter without truncation, and exact limit sends", async () => {
+    const { start } = renderComposer();
+    const { input, view } = composer();
+    const guidance = view.getByRole("textbox", { name: "Guidance for next turn", hidden: true });
+    testing.fireEvent.change(input, { target: { value: "Read the opening" } });
+    testing.fireEvent.change(guidance, { target: { value: "g".repeat(2001) } });
+    expect(guidance).toHaveProperty("value", "g".repeat(2001));
+    expect(guidance.getAttribute("aria-invalid")).toBe("true");
+    expect(view.getByRole("alert").textContent).toContain("Your text is kept");
+    expect(view.getByTestId("chat-send")).toHaveProperty("disabled", true);
+    testing.fireEvent.keyDown(input, { key: "Enter" });
+    expect(start).not.toHaveBeenCalled();
+    testing.fireEvent.change(guidance, { target: { value: "g".repeat(2000) } });
+    testing.fireEvent.keyDown(input, { key: "Enter" });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ mode: "discuss", guidance: "g".repeat(2000) });
+    expect(view.getByTestId("agent-mode")).toHaveProperty("disabled", true);
+    expect(guidance).toHaveProperty("disabled", true);
+  });
+
+  test("stored modes and guidance remain inspectable and legacy turns are unrecorded", async () => {
+    const seed = emptyThread();
+    seed.messages = [
+      { id: "msg_legacy01", role: "assistant", parts: [{ type: "text", text: "Old answer" }], createdAt: AT },
+      { id: "msg_request1", role: "user", mode: "edit", parts: [{ type: "text", text: "Write" }, { type: "guidance", text: "Only that turn" }], createdAt: AT },
+      { id: "msg_answer01", role: "assistant", mode: "edit", parts: [{ type: "text", text: "Written" }], createdAt: AT }
+    ];
+    renderComposer(null, null, null, seed);
+    const { view } = composer();
+    await testing.waitFor(() => expect(view.getByText("Old answer")).toBeDefined());
+    expect(view.getAllByTestId("agent-message-mode").map((node: HTMLElement) => node.textContent)).toEqual(["Mode unrecorded", "Edit", "Edit"]);
+    expect(view.getByText("Only that turn")).toBeDefined();
+    expect(view.getByTestId("agent-guidance")).toHaveProperty("value", "");
+    testing.fireEvent.change(view.getByTestId("agent-mode"), { target: { value: "edit" } });
+    expect(view.getByText("Mode unrecorded")).toBeDefined();
+    testing.fireEvent.change(view.getByTestId("agent-mode"), { target: { value: "discuss" } });
+    expect(view.getAllByTestId("agent-message-mode").map((node: HTMLElement) => node.textContent)).toEqual(["Mode unrecorded", "Edit", "Edit"]);
+  });
+
   test("send stays disabled until there is a prompt", async () => {
     renderComposer();
     const { input, view } = composer();
@@ -213,7 +279,7 @@ describe("chat composer", () => {
     expect(view.getByText("I will write on my own.")).toBeDefined();
   });
 
-  test("a rate limit names the wait and keeps the retry offer", async () => {
+  test.each([90, 172_800])("a %s-second rate limit names the wait and releases the composer", async (retryAfterSeconds) => {
     const { start, fire } = renderComposer();
     const { input, view } = composer();
     testing.fireEvent.change(input, { target: { value: "Keep going." } });
@@ -230,14 +296,19 @@ describe("chat composer", () => {
         turnId: "turn_cmp000001",
         code: "rate-limit",
         message: "The provider asked us to slow down. Try again shortly.",
-        retryAfterSeconds: 90
+        retryAfterSeconds
       });
     });
     await testing.waitFor(() => expect(view.getByTestId("agent-rate-note")).toBeDefined());
     expect(view.getByTestId("agent-rate-note").textContent).toBe(
-      "The provider asked to wait. Try again in about 2 minutes."
+      `The provider asked to wait. Try again in about ${Math.round(retryAfterSeconds / 60)} minutes.`
     );
     expect(view.getByTestId("agent-retry-request")).toBeDefined();
+    expect(view.getByTestId("agent-mode")).toHaveProperty("disabled", false);
+    expect(view.getByTestId("agent-guidance")).toHaveProperty("disabled", false);
+    testing.fireEvent.change(input, { target: { value: "A new request." } });
+    testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
   });
 
   async function failAfterChange(
@@ -246,6 +317,7 @@ describe("chat composer", () => {
     event: AgentEvent
   ): Promise<void> {
     const { input } = composer();
+    testing.fireEvent.change(testing.within(document.body).getByTestId("agent-mode"), { target: { value: "edit" } });
     testing.fireEvent.change(input, { target: { value: "Replace the opening." } });
     testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
     await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
@@ -522,6 +594,7 @@ describe("chat composer", () => {
   test("a destructive tool waits behind Allow and Deny", async () => {
     const { start, fire, approve } = renderComposer();
     const { input, view } = composer();
+    testing.fireEvent.change(view.getByTestId("agent-mode"), { target: { value: "edit" } });
     testing.fireEvent.change(input, { target: { value: "Replace the opening." } });
     testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
     await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
@@ -559,6 +632,7 @@ describe("chat composer", () => {
     start: ReturnType<typeof mock>
   ): Promise<{ view: ReturnType<typeof testing.within>; gate: HTMLElement }> {
     const { input, view } = composer();
+    testing.fireEvent.change(view.getByTestId("agent-mode"), { target: { value: "edit" } });
     testing.fireEvent.change(input, { target: { value: "Replace the opening." } });
     testing.fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
     await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(1));

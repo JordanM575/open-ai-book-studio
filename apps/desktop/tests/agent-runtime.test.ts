@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { APICallError, ToolLoopAgent, isStepCount, simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
-import { messageText, type AgentApprovalPart } from "@ai-book-studio/core/agent/messages";
+import { AGENT_ERROR_LIMITS, agentErrorPartSchema, messageText, type AgentApprovalPart } from "@ai-book-studio/core/agent/messages";
 import type { StoredCredential } from "@ai-book-studio/core/providers/types";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderService } from "../src/main/providers";
@@ -426,9 +426,69 @@ describe("agent runtime contract", () => {
     expect(model.doStreamCalls).toHaveLength(1);
     expect(failure.code).toBe("rate-limit");
     expect(failure.retryAfterSeconds).toBe(90);
-    // A turn that never wrote an assistant message stores nothing to retry from.
+    // Failed attempts also retain their mode and outcome; retries can reuse the user request.
     const thread = await library.threads.read(book.id, started.threadId);
-    expect(thread?.messages.map((message) => message.role)).toEqual(["user"]);
+    expect(thread?.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(thread?.messages.at(-1)?.mode).toBe("edit");
+    expect(thread?.messages.at(-1)?.parts).toContainEqual({ type: "error", code: "rate-limit", message: failure.message, retryAfterSeconds: 90 });
+  });
+
+  test("a long provider error still terminates and retains a bounded, marked conversation error", async () => {
+    const detail = `Synthetic detail ${"x".repeat(2_001)}`;
+    const model = new MockLanguageModelV4({ doStream: async () => { throw new Error(detail); } });
+    const { runtime, failed } = failureRuntime(model);
+    const started = await runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read the opening." });
+    const failure = await failed;
+    expect(failure.message).toBe(detail);
+    expect(failure.changed).toBe(0);
+    expect(runtime.isWorking(book.id)).toBe(false);
+    const thread = await library.threads.read(book.id, started.threadId);
+    const part = thread?.messages.at(-1)?.parts.find((part) => part.type === "error");
+    expect(part?.message).toHaveLength(AGENT_ERROR_LIMITS.message);
+    expect(part?.message).toContain("Error detail shortened for this conversation.");
+    expect(agentErrorPartSchema.safeParse(part).success).toBe(true);
+    expect(thread?.messages.map((message) => message.mode)).toEqual(["discuss", "discuss"]);
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  test("a provider wait beyond the stored numeric limit survives in the error text without being clamped", async () => {
+    const model = rateLimitModel("172800");
+    const { runtime, failed } = failureRuntime(model);
+    const started = await runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read the opening." });
+    const failure = await failed;
+    expect(failure.retryAfterSeconds).toBe(172_800);
+    expect(runtime.isWorking(book.id)).toBe(false);
+    const thread = await library.threads.read(book.id, started.threadId);
+    const part = thread?.messages.at(-1)?.parts.find((part) => part.type === "error");
+    expect(part?.message).toContain("retry wait of 172800 seconds");
+    expect(part).not.toHaveProperty("retryAfterSeconds");
+    expect(agentErrorPartSchema.safeParse(part).success).toBe(true);
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  test.each(["validation", "storage"] as const)("conversation %s failure cannot suppress a terminal event", async (failureKind) => {
+    const warning = spyOn(console, "warn").mockImplementation(() => {});
+    const write = failureKind === "storage"
+      ? spyOn(library.threads, "upsertMessage").mockRejectedValue(new Error("Synthetic write failure")) : null;
+    const model = new MockLanguageModelV4({ doStream: { stream: simulateReadableStream({ chunks: [
+      { type: "stream-start", warnings: [] },
+      { type: "text-start", id: "partial" },
+      { type: "text-delta", id: "partial", delta: failureKind === "validation" ? "x".repeat(200_001) : "Partial reply." },
+      { type: "error", error: new Error("Synthetic stream failed") }
+    ] }) } });
+    try {
+      const { runtime, failed } = failureRuntime(model);
+      const started = await runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read the opening." });
+      const failure = await failed;
+      expect(failure.message).toBe("Synthetic stream failed");
+      expect(runtime.isWorking(book.id)).toBe(false);
+      expect(failure.changed).toBe(0);
+      expect(warning).toHaveBeenCalled();
+      expect((await library.threads.read(book.id, started.threadId))?.messages.map((message) => message.role)).toEqual(["user"]);
+    } finally {
+      write?.mockRestore();
+      warning.mockRestore();
+    }
   });
 
   test("a resumed turn that hits the limit stores the wait with the failure", async () => {
@@ -710,12 +770,14 @@ describe("agent runtime contract", () => {
       () => model
     );
 
-    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory.", guidance: "Only the named memory." });
     const request = await approval;
     expect(request.name).toBe("remove_memory");
     expect((await library.readBook(book.id)).book.memories).toHaveLength(1);
     const paused = await library.threads.read(book.id, started.threadId);
     const pausedMessage = paused!.messages.at(-1)!;
+    expect(pausedMessage.mode).toBe("edit");
+    expect(paused?.messages[0]?.parts).toContainEqual({ type: "guidance", text: "Only the named memory." });
     expect(pausedMessage.parts.find((part) => part.type === "approval")).toMatchObject({
       type: "approval",
       approvalId: request.approvalId,
@@ -731,6 +793,7 @@ describe("agent runtime contract", () => {
     const thread = await library.threads.read(book.id, started.threadId);
     expect(thread!.messages).toHaveLength(2);
     expect(thread!.messages.at(-1)!.id).toBe(pausedMessage.id);
+    expect(thread!.messages.at(-1)!.mode).toBe("edit");
     expect(messageText(thread!.messages.at(-1)!)).toBe("The memory is gone.");
     expect(thread!.messages.at(-1)!.parts.find((part) => part.type === "approval")).toMatchObject({
       status: "approved"
@@ -1136,11 +1199,13 @@ describe("agent runtime contract", () => {
       () => model
     );
 
-    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory." });
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory.", guidance: "Only this turn." });
     await approval;
     await runtime.stop(started.turnId);
 
     const thread = await library.threads.read(book.id, started.threadId);
+    expect(thread?.messages.at(-1)?.mode).toBe("edit");
+    expect(thread?.messages[0]?.parts).toContainEqual({ type: "guidance", text: "Only this turn." });
     expect(thread?.messages.at(-1)?.parts.find((part) => part.type === "approval")).toMatchObject({
       status: "expired"
     });

@@ -4,6 +4,7 @@ import React from "react";
 import { mountDom, unmountDom } from "./support/dom";
 import { bookSchema, chapterMetaSchema } from "@ai-book-studio/core/schema";
 import type { Chapter } from "@ai-book-studio/core/schema";
+import type { ManuscriptExportReceipt, Result } from "@ai-book-studio/core/ipc";
 import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
 
 let testing!: typeof import("@testing-library/react/pure");
@@ -27,6 +28,7 @@ afterEach(() => testing.cleanup());
 
 const NOW = "2026-11-03T00:00:00.000Z";
 const BOOK = "book_fx000001";
+const OTHER_BOOK = "book_fx000002";
 
 function chapter(id: string, title: string, order: number, content: string): Chapter {
   return {
@@ -39,31 +41,35 @@ function chapter(id: string, title: string, order: number, content: string): Cha
 }
 
 const CHAPTER_A = chapter("ch_fx000001", "First", 1, "First line.\n");
+const CHAPTER_B = chapter("ch_fx000002", "Other", 1, "Other line.\n");
 
 type SaveReply = { ok: true; data: { status: "saved"; chapter: Chapter } } | { ok: false; error: { code: "io"; message: string } };
 
 function mockWorkspace(order: string[], saveReply: SaveReply = { ok: true, data: { status: "saved", chapter: CHAPTER_A } }) {
-  const detail = () => ({
-    book: bookSchema.parse({ id: BOOK, title: "Flushed", createdAt: NOW, updatedAt: NOW }),
-    chapters: [CHAPTER_A],
+  const detail = (id = BOOK) => ({
+    book: bookSchema.parse({ id, title: id === BOOK ? "Flushed" : "Other book", createdAt: NOW, updatedAt: NOW }),
+    chapters: [id === BOOK ? CHAPTER_A : CHAPTER_B],
     chapterReadIssues: []
   });
   const onNotice = mock((_error: unknown) => {});
-  const open = mock(() => Promise.resolve({ ok: true, data: detail() }));
+  const open = mock((id: string) => Promise.resolve({ ok: true, data: detail(id) }));
   const save = mock((_input: unknown) => {
     order.push("save");
     return Promise.resolve(saveReply);
   });
-  const exportDocx = mock((_bookId: string) => {
+  const exportDocx = mock((_bookId: string): Promise<Result<ManuscriptExportReceipt | null>> => {
     order.push("export");
-    return Promise.resolve({ ok: true, data: "/tmp/exports/flushed.docx" });
+    return Promise.resolve({ ok: true, data: { path: "/synthetic/exports/flushed.docx", warnings: [] } });
   });
+  const exportMarkdown = mock((_bookId: string): Promise<Result<ManuscriptExportReceipt | null>> =>
+    Promise.resolve({ ok: true, data: { path: "/synthetic/exports/flushed.md", warnings: [] } }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin",
     books: {
       open,
       update: mock(() => Promise.resolve({ ok: true, data: detail().book })),
-      exportDocx
+      exportDocx,
+      exportMarkdown
     },
     chapters: {
       create: mock(() => Promise.resolve({ ok: true, data: CHAPTER_A })),
@@ -94,18 +100,18 @@ function mockWorkspace(order: string[], saveReply: SaveReply = { ok: true, data:
       speakers: mock(async () => ({ ok: true, data: { available: false, connectionLabel: null, endpoint: null, model: null, voices: [] } }))
     }
   };
-  testing.render(
+  const component = (bookId: string) =>
     React.createElement(WorkspaceView, {
-      bookId: BOOK,
+      bookId,
       theme: { choice: "light" as const, set: () => {}, cycle: () => {} },
       libraryRoot: "/tmp/studio-library",
       libraryStorage: undefined,
       onBack: () => {},
       onNotice,
       onSchemaRefusal: () => {}
-    })
-  );
-  return { onNotice, save, exportDocx };
+    });
+  const view = testing.render(component(BOOK));
+  return { onNotice, save, exportDocx, exportMarkdown, view, component };
 }
 
 describe("docx export flush", () => {
@@ -155,5 +161,103 @@ describe("docx export flush", () => {
     expect(mocks.exportDocx).not.toHaveBeenCalled();
     expect(order).toEqual(["save"]);
     expect(view.queryByText("Saved flushed.docx")).toBeNull();
+  });
+});
+
+type ExportReply = Result<ManuscriptExportReceipt | null>;
+const warningReceipt: ExportReply = {
+  ok: true, data: { path: "/synthetic/book-A.export", warnings: ["Synthetic Book A image was omitted."] }
+};
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+describe.each(["docx", "markdown"] as const)("%s export view ownership", (format) => {
+  const exporter = (setup: ReturnType<typeof mockWorkspace>) => format === "docx" ? setup.exportDocx : setup.exportMarkdown;
+  const begin = async (setup: ReturnType<typeof mockWorkspace>) => {
+    await testing.waitFor(() => expect(setup.view.getByTestId("manuscript-text")).toBeTruthy());
+    testing.fireEvent.click(setup.view.getByTestId(`export-${format}`));
+    await testing.waitFor(() => expect(exporter(setup)).toHaveBeenCalledTimes(1));
+  };
+  const changeBook = async (setup: ReturnType<typeof mockWorkspace>, id: string) => {
+    setup.view.rerender(setup.component(id));
+    await testing.waitFor(() => expect(setup.view.getByText(id === BOOK ? "Flushed" : "Other book")).toBeTruthy());
+  };
+
+  test("completed warnings clear on a book change and on a new cancelled attempt", async () => {
+    const setup = mockWorkspace([]);
+    exporter(setup).mockResolvedValue(warningReceipt);
+    await begin(setup);
+    await testing.waitFor(() => expect(setup.view.getByText("Synthetic Book A image was omitted.")).toBeTruthy());
+    exporter(setup).mockResolvedValue({ ok: true, data: null });
+    testing.fireEvent.click(setup.view.getByTestId(`export-${format}`));
+    await testing.waitFor(() => expect(exporter(setup)).toHaveBeenCalledTimes(2));
+    expect(setup.view.queryByText("Saved book-A.export")).toBeNull();
+    exporter(setup).mockResolvedValue(warningReceipt);
+    await testing.waitFor(() => expect(setup.view.getByTestId(`export-${format}`)).toHaveProperty("disabled", false));
+    testing.fireEvent.click(setup.view.getByTestId(`export-${format}`));
+    await testing.waitFor(() => expect(setup.view.getByText("Saved book-A.export")).toBeTruthy());
+    await changeBook(setup, OTHER_BOOK);
+    expect(setup.view.queryByText("Saved book-A.export")).toBeNull();
+    expect(setup.view.queryByText("Synthetic Book A image was omitted.")).toBeNull();
+  });
+
+  test("a late receipt is ignored even after A → B → A", async () => {
+    const setup = mockWorkspace([]);
+    const old = deferred<ExportReply>();
+    exporter(setup).mockReturnValue(old.promise);
+    await begin(setup);
+    await changeBook(setup, OTHER_BOOK);
+    await changeBook(setup, BOOK);
+    await testing.act(async () => old.resolve(warningReceipt));
+    expect(setup.view.queryByText("Saved book-A.export")).toBeNull();
+    expect(setup.view.queryByText("Synthetic Book A image was omitted.")).toBeNull();
+  });
+
+  test.each(["success", "error"] as const)("old %s cannot unlock or replace a new book's pending export", async (outcome) => {
+    const setup = mockWorkspace([]);
+    const old = deferred<ExportReply>();
+    const next = deferred<ExportReply>();
+    exporter(setup).mockImplementation((id) => id === BOOK ? old.promise : next.promise);
+    await begin(setup);
+    await changeBook(setup, OTHER_BOOK);
+    testing.fireEvent.click(setup.view.getByTestId(`export-${format}`));
+    await testing.waitFor(() => expect(exporter(setup)).toHaveBeenCalledTimes(2));
+    await testing.act(async () => {
+      if (outcome === "success") old.resolve(warningReceipt);
+      else old.reject(new Error("Old book export failed"));
+    });
+    expect(setup.view.getByTestId(`export-${format}`)).toHaveProperty("disabled", true);
+    expect(setup.view.queryByText("Saved book-A.export")).toBeNull();
+    expect(setup.onNotice).not.toHaveBeenCalled();
+    await testing.act(async () => next.resolve({ ok: true, data: { path: "/synthetic/book-B.export", warnings: [] } }));
+    expect(setup.view.getByText("Saved book-B.export")).toBeTruthy();
+    expect(setup.view.getByTestId(`export-${format}`)).toHaveProperty("disabled", false);
+  });
+
+  test("an unmounted export cannot deliver a late error notice", async () => {
+    const setup = mockWorkspace([]);
+    const old = deferred<ExportReply>();
+    exporter(setup).mockReturnValue(old.promise);
+    await begin(setup);
+    setup.view.unmount();
+    await testing.act(async () => old.reject(new Error("Old book export failed")));
+    expect(setup.onNotice).not.toHaveBeenCalled();
+  });
+
+  test("a save finishing after navigation cannot dispatch the old export", async () => {
+    const setup = mockWorkspace([]);
+    const save = deferred<SaveReply>();
+    setup.save.mockReturnValue(save.promise);
+    await testing.waitFor(() => expect(setup.view.getByTestId("manuscript-text")).toBeTruthy());
+    testing.fireEvent.change(setup.view.getByTestId("manuscript-text"), { target: { value: "Pending old-book edit." } });
+    testing.fireEvent.click(setup.view.getByTestId(`export-${format}`));
+    await testing.waitFor(() => expect(setup.save).toHaveBeenCalled());
+    await changeBook(setup, OTHER_BOOK);
+    await testing.act(async () => save.resolve({ ok: true, data: { status: "saved", chapter: CHAPTER_A } }));
+    expect(exporter(setup)).not.toHaveBeenCalled();
   });
 });

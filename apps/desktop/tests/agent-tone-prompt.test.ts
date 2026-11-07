@@ -94,7 +94,8 @@ describe("tone and answer length in the turn prompt", () => {
           settings: { agent: { tone: "t".repeat(500), answerLength } }
         } as never,
         chapters: many as never,
-        activeChapter: many[0] as never
+        activeChapter: many[0] as never,
+        mode: "discuss"
       });
       expect(encode(instructions).length, `${answerLength} prompt over budget`).toBeLessThan(4_000);
       expect(instructions).toContain("t".repeat(500));

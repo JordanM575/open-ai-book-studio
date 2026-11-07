@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { Cpu, GitBranch, History, Monitor, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
+import { agentModeSchema, type AgentMode } from "@ai-book-studio/core/agent/messages";
 import type { ThreadSummary } from "@ai-book-studio/core/agent/threads";
 import { modelDisplayName } from "@ai-book-studio/core/providers/compatibility";
 import { Button } from "@ai-book-studio/ui/button";
@@ -134,6 +135,9 @@ export function ChatPanel({
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<AgentMode>("discuss");
+  const [guidance, setGuidance] = useState("");
+  const guidanceTooLong = guidance.length > 2_000;
   const [running, setRunning] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [background, setBackground] = useState(false);
@@ -182,6 +186,8 @@ export function ChatPanel({
     setThreadId(null);
     setMessages([]);
     setCheckpointTurns([]);
+    setMode("discuss");
+    setGuidance("");
     void (async () => {
       try {
         const id = openThreadId ?? (await must(window.studio.agent.threads.list(bookId)))[0]?.id;
@@ -208,6 +214,8 @@ export function ChatPanel({
     setMessages([]);
     setCheckpointTurns([]);
     setInput("");
+    setMode("discuss");
+    setGuidance("");
     setHistoryOpen(false);
     retryRequestsRef.current.clear();
     assistantRef.current = null;
@@ -471,10 +479,10 @@ export function ChatPanel({
   const send = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault();
     const prompt = input.trim();
-    if (!prompt || running) return;
+    if (!prompt || running || guidanceTooLong) return;
     setInput("");
-    const user: Message = { id: nextId(), role: "user", text: prompt, tools: [] };
-    const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [] };
+    const user: Message = { id: nextId(), role: "user", text: prompt, tools: [], mode, guidance: guidance || undefined };
+    const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [], mode };
     const history = messages
       .filter((message) => message.text.trim() && !(message.role === "assistant" && message.failed))
       .slice(-20)
@@ -483,13 +491,16 @@ export function ChatPanel({
       bookId,
       chapterId,
       prompt,
-      mode: "edit",
+      mode,
+      ...(guidance ? { guidance } : {}),
       threadId: threadId ?? undefined,
       history,
       ...(background ? { background: true } : {}),
       ...(turnModel ? { model: turnModel } : {})
     };
     setBackground(false);
+    setMode("discuss");
+    setGuidance("");
     loadToken.current += 1;
     retryRequestsRef.current.set(assistant.id, request);
     setMessages((current) => [...current, user, assistant]);
@@ -603,7 +614,7 @@ export function ChatPanel({
       <header className="flex items-center justify-between border-b border-[var(--glass-outline)] px-4 py-3">
         <div>
           <h2 className="text-(length:--text-headline-size) font-semibold">Writing agent</h2>
-          <p className="text-(length:--text-caption-size) text-muted-foreground">Edits arrive as small changes you can undo.</p>
+          <p className="text-(length:--text-caption-size) text-muted-foreground">Discuss ideas or choose Edit to change your book.</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Hint label="New conversation">
@@ -651,7 +662,7 @@ export function ChatPanel({
           {messages.length === 0 ? (
             <ConversationEmptyState
               className="rounded-[var(--corner-lg)] bg-[var(--secondary)] px-4 py-3"
-              description="Ask for a scene, a tighter paragraph, or a check of what happened earlier. The agent reads the book before it changes anything."
+              description="Discuss reads your book without changing it. To request changes, choose Edit for a new turn; destructive changes still ask for approval."
             >
               <Suggestions>
                 {SUGGESTIONS.map((suggestion) => (
@@ -707,6 +718,17 @@ export function ChatPanel({
                       className="max-w-[92%]"
                     >
                       <BubbleContent className="px-3.5 py-2.5 text-base">
+                        {message.role === "assistant" || message.mode ? (
+                          <p className="mb-1 text-xs text-muted-foreground" data-testid="agent-message-mode">
+                            {message.mode === "discuss" ? "Discuss" : message.mode === "edit" ? "Edit" : "Mode unrecorded"}
+                          </p>
+                        ) : null}
+                        {message.guidance ? (
+                          <details className="mb-2 text-xs text-muted-foreground">
+                            <summary className="cursor-pointer rounded-sm focus-visible:outline-2">Guidance for this turn</summary>
+                            <p className="whitespace-pre-wrap">{message.guidance}</p>
+                          </details>
+                        ) : null}
                         {message.tools.length > 0 ? (
                           <Tools className="mb-2">
                             {message.tools.map((tool, toolIndex) => {
@@ -940,6 +962,46 @@ export function ChatPanel({
       </Conversation>
 
       <div className="border-t border-[var(--glass-outline)] p-3">
+        <div className="mb-2 space-y-2 text-xs text-muted-foreground">
+          <label className="flex items-center gap-2">
+            Mode for next turn
+            <select
+              value={mode}
+              onChange={(event) => setMode(agentModeSchema.parse(event.target.value))}
+              disabled={running}
+              data-testid="agent-mode"
+              className="rounded-[var(--corner-sm)] border border-[var(--input)] bg-[var(--card)] px-2 py-1.5 text-foreground focus-visible:outline-2"
+            >
+              <option value="discuss">Discuss</option>
+              <option value="edit">Edit</option>
+            </select>
+          </label>
+          <p role="status">
+            {running ? "The sent turn's mode and guidance are fixed. Stop it and send a new turn to change them." :
+              mode === "discuss" ? "Read-only. Send a new turn in Edit mode to request changes." :
+              "Changes use checked saves and turn undo. Destructive actions still ask for approval."}
+          </p>
+          <details>
+            <summary className="cursor-pointer rounded-sm focus-visible:outline-2">One-turn guidance (optional)</summary>
+            <label className="mt-2 block">
+              Guidance for next turn
+              <textarea
+                value={guidance}
+                onChange={(event) => setGuidance(event.target.value)}
+                disabled={running}
+                aria-invalid={guidanceTooLong}
+                aria-describedby="agent-guidance-limit"
+                data-testid="agent-guidance"
+                rows={2}
+                className="mt-1 block w-full resize-y rounded-[var(--corner-sm)] border border-[var(--input)] bg-[var(--card)] p-2 text-foreground focus-visible:outline-2"
+              />
+            </label>
+            <p id="agent-guidance-limit">{guidance.length.toLocaleString()} / 2,000 characters · This turn only</p>
+            <p>Book tone, answer length and this guidance go to the selected provider when you send. They do not change permissions or the model.</p>
+            <Button variant="ghost" size="xs" disabled={running || !guidance} onClick={() => setGuidance("")}>Clear guidance</Button>
+          </details>
+          {guidanceTooLong ? <p role="alert">Shorten guidance to 2,000 characters before sending. Your text is kept.</p> : null}
+        </div>
         <PromptInput onSubmit={(event) => void send(event)} groupClassName="rounded-[var(--corner-lg)]">
           <PromptInputTextarea
             ref={inputRef}
@@ -947,7 +1009,7 @@ export function ChatPanel({
             onChange={(event) => setInput(event.target.value)}
             rows={4}
             className="min-h-24 px-3.5 py-3"
-            placeholder="What should change?"
+            placeholder={mode === "discuss" ? "What would you like to discuss?" : "What should change?"}
             aria-label="Message the writing agent"
             data-testid="chat-input"
           />
@@ -991,7 +1053,7 @@ export function ChatPanel({
             {running ? (
               <PromptInputSubmit status="streaming" onStop={() => void stop()} data-testid="chat-stop" />
             ) : (
-              <PromptInputSubmit disabled={!input.trim()} data-testid="chat-send" />
+              <PromptInputSubmit disabled={!input.trim() || guidanceTooLong} data-testid="chat-send" />
             )}
           </PromptInputFooter>
           {/* Its own line: in the narrow chat panel it would squeeze the model and Background controls. */}

@@ -137,3 +137,12 @@ D-115 is limited to release signing and updates and is not an export dependency.
   is used.
 - After implementation, update `docs/FORMAT.md` with any accepted on-disk schema and the applicable
   public decision/ADR. This authoring task does not edit those files.
+
+## November 7 W05 safety slice
+
+The bounded existing-format implementation and its preimplementation rationale are recorded in
+[the current safety note](research/export-safety-2026-11-07.md). It strengthens canonical-path
+validation, near-publication destination checks, snapshot ownership, cleanup diagnostics and
+chapter/format/matter save gating without altering D-108/D-169/D-170 or the shared atomic writer.
+Structured warning delivery awaits the coordinator-owned IPC seam. T016/T017 remain partial until
+that integration and the corresponding hidden journeys are verified; T014 packaging is separate.

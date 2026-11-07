@@ -228,7 +228,7 @@ as a chapter and is not part of `library.json`; a missing or stale catalog never
 | `bookId` | string | The owning book. |
 | `title` | string | Author-facing label; defaults to "New conversation". |
 | `createdAt`, `updatedAt` | ISO 8601 | `updatedAt` changes on every save. |
-| `messages` | array | Each has `id`, `role`, `parts`, optional `model`, `mode` and `usage`, and `createdAt`. `mode` (`discuss` or `edit`) records the permission level of the turn that produced an assistant message; older messages have none and are shown as unrecorded. |
+| `messages` | array | Each has `id`, `role`, `parts`, optional `model`, `mode` and `usage`, and `createdAt`. New user submissions and assistant outcomes record their fixed turn `mode` (`discuss` or `edit`); older messages have none and are shown as unrecorded, never inferred from the current composer. |
 | `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation, newest last: each turn that changed the book and saved its checkpoint, including one stopped while it waited for approval and one that failed before it stored a reply. Undo takes the book's newest checkpoint, so the chat offers it only on the last of these, and names that turn: if another change now owns the newest checkpoint, nothing is undone (see [Agent turn checkpoints](#agent-turn-checkpoints)). An undo removes its turn from every conversation that lists it. A branch copies its source's list when it keeps the newest of these turns, and starts with none otherwise. |
 
 Message parts are `text`, `reasoning`, `tool-call`, `tool-result`, `source`, `file`, `error` and
@@ -240,6 +240,13 @@ deletion, split or merge that found its chapter changed since it was proposed al
 path of the conflict copy that holds its text (see [Saving and conflicts](#saving-and-conflicts)). A `guidance` part carries one turn of author instructions (1–2,000
 characters, never truncated) with the submitted user message; it applies to that turn only.
 The schema lives in `packages/core/src/agent/messages.ts`.
+
+Stored error explanations are limited to 2,000 UTF-16 code units. Longer provider details carry an
+explicit shortening marker; retry-wait explanations and checkpoint-loss warnings are retained.
+The numeric `retryAfterSeconds` field supports up to 86,400 seconds. A longer provider wait is
+preserved as seconds in the stored explanation instead of being clamped; the live terminal event
+still carries the original wait. Conversation validation or persistence failure cannot suppress
+the turn's terminal event.
 
 A corrupt file is never rewritten or deleted by a list operation; opening it reports the error. Thread
 writes use the library port's checked commit, so a failed write leaves the previous file intact.

@@ -8,10 +8,12 @@ import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
 
 let testing!: typeof import("@testing-library/react/pure");
 let WorkspaceView!: typeof import("@ai-book-studio/app/views/WorkspaceView").WorkspaceView;
+let FormatDialog!: typeof import("@ai-book-studio/app/components/FormatDialog").FormatDialog;
 
 beforeAll(async () => {
   testing = await mountDom();
   ({ WorkspaceView } = await import("@ai-book-studio/app/views/WorkspaceView"));
+  ({ FormatDialog } = await import("@ai-book-studio/app/components/FormatDialog"));
 });
 afterAll(async () => {
   await unmountDom();
@@ -28,6 +30,7 @@ afterEach(() => testing.cleanup());
 
 const NOW = "2026-11-03T00:00:00.000Z";
 const BOOK = "book_fx000002";
+const OTHER_BOOK = "book_fx000003";
 
 function chapter(id: string, title: string, order: number, content: string): Chapter {
   return {
@@ -41,19 +44,21 @@ function chapter(id: string, title: string, order: number, content: string): Cha
 
 const CHAPTER = chapter("ch_fx000010", "First", 1, "First line.\n");
 
-type Answer = { ok: true; data: string | null } | { ok: false; error: { code: string; message: string } };
+type Answer = { ok: true; data: string | { path: string; warnings: string[] } | null } | { ok: false; error: { code: string; message: string } };
 
 interface Setup {
   platform?: string;
   save?: () => Promise<unknown>;
+  edit?: () => Promise<unknown>;
+  matter?: (input: Parameters<typeof window.studio.books.saveMatter>[0]) => Promise<unknown>;
   answers?: Partial<Record<"exportDocx" | "exportMarkdown" | "exportPdf" | "exportEpub", () => Promise<Answer>>>;
 }
 
 function mockWorkspace(setup: Setup = {}) {
   const order: string[] = [];
-  const detail = () => ({
-    book: bookSchema.parse({ id: BOOK, title: "Exported", createdAt: NOW, updatedAt: NOW }),
-    chapters: [CHAPTER],
+  const detail = (id = BOOK) => ({
+    book: bookSchema.parse({ id, title: id === BOOK ? "Exported" : "Other export book", createdAt: NOW, updatedAt: NOW }),
+    chapters: [id === BOOK ? CHAPTER : { ...CHAPTER, id: "ch_fx000011", title: "Other" }],
     chapterReadIssues: []
   });
   const exporter = (name: "exportDocx" | "exportMarkdown" | "exportPdf" | "exportEpub", file: string) =>
@@ -72,11 +77,17 @@ function mockWorkspace(setup: Setup = {}) {
     return setup.save?.() ?? Promise.resolve({ ok: true, data: { status: "saved", chapter: CHAPTER } });
   });
   const onNotice = mock((_error: unknown) => {});
+  const saveMatter = mock((input: Parameters<typeof window.studio.books.saveMatter>[0]) => {
+    order.push("matter");
+    return setup.matter?.(input) ?? Promise.resolve({ ok: true, data: { status: "saved", book: { ...detail(input.bookId).book, matter: input.matter } } });
+  });
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: setup.platform ?? "darwin",
     books: {
-      open: mock(() => Promise.resolve({ ok: true, data: detail() })),
+      open: mock((id: string) => Promise.resolve({ ok: true, data: detail(id) })),
       update: mock(() => Promise.resolve({ ok: true, data: detail().book })),
+      edit: mock(() => setup.edit?.() ?? Promise.resolve({ ok: true, data: { status: "saved", book: detail().book } })),
+      saveMatter,
       ...exports
     },
     chapters: {
@@ -108,18 +119,18 @@ function mockWorkspace(setup: Setup = {}) {
       speakers: mock(async () => ({ ok: true, data: { available: false, connectionLabel: null, endpoint: null, model: null, voices: [] } }))
     }
   };
-  testing.render(
+  const component = (bookId: string) =>
     React.createElement(WorkspaceView, {
-      bookId: BOOK,
+      bookId,
       theme: { choice: "light" as const, set: () => {}, cycle: () => {} },
       libraryRoot: "/tmp/studio-library",
       libraryStorage: undefined,
       onBack: () => {},
       onNotice,
       onSchemaRefusal: () => {}
-    })
-  );
-  return { order, save, onNotice, ...exports };
+    });
+  const mounted = testing.render(component(BOOK));
+  return { order, save, saveMatter, onNotice, mounted, component, ...exports };
 }
 
 async function openFormat() {
@@ -139,6 +150,147 @@ function choose(view: ReturnType<typeof testing.within>, target: string): void {
 }
 
 describe("format dialog export", () => {
+  for (const [target, channel] of [
+    ["DOCX", "exportDocx"], ["PDF", "exportPdf"], ["EPUB", "exportEpub"], ["Markdown", "exportMarkdown"]
+  ] as const) {
+    for (const phase of ["chapter", "matter"] as const) {
+      test.each(["switch", "switch-back", "unmount"] as const)(`${target} ignores a delayed ${phase} save after %s`, async (leave) => {
+        let finish!: () => void;
+        const held = new Promise<void>((resolve) => { finish = resolve; });
+        const setup = mockWorkspace(phase === "chapter" ? {
+          save: async () => { await held; return { ok: true, data: { status: "saved", chapter: CHAPTER } }; }
+        } : {
+          matter: async (input) => {
+            await held;
+            return { ok: true, data: { status: "saved", book: bookSchema.parse({
+              id: BOOK, title: "Exported", createdAt: NOW, updatedAt: NOW, matter: input.matter
+            }) } };
+          }
+        });
+        const view = await openFormat();
+        if (phase === "chapter") {
+          testing.fireEvent.change(view.getByTestId("manuscript-text"), { target: { value: "Pending synthetic edit." } });
+        } else {
+          testing.fireEvent.change(view.getByLabelText("Author"), { target: { value: "Synthetic author" } });
+        }
+        choose(view, target);
+        testing.fireEvent.click(view.getByTestId("format-export"));
+        await testing.waitFor(() => expect(phase === "chapter" ? setup.save : setup.saveMatter).toHaveBeenCalledTimes(1));
+        expect(setup[channel]).not.toHaveBeenCalled();
+        if (leave === "unmount") setup.mounted.unmount();
+        else {
+          setup.mounted.rerender(setup.component(OTHER_BOOK));
+          await testing.waitFor(() => expect(view.getByTestId("workspace-view").querySelector("header h1")?.textContent).toBe("Other export book"));
+          if (leave === "switch-back") {
+            setup.mounted.rerender(setup.component(BOOK));
+            await testing.waitFor(() => expect(view.getByTestId("workspace-view").querySelector("header h1")?.textContent).toBe("Exported"));
+          }
+        }
+        await testing.act(async () => { finish(); await held; });
+        expect(setup[channel]).not.toHaveBeenCalled();
+        expect(setup.onNotice).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  const entrypoints = [
+    { target: "DOCX", channel: "exportDocx", header: "export-docx" },
+    { target: "Markdown", channel: "exportMarkdown", header: "export-markdown" },
+    { target: "DOCX", channel: "exportDocx" },
+    { target: "PDF", channel: "exportPdf" },
+    { target: "EPUB", channel: "exportEpub" },
+    { target: "Markdown", channel: "exportMarkdown" }
+  ] as const;
+
+  for (const entry of entrypoints) {
+    const header = "header" in entry ? entry.header : null;
+    test(`${header ?? "Format"} ${entry.target} shows returned warning and snapshot destination`, async () => {
+      const warning = "Skipped synthetic.png (First): the image file could not be read.";
+      const path = `/synthetic/output.${entry.target.toLowerCase()}`;
+      mockWorkspace({ answers: { [entry.channel]: async () => ({ ok: true, data: { path, warnings: [warning] } }) } });
+      const view = testing.within(document.body);
+      await testing.waitFor(() => expect(view.getByTestId("manuscript-text")).toBeTruthy());
+      if (!header) { await openFormat(); choose(view, entry.target); }
+      testing.fireEvent.click(view.getByTestId(header ?? "format-export"));
+      await testing.waitFor(() => expect(view.getByText(warning)).toBeTruthy());
+      expect(view.getByText(/Saved version captured when export began/).textContent).toContain(path);
+      expect(view.queryByTestId("format-export-error")).toBeNull();
+    });
+
+    for (const outcome of ["error", "conflict"] as const) {
+      test(`${header ?? "Format"} ${entry.target} waits for save and refuses ${outcome} with draft intact`, async () => {
+        let finish!: (value: unknown) => void;
+        const mocks = mockWorkspace({ save: () => new Promise((resolve) => { finish = resolve; }) });
+        const view = testing.within(document.body);
+        await testing.waitFor(() => expect(view.getByTestId("manuscript-text")).toBeTruthy());
+        testing.fireEvent.change(view.getByTestId("manuscript-text"), { target: { value: "SYNTHETIC_UNSAVED_WORDS\n" } });
+        if (!header) { await openFormat(); choose(view, entry.target); }
+        testing.fireEvent.click(view.getByTestId(header ?? "format-export"));
+        await testing.waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1));
+        expect(mocks[entry.channel]).not.toHaveBeenCalled();
+        await testing.act(async () => finish(outcome === "error"
+          ? { ok: false, error: { code: "io", message: "Synthetic disk full" } }
+          : { ok: true, data: { status: "conflict", conflict: {
+            bookId: BOOK, chapterId: CHAPTER.id, chapterTitle: CHAPTER.title,
+            savedAs: "conflicts/synthetic.md", reason: "newer-version", diskVersion: 2, localVersion: 1
+          } } }));
+        if (header) {
+          await testing.waitFor(() => expect(mocks.onNotice).toHaveBeenCalled());
+          expect((mocks.onNotice.mock.calls.at(-1)?.[0] as Error | undefined)?.message).toContain("nothing was exported");
+        } else {
+          await testing.waitFor(() => expect(view.getByTestId("format-export-error").textContent).toContain("nothing was exported"));
+        }
+        expect(mocks[entry.channel]).not.toHaveBeenCalled();
+        expect((view.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe("SYNTHETIC_UNSAVED_WORDS\n");
+      });
+    }
+  }
+
+  test("closing Format does not let the header bypass a pending or failed settings save", async () => {
+    let finish!: (value: unknown) => void;
+    const mocks = mockWorkspace({ edit: () => new Promise((resolve) => { finish = resolve; }) });
+    const view = await openFormat();
+    testing.fireEvent.change(view.getByLabelText("Size"), { target: { value: "14" } });
+    await testing.act(async () => {});
+    testing.fireEvent.keyDown(document, { key: "Escape" });
+    await testing.waitFor(() => expect(view.queryByTestId("format-preview")).toBeNull());
+    testing.fireEvent.click(view.getByTestId("export-docx"));
+    await testing.waitFor(() => expect(mocks.onNotice).toHaveBeenCalled());
+    expect((mocks.onNotice.mock.calls.at(-1)?.[0] as Error | undefined)?.message).toContain("finish saving");
+    expect(mocks.exportDocx).not.toHaveBeenCalled();
+    await testing.act(async () => finish({ ok: false, error: { code: "io", message: "Synthetic settings failure" } }));
+    testing.fireEvent.click(view.getByTestId("export-markdown"));
+    await testing.waitFor(() => expect((mocks.onNotice.mock.calls.at(-1)?.[0] as Error | undefined)?.message).toContain("Nothing was exported"));
+    expect(mocks.exportMarkdown).not.toHaveBeenCalled();
+  });
+
+  test("pending and rejected typography saves stop export until another edit saves", async () => {
+    let reject!: (error: Error) => void;
+    const book = bookSchema.parse({ id: BOOK, title: "Synthetic", createdAt: NOW, updatedAt: NOW });
+    const exportDocx = mock(async () => ({ ok: true, data: "/synthetic/out.docx" }));
+    window.studio = { platform: "darwin", books: { exportDocx } } as unknown as typeof window.studio;
+    const save = mock(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+    const view = testing.render(React.createElement(FormatDialog, {
+      open: true, onClose: () => {}, bookId: BOOK, bookTitle: book.title, book,
+      onBookSaved: () => {}, onNotice: () => {}, settings: book.settings.manuscript,
+      chapters: [CHAPTER], onSaveSettings: save, onFlush: async () => null
+    }));
+    testing.fireEvent.change(view.getByLabelText("Size"), { target: { value: "14" } });
+    testing.fireEvent.click(view.getByTestId("format-export"));
+    await testing.waitFor(() => expect(view.getByTestId("format-export-error").textContent).toContain("format settings"));
+    expect(exportDocx).not.toHaveBeenCalled();
+    reject(new Error("Synthetic disk full"));
+    await testing.act(async () => {});
+    testing.fireEvent.click(view.getByTestId("format-export"));
+    await testing.waitFor(() => expect(view.getByTestId("format-export-error").textContent).toContain("Synthetic disk full"));
+    expect(exportDocx).not.toHaveBeenCalled();
+    save.mockImplementation(async () => {});
+    testing.fireEvent.change(view.getByLabelText("Size"), { target: { value: "13" } });
+    await testing.act(async () => {});
+    testing.fireEvent.click(view.getByTestId("format-export"));
+    await testing.waitFor(() => expect(exportDocx).toHaveBeenCalledTimes(1));
+  });
+
   test("PDF saves the open chapter first, then exports and names the saved file", async () => {
     const mocks = mockWorkspace();
     const view = testing.within(document.body);

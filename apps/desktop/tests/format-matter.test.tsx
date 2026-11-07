@@ -105,6 +105,21 @@ function names(view: ReturnType<typeof testing.within>, side: "Front matter" | "
 }
 
 describe("front and back matter in the Format dialog", () => {
+  test("an earlier matter conflict cannot be bypassed by exporting again", async () => {
+    const book = bookWith({ matter: SAVED });
+    const { view, exportDocx, saveMatter } = render(book, {
+      saveMatter: async () => ({ ok: true, data: { status: "conflict", book, savedAs: "conflicts/synthetic.json" } })
+    });
+    testing.fireEvent.change(view.getByLabelText("Subtitle"), { target: { value: "My conflicting subtitle" } });
+    testing.fireEvent.click(view.getByTestId("format-export"));
+    await testing.waitFor(() => expect(view.getByTestId("matter-error").textContent).toContain("changed elsewhere"));
+    testing.fireEvent.click(view.getByTestId("format-export"));
+    await testing.act(async () => {});
+    expect(saveMatter).toHaveBeenCalledTimes(1);
+    expect(exportDocx).not.toHaveBeenCalled();
+    expect(view.getByTestId("format-export-error").textContent).toContain("nothing was exported");
+  });
+
   test("opening, toggling the title page off and on, and closing writes nothing", async () => {
     const { view, saveMatter, close } = render(bookWith({ frontMatter: { dedication: "For those who wait." } }));
     const titlePage = view.getByRole("checkbox", { name: "Title page" }) as HTMLInputElement;

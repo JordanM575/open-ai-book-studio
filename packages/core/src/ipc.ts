@@ -337,6 +337,12 @@ export interface StudioError {
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: StudioError };
 
+/** A successfully published manuscript and omissions from its captured image snapshot. */
+export interface ManuscriptExportReceipt {
+  path: string;
+  warnings: string[];
+}
+
 export interface DraftInput {
   bookId: string;
   chapterId: string;
@@ -479,12 +485,12 @@ export interface StudioApi {
     saveMatter(input: SaveMatterInput): Promise<Result<SaveMatterResult>>;
     delete(bookId: string): Promise<Result<{ trashedAt: string }>>;
     open(bookId: string): Promise<Result<BookDetail>>;
-    exportDocx(bookId: string): Promise<Result<string | null>>;
-    exportMarkdown(bookId: string): Promise<Result<string | null>>;
+    exportDocx(bookId: string): Promise<Result<ManuscriptExportReceipt | null>>;
+    exportMarkdown(bookId: string): Promise<Result<ManuscriptExportReceipt | null>>;
     /** Save the manuscript as a PDF where the author chooses; null when they cancel. */
-    exportPdf(bookId: string): Promise<Result<string | null>>;
+    exportPdf(bookId: string): Promise<Result<ManuscriptExportReceipt | null>>;
     /** Save the manuscript as an EPUB 3 e-book where the author chooses; null when they cancel. */
-    exportEpub(bookId: string): Promise<Result<string | null>>;
+    exportEpub(bookId: string): Promise<Result<ManuscriptExportReceipt | null>>;
     /** Save every image in the book as a JPEG in a new folder the author chooses. */
     exportImages(bookId: string): Promise<Result<ImageExportResult>>;
     search(bookId: string, query: string): Promise<Result<SearchHit[]>>;

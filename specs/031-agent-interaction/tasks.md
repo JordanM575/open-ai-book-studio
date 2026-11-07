@@ -2,7 +2,8 @@
 
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 **Status:** Draft / In progress — decision tasks T001–T003 reconciled to accepted D-177–D-179;
-T004 and T010 implemented. Other implementation/verification tasks remain open.
+T004 and T010 implemented. W03 implements T007–T009 and T011 plus the mode/guidance
+portion of T006; plan/lifecycle and integrated delivery verification remain open.
 
 Tasks are ordered. An unresolved decision blocks only the task that depends on it. All tests use
 temporary synthetic libraries, fixture chapters and scripted model responses unless separately
@@ -18,7 +19,8 @@ authorized; no task requires a live provider, credential, paid service, real man
   exact read-tier six, the `disabledTools` subset seam, bridge denial, and the plugin
   write-capable surface against five alternatives: read-only built-ins
   only with Discuss as the new-turn default, enforced by subset offer plus bridge and writer
-  guards. T007/T008 remain unimplemented; the decision's matching demo/script/runbook condition remains.
+  guards. That initial decision record preceded T007/T008; their W03 implementation is recorded
+  below. The November 7 delivery update replaces the event-only re-shoot hold.
 - [x] T002 Define the pause acknowledgment boundary, whether Start/Resume continue the same live
   turn or create a new explicit turn from the stored plan, and how a non-background plan behaves on
   window close. Specify what the interface says while an in-flight checked tool is settling.
@@ -48,15 +50,15 @@ authorized; no task requires a live provider, credential, paid service, real man
   `guidance` (1–2,000 chars, rejected never truncated); the schema/store supports `mode` on the
   assistant message and a `guidance` part on the user message; agent settings gain `tone`
   (≤500) and `answerLength` (brief/standard/detailed, standard by default) with old books
-  gaining defaults on read. Every turn caller (composer, ambient, backend, bridge, live
+  gaining defaults on read. In this initial schema-only slice every turn caller (composer, ambient, backend, bridge, live
   checks, tests) sends `edit`, preserving current full-tool behavior until T007 applies the accepted
   composer default. `docs/FORMAT.md` documents the thread and settings contract. Covered by
   `packages/core/tests/agent-interaction-contract.test.ts` (validation, legacy reads,
   store round-trips, defaults and bounds). No runtime permission or UI behavior changes;
-  enforcement stays with T006 and the composer with T007/T011. Production runtime population of
-  stored mode/guidance and retry identity still need wiring: a same-text request with changed mode
-  or guidance must not silently reuse a different earlier request. Schema round trips alone do not
-  prove that production messages contain these fields.
+  enforcement then remained with T006 and the composer with T007/T011. W03 subsequently implemented
+  production mode/guidance and retry identity, as recorded below. A same-text request with changed
+  mode or guidance must not silently reuse a different earlier request; schema round trips alone
+  do not prove runtime population.
 - [ ] T005 Add validated plan and step state to the thread contract, with explicit parent-turn
   binding and allowed transitions. Persist proposed, active and terminal state through the existing
   thread store. Malformed or incompatible plan state must be reported without deleting the thread.
@@ -64,18 +66,21 @@ authorized; no task requires a live provider, credential, paid service, real man
 - [ ] T006 Add mode, plan and guidance fields to the main-process turn/event contract. Reject
   invalid modes, oversized guidance and plans that exceed the selected bounds before a provider
   call or write can start. Test through the model factory seam without a network.
+  W03: mode/guidance validation and request snapshots are implemented; actual user guidance
+  and user/assistant mode persist, including failed, stopped and approval-waiting attempts.
+  Retry identity includes prompt, mode and guidance. Plan/event expansion remains open.
 
 ## Phase 2 — Discuss and Edit permissions
 
-- [ ] T007 Add the visible per-turn Discuss/Edit control and store the selected mode with each sent
+- [x] T007 Add the visible per-turn Discuss/Edit control and store the selected mode with each sent
   turn. Show historical mode from stored turn data; do not infer or relabel it from the current
   composer. Apply the decided default from T001.
-- [ ] T008 Enforce Discuss permissions in the main-process runtime and tool construction, applying
+- [x] T008 Enforce Discuss permissions in the main-process runtime and tool construction, applying
   the exact read-only policy decided in T001. A
   synthetic model attempt to call a write, destructive or unknown capability must be refused and
   leave book and chapter fixture bytes unchanged. Keep plugin tools out of Discuss unless a
   separately accepted public capability contract permits them.
-- [ ] T009 Verify Edit still uses the shared 024 catalog, checked writer, existing 002 destructive
+- [x] T009 Verify Edit still uses the shared 024 catalog, checked writer, existing 002 destructive
   approval and one-turn undo. A plan or mode control must not approve a destructive tool. Cover an
   ordinary write and a pending approval with scripted model responses.
 
@@ -95,10 +100,16 @@ authorized; no task requires a live provider, credential, paid service, real man
   round-trip) and `agent-tone.test.tsx` (dialog set/clear/disclosure/default) with
   synthetic fixtures only. Runtime inclusion of tone/answer-length in submitted turns
   stays with T011/future wiring.
-- [ ] T011 Add bounded one-turn guidance to the composer. Show that it applies to this turn only,
+- [x] T011 Add bounded one-turn guidance to the composer. Show that it applies to this turn only,
   enforce the 2,000-character limit without truncating, persist it with the turn and do not carry it
   into the next turn. Verify it cannot alter mode, tools, approvals or 011 model attribution. Use a
   synthetic thread and mock model inputs.
+  W03: guidance is kept verbatim in the user message and only the current model request;
+  composer and runtime reject over 2,000 characters. Existing book tone/length prompt
+  wiring is retained, with pre-provider refusal of invalid saved guidance. See
+  [implementation evidence and delivery runbook](implementation.md). These source/test
+  completions do not close integrated runtime/UI verification and independent review. The November 7
+  decision update replaces the event-only re-shoot hold; film work remains separately tracked.
 - [ ] T012 Add guidance to a proposed plan and require a refreshed visible proposal before **Start
   plan**. No tool may write during this refresh. Keep live steering disabled under D-179.
 

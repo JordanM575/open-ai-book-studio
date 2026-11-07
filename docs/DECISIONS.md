@@ -505,6 +505,14 @@ enforcement, and the D-124 device-identity question stands.
 | **Unblocks** | Spec 031 decision task T003; request wiring and lifecycle verification remain open. |
 | **Owner** | spec 031 |
 
+**D-177–D-179 delivery update (2026-11-07):** under the author's delegated authority and feature-first
+direction, the event-only re-shoot hold is replaced by exact-candidate runtime/UI verification,
+independent review and a matching interaction runbook before source integration. The event has ended;
+an older promotional cut must not prevent delivery of independently verified controls. Updated film
+work remains in L22 and must identify its recorded build truthfully. The existing video is not evidence
+of these new controls, and this update approves no new upload, paid recording or product authority.
+The substantive Discuss, continuation and no-live-steering decisions above are unchanged.
+
 ### D-180 · Legacy import idempotency by content fingerprint
 
 | | |

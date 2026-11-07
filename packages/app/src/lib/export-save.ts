@@ -1,4 +1,12 @@
+import type { ManuscriptExportReceipt } from "@ai-book-studio/core/ipc";
 import type { SaveStatus } from "../components/ManuscriptEditor";
+
+export type { ManuscriptExportReceipt } from "@ai-book-studio/core/ipc";
+
+/** Retain path-only fixture compatibility; production IPC returns the shared receipt. */
+export function exportReceipt(result: string | ManuscriptExportReceipt | null): ManuscriptExportReceipt | null {
+  return typeof result === "string" ? { path: result, warnings: [] } : result;
+}
 
 /**
  * Why an export did not start: the open chapter's save did not confirm. One wording,

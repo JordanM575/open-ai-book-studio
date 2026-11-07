@@ -7,6 +7,37 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Integration
+
+- Invalidate Format dialog export continuations after close, navigation or unmount; delayed
+  chapter/matter saves cannot submit an obsolete export, and late replies cannot update a new visit.
+- Bind header export receipts, errors, preflight and busy state to the originating book view;
+  ignore obsolete completions after navigation or unmount, including a return to the same book.
+- Keep terminal agent events deliverable when conversation validation or storage fails. Retain
+  bounded, explicitly shortened error details and preserve longer provider retry waits in the
+  stored explanation without clamping the live wait or losing checkpoint warnings.
+- Update the hidden agent-panel check for the Discuss/Edit permission explanation and close the
+  panel after a failed assertion so the later retry journey starts from a clean view.
+- Connect the existing manuscript export channels to typed published-path/warning receipts, using
+  the same image snapshot for rendering and omission notices. Add real-handler coverage for all
+  four formats, cancellation and refusal, plus a hidden-app check of the visible Markdown warning.
+- Integrate Discuss/Edit and bounded guidance with export safety; document actual user/assistant
+  mode persistence while preserving legacy unrecorded turns.
+- Replace the expired event-film integration hold with exact-candidate runtime/UI checks, independent
+  review and the matching interaction runbook under delegated feature-first authority. Film updates
+  remain tracked separately and the older demo is not evidence of the new controls.
+
+### Agent interaction
+
+- Add the first Discuss/Edit interaction slice: new composer requests default to Discuss,
+  whose enabled built-in read tools cannot mutate the book and never load plugins. Edit
+  retains checked writes, destructive approval and turn undo. Mode is recorded per request
+  and outcome; older conversations remain explicitly unrecorded.
+- Add inspectable, bounded one-turn guidance with no silent truncation or later-turn reuse,
+  fixed retry attribution, and runtime validation before provider access. Preserve book
+  tone/answer-length guidance and the system-prompt budget. The initial candidate retained spec 031's
+  demo/script condition; the subsequent delivery update above replaces its event-only re-shoot hold.
+
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at
   launch on Electron's sandbox helper. After that was fixed and the browser smoke check was made to wait for the
@@ -108,6 +139,15 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+
+- W05 export safety: Word, Markdown, PDF and EPUB reject destinations that resolve inside the
+  open library, including parent-directory aliases. They recheck destination identity and content
+  immediately before atomic publication, preserve the supplied saved snapshot, and name any
+  temporary output that could not be cleaned up while retaining the primary failure. Format and
+  header exports also refuse pending/failed format saves and unresolved matter-save conflicts.
+  Snapshot image-warning collection and visible structured export receipts are prepared; their
+  production IPC wiring remains a coordinator integration step. Synthetic focused tests cover
+  source/prior-output bytes, alias changes, filesystem failures and save/status behavior.
 - A Story Bible save no longer wipes what another device, the agent or the toolkit wrote to `book.json`
   while the dialog was open (QA D3). The dialog sent its whole state and `book.json` was written from
   that stale copy, so a character another device added or a memory the toolkit saved disappeared with

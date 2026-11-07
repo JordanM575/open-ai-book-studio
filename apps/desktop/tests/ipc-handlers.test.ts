@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } f
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IPC, type Result } from "@ai-book-studio/core/ipc";
+import { IPC, type ManuscriptExportReceipt, type Result } from "@ai-book-studio/core/ipc";
 import { MATTER_LIMITS, matterHash, newMatterSection, readMatter } from "@ai-book-studio/core/matter";
 import { agentMessageSchema } from "@ai-book-studio/core/agent/messages";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
@@ -1319,22 +1319,74 @@ describe("library folders and archives", () => {
 });
 
 describe("exports", () => {
+  test("all manuscript channels return published paths with snapshot warnings, never receipts for cancel or failure", async () => {
+    const { root, library } = await setup();
+    const { bookId, one } = await book(library);
+    const image = await data<{ fileName: string }>(IPC.images.generate, {
+      bookId,
+      chapterId: one.id,
+      prompt: "Synthetic missing illustration.",
+      size: "1024x1024"
+    });
+    await rm(join(root, "books", bookId, "images", image.fileName));
+    const sourcePaths = [
+      join(root, "books", bookId, "book.json"),
+      join(root, "books", bookId, "images.json"),
+      chapterFile(root, bookId, one)
+    ];
+    const sourceBytes = await Promise.all(sourcePaths.map((path) => readFile(path)));
+    const exports = await temp("studio-ipc-warning-export-");
+    // Only the native PDF render is replaced. The handlers, image collection and publication are real.
+    const pdf = spyOn(await import("../src/main/pdf"), "renderPdfInHiddenWindow")
+      .mockResolvedValue(new TextEncoder().encode("%PDF-1.7\n%%EOF\n"));
+    try {
+      for (const [channel, extension] of [
+        [IPC.books.exportDocx, "docx"],
+        [IPC.books.exportMarkdown, "md"],
+        [IPC.books.exportPdf, "pdf"],
+        [IPC.books.exportEpub, "epub"]
+      ] as const) {
+        process.env.STUDIO_EXPORT_PATH = exports;
+        const receipt = await data<ManuscriptExportReceipt>(channel, bookId);
+        expect(receipt.path).toBe(join(exports, `the-salt-road.${extension}`));
+        expect((await readFile(receipt.path)).length).toBeGreaterThan(0);
+        expect(receipt.warnings).toHaveLength(1);
+        expect(receipt.warnings[0]).toContain(image.fileName);
+        expect(receipt.warnings[0]).not.toContain(root);
+        if (extension === "md") expect(receipt.warnings[0]).toContain("text only");
+
+        delete process.env.STUDIO_EXPORT_PATH;
+        expect(await data(channel, bookId)).toBeNull();
+        process.env.STUDIO_EXPORT_PATH = join(root, "books");
+        expect(await call(channel, bookId)).toMatchObject({ ok: false, error: { code: "invalid" } });
+      }
+      expect(pdf).toHaveBeenCalledTimes(1);
+      for (const [index, path] of sourcePaths.entries()) {
+        const before = sourceBytes[index];
+        if (!before) throw new Error("Missing synthetic source snapshot");
+        expect(await readFile(path)).toEqual(before);
+      }
+    } finally {
+      pdf.mockRestore();
+    }
+  });
+
   test("a manuscript is written as Markdown or Word to the named folder in a headless run", async () => {
     const { library } = await setup();
     const { bookId } = await book(library);
     const exports = await temp("studio-ipc-manuscript-");
     process.env.STUDIO_EXPORT_PATH = exports;
 
-    const markdown = await data<string>(IPC.books.exportMarkdown, bookId);
-    expect(markdown).toBe(join(exports, "the-salt-road.md"));
-    const text = await readFile(markdown, "utf8");
+    const markdown = await data<ManuscriptExportReceipt>(IPC.books.exportMarkdown, bookId);
+    expect(markdown).toEqual({ path: join(exports, "the-salt-road.md"), warnings: [] });
+    const text = await readFile(markdown.path, "utf8");
     expect(text).toContain("# The Salt Road");
     expect(text).toContain("## The Crossing");
     expect(text).toContain("Mara waited for the ebb.");
 
-    const docx = await data<string>(IPC.books.exportDocx, bookId);
-    expect(docx).toBe(join(exports, "the-salt-road.docx"));
-    expect((await readFile(docx)).subarray(0, 2).toString()).toBe("PK");
+    const docx = await data<ManuscriptExportReceipt>(IPC.books.exportDocx, bookId);
+    expect(docx).toEqual({ path: join(exports, "the-salt-road.docx"), warnings: [] });
+    expect((await readFile(docx.path)).subarray(0, 2).toString()).toBe("PK");
   });
 
   test("an export never lands inside the library, and replacing a file asks first", async () => {
@@ -1363,7 +1415,7 @@ describe("exports", () => {
 
     answers.save.push({ canceled: false, filePath: target });
     answers.message.push({ response: 0 });
-    expect(await data(IPC.books.exportMarkdown, bookId)).toBe(target);
+    expect(await data(IPC.books.exportMarkdown, bookId)).toEqual({ path: target, warnings: [] });
     expect(await readFile(target, "utf8")).toContain("# The Salt Road");
 
     const word = join(await temp("studio-ipc-word-"), "manuscript.docx");
@@ -1374,7 +1426,7 @@ describe("exports", () => {
     expect(await readFile(word, "utf8")).toBe("old");
     answers.save.push({ canceled: false, filePath: word });
     answers.message.push({ response: 0 });
-    expect(await data(IPC.books.exportDocx, bookId)).toBe(word);
+    expect(await data(IPC.books.exportDocx, bookId)).toEqual({ path: word, warnings: [] });
     expect((await readFile(word)).subarray(0, 2).toString()).toBe("PK");
   });
 
