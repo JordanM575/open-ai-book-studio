@@ -49,6 +49,30 @@ Update the `Unreleased` section before every commit.
   Link the public repository and distinguish final submission evidence from historical checks.
 
 ### Fixed
+- Moving the chapter you are writing no longer turns your next save into a conflict (QA D5). A move
+  rewrites `order` in every chapter file it shifts, so the open chapter's version and hash moved on
+  while the editor kept the ones it loaded. Its next autosave was refused as a newer version, and
+  your words went to a conflict copy you had not caused. This happened with the rail's **Move up**
+  and **Move down**, ⌘⌥↑ and ⌘⌥↓, a drag, a drag of another chapter past the open one, and an
+  agent's `move_chapter`, `split_chapter` or `merge_chapters`. Now the editor's saves wait while a
+  move runs, and when the open chapter's file comes back with its words and title unchanged, it
+  becomes the editor's base. Words typed while the move was on its way stay in the editor and save
+  normally afterwards, with the caret, focus and undo where they were. After an agent turn the
+  workspace does the same before it saves your unsaved words, and remounts the editor only when the
+  turn changed the chapter's words or title. A move that meets an outside edit and is put back
+  leaves the editor on the right base too.
+- Moving a chapter in a long book no longer renumbers the chapters behind a gap (QA D10). After a
+  chapter had been deleted, dragging a chapter two places in a 300-chapter book rewrote 295 files,
+  and a move rebuilt the library catalog once for every file it wrote, 300 times for a drag from
+  first to last, all while the book's saves waited. Now the chapters between the two places share
+  out the numbers those places had and keep the gap, so that drag rewrites three files and every
+  move rebuilds the catalog once. A merge across a deleted chapter is no longer refused, and the
+  agent's split puts the new half right after its chapter in a book with a gap, because both now go
+  by place in the book. A move cut short, for example by a crash, leaves at most the moved chapter
+  and its new neighbour on one number; the book reads in one order, ties broken by file name as
+  `docs/FORMAT.md` says, with every other chapter in place, and the next move, from the buttons as
+  well as a drag, gives each chapter its own number instead of refusing with "Two chapters share
+  the same order".
 - An export no longer hands over a book with chapters missing. When some chapter files cannot be read (the workspace
   already reports them), the Word, Markdown, PDF and EPUB exports now refuse before asking for a destination, building
   a file or writing anything, and say "The manuscript was not exported because some chapter files could not be read.

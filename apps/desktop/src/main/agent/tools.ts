@@ -498,7 +498,8 @@ export function createChapterTools(
           created: true,
           afterHash: await bodyHash(chapter.content)
         });
-        return result(true, `Created “${chapter.title}” as chapter ${chapter.order}.`, {
+        const position = (await positionOf(chapter.id)) ?? chapter.order;
+        return result(true, `Created “${chapter.title}” as chapter ${position}.`, {
           chapterId: chapter.id,
           order: chapter.order
         });
@@ -540,7 +541,8 @@ export function createChapterTools(
         }
 
         try {
-          const moved = await library.moveChapterTo(bookId, created.id, chapter.order);
+          // Placed by position: order numbers keep the gaps deleted chapters leave, so they are not places.
+          const moved = await library.moveChapterTo(bookId, created.id, (await positionOf(chapter.id)) ?? chapter.order);
           if (moved.status === "conflict") {
             await library.deleteChapter(bookId, created.id).catch(() => {});
             return result(false, "The chapter order changed on disk, so nothing was split.");
@@ -600,13 +602,15 @@ export function createChapterTools(
             { chapterId: first.id, changedSinceRead: true }
           );
         }
-        if (second.order !== first.order + 1) {
+        // Next to each other in the book, not in number: a deleted chapter leaves a gap in the numbers.
+        const firstPosition = await positionOf(first.id);
+        const secondPosition = await positionOf(second.id);
+        if (firstPosition === undefined || secondPosition === undefined || secondPosition !== firstPosition + 1) {
           return result(false, "Only adjacent chapters can be merged. Move one first or choose the next chapter.");
         }
         const firstText = first.content.replace(/\s+$/, "");
         const secondText = second.content.replace(/^\s+/, "");
         const combined = [firstText, secondText].filter(Boolean).join("\n\n");
-        const secondPosition = (await positionOf(second.id)) ?? second.order;
 
         let trashed: { trashedAt: string };
         try {
