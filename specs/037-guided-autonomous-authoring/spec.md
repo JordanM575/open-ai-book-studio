@@ -1,6 +1,6 @@
 # Guided and autonomous authoring
 
-**Status:** In progress — foreground and full-book contracts accepted; runtime journey not implemented
+**Status:** In progress — foreground core and full-book contracts; runtime journey not implemented
 **Number:** 037
 **Depends on:** [002](../002-studio-v1/spec.md) agent and library contracts; [011](../011-model-access/spec.md) provider and model selection; [024](../024-agent-tool-parity/spec.md) tool tiers; [025](../025-agent-capabilities/spec.md) per-book tool controls and plugins; [012](../012-automated-verification/spec.md) verification approach.
 
