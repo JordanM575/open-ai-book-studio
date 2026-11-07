@@ -7,6 +7,20 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+
+### Structured reader review
+
+- Add an isolated, single-book spec 039 reader-review leaf with injected preparation, Start, stop
+  and exact-navigation callbacks. Show the immutable selected scope, profile/version, destination,
+  known/unknown accounting and applicable terms/consent before a separate provider-named Start.
+- Keep reader results volatile, preserve historical quotation/reader attribution, and compare
+  explicit new-request rereads without improvement scores. Cancel stale disclosures and ignore late
+  callbacks across stop, close and repeated book/view changes; already-sent text is not recallable.
+- Add synthetic component tests for disclosure, missing consent/terms, refusal, malformed evidence,
+  navigation and callback races, plus narrow core review exports and documented host/runtime seams.
+  This is a leaf UI candidate, not connected runtime or full spec 039 acceptance; reviewed core
+  public-boundary fixes and integrated host/accessibility verification remain separately owned.
+
 ### Integration
 
 - Accept individually researched full-book authoring, inline editorial-review and hands-free

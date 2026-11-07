@@ -39,6 +39,7 @@
     "tests/manuscript-editor.test.ts",
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",
+    "tests/reader-review.test.tsx",
     "tests/story-bible-dialog.test.tsx",
     "tests/settings-status.test.tsx",
     "tests/voice-settings.test.tsx",

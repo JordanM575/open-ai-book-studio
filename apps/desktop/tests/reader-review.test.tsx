@@ -1,0 +1,531 @@
+/// <reference types="bun" />
+import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { mountDom, unmountDom } from "./support/dom";
+import { buildReviewEnvelope, type EnvelopeInput, type ReviewEnvelope } from "@ai-book-studio/core/review/envelope";
+import { buildReaderRun, type ReaderRun } from "@ai-book-studio/core/review/findings";
+import { builtinReaderProfile, editReaderProfile } from "@ai-book-studio/core/review/profiles";
+import { captureBibleSource, captureChapterSource } from "@ai-book-studio/core/review/sources";
+import { citation, currentSources, input, saved, source, stamp } from "../../../packages/core/tests/review/scoped-fixtures";
+import type { PreparationOutcome, PreparedReaderReview, ReaderReviewProps, StartOutcome } from "../../../packages/app/src/components/reader-review/contracts";
+
+let testing!: typeof import("@testing-library/react/pure");
+let ReaderReviewPanel!: typeof import("@ai-book-studio/app/components/reader-review/ReaderReviewPanel").ReaderReviewPanel;
+beforeAll(async () => {
+  testing = await mountDom();
+  ({ ReaderReviewPanel } = await import("@ai-book-studio/app/components/reader-review/ReaderReviewPanel"));
+});
+afterEach(() => testing.cleanup());
+afterAll(async () => { await unmountDom(); });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+async function envelope(requestId = "request-1", overrides: Partial<EnvelopeInput> = {}) {
+  return buildReviewEnvelope({ ...input(), kind: "reader-review", profile: await builtinReaderProfile("alpha"), requestId, ...overrides });
+}
+function prepared(value: ReviewEnvelope): PreparedReaderReview {
+  return { envelope: value, terms: value.books.map((book) => ({ bookId: book.bookId, termsRevision: book.termsRevision,
+    dataUse: "Synthetic data-use terms: sent to the named provider.", training: "Synthetic training terms: no training for this destination." })) };
+}
+async function run(value: ReviewEnvelope, evidence: unknown[] = [citation()], interpretation = "The scene may feel abrupt."): Promise<ReaderRun> {
+  return buildReaderRun({ envelope: value, runId: value.requestId, startedAt: stamp, completedAt: stamp,
+    output: JSON.stringify({ runId: value.requestId, readerId: value.profile?.id, readerVersion: value.profile?.version,
+      findings: [{ findingId: "finding-1", category: "clarity", readerId: value.profile?.id,
+        readerVersion: value.profile?.version, runId: value.requestId, interpretation, claim: "observation", evidence }] }) });
+}
+function render(value: ReviewEnvelope, overrides: Partial<ReaderReviewProps> = {}) {
+  const onPrepare = mock(async (): Promise<PreparationOutcome> => ({ kind: "ready", prepared: prepared(value) }));
+  const onStart = mock(async (): Promise<StartOutcome> => ({ kind: "completed", run: await run(value) }));
+  const onStop = mock(async (_request: Parameters<ReaderReviewProps["onStop"]>[0]) => {});
+  const onNavigate = mock(async () => "selected" as const);
+  const onClose = mock(() => {});
+  let props: ReaderReviewProps = { open: true, bookId: saved.bookId, viewKey: "view-1", disclosureRevision: "facts-1",
+    supported: true, currentSources: currentSources(value), editor: { clean: true, identity: citation().identity },
+    onPrepare, onStart, onStop, onNavigate, onClose, ...overrides };
+  const view = testing.render(<ReaderReviewPanel {...props} />);
+  return { ...view, onPrepare, onStart, onStop, onNavigate, onClose,
+    update(next: Partial<ReaderReviewProps>) { props = { ...props, ...next }; view.rerender(<ReaderReviewPanel {...props} />); }
+  };
+}
+function body() { return testing.within(document.body); }
+function click(name: string) { testing.fireEvent.click(body().getByRole("button", { name })); }
+async function disclose() {
+  click("Prepare review");
+  await testing.waitFor(() => expect(body().getByRole("button", { name: "Start with Synthetic provider" })).toBeTruthy());
+}
+async function complete() {
+  await disclose();
+  click("Start with Synthetic provider");
+  await testing.waitFor(() => expect(body().getByRole("article", { name: "Reader run request-1" })).toBeTruthy());
+}
+function statusText() { return body().getByRole("status").textContent ?? ""; }
+
+describe("reader disclosure and explicit authority", () => {
+  test("open, rerender, close and reopen never prepare or start automatically", async () => {
+    const view = render(await envelope());
+    view.update({ disclosureRevision: "facts-2" });
+    view.update({ open: false });
+    view.update({ open: true });
+    expect(view.onPrepare).not.toHaveBeenCalled();
+    expect(view.onStart).not.toHaveBeenCalled();
+    expect(view.onStop).not.toHaveBeenCalled();
+    expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+  });
+
+  test("discloses only exact scope, profile, feedback, destination and unknown accounting", async () => {
+    const value = await envelope("request-1", { priorFeedback: [{ id: "feedback-1", runId: "old-run", label: "Selected feedback", text: "Synthetic earlier impression" }] });
+    const view = render(value);
+    await disclose();
+    const disclosure = body().getByRole("region", { name: "Outgoing review disclosure" });
+    expect(disclosure.textContent).toContain("Selected 😀 exact.");
+    expect(disclosure.textContent).not.toContain("ADJACENT_BEFORE");
+    expect(disclosure.textContent).not.toContain("ADJACENT_AFTER");
+    expect(disclosure.textContent).toContain("Saved version 3");
+    expect(disclosure.textContent).toContain("Lines 2–2");
+    expect(disclosure.textContent).toContain("synthetic/model");
+    expect(disclosure.textContent).toContain("endpoint-revision-1");
+    expect(disclosure.textContent).toContain("Estimated cost: Unknown");
+    expect(disclosure.textContent).toContain("Context fit: Unknown");
+    expect(disclosure.textContent).toContain("Catalog context: Unknown");
+    expect(disclosure.textContent).toContain("Alpha reader");
+    expect(disclosure.textContent).toContain("reader-alpha");
+    expect(disclosure.textContent).toContain("Synthetic earlier impression");
+    expect(disclosure.textContent).toContain("Synthetic data-use terms");
+    expect(disclosure.textContent).toContain("Required consent: Satisfied");
+    expect(view.onStart).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(body().getByRole("status"));
+  });
+
+  test("known zero cost and catalog size do not imply a cost cap or proven context fit", async () => {
+    render(await envelope("request-1", { environment: { ...input().environment, estimatedCostUsd: 0, priceAsOf: stamp, catalogContextTokens: 32000, catalogAsOf: stamp } }));
+    await disclose();
+    expect(body().getByText("Estimated cost: USD 0 · Not a spending cap")).toBeTruthy();
+    expect(body().getByText(/Context fit: Unknown/)).toBeTruthy();
+    expect(body().getByText(/Catalog context: 32000 tokens/)).toBeTruthy();
+  });
+
+  test("merged chapter selections and selected Bible fields are disclosed literally", async () => {
+    const chapter = captureChapterSource({ sourceId: "merged-source", saved: { ...saved, body: "One two three" },
+      bookTitle: "Synthetic book", title: "Merged selection", position: 1, capturedAt: stamp,
+      ranges: [{ start: 0, end: 4 }, { start: 3, end: 7 }, { start: 8, end: 13 }] });
+    const bible = await captureBibleSource({ sourceId: "bible-source", bookId: saved.bookId, bookTitle: "Synthetic book",
+      field: { section: "outline" }, label: "Selected outline", containingFileHash: "b".repeat(64), capturedAt: stamp,
+      text: "<script>synthetic untrusted text</script>" });
+    render(await envelope("request-1", { sources: [chapter, bible] }));
+    await disclose();
+    const scope = body().getByRole("list", { name: "Exact selected saved scope" });
+    expect(scope.querySelectorAll("pre")).toHaveLength(3);
+    expect(scope.textContent).toContain("UTF-16 range [0, 7)");
+    expect(scope.textContent).toContain("UTF-16 range [8, 13)");
+    expect(scope.textContent).toContain("Story Bible · Selected outline");
+    expect(scope.querySelector("script")).toBeNull();
+  });
+
+  test("the first leaf refuses multi-book preparation", async () => {
+    const base = input();
+    const second = captureChapterSource({ sourceId: "other-source", saved: { ...saved, bookId: "book_other123" },
+      bookTitle: "Other synthetic book", title: "Other chapter", position: 1, capturedAt: stamp, ranges: [{ start: 0, end: 8 }] });
+    const book = base.books[0];
+    if (!book) throw new Error("Missing fixture book");
+    const value = await envelope("request-1", { books: [...base.books, { ...book, bookId: "book_other123", title: "Other synthetic book" }], sources: [source(), second] });
+    const view = render(value);
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("disclosure could not be validated"));
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test("a fresh refresh replaces disclosure without starting and detaches the terms text", async () => {
+    const first = await envelope();
+    const second = await envelope("request-2");
+    const view = render(first);
+    await disclose();
+    const data = prepared(second);
+    const mutable = data.terms.map((term) => ({ ...term }));
+    view.update({ onPrepare: async () => ({ kind: "ready", prepared: { envelope: second, terms: mutable } }) });
+    click("Refresh disclosure");
+    await testing.waitFor(() => expect(statusText()).toContain("Disclosure ready"));
+    const term = mutable[0];
+    if (!term) throw new Error("Missing fixture terms");
+    term.training = "MUTATED_TERMS_SENTINEL";
+    view.update({});
+    expect(document.body.textContent).not.toContain("MUTATED_TERMS_SENTINEL");
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test("unsupported hosts refuse before preparation", async () => {
+    const view = render(await envelope(), { supported: false });
+    expect((body().getByRole("button", { name: "Prepare review" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Prepare review");
+    expect(statusText()).toContain("unavailable on this host");
+    expect(view.onPrepare).not.toHaveBeenCalled();
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test.each(["consent", "destination"])("missing %s blocks Start", async (which) => {
+    const base = input();
+    const value = await envelope("request-1", which === "consent" ? { books: base.books.map((book) => ({ ...book, consentSatisfied: false })) } : { environment: { ...base.environment, connectionAvailable: false } });
+    const view = render(value);
+    await disclose();
+    expect((body().getByRole("button", { name: /Start with/ }) as HTMLButtonElement).disabled).toBe(true);
+    click("Start with Synthetic provider");
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test.each(["missing", "revision", "blank"])("%s terms fail disclosure without a start", async (which) => {
+    const value = await envelope();
+    const data = prepared(value);
+    const terms = which === "missing" ? [] : data.terms.map((term) => ({ ...term,
+      ...(which === "revision" ? { termsRevision: "wrong" } : { training: " " }) }));
+    const view = render(value, { onPrepare: async () => ({ kind: "ready", prepared: { ...data, terms } }) });
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("disclosure could not be validated"));
+    expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test.each(["unregistered", "wrong-book", "guided"])("rejects %s envelopes", async (which) => {
+    const value = await envelope();
+    const bad = which === "unregistered" ? JSON.parse(JSON.stringify(value)) : which === "guided" ? await buildReviewEnvelope(input()) : value;
+    const view = render(value, { ...(which === "wrong-book" ? { bookId: "book_other123" } : {}), onPrepare: async () => ({ kind: "ready", prepared: prepared(bad) }) });
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("disclosure could not be validated"));
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test("refresh consumes no Start and refuses a reused request identity", async () => {
+    const view = render(await envelope());
+    await disclose();
+    click("Refresh disclosure");
+    await testing.waitFor(() => expect(statusText()).toContain("disclosure could not be validated"));
+    expect(view.onPrepare).toHaveBeenCalledTimes(2);
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test("closing a prepared disclosure sends nothing and immediately clears it", async () => {
+    const view = render(await envelope());
+    await disclose();
+    click("Close review");
+    expect(view.onClose).toHaveBeenCalledTimes(1);
+    expect(view.onStart).not.toHaveBeenCalled();
+    expect(view.onStop).not.toHaveBeenCalled();
+    expect(body().queryByRole("region", { name: "Outgoing review disclosure" })).toBeNull();
+  });
+
+  test("explicit preparation refusal and exceptions release busy state without echoing raw failures", async () => {
+    const value = await envelope();
+    const view = render(value, { onPrepare: async () => ({ kind: "blocked", reason: "scope-too-large" }) });
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("Choose a smaller selection"));
+    view.update({ onPrepare: async () => { throw new Error("PRIVATE_FAILURE_SENTINEL"); } });
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("could not be validated"));
+    expect(document.body.textContent).not.toContain("PRIVATE_FAILURE_SENTINEL");
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancellation and disclosure lifetime races", () => {
+  test("double clicks cause one preparation and one Start, using the disclosed immutable envelope", async () => {
+    const value = await envelope();
+    const pendingPreparation = deferred<PreparationOutcome>();
+    const pendingStart = deferred<StartOutcome>();
+    const onPrepare = mock(() => pendingPreparation.promise);
+    const onStart = mock((_request: Parameters<ReaderReviewProps["onStart"]>[0]) => pendingStart.promise);
+    render(value, { onPrepare, onStart });
+    const prepareButton = body().getByRole("button", { name: "Prepare review" });
+    testing.act(() => { testing.fireEvent.click(prepareButton); testing.fireEvent.click(prepareButton); });
+    expect(onPrepare).toHaveBeenCalledTimes(1);
+    await testing.act(async () => pendingPreparation.resolve({ kind: "ready", prepared: prepared(value) }));
+    const startButton = body().getByRole("button", { name: /Start with/ });
+    testing.act(() => { testing.fireEvent.click(startButton); testing.fireEvent.click(startButton); });
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onStart.mock.calls[0]?.[0].envelope).toBe(value);
+    expect(Object.isFrozen(onStart.mock.calls[0]?.[0].envelope.sources)).toBe(true);
+    await testing.act(async () => pendingStart.resolve({ kind: "completed", run: await run(value) }));
+    await testing.waitFor(() => expect(body().getByRole("article", { name: "Reader run request-1" })).toBeTruthy());
+  });
+
+  test("cancel preparation aborts its signal and ignores its late response", async () => {
+    const value = await envelope();
+    const pending = deferred<PreparationOutcome>();
+    const onPrepare = mock((_request: Parameters<ReaderReviewProps["onPrepare"]>[0]) => pending.promise);
+    const view = render(value, { onPrepare });
+    click("Prepare review");
+    click("Cancel preparation");
+    expect(onPrepare.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    await testing.act(async () => pending.resolve({ kind: "ready", prepared: prepared(value) }));
+    expect(statusText()).toContain("No provider request started");
+    expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+    expect(view.onStart).not.toHaveBeenCalled();
+    expect(view.onStop).not.toHaveBeenCalled();
+  });
+
+  test("a changed source clears disclosure; restoring it cannot revive authorization", async () => {
+    const value = await envelope();
+    const view = render(value);
+    await disclose();
+    view.update({ currentSources: [{ sourceId: "source-1", status: "missing" }] });
+    expect(statusText()).toContain("disclosure changed");
+    view.update({ currentSources: currentSources(value) });
+    expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test.each(["book", "view", "facts", "open"])("late A→B→A preparation is ignored across %s changes", async (which) => {
+    const value = await envelope();
+    const pending = deferred<PreparationOutcome>();
+    const onPrepare = mock((_request: Parameters<ReaderReviewProps["onPrepare"]>[0]) => pending.promise);
+    const view = render(value, { onPrepare });
+    click("Prepare review");
+    const away = which === "book" ? { bookId: "book_other123" } : which === "view" ? { viewKey: "view-2" } : which === "facts" ? { disclosureRevision: "facts-2" } : { open: false };
+    view.update(away);
+    view.update({ bookId: saved.bookId, viewKey: "view-1", disclosureRevision: "facts-1", open: true });
+    expect(onPrepare.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    await testing.act(async () => pending.resolve({ kind: "ready", prepared: prepared(value) }));
+    expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+
+  test.each(["book", "view", "facts", "open", "stop"])("late completion is ignored after %s; stop is best-effort only", async (which) => {
+    const value = await envelope();
+    const pending = deferred<StartOutcome>();
+    const onStart = mock((_request: Parameters<ReaderReviewProps["onStart"]>[0]) => pending.promise);
+    const view = render(value, { onStart });
+    await disclose();
+    click("Start with Synthetic provider");
+    if (which === "stop") click("Stop review");
+    else {
+      view.update(which === "book" ? { bookId: "book_other123" } : which === "view" ? { viewKey: "view-2" } : which === "facts" ? { disclosureRevision: "facts-2" } : { open: false });
+      view.update({ bookId: saved.bookId, viewKey: "view-1", disclosureRevision: "facts-1", open: true });
+    }
+    expect(onStart.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    expect(view.onStop).toHaveBeenCalledTimes(1);
+    expect(view.onStop.mock.calls[0]?.[0]).toEqual({ requestId: value.requestId });
+    await testing.act(async () => pending.resolve({ kind: "completed", run: await run(value) }));
+    expect(body().queryByRole("article")).toBeNull();
+    expect(onStart).toHaveBeenCalledTimes(1);
+    if (which === "stop") expect(statusText()).toContain("text already sent cannot be recalled");
+  });
+
+  test("unmount stops a running request and rejects its late failure without updating a new view", async () => {
+    const value = await envelope();
+    const pending = deferred<StartOutcome>();
+    const view = render(value, { onStart: () => pending.promise });
+    await disclose();
+    click("Start with Synthetic provider");
+    view.unmount();
+    expect(view.onStop).toHaveBeenCalledTimes(1);
+    render(value);
+    await testing.act(async () => pending.reject(new Error("late provider failure")));
+    expect(statusText()).toContain("Prepare a fresh disclosure");
+  });
+
+  test("stop failure is honest and cannot overwrite a subsequent preparation", async () => {
+    const value = await envelope();
+    const pending = deferred<StartOutcome>();
+    const stopResult = deferred<void>();
+    const view = render(value, { onStart: () => pending.promise, onStop: () => stopResult.promise });
+    await disclose();
+    click("Start with Synthetic provider");
+    click("Stop review");
+    await testing.act(async () => stopResult.reject(new Error("stop failed")));
+    expect(statusText()).toContain("Stop could not be confirmed");
+    view.update({ onPrepare: async () => ({ kind: "blocked", reason: "consent" }) });
+    click("Prepare review");
+    await testing.waitFor(() => expect(statusText()).toContain("Required book consent is missing"));
+  });
+});
+
+describe("results, exact historical evidence and explicit reruns", () => {
+  test.each(["provider", "overflow", "malformed", "refused"] as const)("%s failure does not retry or fake completion", async (reason) => {
+    const onStart = mock(async (): Promise<StartOutcome> => ({ kind: "failed", reason }));
+    render(await envelope(), { onStart });
+    await disclose();
+    click("Start with Synthetic provider");
+    await testing.waitFor(() => expect(statusText()).toContain("incomplete"));
+    expect(body().queryByRole("article")).toBeNull();
+    expect(body().getByRole("button", { name: "Prepare review" })).toBeTruthy();
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  test("host pre-send revalidation refusal requires fresh disclosure", async () => {
+    const onStart = mock(async (): Promise<StartOutcome> => ({ kind: "blocked", reason: "changed" }));
+    render(await envelope(), { onStart });
+    await disclose();
+    click("Start with Synthetic provider");
+    await testing.waitFor(() => expect(statusText()).toContain("disclosure changed"));
+    expect(body().queryByRole("button", { name: /Start with/ })).toBeNull();
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  test("immutable attribution, subjective finding and exact historical quotation survive navigation", async () => {
+    const value = await envelope();
+    const result = await run(value);
+    const onNavigate = mock(async (_request: Parameters<ReaderReviewProps["onNavigate"]>[0]) => "stale" as const);
+    render(value, { onStart: async () => ({ kind: "completed", run: result }), onNavigate });
+    await complete();
+    const article = body().getByRole("article");
+    expect(article.textContent).toContain("Alpha reader · Version 1");
+    expect(article.textContent).toContain("Subjective observation");
+    expect(article.textContent).toContain("saved version 3, captured");
+    expect(article.querySelector("blockquote")?.textContent).toBe(citation().quote);
+    click("Show exact passage");
+    await testing.waitFor(() => expect(statusText()).toContain("stale or unavailable"));
+    expect(onNavigate.mock.calls[0]?.[0].citation).toEqual(citation());
+    expect(Object.isFrozen(onNavigate.mock.calls[0]?.[0].run)).toBe(true);
+    expect(article.querySelector("blockquote")?.textContent).toBe(citation().quote);
+    expect((body().getByRole("button", { name: "Show exact passage" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Show exact passage");
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(["missing", "changed", "dirty", "malformed-clean"])("%s evidence keeps its historical quote but cannot navigate", async (which) => {
+    const value = await envelope();
+    const view = render(value);
+    await complete();
+    if (which === "missing") view.update({ currentSources: [{ sourceId: "source-1", status: "missing" }] });
+    else if (which === "changed") view.update({ currentSources: [{ sourceId: "source-1", status: "available", source: { ...source(), identity: { ...citation().identity, version: 4 } } }] });
+    else view.update({ editor: { clean: which === "dirty" ? false : "false" as unknown as boolean, identity: citation().identity } });
+    expect((body().getByRole("button", { name: "Show exact passage" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Show exact passage");
+    expect(view.onNavigate).not.toHaveBeenCalled();
+    expect(body().getByRole("article").querySelector("blockquote")?.textContent).toBe(citation().quote);
+  });
+
+  test("forged verified flags and malformed quotations are withheld and counted", async () => {
+    const value = await envelope();
+    const valid = await run(value);
+    const finding = valid.findings[0];
+    if (!finding) throw new Error("Missing fixture finding");
+    const forged = { ...valid, findings: [{ ...finding, evidence: [{ citation: { ...citation(), quote: "INVENTED_QUOTE_SENTINEL" }, label: "verified current" }] }] };
+    const view = render(value, { onStart: async () => ({ kind: "completed", run: forged }) });
+    await complete();
+    expect(body().getByText(/1 unverified quotations withheld/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("INVENTED_QUOTE_SENTINEL");
+    expect(body().queryByRole("button", { name: "Show exact passage" })).toBeNull();
+    expect(view.onNavigate).not.toHaveBeenCalled();
+  });
+
+  test("wrong run identity fails without displaying its findings", async () => {
+    const value = await envelope();
+    const invalid = { ...await run(value), runId: "wrong-request" };
+    render(value, { onStart: async () => ({ kind: "completed", run: invalid }) });
+    await disclose();
+    click("Start with Synthetic provider");
+    await testing.waitFor(() => expect(statusText()).toContain("could not be validated"));
+    expect(body().queryByRole("article")).toBeNull();
+  });
+
+  test("rerun is a new disclosure and Start; compares source, profile and destination without relabelling earlier results", async () => {
+    const first = await envelope();
+    const view = render(first);
+    await complete();
+    const alpha = await builtinReaderProfile("alpha");
+    const author = await editReaderProfile(alpha, { name: "Alpha reader", purpose: "Author's synthetic lens", focus: ["pacing"], guidance: "Read slowly." }, "author-profile-1");
+    const changedSource = captureChapterSource({ sourceId: "source-2", saved: { ...saved, version: 4, body: "Revised scene." }, bookTitle: "Synthetic book", title: "Synthetic chapter", position: 1, capturedAt: stamp, ranges: [{ start: 0, end: 14 }] });
+    const second = await envelope("request-2", { profile: author, sources: [changedSource], destination: { ...input().destination, provider: "Second synthetic provider", model: "second/model" } });
+    const onPrepare = mock(async (_request: Parameters<ReaderReviewProps["onPrepare"]>[0]): Promise<PreparationOutcome> => ({ kind: "ready", prepared: prepared(second) }));
+    const onStart = mock(async (): Promise<StartOutcome> => ({ kind: "completed", run: await run(second, [], "The revised scene may feel slower.") }));
+    view.update({ disclosureRevision: "facts-2", currentSources: currentSources(second), onPrepare, onStart });
+    expect(body().getAllByRole("article")).toHaveLength(1);
+    click("Prepare rerun");
+    await testing.waitFor(() => expect(body().getByRole("button", { name: "Start with Second synthetic provider" })).toBeTruthy());
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onPrepare.mock.calls[0]?.[0].previousRunId).toBe("request-1");
+    click("Start with Second synthetic provider");
+    await testing.waitFor(() => expect(body().getAllByRole("article")).toHaveLength(2));
+    const comparison = body().getByRole("region", { name: "Latest run comparison" });
+    expect(comparison.textContent).toContain("Sources: Changed · Profile: Changed");
+    expect(comparison.textContent).toContain("Provider or destination: Changed");
+    expect(comparison.textContent).toContain("not improvement scores");
+    expect(body().getByRole("article", { name: "Reader run request-1" }).textContent).toContain("reader-alpha");
+    expect(body().getByRole("article", { name: "Reader run request-2" }).textContent).toContain("author-profile-1");
+    expect(body().getByRole("article", { name: "Reader run request-2" }).textContent).toContain("Author profile");
+    view.update({ bookId: "book_other123" });
+    view.update({ bookId: saved.bookId });
+    expect(body().queryByRole("article")).toBeNull();
+  });
+
+  test("Beta attribution is distinct and late navigation cannot leak into a returned view", async () => {
+    const value = await envelope("request-1", { profile: await builtinReaderProfile("beta") });
+    const pending = deferred<"selected" | "stale" | "unavailable">();
+    const onNavigate = mock((_request: Parameters<ReaderReviewProps["onNavigate"]>[0]) => pending.promise);
+    const view = render(value, { onNavigate });
+    await complete();
+    expect(body().getByRole("article").textContent).toContain("Beta reader · Version 1");
+    click("Show exact passage");
+    view.update({ viewKey: "view-2" });
+    view.update({ viewKey: "view-1" });
+    expect(onNavigate.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    await testing.act(async () => pending.resolve("selected"));
+    expect(statusText()).not.toContain("selected");
+    expect(body().queryByRole("article")).toBeNull();
+  });
+
+  test("same-input rereads label model variation and preserve both immutable interpretations", async () => {
+    const first = await envelope();
+    const view = render(first);
+    await complete();
+    const second = await envelope("request-2");
+    view.update({ onPrepare: async () => ({ kind: "ready", prepared: prepared(second) }),
+      onStart: async () => ({ kind: "completed", run: await run(second, [citation()], "Another subjective reading.") }) });
+    click("Prepare rerun");
+    await testing.waitFor(() => expect(body().getByRole("button", { name: /Start with/ })).toBeTruthy());
+    click("Start with Synthetic provider");
+    await testing.waitFor(() => expect(body().getAllByRole("article")).toHaveLength(2));
+    expect(body().getByRole("region", { name: "Latest run comparison" }).textContent).toContain("Same-input model variation");
+    expect(body().getByRole("article", { name: "Reader run request-1" }).textContent).toContain("The scene may feel abrupt.");
+    expect(body().getByRole("article", { name: "Reader run request-2" }).textContent).toContain("Another subjective reading.");
+  });
+
+  test("Story Bible historical evidence is displayed without inventing editor navigation", async () => {
+    const bible = await captureBibleSource({ sourceId: "bible-source", bookId: saved.bookId, bookTitle: "Synthetic book",
+      field: { section: "outline" }, label: "Selected outline", containingFileHash: "b".repeat(64), capturedAt: stamp, text: "A synthetic outline." });
+    const value = await envelope("request-1", { sources: [bible] });
+    const evidence = { kind: "story-bible", sourceId: bible.sourceId, bookId: bible.bookId, field: bible.field,
+      valueDigest: bible.valueDigest, containingFileHash: bible.containingFileHash, start: 0, end: bible.text.length, quote: bible.text };
+    const view = render(value, { onStart: async () => ({ kind: "completed", run: await run(value, [evidence]) }) });
+    await complete();
+    expect(body().getByRole("article").querySelector("blockquote")?.textContent).toBe(bible.text);
+    expect((body().getByRole("button", { name: "Show exact passage" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(view.onNavigate).not.toHaveBeenCalled();
+  });
+
+  test("navigation failure releases its busy state without claiming selection", async () => {
+    const value = await envelope();
+    const onNavigate = mock(async () => { throw new Error("PRIVATE_NAVIGATION_FAILURE"); });
+    render(value, { onNavigate });
+    await complete();
+    click("Show exact passage");
+    await testing.waitFor(() => expect(statusText()).toContain("could not be opened"));
+    expect(document.body.textContent).not.toContain("PRIVATE_NAVIGATION_FAILURE");
+    expect((body().getByRole("button", { name: "Show exact passage" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("synthetic journey uses no global conversation, persistence or network capability", async () => {
+    const value = await envelope();
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    const originalStudio = Object.getOwnPropertyDescriptor(window, "studio");
+    const originalSetItem = Storage.prototype.setItem;
+    globalThis.fetch = Object.assign(() => { calls.push("fetch"); throw new Error("Network forbidden"); }, { preconnect: originalFetch.preconnect });
+    Storage.prototype.setItem = () => { calls.push("storage"); throw new Error("Persistence forbidden"); };
+    Object.defineProperty(window, "studio", { configurable: true, get() { calls.push("studio"); throw new Error("Global IPC forbidden"); } });
+    try {
+      render(value);
+      await complete();
+      click("Show exact passage");
+      await testing.waitFor(() => expect(statusText()).toContain("host confirmed"));
+      click("Close review");
+      expect(calls).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      Storage.prototype.setItem = originalSetItem;
+      if (originalStudio) Object.defineProperty(window, "studio", originalStudio);
+      else Reflect.deleteProperty(window, "studio");
+    }
+  });
+});
