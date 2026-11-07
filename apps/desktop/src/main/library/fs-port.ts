@@ -11,6 +11,7 @@ import type {
   FileExpectation,
   LibraryDeviceInfo,
   LibraryEntry,
+  LibraryInspectedEntry,
   LibraryEnvironment,
   LibraryFileSnapshot,
   LibraryPort
@@ -86,14 +87,18 @@ export class FileSystemLibraryPort implements LibraryPort {
   }
 
   async listDirectory(path: LibraryPath): Promise<LibraryEntry[]> {
+    return (await this.inspectDirectory(path)).filter((entry): entry is LibraryEntry => entry.kind !== "unsupported");
+  }
+
+  async inspectDirectory(path: LibraryPath): Promise<LibraryInspectedEntry[]> {
     const absolute = await this.checkedAbsolute(path);
     try {
       const entries = await readdir(absolute, { withFileTypes: true });
-      const result: LibraryEntry[] = [];
+      const result: LibraryInspectedEntry[] = [];
       for (const entry of entries) {
         if (entry.isDirectory()) result.push({ name: entry.name, kind: "directory" });
         else if (entry.isFile()) result.push({ name: entry.name, kind: "file" });
-        // Symbolic links and special files are not part of the library format.
+        else result.push({ name: entry.name, kind: "unsupported" });
       }
       return result.sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {

@@ -98,7 +98,14 @@ export class ChapterHistoryStore {
   async list(scope: HistoryScope): Promise<HistoryListing> {
     const directory = historyDirectory(scope);
     const listing: HistoryListing = { records: [], issues: [] };
-    for (const entry of await this.env.storage.listDirectory(directory)) {
+    const entries = this.env.storage.inspectDirectory
+      ? await this.env.storage.inspectDirectory(directory) : await this.env.storage.listDirectory(directory);
+    for (const entry of entries) {
+      if (entry.kind === "unsupported" && entry.name.endsWith(".md")) {
+        listing.issues.push({ fileName: entry.name, code: "io",
+          message: "This history entry is not an ordinary file. It was left untouched and cannot be opened." });
+        continue;
+      }
       if (entry.kind !== "file" || !entry.name.endsWith(".md")) continue;
       const input = { ...scope, fileName: entry.name };
       try {

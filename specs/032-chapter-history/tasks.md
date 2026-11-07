@@ -124,6 +124,24 @@ saved-only library core. IPC/UI, restore/undo, cleanup and end-to-end acceptance
 - No full suite, hidden app, browser/device, real library, credential, live provider or release run
   is claimed. T014/T015 remain open for integrated acceptance and coordinator-owned public records.
 
+### Coordinator codec/adapter follow-up (2026-11-07)
+
+- Resolve W01's independent F1/F2 findings: history/source YAML parsing never emits source excerpts;
+  book parser errors are safely summarized. The accepted plain-value metadata domain rejects
+  unsupported tagged/reserved/cyclic/foreign values and lossy numbers before they can change type.
+  Metadata is captured before asynchronous serialization; supported nested fields survive.
+- Integrate the independently accepted static filesystem containment repair. Add metadata-only
+  unsupported-entry inspection so a linked history record is listed unavailable without following
+  it. Ordinary archive traversal keeps excluding links/special entries. No path-swap/CAS claim.
+- **118 focused tests passed, 0 failed, 874 assertions across 11 files**: history codec/service,
+  history storage/retention premises, real filesystem history and containment, port conformance,
+  ordinary chapter identity/damaged-file handling, Library service and watcher/own-write behavior.
+  Real history tests cover history-directory/chapter-directory/record links to outside, inside
+  excluded storage and broken targets, plus byte-exact live/trash archive round-trips.
+- All workspace typechecks passed; focused strict source/test typecheck passed. Focused lint has
+  one existing Library-service non-null assertion warning. Both completion DAGs pass. A fresh
+  combined-candidate review and integrated gates remain required; T014/T015 stay open.
+
 - OQ-001 is resolved by D-175. T001's format/ADR follow-through and T003's schema still precede
   persistence; archive/trash tests accompany the first durable snapshot slice.
 - OQ-002 is resolved by D-176. T011 implements that policy; all paths report storage failures

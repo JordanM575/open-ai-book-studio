@@ -38,6 +38,10 @@ Update the `Unreleased` section before every commit.
 
 ### Added
 
+- Correct history codec admission before new recovery writers use it: reject unpreservable YAML
+  metadata without changing the file, and keep all history source-resolution diagnostics quiet.
+  Verify saved-source UTF-8/raw hashes, snapshot metadata before asynchronous serialization, and
+  list unsupported filesystem history entries without following them or admitting them to archives.
 - Clarify unconfirmed history writes after possible publication: retain the complete record,
   disable automatic retry, and direct the author to review history first. Add injected post-write
   readback-failure coverage and document the filesystem adapter's cross-process race limitation.

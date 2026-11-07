@@ -37,7 +37,7 @@ YAML document parsing permits errors/warnings to be inspected without logging au
   references (filename, record ID, raw-file hash), intended body hash, and exact
   result version/hash for applied/undone states. This is a data contract only; W02
   owns persistence, reconciliation, restore and undo. Unknown fields, including nested
-  reference/result fields, survive codec round-trips. Unsupported/corrupt records
+  reference/result fields, survive codec round-trips within the supported value domain below. Unsupported/corrupt records
   remain untouched and are reported individually rather than becoming an empty list.
 - Require a caller's confirmed `saved` state plus exact source version/hash; read the
   body from storage, never accept prose in the capture request. Require persisted
@@ -55,6 +55,29 @@ YAML document parsing permits errors/warnings to be inspected without logging au
   drafts, save chapters, rebuild catalogs, or add an IPC/UI/agent entry point.
 
 ## Consequences
+
+### Codec review correction, November 7
+
+The first codec accepted YAML-native Set/Date values and a reserved key that its serializer/schema
+could not preserve. Under delegated repair authority, accept only plain string-keyed mappings,
+dense arrays, strings, booleans, null and finite numbers; integer numbers must be safe integers,
+negative zero is unsupported, and parsed numeric tokens must retain their mathematical decimal
+value after serialization. Reject `__proto__` at every depth, complex mapping keys, unsupported
+tags, cyclic references, accessors, foreign objects and non-data properties before schema parsing
+can erase them. Ordinary nested unknown data and acyclic aliases retain their values; YAML spelling,
+comments, anchors and graph identity are not the value-preservation contract. Unsupported records
+stay byte-intact and unavailable, not normalized into another type.
+
+History's entire source-resolution path uses this quiet parser and fatal UTF-8 decoding, including
+chapter candidates inspected while resolving identity. It validates raw hashes and reports fixed
+errors without parser excerpts or warning emissions. Ordinary legacy chapter reading keeps its
+existing compatibility behavior; history never invokes that warning-emitting parser first.
+
+For filesystem-backed history lists, an optional metadata-only directory inspection primitive
+reports unsupported entry names without following them. History lists these as unavailable;
+ordinary directory listing and archive traversal continue to exclude them. Hosts whose storage
+can contain only ordinary files/directories use the existing listing. This keeps a linked history
+record from silently vanishing from the history UI while preserving the adapter's refusal policy.
 
 Snapshots remain ordinary recovery material across archives and trash. Integrity detects
 accidental body changes, not authenticated provenance: an author can edit these files.

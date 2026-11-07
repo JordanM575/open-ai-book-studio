@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { createLibraryArchive } from "@ai-book-studio/core/archive/export";
+import { archiveSourceFromBytes, importLibraryArchive } from "@ai-book-studio/core/archive/import";
+import { toLibraryPath } from "@ai-book-studio/core/library/path";
 import { LibraryService } from "@ai-book-studio/core/library/service";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import type { CommitFileResult, FileExpectation, LibraryPath } from "@ai-book-studio/core/library/port";
@@ -14,6 +17,72 @@ beforeEach(async () => { root = await mkdtemp(join(tmpdir(), "studio-history-syn
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 describe("desktop saved-only history", () => {
+  test("ordinary history remains byte-exact through filesystem archive and whole-book trash", async () => {
+    const environment = createFileSystemEnvironment(join(root, "library"));
+    const service = await LibraryService.open(environment);
+    const book = await service.createBook({ title: "Synthetic history transport" });
+    const chapter = await service.createChapter(book.id, { title: "Door", content: "Saved synthetic source" });
+    const record = await service.captureChapterHistory({ bookId: book.id, chapterId: chapter.id, label: "Snapshot",
+      source: { status: "saved", version: chapter.version, hash: chapter.hash } });
+    const original = await environment.storage.readFile(toLibraryPath(["books", book.id, "history", chapter.id, record.fileName]));
+    if (!original) throw new Error("Missing synthetic history");
+    for (const trashed of [false, true]) {
+      if (trashed) await service.deleteBook(book.id);
+      const archive = await createLibraryArchive(environment, { appVersion: "synthetic" });
+      const entry = archive.manifest.entries.find((entry) => entry.path.endsWith(`/history/${chapter.id}/${record.fileName}`));
+      if (!entry) throw new Error("History omitted from archive");
+      expect(entry.sha256).toBe(record.hash);
+      expect(entry.path.startsWith(".studio/trash/")).toBe(trashed);
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of archive.chunks) chunks.push(chunk);
+      const target = createFileSystemEnvironment(join(root, trashed ? "restored-trash" : "restored-live"));
+      await importLibraryArchive(archiveSourceFromBytes(new Uint8Array(Buffer.concat(chunks))), target.storage, target.runtime);
+      expect((await target.storage.readFile(toLibraryPath(entry.path.split("/"))))?.bytes).toEqual(original.bytes);
+    }
+  });
+
+  for (const level of ["history", "chapter", "record"] as const) {
+    test.each(["outside", "inside", "broken"] as const)(`${level} links to %s remain unavailable without following or writing their targets`, async (targetKind) => {
+      const libraryRoot = join(root, "library");
+      const environment = createFileSystemEnvironment(libraryRoot);
+      environment.runtime.now = () => "2026-11-07T00:00:00.000Z";
+      const service = await LibraryService.open(environment);
+      const book = await service.createBook({ title: "Synthetic containment" });
+      const chapter = await service.createChapter(book.id, { title: "Door", content: "Saved synthetic source" });
+      const scope = { bookId: book.id, chapterId: chapter.id };
+      const input = { ...scope, label: "Snapshot", source: { status: "saved" as const, version: chapter.version, hash: chapter.hash } };
+      const record = await service.captureChapterHistory(input);
+      const history = join(libraryRoot, "books", book.id, "history");
+      const recordFile = join(history, chapter.id, record.fileName);
+      const bytes = await readFile(recordFile);
+      const sourceFile = join(libraryRoot, "books", book.id, "chapters", chapter.path);
+      const sourceBytes = await readFile(sourceFile);
+      const linked = level === "history" ? history : level === "chapter" ? dirname(recordFile) : recordFile;
+      const target = targetKind === "inside" ? join(libraryRoot, ".studio", "cache", "linked") : join(root, targetKind);
+      const targetRecord = level === "history" ? join(target, chapter.id, record.fileName)
+        : level === "chapter" ? join(target, record.fileName) : target;
+      if (targetKind !== "broken") {
+        await mkdir(dirname(targetRecord), { recursive: true });
+        await writeFile(targetRecord, bytes);
+      }
+      await rename(linked, join(root, "original-entry"));
+      await symlink(target, linked);
+      const address = { ...scope, fileName: record.fileName };
+      await expect(service.captureChapterHistory(input)).rejects.toMatchObject({ code: "unsupported" });
+      await expect(service.readChapterHistory(address)).rejects.toMatchObject({ code: "unsupported" });
+      await expect(service.compareChapterHistory(address)).rejects.toMatchObject({ code: "unsupported" });
+      if (level === "record") {
+        expect(await service.listChapterHistory(scope)).toMatchObject({ records: [], issues: [{ fileName: record.fileName, code: "io" }] });
+      } else await expect(service.listChapterHistory(scope)).rejects.toMatchObject({ code: "unsupported" });
+      expect(await readFile(sourceFile)).toEqual(sourceBytes);
+      expect(await readlink(linked)).toBe(target);
+      if (targetKind !== "broken") expect(await readFile(targetRecord)).toEqual(bytes);
+      else await expect(lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
+      const archive = await createLibraryArchive(environment, { appVersion: "synthetic" });
+      expect(archive.manifest.entries.some((entry) => entry.path.includes("/history/"))).toBe(false);
+    });
+  }
+
   test("ordinary history files survive reopen and browse/compare leaves a pending draft available", async () => {
     const library = await Library.open(root);
     const book = await library.createBook({ title: "Synthetic history" });

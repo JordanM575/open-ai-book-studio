@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createLibraryArchive } from "../src/archive/export";
 import { archiveSourceFromBytes, importLibraryArchive } from "../src/archive/import";
 import { LibraryPortError } from "../src/library/errors";
@@ -206,6 +206,147 @@ describe("saved-only chapter history", () => {
 });
 
 describe("history codec and unavailable records", () => {
+  test("history list/read/compare reject unsupported YAML quietly and retain every original byte", async () => {
+    const f = await fixture();
+    const good = await f.service.captureChapterHistory(f.input);
+    const raw = decoder.decode((await rawRecord(f.port, f.scope, good.fileName)).bytes);
+    const marker = "SYNTHETIC_PRIVATE_HISTORY_MARKER";
+    const bad = [
+      `? [${marker}]\n: kept`, `future: !unsupported ${marker}`, `future: [${marker}`,
+      "future: !!set {alpha: null, beta: null}", "future: !!timestamp 2026-11-07T00:00:00Z",
+      `__proto__: { text: ${marker} }`, `future: { nested: { __proto__: ${marker} } }`,
+      "future: &loop { next: *loop }", "future: 9007199254740993", "future: 1e-400",
+      "future: 1.0000000000000001", "future: -0", "future: .nan", "future: .inf",
+      "future: !!pairs [ {a: 1}, {a: 2} ]"
+    ];
+    const warning = spyOn(console, "warn").mockImplementation(() => {});
+    const emission = spyOn(process, "emitWarning").mockImplementation(() => {});
+    try {
+      for (const [index, extra] of bad.entries()) {
+        const input = { ...f.scope, fileName: `unavailable-${index}.md` };
+        const bytes = encoder.encode(raw.replace("---\n", `---\n${extra}\n`));
+        await f.port.commitFile(historyFilePath(input), bytes, { kind: "absent" });
+        for (const operation of [() => f.service.readChapterHistory(input), () => f.service.compareChapterHistory(input)]) {
+          await expect(operation()).rejects.toMatchObject({ code: "corrupt" });
+          try { await operation(); } catch (error) { expect(String(error)).not.toContain(marker); }
+        }
+        expect((await f.port.readFile(historyFilePath(input)))?.bytes).toEqual(bytes);
+      }
+      const listed = await f.service.listChapterHistory(f.scope);
+      expect(listed.records.map((record) => record.meta.id)).toEqual([good.meta.id]);
+      expect(listed.issues).toHaveLength(bad.length);
+      expect(JSON.stringify(listed.issues)).not.toContain(marker);
+      expect(await f.service.readChapterHistory(f.address(good))).toEqual(good);
+      expect(warning).not.toHaveBeenCalled();
+      expect(emission).not.toHaveBeenCalled();
+    } finally { warning.mockRestore(); emission.mockRestore(); }
+  });
+
+  test("capture and comparison use quiet source resolution, even for unrelated chapter candidates", async () => {
+    const f = await fixture();
+    const good = await f.service.captureChapterHistory(f.input);
+    const sourcePath = chapterPath(f.book.id, f.chapter.path);
+    const before = await f.port.readFile(sourcePath);
+    if (!before) throw new Error("Missing synthetic source");
+    const raw = decoder.decode(before.bytes);
+    const marker = "SYNTHETIC_PRIVATE_SOURCE_MARKER";
+    const warning = spyOn(console, "warn").mockImplementation(() => {});
+    const emission = spyOn(process, "emitWarning").mockImplementation(() => {});
+    try {
+      for (const extra of [`? [${marker}]\n: kept`, `future: !unsupported ${marker}`, `future: [${marker}`]) {
+        const bytes = encoder.encode(raw.replace("---\n", `---\n${extra}\n`));
+        await f.port.commitFile(sourcePath, bytes, { kind: "any" });
+        const input = { ...f.input, source: { ...f.input.source, hash: await f.port.sha256(bytes) } };
+        for (const operation of [() => f.service.captureChapterHistory(input), () => f.service.compareChapterHistory(f.address(good))]) {
+          await expect(operation()).rejects.toMatchObject({ code: "saved-source-required" });
+          try { await operation(); } catch (error) { expect(String(error)).not.toContain(marker); }
+        }
+        expect((await f.port.readFile(sourcePath))?.bytes).toEqual(bytes);
+      }
+      await f.port.commitFile(sourcePath, before.bytes, { kind: "any" });
+      await f.port.commitFile(chapterPath(f.book.id, "0000-a.md"), encoder.encode(`---\ntitle: !unsupported ${marker}\n---\nPrivate adjacent words.\n`), { kind: "absent" });
+      expect((await f.service.compareChapterHistory(f.address(good))).equal).toBe(true);
+      await f.service.captureChapterHistory({ ...f.input, label: "After unrelated invalid source" });
+      expect(warning).not.toHaveBeenCalled();
+      expect(emission).not.toHaveBeenCalled();
+    } finally { warning.mockRestore(); emission.mockRestore(); }
+  });
+
+  test("source capture refuses invalid UTF-8 and false raw hashes", async () => {
+    const f = await fixture();
+    const path = chapterPath(f.book.id, f.chapter.path);
+    const before = await f.port.readFile(path);
+    if (!before) throw new Error("Missing synthetic source");
+    const bytes = new Uint8Array([...before.bytes, 0xff]);
+    await f.port.commitFile(path, bytes, { kind: "any" });
+    await expect(f.service.captureChapterHistory({ ...f.input, source: { ...f.input.source, hash: await f.port.sha256(bytes) } }))
+      .rejects.toMatchObject({ code: "saved-source-required" });
+    await f.port.commitFile(path, before.bytes, { kind: "any" });
+    const read = f.port.readFile.bind(f.port);
+    f.port.readFile = async (candidate) => {
+      const snapshot = await read(candidate);
+      return snapshot && candidate.join("/") === path.join("/") ? { ...snapshot, sha256: "f".repeat(64) } : snapshot;
+    };
+    await expect(f.service.captureChapterHistory({ ...f.input, source: { ...f.input.source, hash: "f".repeat(64) } }))
+      .rejects.toMatchObject({ code: "saved-source-required" });
+    expect((await f.service.listChapterHistory(f.scope)).records).toEqual([]);
+  });
+
+  test("history never forwards book parser excerpts", async () => {
+    const f = await fixture();
+    const good = await f.service.captureChapterHistory(f.input);
+    const bytes = encoder.encode('{ "SYNTHETIC_PRIVATE_BOOK_MARKER": broken }');
+    await f.port.commitFile(bookFilePath(f.book.id), bytes, { kind: "any" });
+    for (const operation of [
+      () => f.service.listChapterHistory(f.scope), () => f.service.readChapterHistory(f.address(good)),
+      () => f.service.compareChapterHistory(f.address(good)), () => f.service.captureChapterHistory(f.input)
+    ]) {
+      let error: unknown;
+      try { await operation(); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({ code: "corrupt" });
+      expect(String(error)).not.toContain("SYNTHETIC_PRIVATE_BOOK_MARKER");
+    }
+    expect((await f.port.readFile(bookFilePath(f.book.id)))?.bytes).toEqual(bytes);
+  });
+
+  test("supported unknown numbers, strings and acyclic aliases retain their values", async () => {
+    const f = await fixture();
+    const good = await f.service.captureChapterHistory(f.input);
+    const original = decoder.decode((await rawRecord(f.port, f.scope, good.fileName)).bytes);
+    const raw = original.replace("---\n", "---\nfuture: &future\n  values: [null, true, false, 0.1, 1.25, 6.022e-5, 9007199254740991, 0xff, 0o17, +01, .5, 1.]\n  prose: 'line one'\ncopyOfFuture: *future\n");
+    const record = await parseHistoryRecord(raw, f.scope, f.port);
+    expect(record.meta.future).toEqual(record.meta.copyOfFuture);
+    expect(await parseHistoryRecord(await serializeHistoryRecord(record, f.port), f.scope, f.port)).toEqual(record);
+  });
+
+  test("serializer refuses unpreservable JS shapes before getters or conversion hooks run", async () => {
+    const f = await fixture();
+    const good = await f.service.captureChapterHistory(f.input);
+    let invoked = 0;
+    const accessor = Object.defineProperty({}, "text", { enumerable: true, get: () => { invoked++; return "private"; } });
+    const hidden = Object.defineProperty({}, "text", { value: "hidden" });
+    const reserved = Object.defineProperty({}, "__proto__", { enumerable: true, value: "retained?" });
+    const cyclic: { self?: unknown } = {}; cyclic.self = cyclic;
+    const extended = Object.assign([1], { extra: "lost" });
+    for (const future of [new Set(["a"]), new Date(0), new Map([["a", 1]]), undefined, NaN, Infinity, -0,
+      BigInt(1), () => "lost", Symbol("lost"), accessor, hidden, reserved, cyclic, new Array(1), extended, Object.create({ inherited: true })]) {
+      await expect(serializeHistoryRecord({ ...good, meta: { ...good.meta, future } }, f.port)).rejects.toMatchObject({ code: "corrupt" });
+    }
+    expect(invoked).toBe(0);
+    expect(await f.service.readChapterHistory(f.address(good))).toEqual(good);
+  });
+
+  test("serialization captures supported metadata before awaiting the body hash", async () => {
+    const f = await fixture();
+    const good = await f.service.captureChapterHistory(f.input);
+    const future: { value: unknown } = { value: "Original unknown value" };
+    const text = await serializeHistoryRecord({ ...good, meta: { ...good.meta, future } }, {
+      now: () => f.port.now(), newId: (prefix) => f.port.newId(prefix),
+      sha256: async (bytes) => { future.value = new Date(0); return f.port.sha256(bytes); }
+    });
+    expect((await parseHistoryRecord(text, f.scope, f.port)).meta.future).toEqual({ value: "Original unknown value" });
+  });
+
   test("unknown fields survive nested codec round-trips for snapshots, safety and each intent state", async () => {
     const f = await fixture();
     const snapshot = await f.service.captureChapterHistory(f.input);

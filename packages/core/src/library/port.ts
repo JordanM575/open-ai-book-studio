@@ -32,6 +32,7 @@ export type CommitFileResult =
   | { status: "changed"; current: LibraryFileSnapshot | null };
 
 export type LibraryEntry = { name: string; kind: "file" | "directory" };
+export type LibraryInspectedEntry = LibraryEntry | { name: string; kind: "unsupported" };
 
 export interface LibraryDeviceInfo {
   id: string;
@@ -46,6 +47,8 @@ export interface LibraryDeviceInfo {
 export interface LibraryPort {
   readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null>;
   listDirectory(path: LibraryPath): Promise<LibraryEntry[]>;
+  /** Metadata only: expose unsupported names without following them, for unavailable-file UI. */
+  inspectDirectory?(path: LibraryPath): Promise<LibraryInspectedEntry[]>;
   stat(path: LibraryPath): Promise<{ size: number; createdAt: string | null; modifiedAt: string | null } | null>;
   /** Create a directory and any missing parents. Existing directories are not an error. */
   ensureDirectory(path: LibraryPath): Promise<void>;

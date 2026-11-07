@@ -250,24 +250,35 @@ Intent metadata additionally contains `selected` and `safety` references, each w
 have no undo result. Intent bodies are empty. These schema forms reserve recoverable
 restore material; restore/undo execution is not implemented in the saved-only core.
 
-All known metadata objects are loose: unknown fields survive parse/spread/serialize round-trips,
-including nested references/results. No read writes back. Invalid YAML, missing required data,
+All known metadata objects are loose: supported unknown fields survive codec round-trips,
+including nested references/results. Supported metadata contains plain string-keyed mappings,
+dense arrays, strings, booleans, null and finite numbers. Integer numbers must be safe integers;
+negative zero and numeric tokens whose value would round or underflow during serialization are
+refused. Complex keys, unsupported YAML tags, Set/Date/Map values, cycles, `__proto__`, accessors
+and other non-data/foreign JS values are refused before schema conversion; they are never silently
+changed into another type. Acyclic alias values survive, without promising comments, anchor names
+or object-graph identity. Serialization snapshots this validated metadata before asynchronous work.
+No read writes back. Invalid YAML, missing required data,
 wrong identity, unsupported schemas and body-hash mismatches are unavailable records, left
-intact for recovery. Listing reports them individually. Parsing errors never include prose.
+intact for recovery. Listing reports them individually. Parsing errors never include prose;
+the complete history source-resolution path uses quiet parsing and fatal UTF-8 decoding.
 Canonical body hashing uses the same normalization as chapter bodies; front-matter formatting
 is not covered by `bodyHash`. An open result also reports the record's raw-file hash.
 
 Capture requires a confirmed saved state and exact source version/hash, reads only the saved
 file, and requires its persisted chapter ID (headerless fallback IDs cannot anchor history).
-It refuses a changed, missing, unreadable or future-schema source. It never flushes a draft or
+It verifies raw source hashes and refuses a changed, missing, unreadable or future-schema source. It never flushes a draft or
 changes chapter bytes. Hosts must check their live draft/save state before requesting capture.
 List/open work even while the chapter is in trash; comparison requires the current saved
 chapter and identifies its two bodies as saved text, excluding any draft.
 
 History follows a stable chapter ID through title, filename and order changes. Chapter trash
 leaves history in the book; whole-book trash carries it with the entire folder. Portable
-archives include its exact bytes and hashes by the ordinary author-file rule, including
-unknown or unavailable records; history validation happens when those records are read.
+archives include ordinary files' exact bytes and hashes by the author-file rule, including
+unknown or unavailable record contents; history validation happens when those records are read.
+Filesystem links and special entries are unsupported. Direct access refuses them; metadata-only
+history inspection lists unsupported `.md` entry names as unavailable without reading their
+targets. They remain excluded from ordinary archive traversal.
 No automatic pruning, count/size quota, expiry or compaction applies, including to intents.
 List sizes come from storage stats, not a format field. Storage failures never delete recovery
 material. Future explicit deletion must move a record to recoverable chapter trash and protect

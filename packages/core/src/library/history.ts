@@ -1,4 +1,4 @@
-import { parseDocument, stringify } from "yaml";
+import { parseDocument, stringify, visit } from "yaml";
 import { z } from "zod";
 import { normalizeBody } from "../markdown";
 import { toLibraryFilePath, toLibraryPath, type LibraryPath } from "./path";
@@ -119,15 +119,30 @@ export function readHistoryEnvelope(raw: string): { metadata: unknown; content: 
   const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(raw);
   if (!match) throw new HistoryError("corrupt", "The history file has no readable front matter. Keep the file for recovery.");
   try {
-    const document = parseDocument(`${match[1] ?? ""}\n`, { prettyErrors: false, uniqueKeys: true });
+    const source = `${match[1] ?? ""}\n`;
+    const document = parseDocument(source, {
+      prettyErrors: false, uniqueKeys: true, stringKeys: true, logLevel: "silent",
+      schema: "core", resolveKnownTags: false, merge: false
+    });
     if (document.errors.length || document.warnings.length) throw new Error("Invalid YAML");
-    return { metadata: document.toJS(), content: normalizeBody(raw.slice(match[0].length)) };
+    if (document.directives?.yaml.version !== "1.2") throw new Error("Unsupported YAML version");
+    // Checking the parsed Number alone misses already-rounded integers and underflowed floats.
+    visit(document, { Scalar(_key, node) {
+      if (typeof node.value !== "number") return;
+      const token = node.range ? source.slice(node.range[0], node.range[1]) : "";
+      if (!losslessNumber(token, node.value)) throw new Error("Unsupported YAML number");
+    } });
+    const metadata: unknown = document.toJS();
+    validateValues(metadata);
+    return { metadata, content: normalizeBody(raw.slice(match[0].length)) };
   } catch {
     throw new HistoryError("corrupt", "The file's front matter could not be read. Keep the file for recovery.");
   }
 }
 
 function validateMeta(metadata: unknown): HistoryMeta {
+  // Do this before Zod can strip a reserved key or normalize a foreign object.
+  try { validateValues(metadata); } catch { invalidValues(); }
   if (metadata && typeof metadata === "object" && "schemaVersion" in metadata &&
       typeof metadata.schemaVersion === "number" && metadata.schemaVersion > 1) {
     throw new HistoryError("newer-schema", "This history record needs a newer version of Open Book Studio. Update the app to open it.");
@@ -155,11 +170,67 @@ export async function parseHistoryRecord(raw: string, scope: HistoryScope, runti
   return { meta, content: envelope.content };
 }
 
-/** Metadata is not reconstructed: unknown keys, including nested ones, survive. */
+/** Unknown data in the supported plain-value domain survives; unsupported values are refused. */
 export async function serializeHistoryRecord(record: HistoryRecord, runtime: LibraryRuntime): Promise<string> {
-  const meta = validateMeta(record.meta);
+  const meta = structuredClone(validateMeta(record.meta));
   const content = normalizeBody(record.content);
   await validateBody(meta, content, runtime);
-  const front = stringify(meta, { lineWidth: 0 }).replace(/\n$/, "");
+  const front = stringify(meta, { lineWidth: 0, aliasDuplicateObjects: false }).replace(/\n$/, "");
   return `---\n${front}\n---\n\n${content}`;
+}
+
+function invalidValues(): never {
+  throw new HistoryError("corrupt", "The history metadata contains unsupported values. Keep the file for recovery.");
+}
+
+function supportedNumber(value: number): boolean {
+  return Number.isFinite(value) && !Object.is(value, -0) &&
+    (!Number.isInteger(value) || Number.isSafeInteger(value));
+}
+
+/** Compare decimal values without first rounding both source tokens through Number. */
+function decimalValue(token: string): string | null {
+  const parts = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/.exec(token);
+  if (!parts) return null;
+  const fraction = parts[3] ?? parts[4] ?? "";
+  const digits = `${parts[2] ?? ""}${fraction}`.replace(/^0+/, "");
+  if (!digits) return "0";
+  const significant = digits.replace(/0+$/, "");
+  const power = Number(parts[5] ?? 0) - fraction.length + digits.length - significant.length;
+  if (!Number.isSafeInteger(power)) return null;
+  return `${parts[1] === "-" ? "-" : ""}${significant}e${power}`;
+}
+
+function losslessNumber(token: string, value: number): boolean {
+  if (!supportedNumber(value)) return false;
+  if (/^0[xo][\da-f]+$/i.test(token)) {
+    try { return BigInt(token) === BigInt(value); } catch { return false; }
+  }
+  const original = decimalValue(token);
+  return original !== null && original === decimalValue(String(value));
+}
+
+/** Validate descriptors before accessing values; no getter or toJSON hook is executed. */
+function validateValues(value: unknown, active = new Set<object>()): void {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!supportedNumber(value)) invalidValues();
+    return;
+  }
+  if (!value || typeof value !== "object" || active.has(value)) invalidValues();
+  const array = Array.isArray(value);
+  const prototype = Object.getPrototypeOf(value);
+  if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) invalidValues();
+  const keys = Reflect.ownKeys(value);
+  if (array && keys.length !== value.length + 1) invalidValues();
+  active.add(value);
+  for (const key of keys) {
+    if (array && key === "length") continue;
+    if (typeof key !== "string" || key === "__proto__") invalidValues();
+    if (array && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length)) invalidValues();
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) invalidValues();
+    validateValues(descriptor.value, active);
+  }
+  active.delete(value);
 }
