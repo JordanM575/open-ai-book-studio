@@ -16,7 +16,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Desktop app
 
 <!-- licenses:desktop:start -->
-129 packages.
+141 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -27,10 +27,19 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `@ai-sdk/openai-compatible` | 3.0.78 | Apache-2.0 |
 | `@ai-sdk/provider` | 4.0.34 | Apache-2.0 |
 | `@ai-sdk/provider-utils` | 5.0.68 | Apache-2.0 |
+| `@codemirror/commands` | 6.11.1 | MIT |
+| `@codemirror/language` | 6.13.1 | MIT |
+| `@codemirror/state` | 6.7.6 | MIT |
+| `@codemirror/streamparser` | 6.0.0 | MIT |
+| `@codemirror/view` | 6.43.15 | MIT |
 | `@floating-ui/core` | 1.8.0 | MIT |
 | `@floating-ui/dom` | 1.8.0 | MIT |
 | `@floating-ui/react-dom` | 2.1.9 | MIT |
 | `@floating-ui/utils` | 0.2.12 | MIT |
+| `@lezer/common` | 1.5.5 | MIT |
+| `@lezer/highlight` | 1.2.5 | MIT |
+| `@lezer/lr` | 1.4.12 | MIT |
+| `@marijn/find-cluster-break` | 1.0.4 | MIT |
 | `@openrouter/ai-sdk-provider` | 3.1.0 | Apache-2.0 |
 | `@radix-ui/number` | 1.1.3 | MIT |
 | `@radix-ui/primitive` | 1.2.0 | MIT |
@@ -103,6 +112,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `class-variance-authority` | 0.7.1 | Apache-2.0 |
 | `clsx` | 2.1.1 | MIT |
 | `core-util-is` | 1.0.3 | MIT |
+| `crelt` | 1.0.7 | MIT |
 | `detect-node-es` | 1.1.0 | MIT |
 | `dingbat-to-unicode` | 1.0.2 | BSD-2-Clause |
 | `docx` | 9.14.0 | MIT |
@@ -137,6 +147,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `scheduler` | 0.28.0 | MIT |
 | `setimmediate` | 1.0.5 | MIT |
 | `string_decoder` | 1.1.1 | MIT |
+| `style-mod` | 4.1.4 | MIT |
 | `tailwind-merge` | 3.7.0 | MIT |
 | `tailwindcss` | 4.3.3 | MIT |
 | `tslib` | 2.8.1 | 0BSD |
@@ -146,6 +157,7 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `use-callback-ref` | 1.3.3 | MIT |
 | `use-sidecar` | 1.1.3 | MIT |
 | `util-deprecate` | 1.0.2 | MIT |
+| `w3c-keyname` | 2.2.8 | MIT |
 | `xmlbuilder` | 10.1.1 | MIT |
 | `yaml` | 2.9.1 | ISC |
 | `zod` | 4.6.7 | MIT |
