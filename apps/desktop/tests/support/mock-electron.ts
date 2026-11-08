@@ -6,6 +6,8 @@ type Handler = (event: unknown, payload: unknown) => Promise<unknown>;
 /** What the file under test wants recorded; the mock reads these on every call. */
 export interface ElectronHooks {
   handle?: (channel: string, handler: Handler) => void;
+  exposeInMainWorld?: (name: string, api: unknown) => void;
+  invoke?: (channel: string, ...args: unknown[]) => Promise<unknown>;
   showItemInFolder?: (path: string) => void;
   /** Protected storage in Electron 45's shape: availability is a promise, encryption is not. */
   safeStorage?: {
@@ -92,6 +94,11 @@ export function mockElectron(userData: string, hooks: ElectronHooks = {}): void 
     },
     ipcMain: {
       handle: (channel: string, handler: Handler) => current.hooks.handle?.(channel, handler)
+    },
+    contextBridge: { exposeInMainWorld: (name: string, api: unknown) => current.hooks.exposeInMainWorld?.(name, api) },
+    ipcRenderer: {
+      on: () => {}, removeListener: () => {},
+      invoke: (channel: string, ...args: unknown[]) => current.hooks.invoke?.(channel, ...args) ?? Promise.reject(new Error("Unregistered test IPC channel"))
     },
     Menu: {},
     nativeImage: { createFromBuffer: () => ({ isEmpty: () => true }) },

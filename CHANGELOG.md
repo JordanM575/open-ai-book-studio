@@ -7,6 +7,19 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Saved-review receipt and draft recovery corrections
+
+- Verify complete intended report-conflict copies at the store, handler and receiver, including a
+  separate bound readback of the named file; unverifiable publication remains uncertain.
+- Keep pending/uncertain report saves latched across equivalent wrappers and require same-view
+  inspection plus explicit acknowledgement before another submission. Retain newer disposition
+  typing but require explicit adoption of superseding history, including other drafts after an
+  unconfirmed save; distinguish absent notes from intentionally entered empty or whitespace notes.
+- Admit disposition inputs before reading their properties, use portable test fixture roots and the
+  shared complete Electron mock, and cover these paths with focused synthetic regressions. Native,
+  built-app, integrated verification and independent review remain outstanding; 039 T014/T015 and
+  038 T022 stay unchecked.
+
 ### Checked saved-review dispositions and recovery
 
 - Complete the authorized saved-record mutation slice through the existing Library queue/writer:

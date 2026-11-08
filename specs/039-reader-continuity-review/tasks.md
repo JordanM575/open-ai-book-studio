@@ -124,3 +124,22 @@ gates and fresh independent exact-head review remain open. T014/T015 stay unchec
 untouched. Final focused evidence: 147 tests / 898 assertions across six dedicated/relevant files,
 workspace typechecks, strict core-test typecheck, ten-file lint and diff checks passed. Detailed
 executed commands and limits are in the separate v20 finish report.
+
+### November 8 — W10 v21 saved-review recovery corrections (T014/T015 partial)
+
+Report conflicts now require full reconstructed intended content, verified conflict metadata and
+independent reads of the named copy at the handler and receiver; an unverifiable copy or publication
+stays uncertain. Pending and uncertain report saves survive equivalent prop wrappers and require
+same-view inspection and explicit acknowledgement before another save. Disposition drafts retain
+newer typing but cannot use a known or possibly superseded baseline without inspection and explicit
+history adoption, including other drafts around an unconfirmed save; untouched blank notes are absent,
+while explicit empty and whitespace notes remain exact. Caller-owned
+disposition inputs are admitted before property reads. Desktop tests use the shared complete Electron
+mock and portable, individually owned temporary roots.
+
+Focused synthetic store/transport, mounted browser and mocked desktop wrapper/IPC/preload regressions
+exercise these corrections and their uncertainty paths. They do not establish built Electron or native
+device behavior, nor close production reader execution, export/archive, segmented continuation,
+campaign, accessibility, broad integration or fresh independent exact-head review. T014/T015 stay
+unchecked and 038 T022 is unchanged. Exact commands, results and limits belong to the separate v21
+recovery finish report.

@@ -143,7 +143,22 @@ export class ReviewRecordStore {
         sha256: (text) => this.sha256Text(text)
       });
       const bytes = reportRecordBytes(report);
-      return this.createOnly("review-report", bookId, report.id, bytes);
+      try {
+        return await this.createOnly("review-report", bookId, report.id, bytes);
+      } catch (error) {
+        if (!(error instanceof ReviewRecordError) || error.code !== "conflict") throw error;
+        try {
+          if (!error.savedAs) throw new Error("Missing conflict location");
+          const copy = await this.loadReportConflictCopy(bookId, error.savedAs);
+          const decoded = decodeReviewRecord(new TextEncoder().encode(copy.rawJson), { kind: "review-report", bookId, allowConflictMetadata: true });
+          const { conflictMetadata: _metadata, ...value } = decoded.raw;
+          if (!bytesEqual(encodeReviewRecord("review-report", value), bytes)) throw new Error("Changed report conflict copy");
+          throw new ReviewRecordError("conflict", error.message, error.savedAs, { at: savedAt, ...copy });
+        } catch (verification) {
+          if (verification instanceof ReviewRecordError && verification.code === "conflict" && verification.copy) throw verification;
+          throw new ReviewRecordError("uncertain", "The report conflict copy could not be verified. Keep your review and inspect the conflicts folder before another save.");
+        }
+      }
     });
   }
 
@@ -152,6 +167,26 @@ export class ReviewRecordStore {
       await this.assertOwner(bookId);
       return this.loadReport(bookId, id);
     });
+  }
+
+  /** Narrow readback of a named report conflict, not an arbitrary Library path. */
+  async readReportConflictCopy(bookId: string, savedAs: string): Promise<{ hash: string; rawJson: string }> {
+    return this.host.withBook(bookId, async () => {
+      await this.assertOwner(bookId);
+      return this.loadReportConflictCopy(bookId, savedAs);
+    });
+  }
+
+  /** The caller already owns the book queue, including during report publication. */
+  private async loadReportConflictCopy(bookId: string, savedAs: string): Promise<{ hash: string; rawJson: string }> {
+    if (!savedAs.startsWith(`books/${bookId}/conflicts/review-report.`) ||
+      !/^books\/[A-Za-z0-9_-]+\/conflicts\/[A-Za-z0-9_.-]+\.json$/.test(savedAs) || savedAs.includes("..")) throw new Error("Invalid report conflict location");
+    const path = libraryPathFromArchivePath(savedAs);
+    const stat = await this.host.storage.stat(path);
+    if (!stat || stat.size > REVIEW_RECORD_BYTES) throw new Error("Unavailable report conflict");
+    const copy = await this.requireVerified(path);
+    decodeReviewRecord(copy.bytes, { kind: "review-report", bookId, allowConflictMetadata: true });
+    return { hash: copy.sha256, rawJson: decoder.decode(copy.bytes) };
   }
 
   async listReports(

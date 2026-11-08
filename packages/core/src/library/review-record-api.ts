@@ -26,6 +26,7 @@ const requestSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("read"), ...identity }),
   z.strictObject({ operation: z.literal("readDispositions"), ...identity }),
   z.strictObject({ operation: z.literal("save"), scope: scopeSchema, run: z.unknown() }),
+  z.strictObject({ operation: z.literal("readReportConflict"), scope: scopeSchema, savedAs: z.string().max(600) }),
   z.strictObject({ operation: z.literal("saveDisposition"), ...identity, ...dispositionIntentSchema.shape }),
   z.strictObject({ operation: z.literal("inspectGroup"), ...identity }),
   z.strictObject({ operation: z.literal("listTrash"), scope: scopeSchema, offset: count }),
@@ -157,6 +158,14 @@ async function validateOutput(request: Request, value: unknown): Promise<unknown
     if (canonicalRecordText(expected) !== canonicalRecordText(report.record)) throw new Error("Foreign saved result.");
     return { status: saved.status, report };
   }
+  if (request.operation === "readReportConflict") {
+    const copy = snapshotSchema.parse(value);
+    if (!request.savedAs.startsWith(`books/${request.scope.bookId}/conflicts/review-report.`) ||
+      !/^books\/[A-Za-z0-9_-]+\/conflicts\/[A-Za-z0-9_.-]+\.json$/.test(request.savedAs) || request.savedAs.includes("..") ||
+      await sha256(copy.rawJson) !== copy.hash) throw new Error("Foreign report conflict.");
+    decodeReviewRecord(encoder.encode(copy.rawJson), { kind: "review-report", bookId: request.scope.bookId, allowConflictMetadata: true });
+    return copy;
+  }
   if (request.operation === "saveDisposition") {
     const saved = z.strictObject({ status: z.enum(["saved", "unchanged"]), at: timestampSchema, record: snapshotSchema }).parse(value);
     const record = await snapshot(saved.record, "review-dispositions", request.scope.bookId, request.id);
@@ -205,7 +214,18 @@ async function validateFailure(error: ReviewRecordFailure, request: Request): Pr
         observed: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("absent") }), z.strictObject({ kind: z.literal("sha256"), value: hashSchema })]) }).parse(conflictMetadata);
       if (canonicalRecordText(value) !== canonicalRecordText(expected.value) || canonicalRecordText(metadata.baseline) !== canonicalRecordText(expected.value.base) ||
         metadata.reason !== (metadata.observed.kind === "absent" ? "missing-file" : "external-edit")) throw new Error("Foreign conflict intent.");
-    } else if (error.copy) throw new Error("Unexpected conflict contents.");
+    } else if (request.operation === "save") {
+      if (!error.copy || !error.savedAs.startsWith(`books/${bookId}/conflicts/review-report.`)) throw new Error("Missing report conflict contents.");
+      const run = await validatedRun(request.run);
+      const copy = decodeReviewRecord(encoder.encode(error.copy.rawJson), { kind: "review-report", bookId, allowConflictMetadata: true });
+      if (await sha256(error.copy.rawJson) !== error.copy.hash || copy.record.id !== run.runId || copy.record.savedAt !== error.copy.at) throw new Error("Foreign report conflict contents.");
+      const expected = await buildReviewReport({ ownerBookId: bookId, run, savedAt: error.copy.at, sha256 });
+      const { conflictMetadata, ...value } = copy.raw;
+      const metadata = z.strictObject({ reason: z.enum(["missing-file", "external-edit"]), baseline: z.unknown(),
+        observed: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("absent") }), z.strictObject({ kind: z.literal("sha256"), value: hashSchema })]) }).parse(conflictMetadata);
+      if (canonicalRecordText(value) !== canonicalRecordText(expected) || canonicalRecordText(metadata.baseline) !== canonicalRecordText({ kind: "absent", revision: 0 }) ||
+        metadata.reason !== (metadata.observed.kind === "absent" ? "missing-file" : "external-edit")) throw new Error("Foreign report conflict intent.");
+    } else throw new Error("Unexpected conflict receipt.");
   } else if (error.savedAs !== undefined || error.copy !== undefined || error.code === "conflict") throw new Error("Invalid copy receipt.");
   if ((error.code === "uncertain") !== (error.outcome === "uncertain") ||
     (error.code === "not-kept") !== (error.outcome === "not-kept")) throw new Error("Invalid outcome.");
@@ -253,6 +273,8 @@ export function reviewRecordHandler(getLibrary: () => object) {
             if (getLibrary() !== library) throw new ReviewRecordError("invalid", "The open library changed before saving. Nothing was written.");
             const saved = await store.createReport(request.scope.bookId, run);
             data = { status: saved.status, report: wire(saved.report) };
+          } else if (request.operation === "readReportConflict") {
+            data = await store.readReportConflictCopy(request.scope.bookId, request.savedAs);
           } else if (request.operation === "saveDisposition") {
             const { scope: _scope, id: _id, hash: _hash, operation: _operation, ...intent } = request;
             if (request.hash !== request.report.hash) throw new ReviewRecordError("invalid", "The disposition command names another report. Nothing was written.");
@@ -308,7 +330,15 @@ export function reviewRecordHandler(getLibrary: () => object) {
       }
     }
     if (!result.ok) {
-      try { await validateFailure(errorSchema.parse(result.error), request); }
+      try {
+        await validateFailure(errorSchema.parse(result.error), request);
+        if (request.operation === "save" && result.error.outcome === "conflict") {
+          const store = (library as { reviewRecords?: ReviewRecordStore } | null)?.reviewRecords;
+          if (!store || !result.error.savedAs || !result.error.copy) throw new Error("Missing report conflict.");
+          const actual = await store.readReportConflictCopy(request.scope.bookId, result.error.savedAs);
+          if (actual.hash !== result.error.copy.hash || actual.rawJson !== result.error.copy.rawJson) throw new Error("Changed report conflict.");
+        }
+      }
       catch { result = failure("uncertain", "The review failure receipt could not be verified. Keep your draft and inspect the saved version before another save.", "uncertain"); }
     }
     return { requestId, requestDigest, result };
@@ -326,7 +356,14 @@ export function createReviewRecordApi(invoke: (payload: unknown) => Promise<unkn
     try {
       const response = transportSchema.parse(JSON.parse(bounded(await invoke({ requestId, request }), REQUEST_BYTES + 100_000)));
       if (response.requestId !== requestId || response.requestDigest !== requestDigest) throw new Error("Foreign review response.");
-      if (!response.result.ok) return { ok: false, error: await validateFailure(response.result.error, request) };
+      if (!response.result.ok) {
+        const error = await validateFailure(response.result.error, request);
+        if (request.operation === "save" && error.outcome === "conflict" && error.savedAs && error.copy) {
+          const actual = await call({ operation: "readReportConflict", scope: request.scope, savedAs: error.savedAs });
+          if (!actual.ok || canonicalRecordText(actual.data) !== canonicalRecordText({ hash: error.copy.hash, rawJson: error.copy.rawJson })) throw new Error("Report conflict readback failed.");
+        }
+        return { ok: false, error };
+      }
       return { ok: true, data: await validateOutput(request, response.result.data) };
     } catch {
       return failure("uncertain", "The review reply could not be verified. Keep your draft and inspect the saved version before another save.", "uncertain");
@@ -338,7 +375,14 @@ export function createReviewRecordApi(invoke: (payload: unknown) => Promise<unkn
     read: (scope, id, hash) => call({ operation: "read", scope, id, hash }) as ReturnType<ReviewRecordApi["read"]>,
     readDispositions: (scope, id, hash) => call({ operation: "readDispositions", scope, id, hash }) as ReturnType<ReviewRecordApi["readDispositions"]>,
     save: (scope, run) => call({ operation: "save", scope, run }) as ReturnType<ReviewRecordApi["save"]>,
-    saveDisposition: (input) => call({ ...input, operation: "saveDisposition" }) as ReturnType<ReviewRecordApi["saveDisposition"]>,
+    saveDisposition: (input) => {
+      try {
+        const detached = JSON.parse(bounded(input, REQUEST_BYTES)) as Omit<Extract<Request, { operation: "saveDisposition" }>, "operation">;
+        return call({ ...detached, operation: "saveDisposition" }) as ReturnType<ReviewRecordApi["saveDisposition"]>;
+      } catch {
+        return Promise.resolve(failure("invalid", "The review request is invalid. Nothing was submitted."));
+      }
+    },
     inspectGroup: (scope, id, hash) => call({ operation: "inspectGroup", scope, id, hash }) as ReturnType<ReviewRecordApi["inspectGroup"]>,
     listTrash: (scope, offset = 0) => call({ operation: "listTrash", scope, offset }) as ReturnType<ReviewRecordApi["listTrash"]>,
     inspectTrash: (scope, groupId) => call({ operation: "inspectTrash", scope, groupId }) as ReturnType<ReviewRecordApi["inspectTrash"]>,

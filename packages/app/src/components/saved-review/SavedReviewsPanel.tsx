@@ -9,7 +9,7 @@ import { Button } from "@ai-book-studio/ui/button";
 import { ProfileAttribution, reviewActionClass, reviewTextClass } from "../reader-review/ReviewDisclosure";
 
 interface Props { bookId: string; libraryKey: string; api: ReviewRecordApi | undefined }
-type Draft = { state: DispositionState; note: string; baseline: SavedDispositions | null };
+type Draft = { state: DispositionState; note?: string; baseline: SavedDispositions | null };
 type Inspection = { report: SavedReview; dispositions: SavedDispositions | null; dispositionError: string | null };
 
 /** A new library/book visit owns a fresh lifetime; collapsed content and local drafts stay mounted. */
@@ -27,6 +27,8 @@ function SavedReviewsSession({ bookId, api }: Props) {
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [filter, setFilter] = useState("");
   const [drafts, setDrafts] = useState<ReadonlyMap<string, Draft>>(new Map());
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
   const [message, setMessage] = useState("Opening and filtering saved reviews never writes files.");
   const [busy, setBusy] = useState(false);
   const [blockedDrafts, setBlockedDrafts] = useState<ReadonlySet<string>>(new Set());
@@ -108,18 +110,37 @@ function SavedReviewsSession({ bookId, api }: Props) {
     setBusy(true);
     const { report } = inspection;
     const dispositions = draft.baseline;
-    setBlockedDrafts((previous) => new Set(previous).add(key));
+    const submittedDrafts = draftsRef.current;
+    setBlockedDrafts((previous) => {
+      const next = new Set(previous).add(key);
+      for (const finding of report.record.findings) {
+        const otherKey = JSON.stringify([report.hash, finding.findingId]);
+        if (submittedDrafts.has(otherKey)) next.add(otherKey);
+      }
+      return next;
+    });
     setInspection({ ...inspection, dispositionError: "A save was submitted. Inspect saved history again before confirming another baseline." });
     setRecoveryReady(false);
     try {
       const result = await api.saveDisposition({ scope, id: report.record.id, hash: report.hash, findingId,
         report: { hash: report.hash, rawJson: report.rawJson },
-        state: draft.state, note: draft.note, base: dispositions
+        state: draft.state, ...(draft.note === undefined ? {} : { note: draft.note }), base: dispositions
           ? { kind: "sha256", value: dispositions.hash, revision: dispositions.record.revision, rawJson: dispositions.rawJson } : { kind: "absent" } });
       if (!current(ticket)) return;
       if (result.ok) {
         setInspection({ report, dispositions: result.data.record, dispositionError: null });
-        setBlockedDrafts((previous) => { const next = new Set(previous); next.delete(key); return next; });
+        // A confirmed write supersedes the baseline of every other local draft on this report.
+        // Newer typing is kept, but requires an explicit adoption of the now-visible history.
+        const currentDrafts = draftsRef.current;
+        setBlockedDrafts((previous) => {
+          const next = new Set(previous);
+          if (currentDrafts.get(key) === draft) next.delete(key);
+          for (const finding of report.record.findings) {
+            const otherKey = JSON.stringify([report.hash, finding.findingId]);
+            if (otherKey !== key && currentDrafts.has(otherKey)) next.add(otherKey);
+          }
+          return next;
+        });
         setDrafts((previous) => { const next = new Map(previous); if (next.get(key) === draft) next.delete(key); return next; });
         setMessage("Disposition saved · Exact history and note confirmed. Any newer local edits are retained.");
       } else setMessage(reviewRecordFailureText(result.error));
@@ -220,8 +241,12 @@ function SavedReviewsSession({ bookId, api }: Props) {
         {report.findings.map((finding) => {
           const key = JSON.stringify([inspection.report.hash, finding.findingId]);
           const saved = inspection.dispositions?.record.dispositions.find((entry) => entry.findingId === finding.findingId);
-          const draft = drafts.get(key) ?? { state: saved?.state ?? "open", note: "", baseline: inspection.dispositions };
-          const edit = (next: Draft) => setDrafts((previous) => new Map(previous).set(key, next));
+          const draft: Draft = drafts.get(key) ?? { state: saved?.state ?? "open", baseline: inspection.dispositions };
+          const edit = (next: Draft) => {
+            setDrafts((previous) => new Map(previous).set(key, next));
+            // A draft started during an unconfirmed write has no inspected current baseline.
+            if (inspection.dispositionError) setBlockedDrafts((previous) => new Set(previous).add(key));
+          };
           return <section key={finding.findingId} aria-label={`Saved finding ${finding.findingId}`} className="space-y-2 border-t border-[var(--border)] pt-3">
             <h4 className="font-semibold">{finding.category.replaceAll("-", " ")} · Subjective {finding.claim === "contradiction" && finding.evidenceState !== "complete" ? "question" : finding.claim}</h4>
             <p className={reviewTextClass}>{finding.interpretation}</p>
@@ -239,11 +264,11 @@ function SavedReviewsSession({ bookId, api }: Props) {
               </select>
             </label>
             <label className="block">Local note for {finding.findingId}
-              <textarea className="field mt-1 w-full" value={draft.note} onChange={(event) => edit({ ...draft, note: event.target.value })} />
+              <textarea className="field mt-1 w-full" value={draft.note ?? ""} onChange={(event) => edit({ ...draft, note: event.target.value })} />
             </label>
             <Button disabled={busy || !scope || !drafts.has(key) || blockedDrafts.has(key) || !!inspection.dispositionError} onClick={() => void saveDisposition(finding.findingId, draft)}>Save disposition</Button>
             {drafts.has(key) && blockedDrafts.has(key) ? <>
-              <p>Another save needs explicit baseline confirmation. Reopen this review and inspect saved history first; a previously saved note must not be submitted again unintentionally.</p>
+              <p>Another save needs explicit baseline confirmation. Inspect the saved history below first; after an unconfirmed save, reopen this review. A previously saved note must not be submitted again unintentionally.</p>
               <Button disabled={busy || !!inspection.dispositionError} onClick={() => {
                 edit({ ...draft, baseline: inspection.dispositions });
                 setBlockedDrafts((previous) => { const next = new Set(previous); next.delete(key); return next; });

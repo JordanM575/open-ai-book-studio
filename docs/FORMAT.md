@@ -761,6 +761,23 @@ what its evidence supports. It cannot re-prove the quoted text itself: a saved r
 `verified-at-capture`, not a fresh verification. `invalidEvidence` keeps the withheld index and a
 bounded reason (`shape`, `source`, `revision`, `range`, `quote`) and never becomes a quotation.
 
+A report conflict receipt asserts a kept copy only after the store verifies the full intended
+report against its named copy and the handler independently reads that copy through the owning
+book's queue. Both transport edges reconstruct the report from the validated submitted run and the
+copy's `savedAt`, check its complete content, hash and conflict metadata, and bind the name to that
+book's report-conflict folder. The receiver also requests a separate, scoped readback of those same
+named bytes; a missing, different, unreadable or otherwise unverifiable copy yields **uncertain**,
+not a kept-copy claim or an automatic retry. This narrow readback is not an arbitrary path API. These
+checks bind the observed bytes to the submitted intent; they do not authenticate an arbitrarily
+forged transport or guarantee that an external writer cannot later change the file.
+
+After an uncertain report save, the result stays visible and another submission remains locked
+across equivalent run/API wrapper reconstruction. The same bound view must inspect the current saved
+report or an issue-free absence listing before the author can explicitly acknowledge the inspection
+and allow another save. A listing of absence is not proof that no copy exists; the author is also
+directed to inspect the conflicts folder. Real run, book, Library or view lifetime changes retire
+old replies rather than relabelling the new view.
+
 ### `dispositions/<runId>.json` — checked author state
 
 | Field | Required | Rule |
@@ -776,6 +793,12 @@ non-decreasing `at`, `from` equal to the previous `to` (`null` for the first), a
 `set`, `ignore`, `resolve` or `reopen` matching the new state. An event may carry an optional `note`
 of at most 2,000 Unicode scalar values; it is part of the append-only history. `updatedAt` must equal
 the last event's `at`. A request that repeats the current state with no note is a read, not a write.
+An untouched blank note in the connected editor is absent; an explicitly entered note, including an
+empty string or whitespace, is present and preserved exactly. If a confirmed save supersedes the
+baseline of retained newer typing or another draft on the same report, that draft stays blocked until
+the author explicitly adopts the inspected saved history. An unconfirmed save first requires a fresh
+inspection, and blocks existing or newly typed drafts on other findings until they adopt that history;
+retaining a draft is not permission to replay its previous note automatically.
 Disposition is independent of freshness: a rerun never resolves or relabels an earlier finding.
 The writer checks that the finding exists in the saved report and that the report hash has not
 changed. The connected checked command supplies the inspected report raw JSON/hash and an absent

@@ -1,13 +1,14 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import type { StudioApi } from "@ai-book-studio/core/ipc";
 import type { ReviewRecordResult } from "@ai-book-studio/core/library/review-record-api";
 import { readerRun } from "../../../packages/core/tests/review/record-fixtures";
 import { mockElectron } from "./support/mock-electron";
 
-const scratch = "/private/var/folders/kn/662ks6rj58lchyyydr8kgc180000gn/T/opencode";
+const scratch = tmpdir();
 const roots: string[] = [];
 const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>();
 let exposed!: StudioApi;
@@ -16,23 +17,16 @@ let Library!: typeof import("../src/main/library/store").Library;
 let keychainCalls = 0;
 
 beforeAll(async () => {
-  // Bun fixes named exports on first resolution: provide the complete main + preload namespace once.
-  const unavailable = () => { throw new Error("Unrequested native operation in synthetic review test"); };
-  mock.module("electron", () => ({
-    app: { getPath: () => scratch, getVersion: () => "0.0.0-checks", isPackaged: false },
-    BrowserWindow: { getAllWindows: () => [], getFocusedWindow: () => null },
-    dialog: { showOpenDialog: unavailable, showSaveDialog: unavailable, showMessageBox: unavailable },
-    ipcMain: { handle: (channel: string, handler: (event: unknown, payload: unknown) => Promise<unknown>) => handlers.set(channel, handler) },
-    Menu: {}, nativeImage: { createFromBuffer: unavailable }, Notification: { isSupported: () => false }, session: {},
-    shell: { showItemInFolder: unavailable, openExternal: unavailable },
-    safeStorage: { isAsyncEncryptionAvailable: () => { keychainCalls++; return false; }, encryptString: unavailable, decryptString: unavailable },
-    contextBridge: { exposeInMainWorld: (name: string, api: StudioApi) => { if (name === "studio") exposed = api; } },
-    ipcRenderer: { on: () => {}, removeListener: () => {}, invoke: async (channel: string, payload: unknown) => {
+  mockElectron(scratch, {
+    handle: (channel, handler) => { handlers.set(channel, handler); },
+    safeStorageCalls: () => { keychainCalls++; },
+    exposeInMainWorld: (name, api) => { if (name === "studio") exposed = api as StudioApi; },
+    invoke: async (channel, payload) => {
       const handler = handlers.get(channel);
       if (!handler) throw new Error("Unregistered test IPC channel");
       return structuredClone(await handler({}, structuredClone(payload)));
-    } }
-  }));
+    }
+  });
   const { registerIpc } = await import("../src/main/ipc");
   ({ Library } = await import("../src/main/library/store"));
   registerIpc({ requireLibrary: () => current } as never, () => null, {} as never, {} as never,
@@ -76,6 +70,28 @@ describe("registered saved-review IPC and actual preload over synthetic filesyst
     expect(value(await reviews.save(scope, run)).status).toBe("unchanged");
     expect(value(await reviews.read(scope, run.runId, saved.report.hash)).rawJson).toBe(saved.report.rawJson);
     expect(value(await reviews.list(scope)).reports[0]?.hash).toBe(saved.report.hash);
+    expect(hash(await readFile(chapterPath))).toBe(before);
+    expect(keychainCalls).toBe(0);
+  });
+
+  test("preload confirms the exact named report conflict through the shipping filesystem Library", async () => {
+    const { root, library, book, chapter } = await fixture();
+    current = library;
+    const reviews = api();
+    const scope = value(await reviews.open(book.id, crypto.randomUUID()));
+    const run = await readerRun(book.id);
+    const original = value(await reviews.save(scope, run)).report;
+    const chapterPath = join(root, "books", book.id, "chapters", chapter.path);
+    const before = hash(await readFile(chapterPath));
+    const changed = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Another synthetic interpretation." })) };
+    const result = await reviews.save(scope, changed);
+    expect(result).toMatchObject({ ok: false, error: { code: "conflict", outcome: "conflict" } });
+    if (result.ok || !result.error.savedAs || !result.error.copy) throw new Error("Expected a verified report conflict copy");
+    const bytes = await readFile(join(root, ...result.error.savedAs.split("/")));
+    expect(bytes.toString("utf8")).toBe(result.error.copy.rawJson);
+    expect(hash(bytes)).toBe(result.error.copy.hash);
+    expect(result.error.copy.rawJson).toContain("Another synthetic interpretation.");
+    expect(value(await reviews.read(scope, run.runId, original.hash)).rawJson).toBe(original.rawJson);
     expect(hash(await readFile(chapterPath))).toBe(before);
     expect(keychainCalls).toBe(0);
   });

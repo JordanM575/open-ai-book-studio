@@ -78,7 +78,116 @@ describe("bound saved-review transport", () => {
     expect(result).toMatchObject({ ok: false, error: { code: "conflict", outcome: "conflict" } });
     if (result.ok) throw new Error("Expected conflict");
     expect(result.error.savedAs).toStartWith(`books/${book.id}/conflicts/`);
+    const copy = required(result.error.copy);
+    expect(new TextDecoder().decode(required(await port.readFile(toLibraryFilePath(required(result.error.savedAs).split("/")))).bytes)).toBe(copy.rawJson);
+    expect(copy.rawJson).toContain("Another subjective opinion.");
     expect((await port.readFile(reportPath(book.id, run.runId)))?.sha256).toBe(first.report.hash);
+  });
+
+  test.each(["missing", "unrelated"] as const)("host rejects %s named report copy even with a complete matching receipt", async (fault) => {
+    const { api, scope, run, port, book, library } = await fixture();
+    value(await api.save(scope, run));
+    const changed = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Intended synthetic report" })) };
+    const legitimate = await api.save(scope, changed);
+    if (legitimate.ok || !legitimate.error.copy) throw new Error("Expected checked conflict");
+    const path = `books/${book.id}/conflicts/review-report.forged.json`;
+    if (fault === "unrelated") await port.commitFile(toLibraryFilePath(path.split("/")), new TextEncoder().encode("unrelated bytes"), { kind: "absent" });
+    let calls = 0;
+    library.reviewRecords.createReport = async () => { calls++; throw new ReviewRecordError("conflict", "Forged", path, legitimate.error.copy); };
+    expect(await api.save(scope, changed)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(calls).toBe(1);
+  });
+
+  test.each(["missing", "unrelated", "other-intent"] as const)("receiver rejects %s report-copy claims and retains uncertainty", async (fault) => {
+    const { api, handler, scope, run, port, book } = await fixture();
+    value(await api.save(scope, run));
+    const changed = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Intended synthetic report" })) };
+    const forgedPath = `books/${book.id}/conflicts/review-report.forged.json`;
+    if (fault === "unrelated") await port.commitFile(toLibraryFilePath(forgedPath.split("/")), new TextEncoder().encode("unrelated bytes"), { kind: "absent" });
+    const other = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Other intent" })) };
+    const otherResult = await api.save(scope, other);
+    if (otherResult.ok) throw new Error("Expected other conflict");
+    let saves = 0;
+    const receiver = createReviewRecordApi(async (payload) => {
+      const request = payload as { request: { operation: string } };
+      const response = await handler(payload) as { result: { ok: boolean; error?: { savedAs?: string | undefined; copy?: { at: string; hash: string; rawJson: string } | undefined } } };
+      if (request.request.operation === "save") {
+        saves++;
+        if (!response.result.error) throw new Error("Expected report conflict");
+        if (fault === "other-intent") response.result.error = { ...otherResult.error };
+        else response.result.error.savedAs = forgedPath;
+      }
+      return response;
+    });
+    expect(await receiver.save(scope, changed)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(saves).toBe(1);
+  });
+
+  test("lost independent report-copy readback stays uncertain and never retries publication", async () => {
+    const { api, handler, scope, run } = await fixture();
+    value(await api.save(scope, run));
+    const changed = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Readback must be confirmed." })) };
+    let saves = 0, reads = 0;
+    const receiver = createReviewRecordApi(async (payload) => {
+      const request = payload as { request: { operation: string } };
+      if (request.request.operation === "readReportConflict") { reads++; throw new Error("Lost independent readback"); }
+      if (request.request.operation === "save") saves++;
+      return handler(payload);
+    });
+    expect(await receiver.save(scope, changed)).toMatchObject({ ok: false, error: { code: "uncertain", outcome: "uncertain" } });
+    expect(saves).toBe(1);
+    expect(reads).toBe(1);
+  });
+
+  test("named report-copy reads require a current owning book and a narrow conflict path", async () => {
+    const { api, scope, run, book, library, port } = await fixture();
+    value(await api.save(scope, run));
+    const changed = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Synthetic copy for readback." })) };
+    const conflict = await api.save(scope, changed);
+    if (conflict.ok || !conflict.error.savedAs) throw new Error("Expected report conflict");
+    expect((await library.reviewRecords.readReportConflictCopy(book.id, conflict.error.savedAs)).rawJson).toContain("Synthetic copy for readback.");
+    await expect(library.reviewRecords.readReportConflictCopy(book.id, `books/${book.id}/reviews/${run.runId}.json`)).rejects.toThrow();
+    await port.removeFile(toLibraryFilePath(["books", book.id, "book.json"]));
+    await expect(library.reviewRecords.readReportConflictCopy(book.id, conflict.error.savedAs)).rejects.toThrow();
+  });
+
+  test("report conflict publication uncertainty remains uncertain without a retry", async () => {
+    const { api, scope, run, port } = await fixture();
+    value(await api.save(scope, run));
+    const commit = port.commitFile.bind(port);
+    let writes = 0;
+    port.commitFile = async (path, bytes, expected) => {
+      if (path.includes("conflicts")) { writes++; await commit(path, bytes, expected); return { status: "changed", current: null, publication: "uncertain" }; }
+      return commit(path, bytes, expected);
+    };
+    const changed = { ...run, findings: run.findings.map((finding) => ({ ...finding, interpretation: "Uncertain publication" })) };
+    expect(await api.save(scope, changed)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(writes).toBe(1);
+  });
+
+  test.each([false, true])("disposition rejects top-level accessor without execution or synchronous throw (throws=%s)", async (throws) => {
+    const { api, scope, run, library } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    let gets = 0, writes = 0;
+    const original = library.reviewRecords.recordDispositionChecked.bind(library.reviewRecords);
+    library.reviewRecords.recordDispositionChecked = async (...args) => { writes++; return original(...args); };
+    const input = intent(scope, report);
+    Object.defineProperty(input, "state", { enumerable: true, get() { gets++; if (throws) throw new Error("getter"); return "ignored"; } });
+    const promise = api.saveDisposition(input);
+    expect(await promise).toMatchObject({ ok: false, error: { code: "invalid", outcome: "refused" } });
+    expect(gets).toBe(0);
+    expect(writes).toBe(0);
+  });
+
+  test("disposition inputs detach synchronously before their caller mutates nested data", async () => {
+    const { api, scope, run } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const input = intent(scope, report);
+    input.note = "Before await  \n";
+    const pending = api.saveDisposition(input);
+    input.note = "After await";
+    input.report.rawJson = "changed";
+    expect(value(await pending).record.record.dispositions[0]?.events[0]?.note).toBe("Before await  \n");
   });
 
   test.each(["uncertain", "not-kept", "unsupported"] as const)("preserves %s without retry or fabricated success", async (code) => {
