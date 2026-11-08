@@ -21,6 +21,18 @@ Update the `Unreleased` section before every commit.
   This is a leaf UI candidate, not connected runtime or full spec 039 acceptance; reviewed core
   public-boundary fixes and integrated host/accessibility verification remain separately owned.
 
+### Shared exact-source verifier
+
+- Add one host-neutral core verifier that can back the inline editor's trusted evidence
+  port: raw byte/text SHA-256 and fatal UTF-8, canonical saved-body and file id/version
+  equality, exact envelope/scope attribution, literal UTF-16 citations reusing the
+  accepted review contracts, complete-overlap identity, frozen spans/findings or a
+  bounded refusal, invalid-evidence withholding and abort racing. It imports no app,
+  Library, filesystem, provider or IPC module. Refuse unsupported multi-source or
+  multi-book inline layers, duplicate evidence, contradiction shortfall, oversized
+  output and stale target facts. Host mounting/export, disposition/rerun relations and
+  independent exact-head review remain open; 039 T011 stays partial and unchecked.
+
 ### Isolated inline editor candidate
 
 - Add an unmounted CodeMirror plain-text leaf with an exact-current source handle,

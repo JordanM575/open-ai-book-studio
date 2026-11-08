@@ -35,12 +35,13 @@ central policy. API details and measured verification follow below before handof
   Source `clean`, `pending` and `available` use strict booleans. No whole-body hashing
   occurs here. This snapshot does not verify raw bytes or report envelopes.
 - `showEvidence(input)` invokes the **trusted** `ValidatedEvidencePort` with that
-  immutable target and AbortSignal. The port must use the corrected shared verifier:
-  owner/envelope integrity, source resolution/raw hash/fatal UTF-8/canonical body,
-  selected-scope containment, valid Unicode, literal quote equality, scalar-safe
-  endpoints, quote limits and finding/evidence attribution. Return detached data or
-  null. Never install the old uncorrected scoped candidate as this port. A caller
-  cannot replace the port with a boolean from model output.
+  immutable target and AbortSignal. The reviewed candidate seam is now
+  `packages/core/src/review/shared-verifier.ts` (`createSharedEvidencePort`): one
+  saved-chapter snapshot, raw byte/text SHA-256 and fatal UTF-8, canonical saved-body
+  and id/version equality, envelope/scope attribution, exact literal quotes,
+  scalar-safe endpoints, quote limits, evidence uniqueness and abort racing. Return
+  detached data or null. Never install an uncorrected scoped candidate or a boolean
+  from model output as this port. Mounting the seam still needs its own review.
 - After the await, the leaf checks request ownership, local revision, library/book/
   chapter/view generation, host source epoch, version/raw hash, exact saved/current
   body, clean/not-pending/available, non-composing and non-held state. No await occurs
@@ -119,9 +120,12 @@ Inspect controls remain independent of this current-evidence-only toolbar.
 
 ## Migration checklist for the named integration owner
 
-1. Obtain independent exact-candidate review of this leaf and the corrected scoped
-   verifier. Add an accepted core subpath export if needed; this isolated leaf uses
-   an explicit relative core import to avoid changing the coordinator-owned export map.
+1. Obtain independent exact-candidate review of this leaf and the shared core verifier
+   candidate (`packages/core/src/review/shared-verifier.ts`). Add an accepted core
+   subpath export if needed and prove structural use as `ValidatedEvidencePort`; this
+   isolated leaf uses an explicit relative core import to avoid changing the
+   coordinator-owned export map. The verifier is host-neutral; it does not read a
+   Library or dispatch a provider on the leaf's behalf.
 2. Keep ManuscriptEditor's title, custom history, latest/base refs, save queue,
    700ms save and 300ms draft debounce, retry/conflict/flush, illustration and voice
    ownership. Replace only the textarea after fidelity gates, not before. Scope the
