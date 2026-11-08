@@ -294,8 +294,11 @@ is `packages/core/src/authoring/wire.ts`; it performs no I/O.
 | `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
 
 `run.json` is control only. It never embeds attempts, effects, questions, commands, artifacts or the
-in-memory snapshot aggregate. The 2,500,000-byte run bound is a file bound, not a claim that an
-aggregate snapshot fits.
+in-memory snapshot aggregate. `mode` stores the control request/settling label; the pure reducer's
+`RunSnapshot.mode` uses the five stable modes and derives `pausing`/`cancelling`/`revoking` from
+unsettled attempts/effects. A host maps between them; a settling label is never permission to
+continue or retry. The 2,500,000-byte run bound is a file bound, not a claim that an aggregate
+snapshot fits.
 
 ### `brief.json` — immutable exact brief
 
