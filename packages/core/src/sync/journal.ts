@@ -210,11 +210,6 @@ export interface NoteFilesInput {
   now: string;
 }
 
-export interface NoteWrittenFilesInput extends NoteFilesInput {
-  /** Exact intended bytes already verified against the checked commit's readback. */
-  verifiedWrite?: { sha256: string; size: number };
-}
-
 /**
  * Only scanned roots are journaled; anything else (the catalog, staging areas) is noise. Conflict
  * copies are scanned but never noted as own writes: the failed save that made them still needs a
@@ -226,19 +221,18 @@ function isJournaledPath(path: string): boolean {
 }
 
 /**
- * Record bytes this device just wrote. With a verified commit readback, that exact snapshot is the
- * baseline even if another writer replaced or removed it before this best-effort note. Other
- * existing callers retain their observation-based behavior.
+ * Record a caller's current observation. Checked commits instead settle their initiating receipt
+ * with the verified result, so an old snapshot cannot replace a newer same-path journal decision.
  */
-export async function noteWrittenFiles({ storage, deviceId, paths, now, verifiedWrite }: NoteWrittenFilesInput): Promise<void> {
+export async function noteWrittenFiles({ storage, deviceId, paths, now }: NoteFilesInput): Promise<void> {
   const wanted = [...new Set(paths)].filter(isJournaledPath);
   if (wanted.length === 0) return;
-  await updateSyncJournal(storage, () => noteWritten(storage, deviceId, wanted, now, verifiedWrite));
+  await updateSyncJournal(storage, () => noteWritten(storage, deviceId, wanted, now));
 }
 
 /**
  * Persist the hash a write is about to commit before touching the author file. If the process
- * stops after the atomic manuscript commit but before `noteWrittenFiles` can update the observed
+ * stops after the atomic manuscript commit but before the receipt can update the observed
  * hash, the next scan can still recognize those exact bytes. A definitive prepublication refusal
  * must settle this receipt as not-published; an exception or uncertain publication must retain it.
  */
@@ -256,18 +250,19 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
       const files = { ...previous.files };
       for (const path of wanted) {
         const old = files[path];
-        if (!old) continue;
         const key = `${deviceId}\0${path}`;
         let prior = active.get(key);
         while (prior && !sameRecord(old, prior.after)) prior = prior.prior;
         // Even an equal-hash intent has a distinct owner. Hash equality cannot cancel another call.
-        const after = { ...old, writtenSha256: sha256, plannedWriteId: id };
-        const entry: PlannedEntry = { key, path, before: old, after, prior, outcome: "pending" };
+        // An unjournaled path has an in-memory owner, not an invented observed baseline.
+        const after = old ? { ...old, writtenSha256: sha256, plannedWriteId: id } : undefined;
+        const entry: PlannedEntry = { key, path, before: old, after, prior,
+          beforeGeneration: previous.generation, outcome: "pending" };
         entries.push(entry);
         active.set(key, entry);
-        files[path] = after;
+        if (after) files[path] = after;
       }
-      if (entries.length) await writeSyncJournal(storage, { ...previous, generation: previous.generation + 1, scannedAt: now, files });
+      if (entries.some((entry) => entry.after)) await writeSyncJournal(storage, { ...previous, generation: previous.generation + 1, scannedAt: now, files });
     } catch {
       // A note can have published before throwing. Keep its receipt for conditional reconciliation.
       // Journal I/O must never fail an author-file save.
@@ -277,8 +272,18 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
   return { settle: (outcome) => updateSyncJournal(storage, async () => {
     if (settled) return;
     settled = true;
-    for (const entry of entries) entry.outcome = outcome;
+    for (const entry of entries) {
+      entry.outcome = typeof outcome === "string" ? outcome : "possible";
+      if (typeof outcome !== "string") entry.verified = {
+        ...(entry.before?.version !== undefined ? { version: entry.before.version } : {}),
+        sha256, writtenSha256: sha256, size: outcome.size, observedAt: outcome.now
+      };
+    }
     try {
+      if (typeof outcome !== "string") {
+        await noteWritten(storage, deviceId, wanted, outcome.now, { sha256, size: outcome.size, entries });
+        return;
+      }
       if (outcome !== "not-published" || entries.length === 0) return;
       const previous = await readSyncJournal(storage, deviceId);
       if (!previous) return;
@@ -287,7 +292,8 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
       for (const entry of entries) {
         // Restore only this exact attempt's unchanged record. Other paths, newer same-hash notes,
         // accepted scans, removals and verified writes are not ours to undo.
-        if (!sameRecord(files[entry.path], entry.after)) continue;
+        if (!sameRecord(files[entry.path], entry.after) ||
+            (!entry.after && plannedWrites.get(storage)?.get(entry.key) !== entry)) continue;
         let before = entry.before;
         let prior = entry.prior;
         // Overlapping refusals may finish in either order. Do not resurrect an already-refused plan.
@@ -295,8 +301,14 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
           before = prior.before;
           prior = prior.prior;
         }
-        files[entry.path] = before;
-        changed = true;
+        // A predecessor may have verified its bytes while this newer attempt still owned the
+        // journal. On this definitive refusal its actual snapshot is safe to restore as well.
+        if (prior?.verified) before = prior.verified;
+        if (!sameRecord(files[entry.path], before)) {
+          if (before) files[entry.path] = before;
+          else delete files[entry.path];
+          changed = true;
+        }
       }
       if (changed) await writeSyncJournal(storage, { ...previous, generation: previous.generation + 1, scannedAt: now, files });
     } catch {
@@ -308,7 +320,7 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
         if (active?.get(entry.key) !== entry) continue;
         let prior = entry.prior;
         while (prior?.outcome === "not-published") prior = prior.prior;
-        if (prior?.outcome === "pending") active.set(entry.key, prior);
+        if (outcome === "not-published" && prior?.outcome === "pending") active.set(entry.key, prior);
         else active.delete(entry.key);
       }
       if (active?.size === 0) plannedWrites.delete(storage);
@@ -317,15 +329,19 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
 }
 
 export interface PlannedWriteReceipt {
-  /** Settle once, including on thrown errors. Only a definitive no-publication result may retract. */
-  settle(outcome: "not-published" | "possible"): Promise<void>;
+  /** Settle once. A verified result must match the initiating bytes, not a later file observation. */
+  settle(outcome: PlannedWriteOutcome): Promise<void>;
 }
+
+export type PlannedWriteOutcome = "not-published" | "possible" | { kind: "verified"; size: number; now: string };
 
 interface PlannedEntry {
   key: string;
   path: string;
-  before: SyncFileRecord;
-  after: SyncFileRecord;
+  before: SyncFileRecord | undefined;
+  after: SyncFileRecord | undefined;
+  beforeGeneration: number;
+  verified?: SyncFileRecord;
   prior: PlannedEntry | undefined;
   outcome: "pending" | "not-published" | "possible";
 }
@@ -334,10 +350,25 @@ interface PlannedEntry {
 // Completed predecessors remain reachable only while a newer pending receipt needs their outcome.
 const plannedWrites = new WeakMap<LibraryPort, Map<string, PlannedEntry>>();
 
-function sameRecord(a: SyncFileRecord | undefined, b: SyncFileRecord): boolean {
-  return a !== undefined && a.plannedWriteId === b.plannedWriteId && a.sha256 === b.sha256 &&
+function sameRecord(a: SyncFileRecord | undefined, b: SyncFileRecord | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.plannedWriteId === b.plannedWriteId && a.sha256 === b.sha256 &&
     a.writtenSha256 === b.writtenSha256 && a.observedAt === b.observedAt && a.version === b.version &&
     a.size === b.size && a.deleted === b.deleted;
+}
+
+/** Inside the journal queue: a newer reviewed decision also supersedes a not-yet-journaled path. */
+export function supersedePlannedWriteNotes(storage: LibraryPort, deviceId: string, paths?: Iterable<string>): void {
+  const wanted = paths === undefined ? undefined : new Set(paths);
+  retireWriteNotes(storage, deviceId, (path) => wanted === undefined || wanted.has(path));
+}
+
+function retireWriteNotes(storage: LibraryPort, deviceId: string, matches: (path: string) => boolean): void {
+  const active = plannedWrites.get(storage);
+  for (const [key, entry] of active ?? []) {
+    if (key.startsWith(`${deviceId}\0`) && matches(entry.path)) active?.delete(key);
+  }
+  if (active?.size === 0) plannedWrites.delete(storage);
 }
 
 async function noteWritten(
@@ -345,7 +376,7 @@ async function noteWritten(
   deviceId: string,
   wanted: string[],
   now: string,
-  verifiedWrite?: { sha256: string; size: number }
+  verifiedWrite?: { sha256: string; size: number; entries: PlannedEntry[] }
 ): Promise<void> {
   try {
     const previous = await readSyncJournal(storage, deviceId);
@@ -353,6 +384,15 @@ async function noteWritten(
     const files = { ...previous.files };
     let changed = false;
     for (const path of wanted) {
+      if (verifiedWrite) {
+        const entry = verifiedWrite.entries.find((item) => item.path === path);
+        if (!entry || plannedWrites.get(storage)?.get(entry.key) !== entry) continue;
+        // The persistent attempt marker owns an existing baseline. If its note failed before
+        // publication, require the exact initiating generation and record instead. Missing paths
+        // rely on the port/device/path owner; accepts, removals and moves explicitly retire it.
+        if (!sameRecord(files[path], entry.after) &&
+            !(previous.generation === entry.beforeGeneration && sameRecord(files[path], entry.before))) continue;
+      }
       let snapshot: LibraryFileSnapshot | null | undefined;
       try {
         const libraryPath = libraryPathFromArchivePath(path);
@@ -393,6 +433,7 @@ export async function noteRemovedFiles({ storage, deviceId, paths, now }: NoteFi
 
 async function noteRemoved(storage: LibraryPort, deviceId: string, wanted: string[], now: string): Promise<void> {
   try {
+    supersedePlannedWriteNotes(storage, deviceId, wanted);
     const previous = await readSyncJournal(storage, deviceId);
     if (!previous) return;
     const files = { ...previous.files };
@@ -431,6 +472,8 @@ export function noteMovedPrefix(input: NoteMoveInput): Promise<void> {
 
 async function noteMoved({ storage, deviceId, from, to, now }: NoteMoveInput): Promise<void> {
   try {
+    retireWriteNotes(storage, deviceId, (path) => path === from || path.startsWith(`${from}/`) ||
+      path === to || path.startsWith(`${to}/`));
     const previous = await readSyncJournal(storage, deviceId);
     if (!previous) return;
     const { files } = await scanLibrary(storage);

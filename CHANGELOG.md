@@ -7,6 +7,16 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Verified journal note ownership
+
+- Settle verified saves through their initiating one-shot receipt so delayed snapshots cannot undo
+  later accepted drift baselines, newer verified or uncertain notes, removals or moves. Track missing
+  paths without inventing observed baselines, and restore verified predecessors after a newer
+  definitive refusal. Keep unaccepted outside changes reviewable and journal failures best effort.
+- Add synthetic workflow/shared-writer ordering and journal-failure regressions, including same-port
+  service instances and strict test compilation. Cross-process atomicity and live-host timing remain
+  separate evidence requirements; 037 T023 and 038 T022 stay unchecked.
+
 ### Saved-review receipt and draft recovery corrections
 
 - Verify complete intended report-conflict copies at the store, handler and receiver, including a

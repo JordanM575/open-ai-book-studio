@@ -127,6 +127,13 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
   matrices cover mutable/immutable/shared writers, new/existing paths, equal/different outside bytes,
   note errors and settlement order. Fresh exact-head independent review and broad gates still precede
   acceptance; journal best-effort failure and cross-process limitations remain explicit in FORMAT.
+  **Verified-note ownership correction (2026-11-08):** the initiating receipt also owns verified
+  baseline updates. Later accepted scans, verified/uncertain notes, removals and moves supersede
+  that claim, including previously unjournaled paths. A newer definitive refusal can restore its
+  predecessor's verified snapshot. The focused core set passes 211 tests; all 30 preserved v24
+  probes and 51 v22 journal controls pass, alongside 90 artifact/adapter controls and strict/workspace
+  typechecks. These overlapping synthetic checks do not establish live-host timing or close T023;
+  fresh exact-head review and integrated gates remain required.
 - [ ] T024 Add scoped attempt execution at the existing runtime seam; no ordinary full-book prompt/plugins.
 - [ ] T025 Add event-driven asynchronous scheduling, account limiter, zero automatic retries and no spin.
   - Pure portion only: ready/blocked/settling projections, pinned-route capacity decisions, no-progress/

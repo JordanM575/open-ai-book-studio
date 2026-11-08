@@ -1422,9 +1422,10 @@ after a reviewed scan, never during one. The chapters, conversations, images and
 the studio writes or removes are noted in it as this device's own, so a scan does not list them. For
 an existing file, the intended save hash is recorded before the atomic file commit. After a service
 commit, the baseline advances only when the adapter's returned snapshot has the exact intended bytes
-and hash. The verified intended hash, not a later path observation, is recorded for both new and
-existing paths. If a different writer replaces or removes the file afterward, that difference remains
-reviewable. Explicit notes from other
+and hash and its initiating receipt still owns that path's journal note. The verified intended hash,
+not a later path observation, is recorded for both new and existing paths. An unaccepted outside
+replacement or removal remains reviewable; a later accepted scan, verified note, uncertain intent or
+removal cannot be undone by the older snapshot. Explicit notes from other
 existing writers retain their observation-based behavior. If the process stops between the intent and
 the verified note, a later scan still recognizes exact intended bytes on an existing path; a different
 on-disk hash remains an outside change for review. A
@@ -1437,14 +1438,21 @@ Schema 1 file records may additionally carry `plannedWriteId`, a fresh UUID iden
 intent that set `writtenSha256`; legacy records without it remain readable. This is bookkeeping, not
 evidence that the file was published or permission to write it. Every planned call on an existing
 journal record gets a new ID, even when the intended hash is unchanged. Absent records are not added
-by intent notes. A verified post-write record no longer carries a planned ID.
+by intent notes. A verified post-write record no longer carries a planned ID. Live receipt ownership
+is scoped to the storage-port object, device and path, including paths with no journal record. This
+coordinates service instances sharing that port; it does not coordinate separate ports or processes.
+Accepted scans, removal notes and moves retire affected live claims. A failed intent note permits a
+verified update only while its exact initiating record/generation and live ownership still match.
 
 If the adapter definitively returns `changed` without `publication: "uncertain"`, the service retracts
 only that attempt's still-identical journal record and restores its prior intent, without accepting
 the outside file as the observed baseline. Reconciliation shares the existing per-port journal queue;
 newer same-hash intents, verified writes, accepted scans and changes to other paths are preserved.
 Live receipts retain predecessor outcomes so overlapping refusals settling out of order cannot restore
-an already-refused intent. That transient bookkeeping is released on settlement; it is not a second
+an already-refused intent. If a predecessor verified while a newer intent owned the path, a definitive
+refusal of that newer intent can restore the predecessor's verified snapshot. Settlement is one-shot.
+Completed predecessors remain reachable only while a pending descendant needs them; active ownership
+is retired on settlement or superseding decisions. That transient bookkeeping is not a second
 source of truth. Exceptions, uncertain publication and unverified written readbacks retain the
 persisted intent for interrupted-write recovery. A known refusal never retracts a preexisting unresolved
 same-byte attempt. Journal notes remain best effort: a failed intent/post-write note can require review,

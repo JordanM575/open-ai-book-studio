@@ -83,8 +83,10 @@ import {
   noteRemovedFiles,
   noteWrittenFiles,
   readSyncJournal,
+  supersedePlannedWriteNotes,
   updateSyncJournal,
-  writeSyncJournal
+  writeSyncJournal,
+  type PlannedWriteOutcome
 } from "../sync/journal";
 import { scanLibrary } from "../sync/scan";
 import { detectDrift } from "../sync/detector";
@@ -261,6 +263,7 @@ export class LibraryService {
       if (existing) return false;
       const { files } = await scanLibrary(storage);
       const now = this.env.runtime.now();
+      supersedePlannedWriteNotes(storage, this.device.id);
       await writeSyncJournal(
         storage,
         journalForScan({ deviceId: this.device.id, previous: null, files, now })
@@ -288,6 +291,7 @@ export class LibraryService {
       const previous = await readSyncJournal(this.env.storage, this.device.id);
       const now = this.env.runtime.now();
       const next = acceptDriftPaths({ deviceId: this.device.id, previous, files, accept: paths, now });
+      supersedePlannedWriteNotes(this.env.storage, this.device.id, previous ? paths : undefined);
       await writeSyncJournal(this.env.storage, next);
       return detectDrift({ journal: next, files, now });
     });
@@ -1315,7 +1319,7 @@ export class LibraryService {
       sha256: intendedHash,
       now: this.env.runtime.now()
     });
-    let publication: "not-published" | "possible" = "possible";
+    let publication: PlannedWriteOutcome = "possible";
     try {
       const result = await this.env.storage.commitFile(path, bytes, expected);
       if (result.status === "changed" && result.publication !== "uncertain") publication = "not-published";
@@ -1324,13 +1328,7 @@ export class LibraryService {
           result.snapshot.bytes.every((byte, index) => byte === bytes[index])) {
         // Only this exact adapter readback is attributable to our commit. A later journal
         // observation may already be another writer's bytes; it must not become the baseline.
-        await noteWrittenFiles({
-          storage: this.env.storage,
-          deviceId: this.device.id,
-          paths: [libraryPathToArchivePath(path)],
-          verifiedWrite: { sha256: intendedHash, size: bytes.byteLength },
-          now: this.env.runtime.now()
-        });
+        publication = { kind: "verified", size: bytes.byteLength, now: this.env.runtime.now() };
       }
       return result;
     } finally {
