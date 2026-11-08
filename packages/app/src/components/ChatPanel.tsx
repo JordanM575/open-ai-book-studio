@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { Cpu, GitBranch, History, Monitor, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
@@ -45,7 +45,7 @@ import {
 import { Suggestion, Suggestions } from "@ai-book-studio/ui/ai-elements/suggestion";
 import { Tool, ToolContent, ToolHeader, ToolLine, ToolOutput, Tools } from "@ai-book-studio/ui/ai-elements/tool";
 import { cn, must } from "../lib/utils";
-import type { HandsFreePort, HandsFreeTurn } from "../lib/hands-free";
+import type { HandsFreeAdmission, HandsFreePort, HandsFreeTurn } from "../lib/hands-free";
 import { HandsFreeBar } from "./HandsFreeBar";
 import {
   approvalLabel,
@@ -97,6 +97,7 @@ interface SendOptions {
   readonly model: { connectionId: string; modelId: string } | undefined;
   readonly background: boolean;
   readonly resetComposer: boolean;
+  readonly voiceAdmission?: HandsFreeAdmission;
 }
 
 const APPROVAL_STATUS: Record<Approval["status"], string> = {
@@ -179,6 +180,12 @@ export function ChatPanel({
   const loadToken = useRef(0);
   const noticeRef = useRef(onNotice);
   const threadIdRef = useRef<string | null>(threadId);
+  const voiceView = useRef({ epoch: 0, mounted: false, bookId, chapterId, threadId, openThreadId });
+
+  useLayoutEffect(() => {
+    voiceView.current = { epoch: voiceView.current.epoch + 1, mounted: true, bookId, chapterId, threadId, openThreadId };
+    return () => { voiceView.current.mounted = false; voiceView.current.epoch += 1; };
+  }, [bookId, chapterId, threadId, openThreadId]);
 
   useEffect(() => {
     noticeRef.current = onNotice;
@@ -329,8 +336,10 @@ export function ChatPanel({
 
   const startAttempt = async (
     assistantId: string,
-    request: AgentTurnInput
+    request: AgentTurnInput,
+    voiceAdmission?: HandsFreeAdmission
   ): Promise<{ ok: true; threadId: string } | { ok: false; reason: string }> => {
+    const voiceViewEpoch = voiceView.current.epoch;
     assistantRef.current = assistantId;
     turnRef.current = null;
     setRunning(true);
@@ -343,11 +352,35 @@ export function ChatPanel({
       )
     );
 
+    let dispatched = false;
     try {
       await onBeforeSend();
-      const started = await window.studio.agent.start(request);
+      const dispatch = () => {
+        dispatched = true;
+        return window.studio.agent.start(request);
+      };
+      const started = voiceAdmission
+        ? await voiceAdmission.dispatch(dispatch, () => voiceView.current.mounted && voiceView.current.epoch === voiceViewEpoch)
+        : await dispatch();
+      if (!started) {
+        // Revoked before dispatch: keep the words visible, without a retry that could bypass a
+        // new voice session's admission. Typed messages continue through this same flush/start path.
+        const reason = "The voice session ended before dispatch. Nothing was sent.";
+        retryRequestsRef.current.delete(assistantId);
+        setMessages((current) => current.map((item) => item.id === assistantId
+          ? { ...item, failed: true, retryable: false, note: reason } : item));
+        setRunning(false);
+        setWaiting(false);
+        return { ok: false, reason };
+      }
       if (!started.ok) {
         throw Object.assign(new Error(started.error.message), { code: started.error.code });
+      }
+      if (voiceAdmission && voiceView.current.epoch !== voiceViewEpoch) {
+        // Dispatch already happened: return its real receipt, without rebinding a changed panel
+        // to the old book/thread. Stop listening alone does not change this view identity.
+        if (voiceView.current.mounted) { setRunning(false); setWaiting(false); }
+        return { ok: true, threadId: started.data.threadId };
       }
       turnRef.current = started.data.turnId;
       setThreadId(started.data.threadId);
@@ -356,13 +389,15 @@ export function ChatPanel({
       setWaiting(false);
       return { ok: true, threadId: started.data.threadId };
     } catch (error) {
+      const retryable = !voiceAdmission || dispatched;
+      if (!retryable) retryRequestsRef.current.delete(assistantId);
       const message = error instanceof Error ? error.message : String(error);
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : undefined;
       turnRef.current = null;
       setMessages((current) =>
         current.map((item) =>
           item.id === assistantId
-            ? { ...item, failed: true, retryable: true, note: message, errorCode: code, changed: 0, undoAvailable: true }
+            ? { ...item, failed: true, retryable, note: message, errorCode: code, changed: 0, undoAvailable: true }
             : item
         )
       );
@@ -552,7 +587,7 @@ export function ChatPanel({
     loadToken.current += 1;
     retryRequestsRef.current.set(assistant.id, request);
     setMessages((current) => [...current, user, assistant]);
-    const outcome = await startAttempt(assistant.id, request);
+    const outcome = await startAttempt(assistant.id, request, options.voiceAdmission);
     return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
   };
 
@@ -571,7 +606,7 @@ export function ChatPanel({
     });
   };
 
-  const sendVoiceTurn = async (turn: HandsFreeTurn): Promise<{ ok: boolean; reason?: string }> => {
+  const sendVoiceTurn = async (turn: HandsFreeTurn, admission: HandsFreeAdmission): Promise<{ ok: boolean; reason?: string }> => {
     if (turn.bookId !== bookId || turn.chapterId !== chapterId || turn.mode !== "discuss") {
       return { ok: false, reason: "The book or chapter changed. Nothing was sent." };
     }
@@ -584,7 +619,8 @@ export function ChatPanel({
       guidance: undefined,
       model: undefined,
       background: false,
-      resetComposer: false
+      resetComposer: false,
+      voiceAdmission: admission
     });
   };
 

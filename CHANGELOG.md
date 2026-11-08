@@ -10,6 +10,18 @@ Update the `Unreleased` section before every commit.
 HEAD
 ### Hands-free Discuss controls
 
+- Correct the complete capture/settlement/dispatch lifetime: every capture acquisition is freshly
+  admitted after awaits and owned by its original port and monotonic attempt. Stop and disposal join
+  pending acquisition and close it before reporting Stopped; segment holds share native closure with
+  shutdown, while only the exact shutdown receipt can settle Stop. Failed cleanup remains visibly
+  unconfirmed, including port reuse after unmount. Committed scope/port changes synchronously revoke
+  pending work, including A–B–A returns. Exact transcript receipts release only their matching core
+  request even when permission, route, source or visibility rejects the words; unknown charges remain.
+  Carry revocable voice admission through the existing ChatPanel draft flush to the final agent-start
+  boundary, keep local Stop available while sending, retain actual dispatched outcomes without
+  rebinding a changed panel, and give status descriptions stable unique IDs. Positive synthetic
+  controller/mounted/ChatPanel race regressions preserve typed sending, correction focus and StrictMode.
+  No production capture adapter is connected; 017 T017 and 038 T022 remain unchecked.
 - Keep transcription queued and uncharged until capture closes and fresh session/scope/route/grant
   facts admit the exact operation immediately before the adapter call. Stop revokes queued work
   synchronously, including intents still awaiting host facts; dispatched cancellation retains

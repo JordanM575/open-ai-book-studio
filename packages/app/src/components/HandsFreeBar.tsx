@@ -1,10 +1,12 @@
 import { Loader2, Mic, MicOff, Send, Square, Undo2, X } from "lucide-react";
+import { useId } from "react";
 import { Button } from "@ai-book-studio/ui/button";
 import type {
   HandsFreePhase,
   HandsFreePort,
   HandsFreeState,
   HandsFreeTurn,
+  HandsFreeAdmission,
 } from "../lib/hands-free";
 import { useHandsFreeSession } from "../hooks/use-hands-free-session";
 
@@ -14,7 +16,7 @@ interface Props {
   threadId: string | null;
   /** A trusted host adapter. This build ships none, so the bar reports that audio is not connected. */
   port?: HandsFreePort | undefined;
-  onSendTurn: (turn: HandsFreeTurn) => Promise<{ ok: boolean; reason?: string }>;
+  onSendTurn: (turn: HandsFreeTurn, admission: HandsFreeAdmission) => Promise<{ ok: boolean; reason?: string }>;
   onNotice?: (error: unknown) => void;
   /** A turn is already running in this conversation. */
   disabled?: boolean;
@@ -57,7 +59,7 @@ export function statusCopy(state: HandsFreeState, phase: HandsFreePhase): string
     case "stopping":
       return "Stopping… Waiting for the host to confirm that capture closed.";
     case "stopped":
-      if (state.note === "Stopped.") return "Stopped.";
+      if (state.stop.status === "stopped") return "Stopped.";
       return state.availability.ready && !state.session.token ? "Ready when you are." : "Not recording.";
     case "stop-unconfirmed":
       return state.stop.reason
@@ -75,6 +77,7 @@ export function HandsFreeBar({
   onNotice,
   disabled = false,
 }: Props) {
+  const statusId = useId();
   const { state, phase, start, stop, confirm, correct, discard, continueSession, acknowledge } =
     useHandsFreeSession({
       scope: { bookId, chapterId, threadId },
@@ -87,8 +90,9 @@ export function HandsFreeBar({
   const draft = session.draft;
   const failure = session.failures.stt ?? session.failures.work ?? session.failures.tts;
   const showDraft = phase === "correcting";
-  const canStart = state.availability.ready && !session.active && phase !== "stopping" && !disabled && !failure;
-  const canStop = session.active && phase !== "stopping" && phase !== "confirming";
+  const canStart = state.availability.ready && !session.active && phase !== "stopping" &&
+    phase !== "stop-unconfirmed" && state.send.status !== "sending" && !disabled && !failure;
+  const canStop = (session.active || phase === "stop-unconfirmed") && phase !== "stopping";
   const canConfirm = phase === "correcting" && draft.trim().length > 0 && !disabled && !session.correctionPending;
   const canContinue =
     session.active && !failure &&
@@ -105,6 +109,7 @@ export function HandsFreeBar({
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-(length:--text-caption-size) font-medium text-muted-foreground">Hands-free</span>
         <span
+          id={statusId}
           className={`min-w-0 flex-1 text-(length:--text-caption-size) ${failed ? "text-[var(--destructive-text)]" : "text-muted-foreground"}`}
           role={failed ? "alert" : "status"}
           aria-live="polite"
@@ -150,7 +155,7 @@ export function HandsFreeBar({
               Discard
             </Button>
           ) : null}
-          {session.active ? (
+          {session.active || phase === "stop-unconfirmed" ? (
             <Button
               variant="outline"
               size="sm"
@@ -167,7 +172,7 @@ export function HandsFreeBar({
               size="sm"
               onClick={start}
               disabled={!canStart}
-              aria-describedby="hands-free-status"
+              aria-describedby={statusId}
               data-testid="hands-free-start"
             >
               {state.availability.ready ? <Mic size={14} /> : <MicOff size={14} />}
@@ -197,7 +202,7 @@ export function HandsFreeBar({
             onChange={(event) => correct(event.target.value)}
             disabled={disabled}
             rows={2}
-            aria-describedby="hands-free-status"
+            aria-describedby={statusId}
             data-testid="hands-free-draft"
             className="block w-full resize-y rounded-[var(--corner-sm)] border border-[var(--input)] bg-[var(--card)] p-2 text-foreground focus-visible:outline-2"
           />
@@ -206,7 +211,7 @@ export function HandsFreeBar({
 
       {state.preserved && !showDraft ? (
         <p className="mt-2 text-(length:--text-caption-size) text-muted-foreground" data-testid="hands-free-preserved">
-          Not sent · “{state.preserved}”
+          {state.send.dispatched && state.send.text === state.preserved ? "Retained words" : "Not sent"} · “{state.preserved}”
         </p>
       ) : null}
 

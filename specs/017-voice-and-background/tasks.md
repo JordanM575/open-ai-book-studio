@@ -108,6 +108,14 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   the new target; a transcript after Stop is ignored. Synthetic controller and component tests pass.
   No capture adapter, OS prompt, live provider, playback arbitration or device evidence is mounted:
   without a host adapter the bar states that hands-free audio is not connected and records nothing.
+  Lifetime correction: capture admission rechecks after every await; original-port ownership joins
+  pending acquisition and closure across Stop/disposal, with exact shutdown-attempt receipts and
+  visible failed cleanup. Committed scope/port epochs revoke A–B–A intents. Attributable transcript
+  receipts release matching core requests even when revoked words are discarded. ChatPanel carries
+  revocable admission through its existing draft flush to the actual agent-start boundary; Stop stays
+  usable during send-start and dispatched outcomes remain attributable. Positive synthetic race
+  tests cover these contracts, unique status descriptions, retained correction focus and StrictMode.
+  This is host-neutral source/test evidence, not native capture, provider or connected-host acceptance.
   T018–T024 and 038 T022 remain unchecked.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
   uses checked editor mutation/undo and exact-source confirmation.

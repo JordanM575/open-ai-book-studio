@@ -8,6 +8,8 @@ import {
   initialTransportLedger,
   initialVoiceSession,
   maySend,
+  mayCapture,
+  type Request,
   reduceTransport,
   reduceVoiceSession,
   type Route,
@@ -91,6 +93,11 @@ export interface HandsFreeTurn {
   readonly mode: HandsFreeMode;
 }
 
+/** Calls the external boundary itself, after fresh facts; no cached boolean crosses an await. */
+export interface HandsFreeAdmission {
+  dispatch<T>(start: () => Promise<T>, current?: () => boolean): Promise<T | null>;
+}
+
 export type HandsFreeAvailability =
   | { readonly ready: true; readonly binding: Binding }
   | { readonly ready: false; readonly reason: string };
@@ -125,6 +132,8 @@ export type HandsFreeCaptureState = "closed" | "opening" | "open" | "failed";
 export interface HandsFreeStopState {
   readonly status: "idle" | "stopping" | "stopped" | "failed";
   readonly reason: string | null;
+  readonly attemptId: number | null;
+  readonly token: SessionToken | null;
 }
 
 export interface HandsFreeSendState {
@@ -133,6 +142,7 @@ export interface HandsFreeSendState {
   readonly threadId: string | null;
   readonly reason: string | null;
   readonly requestId: number | null;
+  readonly dispatched: boolean;
 }
 
 export type HandsFreePhase =
@@ -158,6 +168,9 @@ export interface HandsFreeState {
   readonly revision: number;
   readonly capture: HandsFreeCaptureState;
   readonly captureReason: string | null;
+  readonly ioSequence: number;
+  readonly captureAttempt: number | null;
+  readonly sttRequest: { readonly operationId: number; readonly request: Request } | null;
   /** A correction remains editable even when the author clears every character. */
   readonly editing: boolean;
   readonly stop: HandsFreeStopState;
@@ -172,8 +185,9 @@ export interface HandsFreeState {
 }
 
 export type HandsFreeEffect =
-  | { readonly type: "capture-open"; readonly token: SessionToken }
-  | { readonly type: "capture-close"; readonly token: SessionToken }
+  | { readonly type: "capture-open"; readonly token: SessionToken; readonly attemptId: number }
+  | { readonly type: "capture-close"; readonly token: SessionToken; readonly attemptId: number;
+      readonly purpose: "hold" | "shutdown" }
   | {
       readonly type: "transcribe";
       readonly requestId: number;
@@ -197,6 +211,8 @@ export interface HandsFreeTransition {
 /** The event minus the facts/scope the caller must rebuild on every call. */
 export type HandsFreeIntent =
   | { readonly type: "sync" }
+  | { readonly type: "revoke" }
+  | { readonly type: "capture-blocked"; readonly token: SessionToken; readonly reason: string }
   | { readonly type: "start" }
   | { readonly type: "segment"; readonly segmentId: number }
   | {
@@ -225,11 +241,14 @@ export type HandsFreeIntent =
   | { readonly type: "stop" }
   | { readonly type: "acknowledge" }
   | { readonly type: "send-settled"; readonly ok: boolean; readonly requestId: number; readonly reason?: string }
-  | { readonly type: "stop-settled"; readonly ok: boolean; readonly reason?: string }
+  | { readonly type: "send-dispatched"; readonly requestId: number }
+  | { readonly type: "stop-settled"; readonly ok: boolean; readonly reason?: string;
+      readonly token: SessionToken; readonly attemptId: number; readonly purpose: "hold" | "shutdown" }
   | {
       readonly type: "capture-settled";
       readonly open: boolean;
       readonly token: SessionToken;
+      readonly attemptId: number;
       readonly reason?: string;
     };
 
@@ -270,9 +289,12 @@ export function initialHandsFreeState(): HandsFreeState {
     revision: 0,
     capture: "closed" as HandsFreeCaptureState,
     captureReason: null,
+    ioSequence: 0,
+    captureAttempt: null,
+    sttRequest: null,
     editing: false,
-    stop: { status: "idle", reason: null } as HandsFreeStopState,
-    send: { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
+    stop: { status: "idle", reason: null, attemptId: null, token: null } as HandsFreeStopState,
+    send: { status: "idle", text: null, threadId: null, reason: null, requestId: null, dispatched: false } as HandsFreeSendState,
     transport: initialTransportLedger(),
     preserved: null,
     note: null,
@@ -379,6 +401,23 @@ function permitFor(session: VoiceSession, facts: HandsFreeFacts | null): boolean
   });
 }
 
+export function mayOpenHandsFreeCapture(state: HandsFreeState, facts: HandsFreeFacts | null,
+  scope: HandsFreeScope, attemptId: number): boolean {
+  const available = handsFreeAvailability(scope, facts);
+  return state.captureAttempt === attemptId && state.capture === "opening" &&
+    state.stop.status === "idle" && sameScope(state.scope, scope) && available.ready &&
+    mayCapture(state.session, hostFacts(facts, available.binding));
+}
+
+export function mayDispatchHandsFreeTurn(state: HandsFreeState, facts: HandsFreeFacts | null,
+  scope: HandsFreeScope, requestId: number): boolean {
+  const available = handsFreeAvailability(scope, facts);
+  const request = state.session.requests.work;
+  return state.send.status === "sending" && !state.send.dispatched && state.send.requestId === requestId &&
+    !!request && request.id === requestId && sameScope(state.scope, scope) && available.ready &&
+    maySend(state.session, request, hostFacts(facts, available.binding));
+}
+
 function phaseOf(state: HandsFreeState): HandsFreePhase {
   if (state.stop.status === "stopping") return "stopping";
   if (state.stop.status === "failed") return "stop-unconfirmed";
@@ -427,33 +466,46 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
 
   /** Call the pure core reducer with the fresh facts. */
   const core = (voiceEvent: VoiceEvent): readonly VoiceEffect[] => {
+    const wasActive = state.session.active;
+    const draft = state.session.draft;
     const transition = reduceVoiceSession(
       { ...state.session, binding: state.session.binding ?? currentBinding },
       voiceEvent,
       hostFacts(facts, currentBinding),
     );
     update({ session: transition.state });
+    closeCaptureEffects(transition.effects);
+    if (transition.effects.some((effect) => effect.type === "cancel-request" && effect.request.kind === "stt")) {
+      cancelSttTransport("The session no longer admits transcription.");
+    }
+    if (wasActive && !state.session.active) {
+      update({ session: { ...state.session, draft: "", confirmation: null }, editing: false,
+        ...(draft.trim() && boundedText(draft) ? { preserved: draft } : {}) });
+    }
     return transition.effects;
   };
 
   const openCaptureEffects = (coreEffects: readonly VoiceEffect[]) => {
     for (const effect of coreEffects) {
       if (effect.type === "start-capture" && state.session.token) {
-        if (state.capture === "open") continue;
-        effects.push({ type: "capture-open", token: state.session.token });
-        update({ capture: "opening" });
+        if (state.capture === "open" || state.capture === "opening") continue;
+        const attemptId = state.ioSequence + 1;
+        effects.push({ type: "capture-open", token: state.session.token, attemptId });
+        update({ capture: "opening", captureAttempt: attemptId, ioSequence: attemptId });
       }
     }
   };
 
   /** The core holds capture while a request is outstanding; the host is told to close its track. */
   const closeCaptureEffects = (coreEffects: readonly VoiceEffect[]) => {
-    for (const effect of coreEffects) {
-      if (effect.type === "stop-capture" && state.session.token) {
-        effects.push({ type: "capture-close", token: state.session.token });
-        update({ capture: "closed" });
-      }
-    }
+    const token = state.session.token;
+    if (!token || !coreEffects.some((effect) => effect.type === "stop-capture" || effect.type === "revoke-grant")) return;
+    const purpose = state.session.active ? "hold" : "shutdown";
+    if (effects.some((effect) => effect.type === "capture-close" && effect.purpose === purpose)) return;
+    const attemptId = state.ioSequence + 1;
+    effects.push({ type: "capture-close", token, attemptId, purpose });
+    update({ capture: "closed", captureAttempt: null, ioSequence: attemptId,
+      ...(purpose === "shutdown" ? { stop: { status: "stopping", reason: null, attemptId, token } as HandsFreeStopState } : {}) });
   };
 
   const preserveDraft = () => {
@@ -472,13 +524,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     if (!token) return;
     preserveDraft();
     const sending = state.send.status === "sending";
-    const hadCapture = state.capture === "open" || state.capture === "opening";
-    const coreEffects = core({ type: "end", token, reason: "scope-change" });
-    // Both stop-capture and revoke-grant describe the same host action; close the track once.
-    if (hadCapture && coreEffects.some((effect) =>
-      effect.type === "stop-capture" || effect.type === "revoke-grant")) {
-      effects.push({ type: "capture-close", token });
-    }
+    core({ type: "end", token, reason: "scope-change" });
     settleOutstanding("stt");
     settleOutstanding("work");
     // The core deliberately keeps a pending draft across Stop for host recovery. This surface
@@ -487,40 +533,17 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       session: { ...state.session, draft: "", confirmation: null, active: false, capture: false },
       editing: false,
       capture: "closed" as HandsFreeCaptureState,
-      ...(hadCapture ? { stop: { status: "stopping", reason: null } as HandsFreeStopState } : {}),
       send: sending
-        ? {
-            status: "failed",
-            text: state.send.text,
-            threadId: state.send.threadId,
-            reason: "The conversation changed while this turn was being sent. Its outcome is unknown.",
-            requestId: null,
-          }
-        : { status: "idle", text: null, threadId: null, reason: null, requestId: null },
+        ? state.send
+        : { status: "idle", text: null, threadId: null, reason: null, requestId: null, dispatched: false },
       note: sending
-        ? "The conversation changed while a turn was being sent. Its outcome is unknown; nothing was sent to the new conversation."
+        ? state.send.dispatched ? "The conversation changed after dispatch. The turn outcome is unknown until its receipt arrives."
+          : "The conversation changed before dispatch. The pending turn is revoked."
         : reason,
       scope: { ...scope },
       binding: null,
     });
   };
-
-  const scopeChanged = !!state.binding && !sameScope(state.scope, scope);
-  if (scopeChanged) {
-    if (state.session.active) {
-      endSession("The book, chapter or conversation changed. The session stopped and those words were not sent.");
-    } else {
-      preserveDraft();
-      update({
-        session: { ...state.session, draft: "", confirmation: null },
-        editing: false,
-        note: "The book, chapter or conversation changed. Those words were not sent.",
-        scope: { ...scope },
-        binding: null,
-        capture: "closed" as HandsFreeCaptureState,
-      });
-    }
-  }
 
   const cancelSttTransport = (reason: string) => {
     const operation = state.transport.slots.stt;
@@ -545,14 +568,26 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     if (receipt) update({ lastReceipt: receipt });
   };
 
+  const scopeChanged = !!state.binding && !sameScope(state.scope, scope);
+  if (scopeChanged || event.type === "revoke") {
+    if (state.session.active) endSession("The book, chapter, conversation or capture host changed. Those words were not sent.");
+    else {
+      preserveDraft();
+      update({ session: { ...state.session, draft: "", confirmation: null }, editing: false,
+        scope: { ...scope }, binding: null });
+    }
+  }
+
   switch (event.type) {
+    case "capture-blocked": {
+      if (state.session.active) break;
+      const attemptId = state.ioSequence + 1;
+      update({ ioSequence: attemptId, capture: "failed", captureReason: event.reason,
+        stop: { status: "failed", reason: event.reason, token: event.token, attemptId } });
+      break;
+    }
     case "sync": {
-      const observe = core({ type: "observe" });
-      for (const effect of observe) {
-        if ((effect.type === "stop-capture" || effect.type === "revoke-grant") && state.session.token) {
-          effects.push({ type: "capture-close", token: state.session.token });
-        }
-      }
+      core({ type: "observe" });
       if (!state.session.active && state.capture !== "closed") {
         update({ capture: "closed" as HandsFreeCaptureState });
       }
@@ -560,11 +595,18 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     }
 
     case "start": {
+      if (state.stop.status === "stopping" || state.stop.status === "failed" || state.send.status === "sending") break;
+      if (state.session.active) {
+        core({ type: "observe" });
+        update({ note: state.session.active ? "End the current conversation before starting another." : state.session.reason });
+        break;
+      }
       if (!availability.ready) {
         update({
           session: {
             ...initialVoiceSession(),
             generation: state.session.generation,
+            sequence: state.session.sequence,
             status: "unavailable",
             reason: availability.reason,
             failures: state.session.failures,
@@ -577,10 +619,6 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
           scope: { ...scope },
           binding: null,
         });
-        break;
-      }
-      if (state.session.active) {
-        update({ note: "End the current conversation before starting another.", availability });
         break;
       }
       const grant = facts?.grant;
@@ -605,10 +643,10 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         capture: "closed" as HandsFreeCaptureState,
         captureReason: null,
         editing: false,
-        stop: { status: "idle", reason: null } as HandsFreeStopState,
+        stop: { status: "idle", reason: null, attemptId: null, token: null } as HandsFreeStopState,
         send: state.send.status === "failed"
           ? state.send
-          : { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
+          : { status: "idle", text: null, threadId: null, reason: null, requestId: null, dispatched: false } as HandsFreeSendState,
         preserved: null,
         note: null,
         ignoredTranscripts: 0,
@@ -628,7 +666,6 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         break;
       }
       const coreEffects = core({ type: "segment", token, segmentId: event.segmentId });
-      closeCaptureEffects(coreEffects);
       const transcribe = coreEffects.find((effect): effect is Extract<VoiceEffect, { type: "transcribe" }> =>
         effect.type === "transcribe");
       if (!transcribe) break;
@@ -655,7 +692,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       }
       // Capture closure can await the host. Keep this chunk queued/unsent until the runner
       // revalidates fresh facts immediately before the adapter call.
-      update({ transport: chunk.ledger });
+      update({ transport: chunk.ledger, sttRequest: { operationId, request: transcribe.request } });
       effects.push({
         type: "transcribe",
         requestId: transcribe.request.id,
@@ -692,7 +729,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
 
     case "transcript": {
       const token = state.session.token;
-      const request = state.session.requests.stt;
+      const request = state.sttRequest?.operationId === event.operationId ? state.sttRequest.request : null;
       const operation = state.transport.slots.stt;
       const matching = operation?.operationId === event.operationId &&
         operation.chunks.find((chunk) => chunk.chunkId === event.chunkId)?.state === "dispatched";
@@ -704,10 +741,11 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
           outcome: "success",
           costUsd: null,
         });
-        update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
+        update({ transport: settle.ledger, sttRequest: null, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
       }
       const stopped = state.stop.status === "stopping" || state.stop.status === "failed" || !state.session.active;
       if (!matching || stopped || !request || !token || !sameToken(operation, request)) {
+        if (matching && request && sameToken(operation, request)) core({ type: "settled", request });
         update({
           ignoredTranscripts: state.ignoredTranscripts + 1,
           note: "A transcript arrived after this session stopped. It was ignored and nothing was sent.",
@@ -725,6 +763,9 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         break;
       }
       core({ type: "transcript", token, request, text: event.text });
+      // Delivery and permission to consume words are separate. The exact receipt always releases
+      // its core request, even when the core lifecycle precheck rejected the text.
+      core({ type: "settled", request });
       update({ editing: state.session.active && Boolean(state.session.draft),
         note: state.session.status === "interrupted" ? state.session.reason : null });
       break;
@@ -732,7 +773,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
 
     case "transcript-failed": {
       const token = state.session.token;
-      const request = state.session.requests.stt;
+      const request = state.sttRequest?.operationId === event.operationId ? state.sttRequest.request : null;
       const operation = state.transport.slots.stt;
       const matching = operation?.operationId === event.operationId &&
         operation.chunks.find((chunk) => chunk.chunkId === event.chunkId)?.state === "dispatched";
@@ -744,15 +785,16 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
           outcome: "failure",
           failure: event.reason,
         });
-        update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
+        update({ transport: settle.ledger, sttRequest: null, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
       }
       if (!matching || !request || !token || !sameToken(operation, request)) {
         update({ ignoredTranscripts: state.ignoredTranscripts + 1 });
         break;
       }
+      core({ type: "observe" });
       if (!state.session.active || state.stop.status !== "idle") {
         // A stop aborts the request; settling it as a failure would block every later session.
-        settleOutstanding("stt");
+        core({ type: "settled", request });
         update({
           ignoredTranscripts: state.ignoredTranscripts + 1,
           note: "The transcription ended after this session stopped. Nothing was sent.",
@@ -776,13 +818,12 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         break;
       }
       if (event.text === state.session.draft) break;
-      const coreEffects = core({
+      core({
         type: "command",
         token,
         command: { kind: "correct-that", text: event.text },
         input: "control",
       });
-      closeCaptureEffects(coreEffects);
       if (state.session.active && state.session.draft === event.text) update({ editing: true });
       if (state.session.draft !== event.text) {
         update({ note: state.session.reason ?? "The correction could not be applied." });
@@ -854,6 +895,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
           threadId: binding.threadId,
           reason: null,
           requestId: submit.request.id,
+          dispatched: false,
         },
         editing: false,
         note: null,
@@ -873,19 +915,27 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       break;
     }
 
+    case "send-dispatched": {
+      if (state.send.status === "sending" && state.send.requestId === event.requestId) {
+        update({ send: { ...state.send, dispatched: true } });
+      }
+      break;
+    }
+
     case "send-settled": {
       // A late result from another turn or session must not speak for this one.
       if (state.send.status !== "sending" || state.send.requestId !== event.requestId) break;
       const request = state.session.requests.work;
-      if (request && event.ok) {
+      if (request && request.id === event.requestId && event.ok) {
         core({ type: "settled", request });
-      } else if (request) {
+      } else if (request && request.id === event.requestId) {
         core({ type: "settled", request, failure: failureCopy(event.reason) });
       }
       if (event.ok) {
         update({
           send: { ...state.send, status: "sent", reason: null, requestId: null },
-          note: "Sent to this conversation.",
+          note: sameScope(state.scope, scope) && state.send.threadId === scope.threadId
+            ? "Sent to this conversation." : "Sent to the original conversation before it changed.",
         });
       } else {
         const reason = failureCopy(event.reason);
@@ -904,7 +954,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         if (failure) core({ type: "acknowledge-failure", request: failure.request });
       }
       if (state.send.status === "failed") {
-        update({ send: { status: "idle", text: null, threadId: null, reason: null, requestId: null } });
+        update({ send: { status: "idle", text: null, threadId: null, reason: null, requestId: null, dispatched: false } });
       }
       update({ note: null });
       break;
@@ -912,30 +962,30 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
 
     case "stop": {
       if (state.stop.status === "stopping") break;
+      if (state.stop.status === "failed" && state.stop.token) {
+        const attemptId = state.ioSequence + 1;
+        effects.push({ type: "capture-close", token: state.stop.token, purpose: "shutdown", attemptId });
+        update({ ioSequence: attemptId, stop: { ...state.stop, status: "stopping", reason: null, attemptId } });
+        break;
+      }
       const token = state.session.token;
       if (!token || !state.session.active) {
         update({
-          stop: { status: "stopped", reason: null } as HandsFreeStopState,
+          stop: { ...state.stop, status: "stopped", reason: null },
           capture: "closed" as HandsFreeCaptureState,
           note: "Nothing was recording.",
         });
         break;
       }
       preserveDraft();
-      const coreEffects = core({ type: "command", token, command: { kind: "stop" }, input: "control" });
+      core({ type: "command", token, command: { kind: "stop" }, input: "control" });
       update({
-        stop: { status: "stopping", reason: null } as HandsFreeStopState,
         session: { ...state.session, draft: "" },
         editing: false,
         send: state.send.status === "sending" ? state.send
-          : { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
+          : { status: "idle", text: null, threadId: null, reason: null, requestId: null, dispatched: false } as HandsFreeSendState,
         note: "Stopping. Waiting for the host to confirm that capture closed.",
       });
-      for (const effect of coreEffects) {
-        if ((effect.type === "stop-capture" || effect.type === "revoke-grant")) {
-          effects.push({ type: "capture-close", token });
-        }
-      }
       cancelSttTransport("Stopped.");
       // Stop is a cancellation, not a failure: release the core slots while the transport receipt
       // keeps the unknown charge. A dispatched send still reports its own real outcome.
@@ -945,17 +995,25 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     }
 
     case "stop-settled": {
-      if (state.stop.status !== "stopping") break;
+      if (event.purpose === "hold") {
+        if (!event.ok && state.session.active && state.session.token && sameToken(state.session.token, event.token) &&
+            state.ioSequence === event.attemptId) {
+          update({ capture: "failed", captureReason: `Capture closure was not confirmed: ${failureCopy(event.reason)} Stop to retry.` });
+        }
+        break;
+      }
+      if (event.purpose !== "shutdown" || state.stop.status !== "stopping" ||
+          state.stop.attemptId !== event.attemptId || !state.stop.token || !sameToken(state.stop.token, event.token)) break;
       if (event.ok) {
         update({
-          stop: { status: "stopped", reason: null } as HandsFreeStopState,
+          stop: { ...state.stop, status: "stopped", reason: null },
           capture: "closed" as HandsFreeCaptureState,
           note: "Stopped.",
         });
       } else {
         const reason = failureCopy(event.reason);
         update({
-          stop: { status: "failed", reason } as HandsFreeStopState,
+          stop: { ...state.stop, status: "failed", reason },
           capture: "closed" as HandsFreeCaptureState,
           note: `Stop was not confirmed: ${reason} This session cannot send.`,
         });
@@ -966,21 +1024,12 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     case "capture-settled": {
       const current = state.session.token;
       if (!current || current.sessionId !== event.token.sessionId ||
-          current.generation !== event.token.generation) {
+          current.generation !== event.token.generation || state.captureAttempt !== event.attemptId || !state.session.active) {
         // A late open/close from an earlier session must not describe this one.
         break;
       }
       if (event.open) {
-        if (!state.session.active) {
-          update({ capture: "closed" as HandsFreeCaptureState });
-          break;
-        }
         update({ capture: "open" as HandsFreeCaptureState, captureReason: null });
-        break;
-      }
-      // A late failed open after the session ended is not the author's current status.
-      if (!state.session.active && !state.session.token) {
-        update({ capture: "closed" as HandsFreeCaptureState });
         break;
       }
       const reason = event.reason ?? "Capture could not be opened. Nothing is being recorded.";

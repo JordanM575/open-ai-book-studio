@@ -93,13 +93,19 @@ function step(
   return reduceHandsFree(state, { ...intent, facts: host, scope: target } as HandsFreeEvent);
 }
 
+function stopIdentity(state: HandsFreeState) {
+  const { token, attemptId } = state.stop;
+  if (!token || attemptId === null) throw new Error("No owned shutdown");
+  return { token, attemptId, purpose: "shutdown" as const };
+}
+
 /** Start and settle capture, the two events the host adapter supplies. */
 function started(host: HandsFreeFacts = facts()): HandsFreeState {
   const start = step(initialHandsFreeState(), { type: "start" }, host);
   expect(start.effects.map((effect) => effect.type)).toEqual(["capture-open"]);
   const token = start.state.session.token;
   if (!token) throw new Error("Fixture failed to start a session");
-  return step(start.state, { type: "capture-settled", open: true, token }, host).state;
+  return step(start.state, { type: "capture-settled", open: true, token, attemptId: start.state.captureAttempt ?? 0 }, host).state;
 }
 
 /** The exact transport operation a result must name to settle its slot. */
@@ -181,7 +187,7 @@ describe("session start and binding", () => {
 
     const token = start.state.session.token;
     if (!token) throw new Error("Fixture failed to start a session");
-    const open = step(start.state, { type: "capture-settled", open: true, token });
+    const open = step(start.state, { type: "capture-settled", open: true, token, attemptId: start.state.captureAttempt ?? 0 });
     expect(handsFreePhase(open.state)).toBe("recording");
     expect(open.effects).toEqual([]);
   });
@@ -190,7 +196,7 @@ describe("session start and binding", () => {
     const start = step(initialHandsFreeState(), { type: "start" });
     const token = start.state.session.token;
     if (!token) throw new Error("Fixture failed to start a session");
-    const failed = step(start.state, { type: "capture-settled", open: false, token, reason: "No capture adapter." });
+    const failed = step(start.state, { type: "capture-settled", open: false, token, attemptId: start.state.captureAttempt ?? 0, reason: "No capture adapter." });
     expect(handsFreePhase(failed.state)).toBe("held");
     expect(failed.state.capture).toBe("failed");
     expect(failed.state.note).toBe("No capture adapter.");
@@ -303,7 +309,7 @@ describe("target changes discard the words", () => {
     expect(moved.state.session.draft).toBe("");
     expect(moved.state.binding).toBeNull();
     expect(moved.state.preserved).toBe("The gate was open.");
-    expect(handsFreePhase(moved.state)).toBe("stopped");
+    expect(handsFreePhase(moved.state)).toBe("stopping");
     expect(moved.state.note).toContain("changed");
 
     const confirmed = step(moved.state, { type: "confirm" }, facts(), scope({ threadId: "thread_other" }));
@@ -331,14 +337,14 @@ describe("truthful stop", () => {
     const lateConfirm = step(stop.state, { type: "confirm" });
     expect(lateConfirm.effects.some((effect) => effect.type === "send-turn")).toBe(false);
 
-    const settled = step(stop.state, { type: "stop-settled", ok: true });
+    const settled = step(stop.state, { type: "stop-settled", ok: true, ...stopIdentity(stop.state) });
     expect(handsFreePhase(settled.state)).toBe("stopped");
     expect(settled.state.note).toBe("Stopped.");
   });
 
   test("a stop the host does not confirm is never reported as stopped", () => {
     const stop = step(spoke(started()), { type: "stop" });
-    const failed = step(stop.state, { type: "stop-settled", ok: false, reason: "Track stop failed." });
+    const failed = step(stop.state, { type: "stop-settled", ok: false, ...stopIdentity(stop.state), reason: "Track stop failed." });
     expect(handsFreePhase(failed.state)).toBe("stop-unconfirmed");
     expect(failed.state.note).toContain("Stop was not confirmed");
     expect(failed.state.note).toContain("Track stop failed.");
@@ -417,7 +423,7 @@ describe("truthful stop", () => {
 
   test("a transcript that arrives after stop is ignored and cannot send", () => {
     const stop = step(spoke(started()), { type: "stop" });
-    const stopped = step(stop.state, { type: "stop-settled", ok: true });
+    const stopped = step(stop.state, { type: "stop-settled", ok: true, ...stopIdentity(stop.state) });
     // No operation is outstanding here: the success already settled it, so this duplicate cannot
     // name a real slot and must be ignored without touching another operation.
     const late = step(stopped.state, {
@@ -472,13 +478,100 @@ function freshGrant(): HandsFreeFacts {
 }
 
 describe("stop and recovery settlement identity", () => {
+  test.each([true, false])("R3: old hold/shutdown receipts cannot settle a newer Stop (ok=%s)", (ok) => {
+    const hold = step(started(), { type: "segment", segmentId: 1 });
+    const oldClose = hold.effects.find((effect) => effect.type === "capture-close");
+    if (!oldClose) throw new Error("Missing hold close");
+    const stop = step(hold.state, { type: "stop" });
+    const oldStop = stopIdentity(stop.state);
+    const heldReceipt = step(stop.state, { ...oldClose, type: "stop-settled", ok });
+    expect(heldReceipt.state.stop.status).toBe("stopping");
+    expect(step(stop.state, { type: "start" }, freshGrant()).effects).toEqual([]);
+    const stopped = step(stop.state, { type: "stop-settled", ok: true, ...oldStop });
+    const next = step(stopped.state, { type: "start" }, freshGrant());
+    const nextStop = step(next.state, { type: "stop" }, freshGrant());
+    const foreignToken = step(nextStop.state, { type: "stop-settled", ...stopIdentity(nextStop.state),
+      token: oldStop.token, ok }, freshGrant());
+    expect(foreignToken.state.stop).toEqual(nextStop.state.stop);
+    for (const receipt of [oldClose, oldStop]) {
+      const stale = step(nextStop.state, { ...receipt, type: "stop-settled", ok }, freshGrant());
+      expect(stale.state.stop).toEqual(nextStop.state.stop);
+    }
+    const failed = step(nextStop.state, { type: "stop-settled", ok: false,
+      ...stopIdentity(nextStop.state), reason: "New generation still open." }, freshGrant());
+    expect(handsFreePhase(failed.state)).toBe("stop-unconfirmed");
+    expect(failed.state.stop.reason).toBe("New generation still open.");
+  });
+
+  test.each([true, false])("R3: same-session old attempt cannot settle a retried Stop (ok=%s)", (ok) => {
+    const stop = step(started(), { type: "stop" });
+    const oldIdentity = stopIdentity(stop.state);
+    const failed = step(stop.state, { type: "stop-settled", ...oldIdentity, ok: false, reason: "Still open." });
+    const retry = step(failed.state, { type: "stop" });
+    expect(retry.state.stop.attemptId).toBeGreaterThan(oldIdentity.attemptId);
+    expect(retry.state.stop.token).toEqual(oldIdentity.token);
+    const stale = step(retry.state, { type: "stop-settled", ...oldIdentity, ok });
+    expect(stale.state.stop.status).toBe("stopping");
+    const actual = step(stale.state, { type: "stop-settled", ...stopIdentity(retry.state), ok: false, reason: "Retry failed." });
+    expect(actual.state.stop.reason).toBe("Retry failed.");
+  });
+
+  test("R2: same-token earlier capture attempt cannot settle a newer Continue", () => {
+    const first = step(initialHandsFreeState(), { type: "start" });
+    const token = first.state.session.token;
+    if (!token) throw new Error("Missing token");
+    const failed = step(first.state, { type: "capture-settled", token,
+      attemptId: first.state.captureAttempt ?? 0, open: false });
+    const retry = step(failed.state, { type: "continue" });
+    expect(retry.state.captureAttempt).not.toBe(first.state.captureAttempt);
+    for (const open of [true, false]) {
+      const stale = step(retry.state, { type: "capture-settled", token,
+        attemptId: first.state.captureAttempt ?? 0, open });
+      expect(stale.state.capture).toBe("opening");
+    }
+  });
+
+  test("an unavailable Start preserves monotonic request identity and cannot bypass active capture cleanup", () => {
+    const active = started();
+    const revoked = step(active, { type: "start" }, facts({ grant: null }));
+    expect(revoked.effects.filter((effect) => effect.type === "capture-close")).toHaveLength(1);
+    expect(revoked.state.stop.status).toBe("stopping");
+    const sent = step(spoke(active), { type: "confirm" });
+    const receipt = step(sent.state, { type: "send-settled", ok: true, requestId: sent.state.send.requestId ?? 0 });
+    const stop = step(receipt.state, { type: "stop" });
+    const stopped = step(stop.state, { type: "stop-settled", ...stopIdentity(stop.state), ok: true });
+    const unavailable = step(stopped.state, { type: "start" }, facts({ grant: null }));
+    expect(unavailable.state.session.sequence).toBe(receipt.state.session.sequence);
+  });
+
+  test("R5: an old transport receipt never releases a foreign same-session core request", () => {
+    const dispatched = admit(step(started(), { type: "segment", segmentId: 1 }));
+    const old = dispatched.session.requests.stt;
+    if (!old) throw new Error("Missing STT request");
+    // Adversarial receipt fixture: core identity differs even though session/generation match.
+    const foreign = { ...old, id: old.id + 1 };
+    const state = { ...dispatched, session: { ...dispatched.session,
+      requests: { ...dispatched.session.requests, stt: foreign } } };
+    for (const event of [
+      { type: "transcript" as const, text: "Old words.", ...sttOp(dispatched) },
+      { type: "transcript-failed" as const, reason: "Old failure.", ...sttOp(dispatched) },
+    ]) {
+      const receipt = step(state, event);
+      expect(receipt.state.transport.slots.stt).toBeNull();
+      expect(receipt.state.session.requests.stt?.id).toBe(foreign.id);
+      expect(receipt.state.session.draft).toBe("");
+      expect(receipt.state.session.failures.stt).toBeNull();
+      expect(receipt.state.lastReceipt?.unknownChunks).toBe(1);
+    }
+  });
+
   test("a stop during transcription is a cancellation, not a permanent failure", () => {
     const segment = step(started(), { type: "segment", segmentId: 1 });
     const stop = step(admit(segment), { type: "stop" });
     const aborted = step(stop.state, { type: "transcript-failed", reason: "The transcription was aborted.", ...sttOp(stop.state) });
     expect(aborted.state.session.failures.stt).toBeNull();
     expect(aborted.state.session.requests.stt).toBeNull();
-    const stopped = step(aborted.state, { type: "stop-settled", ok: true });
+    const stopped = step(aborted.state, { type: "stop-settled", ok: true, ...stopIdentity(stop.state) });
     const next = step(stopped.state, { type: "start" }, freshGrant());
     expect(next.state.session.active).toBe(true);
     expect(next.effects.some((effect) => effect.type === "capture-open")).toBe(true);
@@ -504,7 +597,7 @@ describe("stop and recovery settlement identity", () => {
     const late = step(stop.state, { type: "transcript", text: "A late sentence.", ...sttOp(stop.state) });
     expect(late.state.session.draft).toBe("");
     expect(late.state.transport.slots.stt).toBeNull();
-    const stopped = step(late.state, { type: "stop-settled", ok: true });
+    const stopped = step(late.state, { type: "stop-settled", ok: true, ...stopIdentity(stop.state) });
     const next = step(stopped.state, { type: "start" }, freshGrant());
     expect(handsFreePhase(next.state)).toBe("starting");
     expect(next.state.session.requests.stt).toBeNull();
@@ -517,7 +610,7 @@ describe("stop and recovery settlement identity", () => {
     expect(moved.effects.filter((effect) => effect.type === "capture-close")).toHaveLength(1);
     expect(handsFreePhase(moved.state)).toBe("stopping");
     const stopped = step(
-      moved.state, { type: "stop-settled", ok: true }, facts(), scope({ threadId: "thread_other" })
+      moved.state, { type: "stop-settled", ok: true, ...stopIdentity(moved.state) }, facts(), scope({ threadId: "thread_other" })
     );
     expect(handsFreePhase(stopped.state)).toBe("stopped");
   });
@@ -527,35 +620,35 @@ describe("stop and recovery settlement identity", () => {
     const oldToken = first.state.session.token;
     if (!oldToken) throw new Error("Fixture failed to start a session");
     const stop = step(first.state, { type: "stop" });
-    const stopped = step(stop.state, { type: "stop-settled", ok: true });
+    const stopped = step(stop.state, { type: "stop-settled", ok: true, ...stopIdentity(stop.state) });
     const next = step(stopped.state, { type: "start" }, freshGrant());
     expect(next.state.capture).toBe("opening");
-    const stale = step(next.state, { type: "capture-settled", open: true, token: oldToken });
+    const stale = step(next.state, { type: "capture-settled", open: true, token: oldToken, attemptId: first.state.captureAttempt ?? 0 });
     expect(stale.state.capture).toBe("opening");
   });
 
-  test("a target change during a send marks its outcome unknown and never strands the request", () => {
+  test("a target change during a dispatched send retains its attributable outcome", () => {
     const confirm = step(spoke(started()), { type: "confirm" });
     const requestId = confirm.state.send.requestId;
     expect(requestId).not.toBeNull();
     const moved = step(
-      confirm.state,
+      step(confirm.state, { type: "send-dispatched", requestId: requestId ?? 0 }).state,
       { type: "sync" },
       facts(),
       scope({ threadId: "thread_other" }),
     );
     expect(moved.state.session.requests.work).toBeNull();
-    expect(moved.state.send.status).toBe("failed");
-    expect(moved.state.send.reason).toContain("outcome is unknown");
+    expect(moved.state.send.status).toBe("sending");
+    expect(moved.state.note).toContain("outcome is unknown");
     const late = step(moved.state, { type: "send-settled", ok: true, requestId: requestId ?? 0 });
-    expect(late.state.send.status).toBe("failed");
+    expect(late.state.send.status).toBe("sent");
   });
 
   test("Continue retries a held capture and the interrupted state can continue", () => {
     const start = step(initialHandsFreeState(), { type: "start" });
     const token = start.state.session.token;
     if (!token) throw new Error("Fixture failed to start a session");
-    const held = step(start.state, { type: "capture-settled", open: false, token, reason: "No device." });
+    const held = step(start.state, { type: "capture-settled", open: false, token, attemptId: start.state.captureAttempt ?? 0, reason: "No device." });
     expect(handsFreePhase(held.state)).toBe("held");
     const retry = step(held.state, { type: "continue" });
     expect(retry.effects.some((effect) => effect.type === "capture-open")).toBe(true);
