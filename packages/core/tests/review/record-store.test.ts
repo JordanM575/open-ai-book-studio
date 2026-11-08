@@ -83,6 +83,36 @@ describe("checked review record store", () => {
     expect(copy.raw.conflictMetadata).toMatchObject({ reason: "external-edit", observed: { kind: "sha256" } });
   });
 
+  test("a post-publication readback mismatch is uncertain and never retried as a copy", async () => {
+    const { library, book, port } = await makeBook();
+    port.commitFile = async () => ({ status: "changed", current: null, publication: "uncertain" });
+    await expect(library.reviewRecords.createReport(book.id, await readerRun(book.id)))
+      .rejects.toMatchObject({ code: "uncertain" });
+    expect(await port.listDirectory(["books", book.id, "conflicts"])).toHaveLength(0);
+  });
+
+  test("an uncertain conflict-copy publication is not retried under another name", async () => {
+    const clock = clockAt(afterRun);
+    const { library, book, port } = await makeBook(clock);
+    const original = port.commitFile.bind(port);
+    port.commitFile = async (path, bytes, expected) => {
+      if (path.join("/").includes("/conflicts/")) {
+        return { status: "changed", current: null, publication: "uncertain" };
+      }
+      return original(path, bytes, expected);
+    };
+    const first = await authorProfile();
+    const saved = await library.reviewRecords.saveProfile(book.id, first, { kind: "absent" });
+    const second = await editReaderProfile(first, { ...authorContent, guidance: "Changed guidance." });
+    await expect(
+      library.reviewRecords.saveProfile(book.id, second, {
+        kind: "sha256", value: "c".repeat(64), revision: 9
+      })
+    ).rejects.toMatchObject({ code: "uncertain" });
+    expect(await port.listDirectory(["books", book.id, "conflicts"])).toHaveLength(0);
+    expect(saved.status).toBe("saved");
+  });
+
   test("lists reports by completion instant, not by the preserved offset spelling", async () => {
     const clock = clockAt("2026-11-07T14:00:00.000Z");
     const { library, book } = await makeBook(clock);

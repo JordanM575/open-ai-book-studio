@@ -25,8 +25,10 @@ HEAD
   carried as own plain data properties in both saved review records and thread documents, so a
   readable record with that extension stays updatable. Report listings now order by the completion
   instant rather than the preserved offset spelling, so mixed offsets cannot page an older review
-  ahead of a newer one. 039 T014/T015 remain partial: segmented continuation, IPC/UI/export mounting
-  and independent review are still open.
+  ahead of a newer one. A post-publication readback mismatch (adapter `publication: "uncertain"`) is
+  reported as uncertain instead of being retried under another conflict-copy name or relabelled a
+  conflict. 039 T014/T015 remain partial: segmented continuation, IPC/UI/export mounting and
+  independent review are still open.
 ### Voice transport
 
 - Allow `refusal` in the transport settle event (the four-way settlement the README and the

@@ -533,6 +533,12 @@ export class ReviewRecordStore {
       throw this.writeFailure(error);
     }
     if (result.status === "changed") {
+      if (result.publication === "uncertain") {
+        throw new ReviewRecordError(
+          "uncertain",
+          "The review record was published but did not read back exactly. Keep your version and check the saved file before retrying."
+        );
+      }
       if (result.current && bytesEqual(result.current.bytes, bytes)) {
         const current = await this.readRecord(kind, bookId, id);
         if (current) return { status: "unchanged", report: current as ReviewRecordSnapshot<K> };
@@ -588,6 +594,12 @@ export class ReviewRecordStore {
       throw this.writeFailure(error);
     }
     if (result.status === "changed") {
+      if (result.publication === "uncertain") {
+        throw new ReviewRecordError(
+          "uncertain",
+          "The review record was published but did not read back exactly. Keep your version and check the saved file before retrying."
+        );
+      }
       const savedAs = await this.preserve(kind, bookId, id, bytes, result.current?.sha256 ?? null);
       throw new ReviewRecordError(
         "conflict",
@@ -875,7 +887,17 @@ export class ReviewRecordStore {
       } catch (error) {
         throw this.writeFailure(error, "The conflict copy could not be confirmed. Keep your version and check the conflicts folder.");
       }
-      if (result.status === "changed") continue;
+      if (result.status === "changed") {
+        // A publication that already happened but did not read back must not be retried under a
+        // new name: report it as uncertain and leave the copy where it landed.
+        if (result.publication === "uncertain") {
+          throw new ReviewRecordError(
+            "uncertain",
+            "The conflict copy was published but did not read back exactly. Keep your version and check the conflicts folder."
+          );
+        }
+        continue;
+      }
       try {
         await this.verifyBytes(result.snapshot, bytes);
       } catch {
