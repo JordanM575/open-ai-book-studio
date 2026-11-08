@@ -7,6 +7,15 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Mounted editor
+
+- Mount the exact-current CodeMirror surface in the manuscript editor: the existing wrapper keeps
+  title, autosave, drafts, save queue, conflicts, custom undo and hold/rebase; shared-verifier
+  evidence paints underlines only after it applies, and a minimal accessible findings aside lists
+  them with keyboard navigation. Edits clear marks; no provider or persistence is added.
+- Clear the aside's current finding when a category filter hides it, and count findings rather
+  than evidence spans so a finding with two citations is not reported as two findings.
+
 ### Mounted exact-current manuscript editor
 - Mount the accepted CodeMirror plain-text surface in `ManuscriptEditor` in place of the textarea.
   The wrapper keeps title, the 700 ms autosave, the 300 ms draft copy, one serialized save queue,

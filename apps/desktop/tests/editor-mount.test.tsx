@@ -480,3 +480,48 @@ describe("mounted editor surface", () => {
     expect(testing.within(document.body).queryByRole("complementary", { name: "Review findings" })).toBeNull();
   });
 });
+
+describe("review aside corrections", () => {
+  test("filtering out the active finding and returning clears aria-current", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    const request = await reviewRequest(editor.getSnapshot());
+    mounted.rerender({ reviewRequest: request });
+    await testing.waitFor(() => expect(document.querySelectorAll(".inline-review-mark").length).toBe(2));
+    const body = testing.within(document.body);
+    const aside = body.getByRole("complementary", { name: "Review findings" });
+
+    testing.fireEvent.click(testing.within(aside).getByRole("button", { name: "Inspect evidence" }));
+    testing.fireEvent.click(testing.within(aside).getByRole("button", { name: "Return to finding" }));
+    await testing.act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(aside.querySelector('button[aria-current="true"]')).not.toBeNull();
+
+    // Hide the active finding, then show everything again.
+    const filter = testing.within(aside).getByRole("combobox", { name: "Filter findings by category" });
+    testing.fireEvent.change(filter, { target: { value: "character-motivation" } });
+    await testing.act(async () => {});
+    testing.fireEvent.change(filter, { target: { value: "all" } });
+    await testing.act(async () => {});
+    expect(document.querySelectorAll(".inline-review-mark")).toHaveLength(2);
+    expect(aside.querySelector('button[aria-current="true"]')).toBeNull();
+  });
+
+  test("the count names findings, not evidence spans, when a finding cites two passages", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    const request = await reviewRequest(editor.getSnapshot());
+    const parsed = JSON.parse(request.output) as { findings: Array<{ evidence: unknown[] }> };
+    const secondEvidence = parsed.findings[1]?.evidence[0];
+    if (!secondEvidence) throw new Error("missing fixture evidence");
+    parsed.findings[0]?.evidence.push(secondEvidence);
+
+    mounted.rerender({ reviewRequest: { ...request, output: JSON.stringify(parsed) } });
+    await testing.waitFor(() => expect(document.querySelectorAll(".inline-review-mark").length).toBe(2));
+    const body = testing.within(document.body);
+    const aside = body.getByRole("complementary", { name: "Review findings" });
+
+    expect(body.getByTestId("review-count").textContent).toBe("2 of 2 findings shown");
+    expect(aside.textContent).toContain("2 passages");
+    expect(aside.querySelectorAll("li").length).toBe(2);
+  });
+});

@@ -129,6 +129,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const [editor, setEditor] = useState<InlineEditor | null>(null);
   const [layer, setLayer] = useState<ValidatedInlineLayer | null>(null);
   const [active, setActive] = useState<InlineSpan | null>(null);
+  const clearActive = useCallback(() => setActive(null), []);
   const [announcement, setAnnouncement] = useState("");
   const statusRef = useRef(status);
 
@@ -438,7 +439,11 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       setAnnouncement("The review marks are hidden because the text changed. The findings are no longer current.");
       return;
     }
-    if (next === "filtered") setAnnouncement("The active finding is hidden by the filter.");
+    if (next === "filtered") {
+      // The row must not stay current once the filter hides the finding it names.
+      setActive(null);
+      setAnnouncement("The active finding is hidden by the filter.");
+    }
   }, []);
   const handleReviewStatusRef = useRef(handleReviewStatus);
   handleReviewStatusRef.current = handleReviewStatus;
@@ -640,6 +645,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         layer={layer}
         label={reviewLabel}
         active={active}
+        onClearActive={clearActive}
         announcement={announcement}
         onRow={(key, element) => {
           if (element) rowRefs.current.set(key, element);
@@ -660,7 +666,8 @@ function ReviewFindingsAside({
   label,
   active,
   announcement,
-  onRow
+  onRow,
+  onClearActive
 }: {
   editor: InlineEditor | null;
   layer: ValidatedInlineLayer;
@@ -668,6 +675,7 @@ function ReviewFindingsAside({
   active: InlineSpan | null;
   announcement: string;
   onRow: (key: string, element: HTMLElement | null) => void;
+  onClearActive: () => void;
 }) {
   const [category, setCategory] = useState("all");
   const categories = [...new Set(layer.spans.map((span) => span.category))].sort();
@@ -675,12 +683,14 @@ function ReviewFindingsAside({
 
   useEffect(() => {
     if (!editor) return;
-    // Filtering only changes what is painted; no request, write or finding is removed.
+    // Filtering only changes what is painted; no request, write or finding is removed. The
+    // transient "current" finding is cleared so a row cannot stay current while its mark is hidden.
+    onClearActive();
     editor.setVisibility(
       category === "all" ? null : new Set(layer.spans.filter((span) => span.category === category).map(inlineSpanKey)),
       false
     );
-  }, [category, editor, layer]);
+  }, [category, editor, layer, onClearActive]);
 
   const activeKey = active ? findingKey(active) : null;
 
@@ -691,7 +701,8 @@ function ReviewFindingsAside({
     >
       <h2 className="text-(length:--text-subheadline-size) font-semibold">{label || DEFAULT_REVIEW_LABEL}</h2>
       <p className="mt-1 text-muted-foreground" data-testid="review-count">
-        {formatCount(visible.length)} of {formatCount(layer.spans.length)} {pluralize(layer.spans.length, "finding")} shown
+        {formatCount(groupFindings(visible).length)} of {formatCount(groupFindings(layer.spans).length)}{" "}
+        {pluralize(groupFindings(layer.spans).length, "finding")} shown
       </p>
 
       {categories.length > 1 ? (
