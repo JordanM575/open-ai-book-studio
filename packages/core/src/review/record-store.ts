@@ -104,6 +104,9 @@ function baseOf(record: Record<string, unknown>): ReviewRecordBase {
   return base && typeof base === "object" ? (base as ReviewRecordBase) : { kind: "absent", revision: 0 };
 }
 
+/** Leave room under the typical 255-byte component limit for the atomic writer's temp suffix. */
+const CONFLICT_NAME_LIMIT = 200;
+
 export class ReviewRecordStore {
   constructor(private readonly host: ReviewRecordHost) {}
 
@@ -878,8 +881,17 @@ export class ReviewRecordStore {
     } catch {
       throw new ReviewRecordError("not-kept", "The conflict copy could not be created. Keep your version and try again.");
     }
+    // Keep every conflict name inside a filesystem component, leaving room for the atomic writer's
+    // temporary suffix. A readable name is used when it fits; otherwise the identity is hashed and
+    // the complete record (including its full id) still lives inside the document.
+    const idDigest = (await this.host.runtime.sha256(new TextEncoder().encode(id))).slice(0, 12);
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const name = `${kind}.${id}.conflict-${observed === null ? "missing-file" : "external-edit"}.${device}.${stamp}${attempt === 0 ? "" : `-${attempt + 1}`}.json`;
+      const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+      const reason = observed === null ? "missing-file" : "external-edit";
+      const readable = `${kind}.${id}.conflict-${reason}.${device}.${stamp}${suffix}.json`;
+      const name = readable.length <= CONFLICT_NAME_LIMIT
+        ? readable
+        : `${kind}.conflict-${reason}.${idDigest}${suffix}.json`;
       const path = conflictPath(bookId, name);
       let result: CommitFileResult;
       try {

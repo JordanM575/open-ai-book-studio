@@ -83,6 +83,31 @@ describe("checked review record store", () => {
     expect(copy.raw.conflictMetadata).toMatchObject({ reason: "external-edit", observed: { kind: "sha256" } });
   });
 
+  test("a maximum-length record ID still leaves a bounded conflict name", async () => {
+    const { library, book, port } = await makeBook();
+    const longId = `run_${"a".repeat(187)}`;
+    const longRun = await readerRun(book.id, longId);
+    await library.reviewRecords.createReport(book.id, longRun);
+    await port.commitFile(reportPath(book.id, longId), encoder.encode("{}"), { kind: "any" });
+    let savedAs = "";
+    try {
+      await library.reviewRecords.createReport(book.id, longRun);
+      throw new Error("A differing report was accepted");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReviewRecordError);
+      if (!(error instanceof ReviewRecordError)) throw error;
+      expect(error.code).toBe("conflict");
+      savedAs = error.savedAs ?? "";
+    }
+    const name = savedAs.split("/").pop() ?? "";
+    expect(encoder.encode(name).byteLength).toBeLessThanOrEqual(200);
+    const copy = await port.readFile(toLibraryFilePath(savedAs.split("/")));
+    expect(copy).not.toBeNull();
+    expect(decodeReviewRecord(copy?.bytes ?? new Uint8Array(), {
+      kind: "review-report", bookId: book.id, allowConflictMetadata: true
+    }).record.id).toBe(longId);
+  });
+
   test("a post-publication readback mismatch is uncertain and never retried as a copy", async () => {
     const { library, book, port } = await makeBook();
     port.commitFile = async () => ({ status: "changed", current: null, publication: "uncertain" });

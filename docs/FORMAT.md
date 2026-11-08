@@ -825,7 +825,9 @@ retries belong to 037.
   `books/<bookId>/conflicts/<kind>.<id>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`
   and reports where it went. The copy adds a reserved `conflictMetadata` object (`reason`,
   `baseline`, `observed`) and is bounded by the same 2,500,000 bytes. Colliding names use absent-only
-  suffixes. A copy cannot be read as an active record.
+  suffixes. A long record ID cannot overflow the filesystem name limit: a readable name is used when
+  it fits, otherwise `<kind>.conflict-<reason>.<id digest>[-N].json` is used and the complete identity
+  remains inside the document. A copy cannot be read as an active record.
 - **Readback.** After every write the exact bytes and SHA-256 are compared with the intended bytes.
   A mismatch or an adapter error after publication is reported as `uncertain`, never as success and
   never replayed automatically.
