@@ -80,11 +80,12 @@ function dataEntries(value: object): [string, unknown][] {
 
 /** Lossless in-memory JSON domain, checked before a schema can discard object shape.
  * Dense ordinary arrays and plain/null-prototype own enumerable data only; no getters/toJSON.
- * Shared subvalues are permitted, cycles are not. Text schemas separately enforce Unicode.
+ * Shared subvalues are visited once per check, cycles are not permitted. Text schemas enforce Unicode.
  * This is not a raw JSON numeric/duplicate-key or persisted-file reader.
  */
 export function assertReviewData(value: unknown): void {
   const active = new Set<object>();
+  const complete = new Set<object>();
   const pending: { value: unknown; exit?: boolean }[] = [{ value }];
   while (pending.length) {
     const frame = pending.pop();
@@ -97,8 +98,9 @@ export function assertReviewData(value: unknown): void {
       continue;
     }
     requireContract(typeof item === "object", "non-json-value");
-    if (frame.exit) { active.delete(item); continue; }
+    if (frame.exit) { active.delete(item); complete.add(item); continue; }
     requireContract(!active.has(item), "cyclic-json");
+    if (complete.has(item)) continue;
     const entries = dataEntries(item);
     active.add(item);
     pending.push({ value: item, exit: true });
