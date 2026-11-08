@@ -16,7 +16,7 @@ const stoppedCopy = "Review stopped · Incomplete. Stopping prevents later dispa
 const stopRequestedCopy = "Review stop requested · Incomplete. Stopping prevents later dispatch best-effort; text already sent cannot be recalled. Awaiting stop confirmation.";
 const unconfirmedStopCopy = "Stop could not be confirmed · Incomplete. Late results are ignored here, but the provider may still be processing text already sent. That text cannot be recalled.";
 
-/** A leaf only: no IPC, provider, reader, storage or ordinary conversation access. */
+/** Injected execution and explicit validated persistence; never dispatches a provider on Save. */
 export function ReaderReviewPanel(props: ReaderReviewProps) {
   // A→B→A creates a new lifetime, even if a host reuses book IDs. Closing also drops all volatile data.
   return props.open ? <ReaderReviewSession key={JSON.stringify([props.bookId, props.viewKey])} {...props} /> : null;
@@ -211,7 +211,7 @@ function ReaderReviewSession(props: ReaderReviewProps) {
   const busy = phase === "preparing" || phase === "running";
   return <section aria-labelledby={heading} className="space-y-4 p-4 text-(length:--text-body-size) text-foreground">
     <h2 id={heading} className="text-(length:--text-title-3-size) font-semibold">Structured reader review</h2>
-    <p className="text-muted-foreground">Suggestion-only · Saved selected sources · Volatile. Closing this view discards its snapshots, profiles and results.</p>
+    <p className="text-muted-foreground">Suggestion-only · Saved selected sources · Volatile by default. Closing this view discards unsaved snapshots, profiles and results. Explicitly saved feedback remains in Saved reviews.</p>
     <p ref={status} role="status" aria-live="polite" tabIndex={-1} className="rounded-[var(--corner-md)] focus-visible:outline-2 focus-visible:outline-[var(--ring)]">{message}</p>
     {prepared ? <ReviewDisclosure prepared={prepared} /> : null}
     {phase === "ready" && !consentReady ? <p>{refusalCopy.consent}</p> : null}
@@ -223,6 +223,7 @@ function ReaderReviewSession(props: ReaderReviewProps) {
       </Button> : <Button className={reviewActionClass} onClick={stop}>{phase === "running" ? "Stop review" : "Cancel preparation"}</Button>}
       <Button variant="ghost" className={reviewActionClass} onClick={() => { void retire(); cancellation.current = null; setPrepared(null); setRuns([]); setNavigationRefusals(new Map()); setPhase("idle"); props.onClose(); }}>Close review</Button>
     </div>
-    <ReaderReviewResults runs={runs} currentSources={props.currentSources} editor={props.editor} navigationBusy={busy || navigationBusy || !props.supported} navigationRefusals={navigationRefusals} onNavigate={(run, citation) => void navigate(run, citation)} />
+    <ReaderReviewResults runs={runs} currentSources={props.currentSources} editor={props.editor} navigationBusy={busy || navigationBusy || !props.supported} navigationRefusals={navigationRefusals} onNavigate={(run, citation) => void navigate(run, citation)}
+      persistence={props.persistence?.scope.bookId === props.bookId && props.persistence.scope.viewId === props.viewKey ? props.persistence : undefined} />
   </section>;
 }
