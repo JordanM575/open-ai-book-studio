@@ -802,11 +802,12 @@ silently dropped.
 | `plan` | yes | `{ plannedAt, sources, items, sourceBytes }`; counts must equal the source array and its planned spans. |
 | `sources` | yes | 1–64 `{ sourceId, bookId, chapterId, title, position, version, hash, planned:[spans] }`. |
 | `stages` | yes | 1–64 `{ stageId, kind, sourceIds, planned, status, report, at }`. `report` is `{runId,hash}` or `null`. |
-| `synthesis` | yes | 0–64 `{ stageId, sourceStageIds, report }`; one entry per synthesis stage. |
+| `synthesis` | yes | 0–64 `{ stageId, sourceStageIds, report }`; one entry per synthesis stage, `report` is `{runId,hash}` or `null`. |
 | `createdAt`, `updatedAt` | yes | Record timestamps. |
 
-A range stage plans at least one span; a synthesis stage plans none. A completed stage names its
-saved report, and a completed campaign has no open stage. Each report reference resolves to an
+A range stage plans at least one span; a synthesis stage plans none. An unfinished synthesis
+description has `report: null`; once its stage completes, the description must name the stage's exact
+saved report. A completed stage names its saved report, and a completed campaign has no open stage. Each report reference resolves to an
 immutable report in the same owning book whose hash matches; a missing or different report refuses.
 The manifest embeds no reports and grants no execution authority: scheduling, attempts, budgets and
 retries belong to 037.

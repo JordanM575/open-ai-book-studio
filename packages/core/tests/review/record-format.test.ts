@@ -384,6 +384,55 @@ describe("saved reader lens and campaign formats", () => {
 });
 
 describe("saved record review corrections", () => {
+  test("an unfinished synthesis describes itself with a null report; a completed one must match its stage", async () => {
+    const alpha = await builtinReaderProfile("alpha");
+    const planned = [{ start: citationFor(bookId).start, end: citationFor(bookId).end }];
+    const saved = await report();
+    const hash = createHash("sha256").update(encodeReviewRecord("review-report", saved)).digest("hex");
+    const at = "2026-11-07T12:11:00.000Z";
+    const draft: CampaignDraft = {
+      status: "planned",
+      profile: { id: alpha.id, version: alpha.version, digest: alpha.digest },
+      sources: [{
+        sourceId: "source-1", bookId, chapterId: "ch_123456", title: "Synthetic chapter",
+        position: 1, version: 3, hash: "a".repeat(64), planned
+      }],
+      stages: [
+        { stageId: "stage-1", kind: "range", sourceIds: ["source-1"], planned,
+          status: "planned", report: null, at: null },
+        { stageId: "stage-2", kind: "synthesis", sourceIds: ["source-1"], planned: [],
+          status: "planned", report: null, at: null }
+      ],
+      synthesis: [{ stageId: "stage-2", sourceStageIds: ["stage-1"], report: null }],
+      plannedAt: stamp,
+      sourceBytes: 40
+    };
+    const record = buildCampaignRecord({
+      bookId, id: "campaign-1", revision: 1, base: { kind: "absent", revision: 0 }, draft,
+      createdAt: afterRun, updatedAt: afterRun
+    });
+    expect(() => decodeReviewRecord(encodeReviewRecord("review-campaign", record),
+      { kind: "review-campaign", bookId })).not.toThrow();
+
+    // Completing the synthesis requires the description to name the stage's exact saved report.
+    const complete = copy(record) as Record<string, unknown>;
+    complete.status = "complete";
+    const stages = complete.stages as Array<Record<string, unknown>>;
+    (stages[0] as Record<string, unknown>).status = "completed";
+    (stages[0] as Record<string, unknown>).report = { runId, hash };
+    (stages[0] as Record<string, unknown>).at = at;
+    (stages[1] as Record<string, unknown>).status = "completed";
+    (stages[1] as Record<string, unknown>).report = { runId, hash };
+    (stages[1] as Record<string, unknown>).at = at;
+    const synthesis = (complete.synthesis as Array<Record<string, unknown>>)[0] as Record<string, unknown>;
+    synthesis.report = { runId: "run_00000002", hash };
+    expect(refusal(() => decodeReviewRecord(bytesOf(complete), { kind: "review-campaign", bookId })))
+      .toBe("corrupt");
+    synthesis.report = null;
+    expect(refusal(() => decodeReviewRecord(bytesOf(complete), { kind: "review-campaign", bookId })))
+      .toBe("corrupt");
+  });
+
   test("an unknown __proto__ extension survives a campaign update as own data", async () => {
     const alpha = await builtinReaderProfile("alpha");
     const planned = [{ start: citationFor(bookId).start, end: citationFor(bookId).end }];

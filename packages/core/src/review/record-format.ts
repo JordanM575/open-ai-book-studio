@@ -433,7 +433,8 @@ const campaignStageSchema = z.looseObject({
 const campaignSynthesisSchema = z.looseObject({
   stageId: idSchema,
   sourceStageIds: z.array(idSchema).min(1).max(REVIEW_RECORD_LIMITS.campaignStages),
-  report: campaignReportRefSchema
+  // An unfinished synthesis has no saved report yet; a completed stage must name one.
+  report: campaignReportRefSchema.nullable()
 });
 
 export const reviewCampaignSchema = z
@@ -508,11 +509,21 @@ export const reviewCampaignSchema = z
       if (entry.sourceStageIds.some((stageId) => !stageIds.has(stageId) || stageId === entry.stageId)) {
         issue(context, [...path, "sourceStageIds"], "A synthesis source stage does not exist.");
       }
-      // A completed synthesis stage naturally names the same saved report in both places.
-      if (entry.report.runId !== stage?.report?.runId && reportRuns.has(entry.report.runId)) {
-        issue(context, [...path, "report"], "A report is used twice.");
+      // The description and its stage must agree: one synthesis cannot persist two results.
+      if (stage?.report) {
+        if (!entry.report || entry.report.runId !== stage.report.runId || entry.report.hash !== stage.report.hash) {
+          issue(context, [...path, "report"], "A synthesis description must name its stage's saved report.");
+        }
       }
-      reportRuns.add(entry.report.runId);
+      if (stage?.status === "completed" && !entry.report) {
+        issue(context, [...path, "report"], "A completed synthesis needs its saved report.");
+      }
+      if (entry.report) {
+        if (entry.report.runId !== stage?.report?.runId && reportRuns.has(entry.report.runId)) {
+          issue(context, [...path, "report"], "A report is used twice.");
+        }
+        reportRuns.add(entry.report.runId);
+      }
     }
     const synthesisStages = record.stages.filter((stage) => stage.kind === "synthesis");
     if (synthesisStages.length !== record.synthesis.length) {

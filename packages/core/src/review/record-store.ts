@@ -668,7 +668,7 @@ export class ReviewRecordStore {
     }
     const refs = [
       ...draft.stages.flatMap((stage) => (stage.report ? [stage.report] : [])),
-      ...draft.synthesis.map((entry) => entry.report)
+      ...draft.synthesis.flatMap((entry) => (entry.report ? [entry.report] : []))
     ];
     for (const ref of refs) {
       const report = await this.loadReport(bookId, ref.runId);

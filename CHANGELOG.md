@@ -19,7 +19,8 @@ HEAD
   saved report to live in one of the books it reviewed, cap `coverage.items`, refuse
   `contentBytes < sourceBytes`, refuse mis-ordered dispositions, treat an unknown member inside a
   closed lens as unsupported, validate campaign synthesis stages and allow a completed synthesis to
-  repeat its own stage report. Re-saving the same run after the clock advances stays idempotent by
+  repeat its own stage report. An unfinished synthesis description may record `report: null`, and a
+  completed one must name its stage's exact report and hash. Re-saving the same run after the clock advances stays idempotent by
   reusing the saved report's own timestamp, and a stale author-lens edit keeps its conflict copy
   instead of being rejected before the base can be compared. Unknown `__proto__` extensions are
   carried as own plain data properties in both saved review records and thread documents, so a
