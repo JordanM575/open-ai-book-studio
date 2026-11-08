@@ -8,6 +8,12 @@
  * here; services stop after every window has actually unloaded.
  */
 export class ExitCoordinator {
+  /**
+   * Electron ignores a quit requested from the same turn as a vetoed `will-quit`; the request has
+   * to wait for the event loop. Injected so the ordering is testable without real timers.
+   */
+  constructor(private readonly defer: (run: () => void) => void = (run) => { setTimeout(run, 0); }) {}
+
   private granted = false;
   private stopped = false;
   private asking: Promise<void> | null = null;
@@ -47,8 +53,10 @@ export class ExitCoordinator {
   finish(stop: () => Promise<void>, quit: () => void): boolean {
     if (this.stopped) return true;
     this.stopped = true;
-    // A stop that fails still lets the quit finish; the caller owns its error log.
-    void stop().then(quit, quit);
+    // A stop that fails still lets the quit finish; the caller owns its error log. The re-quit is
+    // deferred: Electron drops an `app.quit()` issued in the microtask right after `will-quit`.
+    const requit = () => { this.defer(quit); };
+    void stop().then(requit, requit);
     return false;
   }
 

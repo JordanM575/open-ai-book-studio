@@ -10,7 +10,7 @@ function deferred<T>() {
 
 describe("a quit that a window can still refuse", () => {
   test("the first quit asks and is held; the answer decides", async () => {
-    const coordinator = new ExitCoordinator();
+    const coordinator = new ExitCoordinator((run) => { run(); });
     const decision = deferred<"stay" | "leave">();
     let asked = 0;
     let quits = 0;
@@ -34,7 +34,7 @@ describe("a quit that a window can still refuse", () => {
   });
 
   test("leave grants the quit, and a re-entered before-quit is allowed through", async () => {
-    const coordinator = new ExitCoordinator();
+    const coordinator = new ExitCoordinator((run) => { run(); });
     let quits = 0;
     expect(coordinator.begin(async () => "leave", () => { quits += 1; })).toBe(false);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -45,7 +45,7 @@ describe("a quit that a window can still refuse", () => {
   });
 
   test("a refused unload clears the intent while nothing has been stopped", async () => {
-    const coordinator = new ExitCoordinator();
+    const coordinator = new ExitCoordinator((run) => { run(); });
     let asked = 0;
     coordinator.begin(async () => "leave", () => {});
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -61,7 +61,7 @@ describe("a quit that a window can still refuse", () => {
   });
 
   test("services stop only after every window has unloaded, and only once", async () => {
-    const coordinator = new ExitCoordinator();
+    const coordinator = new ExitCoordinator((run) => { run(); });
     let stops = 0;
     let quits = 0;
     const stop = deferred<void>();
@@ -81,8 +81,23 @@ describe("a quit that a window can still refuse", () => {
     expect(stops).toBe(1);
   });
 
+  test("the re-quit is deferred so Electron does not drop it", async () => {
+    const deferred: Array<() => void> = [];
+    const coordinator = new ExitCoordinator((run) => { deferred.push(run); });
+    let quits = 0;
+    let stops = 0;
+    expect(coordinator.finish(async () => { stops += 1; }, () => { quits += 1; })).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The service stopped, but no quit may be requested inside the will-quit turn.
+    expect(stops).toBe(1);
+    expect(quits).toBe(0);
+    expect(deferred).toHaveLength(1);
+    deferred[0]?.();
+    expect(quits).toBe(1);
+  });
+
   test("a failing service stop still lets the quit finish", async () => {
-    const coordinator = new ExitCoordinator();
+    const coordinator = new ExitCoordinator((run) => { run(); });
     let quits = 0;
     expect(coordinator.finish(async () => { throw new Error("backend is gone"); }, () => { quits += 1; })).toBe(false);
     await new Promise((resolve) => setTimeout(resolve, 0));
