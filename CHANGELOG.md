@@ -7,6 +7,37 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Conversation storage
+
+- Bind every conversation save to the exact base hash its caller read: a save without that base is
+  refused instead of rebasing on the current file, and an older copy keeps a verified conflict
+  copy. Internal fork/checkpoint updates go through the checked mutate path, so no production
+  caller needs a blind whole-document save. Report the conflict reason from the bytes actually on
+  disk, and report a create collision as `exists` without a misleading copy.
+- Generate conversation titles by code point, not UTF-16 unit, and refuse a non-well-formed title
+  before publishing: a prompt ending a 60-unit title in an emoji can no longer create a conversation
+  the checked reader rejects.
+- Refuse a non-well-formed document before publishing (any lone surrogate, not only the title), keep
+  generated search snippets off a surrogate split, and carry unknown message/part fields recursively
+  through same-id replacement so a normal update cannot erase them, and refuse an emitted number the
+  reader would reject (non-finite, negative zero or magnitude above `Number.MAX_SAFE_INTEGER`).
+  Before publishing, the built bytes are now parsed by this build's own reader, so depth and any
+  other reader constraint cannot be bypassed by a generated document.
+
+### Checked conversation storage
+- Route every v1 conversation write through the Library's per-book queue and journal-aware checked
+  raw-hash commit, with exact readback verification and a verified `conflicts/` copy when the file
+  moved underneath the writer. Equal bodies are no-ops, stale hashes never overwrite, and uncertain
+  publications are reported as uncertain.
+- Parse conversation files as fatal UTF-8 and lossless JSON, preserve supported unknown plain fields
+  at every depth through read-modify-write, and treat unknown roles/parts and newer schema versions as
+  read-only rather than rewriting them. Refuse malformed, duplicate-key, lone-surrogate, lossy-number
+  and over-64-MiB files without touching them.
+- Move conversation deletion to recoverable `.studio/trash/<bookId>/threads/` and add a checked
+  restore that requires an absent destination and an unchanged book/conversation identity. No
+  automatic pruning, quota or expiry. 037 T019 remains partial; v2 semantic migration, restore
+  UI/IPC and independent review are still open.
+
 ### Pure authoring foundation
 - Tighten the workflow codec after independent review: a `maxBytes` override may only lower the
   record-kind bound, receipt `savedAs` uses the same bounded library-relative path rule as a target,

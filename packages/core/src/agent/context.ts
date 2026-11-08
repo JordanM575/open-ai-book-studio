@@ -4,19 +4,23 @@ import { z } from "zod";
  * A prompt is measured in characters and converted to a deliberate estimate. The provider's reported
  * usage stays authoritative; this breakdown only explains where the request's size comes from.
  */
-export const contextSectionSchema = z.object({
-  id: z.string().min(1).max(40),
-  label: z.string().min(1).max(80),
-  characters: z.number().int().nonnegative(),
-  estimatedTokens: z.number().int().nonnegative()
-});
+export const contextSectionSchema = z
+  .object({
+    id: z.string().min(1).max(40),
+    label: z.string().min(1).max(80),
+    characters: z.number().int().nonnegative(),
+    estimatedTokens: z.number().int().nonnegative()
+  })
+  .loose();
 
-export const contextBreakdownSchema = z.object({
-  estimated: z.literal(true),
-  sections: z.array(contextSectionSchema).max(20),
-  conversationTokens: z.number().int().nonnegative(),
-  totalTokens: z.number().int().nonnegative()
-});
+export const contextBreakdownSchema = z
+  .object({
+    estimated: z.literal(true),
+    sections: z.array(contextSectionSchema).max(20),
+    conversationTokens: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative()
+  })
+  .loose();
 
 export type ContextSection = z.infer<typeof contextSectionSchema>;
 export type ContextBreakdown = z.infer<typeof contextBreakdownSchema>;

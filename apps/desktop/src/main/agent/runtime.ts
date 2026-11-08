@@ -770,12 +770,11 @@ export class AgentRuntime {
           turnId,
           createdAt: state.createdAt
         });
-        let thread = await threadStore.upsertMessage(input.bookId, threadId, message);
+        await threadStore.upsertMessage(input.bookId, threadId, message);
         if (options.checkpoint) {
-          const checkpointTurns = thread.checkpointTurns.includes(turnId)
-            ? thread.checkpointTurns
-            : [...thread.checkpointTurns, turnId];
-          thread = await threadStore.save({ ...thread, checkpointTurns });
+          // A field change goes through the checked mutate path; a whole-document save now needs
+          // the exact base hash from a read, which this turn no longer holds.
+          await threadStore.addCheckpointTurn(input.bookId, threadId, turnId);
         }
       } catch (error) {
         recordPersistenceError(state, "conversation");
@@ -1330,5 +1329,8 @@ function assistantParts(reasoning: string, tools: AgentPart[], text: string, err
 function titleFromPrompt(prompt: string): string {
   const line = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
   if (!line) return "New conversation";
-  return line.length > 60 ? `${line.slice(0, 60)}…` : line;
+  // Count code points, not UTF-16 units: a 60-unit slice can split an emoji and store a lone
+  // surrogate, which the checked conversation reader refuses.
+  const points = Array.from(line);
+  return points.length > 60 ? `${points.slice(0, 60).join("")}…` : line;
 }

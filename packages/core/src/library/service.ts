@@ -71,7 +71,8 @@ import type {
   FileExpectation,
   LibraryDeviceInfo,
   LibraryEnvironment,
-  LibraryFileSnapshot
+  LibraryFileSnapshot,
+  LibraryWriteHost
 } from "./port";
 import { locationHealth, type LocationHealth } from "../sync/health";
 import {
@@ -178,6 +179,19 @@ export class LibraryService {
 
   get deviceName(): string {
     return this.device.name;
+  }
+
+  /**
+   * Checked writes for a core store that owns its files beside the manuscript. Conversations use
+   * this so their whole read-modify-write joins the book's existing queue and their commits take the
+   * same journal path as prose. Nothing else may construct an equivalent writer.
+   */
+  get writeHost(): LibraryWriteHost {
+    return {
+      withBook: (bookId, work) => this.serializeWrite(bookId, work),
+      commitFile: (path, bytes, expected) => this.commitBytes(path, bytes, expected),
+      moveFile: (from, to) => this.env.storage.moveFile(from, to)
+    };
   }
 
   /**
@@ -1010,7 +1024,7 @@ export class LibraryService {
           chapterTitle: chapter.title,
           order: chapter.order,
           line: index + 1,
-          text: line.slice(0, 240)
+          text: snippet(line)
         });
         if (hits.length >= limit) return hits;
       }
@@ -1018,7 +1032,8 @@ export class LibraryService {
     return hits;
   }
 
-  /* ------------------------------------------------------------------- import */
+  
+/* ------------------------------------------------------------------- import */
 
   /**
    * Publish a complete imported manuscript as one book (spec 029 T009).
@@ -1673,4 +1688,11 @@ async function ensureLayout(storage: LibraryEnvironment["storage"]): Promise<voi
   for (const path of [studioPath(), booksPath(), trashPath()]) {
     await storage.ensureDirectory(path);
   }
+}
+
+/** A 240-unit snippet that never ends inside a surrogate pair. */
+function snippet(line: string): string {
+  if (line.length <= 240) return line;
+  const last = line.charCodeAt(239);
+  return line.slice(0, last >= 0xd800 && last <= 0xdbff ? 239 : 240);
 }

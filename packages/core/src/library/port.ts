@@ -46,6 +46,22 @@ export interface LibraryDeviceInfo {
  * Primitive operations only. Library policy, schema checks, save conflicts, trash and
  * catalog rebuilding live above this port in the shared library service.
  */
+/**
+ * The checked write seam for core stores that own a file layout beside the manuscript
+ * (conversations today; workflow or review records when their schemas land).
+ *
+ * `withBook` runs the whole read-modify-write inside the same per-book queue as chapter saves.
+ * `commitFile` is the library's journal-aware checked commit and must be called while holding that
+ * queue. `moveFile` is a plain atomic move; the caller records the move in the sync journal. There is
+ * no second queue and no unchecked overwrite: a store that needs one of these must be handed them by
+ * `LibraryService`, never open its own writer.
+ */
+export interface LibraryWriteHost {
+  withBook<T>(bookId: string, work: () => Promise<T>): Promise<T>;
+  commitFile(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult>;
+  moveFile(from: LibraryPath, to: LibraryPath): Promise<void>;
+}
+
 export interface LibraryPort {
   readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null>;
   listDirectory(path: LibraryPath): Promise<LibraryEntry[]>;
