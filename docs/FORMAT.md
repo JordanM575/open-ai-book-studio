@@ -53,7 +53,7 @@ schema from these directory names or from an unchecked TypeScript object.
 | Reserved location | Accepted ownership / prerequisite |
 | --- | --- |
 | `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers and independent storage review remain separate. |
-| `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer exists, mounting/export and independent storage review remain open. |
+| `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer and saved-record IPC/UI exist, export and independent review remain open. |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records. Schema 1 and full-document writers are defined in [Saved review records](#saved-review-records-schema-1); segmented continuation remains unspecified and T015 stays partial. |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
@@ -61,7 +61,7 @@ schema from these directory names or from an unchecked TypeScript object.
 The workflow row is now specified in [Workflow records (schema 1)](#workflow-records-schema-1);
 its checked writers and independent storage review remain open. The saved-review rows are now
 specified in [Saved review records (schema 1)](#saved-review-records-schema-1); their checked writer
-exists but IPC/UI mounting, export/archive, segmented continuation and independent review remain
+and saved-record IPC/UI exist but export/archive, segmented continuation and independent review remain
 open. The host-local workflow permission row remains a reservation.
 
 Each detailed format must name every field and optional/default rule; schema/kind/owner/host-issued ID;
@@ -659,8 +659,9 @@ recoverable saved review reports. This section specifies the schema-1 records un
 `books/<bookId>/reviews/`. The pure codec is
 `packages/core/src/review/record-{json,format}.ts`; the only checked writer is
 `packages/core/src/review/record-store.ts`, constructed as `LibraryService.reviewRecords`. No report
-is written unless the author explicitly saves one. Provider wiring, the Review workspace UI, IPC or
-preload exposure, export/archive mounting, campaign execution, suggestion application and
+is written unless the author explicitly saves one. The validated desktop/browser API and Workspace
+support inspection, checked dispositions and confirmed recovery. Provider wiring,
+export/archive mounting, campaign execution, suggestion application and
 independent exact-head review remain separate delivery work. T014 and T015 stay unchecked.
 
 ### Layout and kinds
@@ -760,6 +761,23 @@ what its evidence supports. It cannot re-prove the quoted text itself: a saved r
 `verified-at-capture`, not a fresh verification. `invalidEvidence` keeps the withheld index and a
 bounded reason (`shape`, `source`, `revision`, `range`, `quote`) and never becomes a quotation.
 
+A report conflict receipt asserts a kept copy only after the store verifies the full intended
+report against its named copy and the handler independently reads that copy through the owning
+book's queue. Both transport edges reconstruct the report from the validated submitted run and the
+copy's `savedAt`, check its complete content, hash and conflict metadata, and bind the name to that
+book's report-conflict folder. The receiver also requests a separate, scoped readback of those same
+named bytes; a missing, different, unreadable or otherwise unverifiable copy yields **uncertain**,
+not a kept-copy claim or an automatic retry. This narrow readback is not an arbitrary path API. These
+checks bind the observed bytes to the submitted intent; they do not authenticate an arbitrarily
+forged transport or guarantee that an external writer cannot later change the file.
+
+After an uncertain report save, the result stays visible and another submission remains locked
+across equivalent run/API wrapper reconstruction. The same bound view must inspect the current saved
+report or an issue-free absence listing before the author can explicitly acknowledge the inspection
+and allow another save. A listing of absence is not proof that no copy exists; the author is also
+directed to inspect the conflicts folder. Real run, book, Library or view lifetime changes retire
+old replies rather than relabelling the new view.
+
 ### `dispositions/<runId>.json` — checked author state
 
 | Field | Required | Rule |
@@ -775,9 +793,27 @@ non-decreasing `at`, `from` equal to the previous `to` (`null` for the first), a
 `set`, `ignore`, `resolve` or `reopen` matching the new state. An event may carry an optional `note`
 of at most 2,000 Unicode scalar values; it is part of the append-only history. `updatedAt` must equal
 the last event's `at`. A request that repeats the current state with no note is a read, not a write.
+An untouched blank note in the connected editor is absent; an explicitly entered note, including an
+empty string or whitespace, is present and preserved exactly. If a confirmed save supersedes the
+baseline of retained newer typing or another draft on the same report, that draft stays blocked until
+the author explicitly adopts the inspected saved history. An unconfirmed save first requires a fresh
+inspection, and blocks existing or newly typed drafts on other findings until they adopt that history;
+retaining a draft is not permission to replay its previous note automatically.
 Disposition is independent of freshness: a rerun never resolves or relabels an earlier finding.
 The writer checks that the finding exists in the saved report and that the report hash has not
-changed; an unknown finding or changed report refuses without writing.
+changed. The connected checked command supplies the inspected report raw JSON/hash and an absent
+disposition baseline or its exact raw JSON/hash/revision. Under the one Library queue, the writer
+validates both snapshots and constructs the complete intended history from that baseline, never
+from a newer active file. Missing/competing/replaced bases keep that intended history and change in
+a checked conflict copy, including supported unknown own fields. Invalid snapshots/findings refuse.
+The receiver reconstructs the complete intended output using the returned event time and compares
+all fields. Checked disposition conflict receipts include the verified copy bytes/hash and event
+time; both transport edges reconstruct the intended history, verify its conflict metadata and bind
+the copy location to the owning book. An external report change during publication is uncertain,
+not saved success. Raw report/baseline JSON stays bounded by the existing per-record ceiling;
+the transport permits up to 32,100,000 serialized request bytes (two records plus worst-case JSON
+escaping), with 100,000 bytes of reply-envelope headroom. Volatile run inputs retain their separate
+1,000,000-byte transport bound. Neither limit changes the saved-record or provider-request bounds.
 
 ### `profiles/<profileId>.json` — checked author lens
 
@@ -837,7 +873,23 @@ retries belong to 037.
   campaigns use the same group shape. A destination collision gets the next suffix; nothing is
   unlinked. Restore requires both active destinations to be absent, re-verifies each record's
   identity and the disposition's owning report hash, and verifies the bytes after the move. A
-  refused restore leaves every file where it was.
+  pre-move refusal leaves every file where it was. Multi-file moves are not a transaction: after a
+  move is attempted, any exception or mismatched readback is uncertain, and already moved files
+  stay recoverable. No rollback, automatic replay or cleanup deletes recovery material.
+- **Connected recovery confirmation.** Active-group and trash-group inspection returns the exact
+  report/disposition bytes, an identity/content digest and a host-issued one-use token. Trash group
+  IDs are single portable components, never renderer paths. At most 64 inspections are retained
+  per store; eviction expires permission only, never files. Confirmation consumes the token before
+  mutation in the existing queue and rechecks every hash, absent member and group membership.
+  Copying an inspected snapshot or digest cannot mint permission. Confirmed results echo the exact
+  group identity/content; malformed receipts are uncertain. Every move checks source and free
+  destination immediately before moving and verifies source absence/destination bytes afterwards.
+  External filesystem writers are not locked by the Library queue; a race during a primitive move
+  may leave partial/uncertain results and requires fresh inspection, never a success claim.
+  A partially trashed disposition-only group may restore beside its exact inspected active report;
+  that dependency is included in the digest and rechecked. All moved destinations must be free.
+  Unknown/future/corrupt records or unexpected group members remain unavailable and untouched.
+  Trash lists page at most 50 nonempty groups; unsupported names remain visible as unavailable.
 - **No pruning.** There is no automatic deletion, eviction, expiry, quota, compaction or trimming.
   Trashing is the author's explicit action; a full document refuses rather than losing history.
 - **Listing.** `reviews/*.json` is listed newest `completedAt` first (compared as instants, since the
@@ -845,7 +897,7 @@ retries belong to 037.
   untouched. Nothing in a list or read writes.
 - **Continuation gap.** Segmented occurrence/disposition/campaign continuation is **not** specified
   by this build. A document over any bound or count refuses with the draft retained; no writer trims
-  history to fit. T015 remains partial until continuation, export/archive, IPC/UI and independent
+  history to fit. T015 remains partial until continuation, export/archive and independent
   review are delivered.
 
 ## `book.json`

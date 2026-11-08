@@ -1,7 +1,10 @@
 # Structured reader review leaf
 
 `ReaderReviewPanel` is an isolated, one-book, volatile spec 039 UI under D-193 / corrected ADR 0018.
-It is not connected to Workspace, IPC, a provider runtime, Library, ThreadStore or persistence.
+Its execution is not connected to Workspace or a production provider runtime. Optional explicit
+Save review now uses an injected validated review-record API and a pre-bound Library/view scope;
+there are no implicit writes or ThreadStore calls. Saved-record inspection is mounted separately
+in Workspace and does not invent a reader executor.
 Import the component from `@ai-book-studio/app/components/reader-review/ReaderReviewPanel`.
 The colocated `contracts.ts` defines its callback types. Core imports use the `review/*` leaf exports.
 
@@ -14,6 +17,12 @@ The colocated `contracts.ts` defines its callback types. Core imports use the `r
   price, terms or consent change, even if the display names remain equal. It cancels in-flight work
   and clears an unsent disclosure, while preserving completed historical runs in the same view.
 - `supported`: must be known before source preparation. False disables preparation/Start.
+- `persistence`: optional `{ api, scope }` from `StudioApi.reviewRecords` and
+  `api.open(bookId, viewKey)`. Use a fresh UUID `viewKey` for each view lifetime, bind the scope when
+  opening the view, and never resolve a new Library lazily on Save. A mismatched book/view scope
+  disables Save. The button preserves the volatile result on refusal/conflict/failure, displays
+  verified conflict-copy paths, and disables another save after an uncertain receipt until the
+  author has inspected saved records. A confirmed repeated save uses the existing immutable writer.
 - `currentSources`, `editor`: host-supplied current saved snapshots and actual editor identity/
   cleanliness. Missing, malformed, ambiguous or changed evidence cannot enable exact navigation.
   Publish new facts when sources/editor state change. An unavailable prepared source clears its
@@ -81,7 +90,8 @@ profile guidance/request/feedback, cost facts (including known zero), unknown co
 consent readiness are inspectable before Start. Historical runs retain attribution and quotes;
 comparison separates source/profile/destination/request changes from interpretation changes and
 labels same-input model variation without improvement scores. Runs remain in memory until close or
-book/view change. D-199/D-171 select separate explicit saved-review files; this volatile leaf implements
+book/view change unless explicitly saved. D-199/D-171's saved-review writer retains only feedback,
+attribution and bounded quotations, not the full source bodies or provider payload. The UI implements
 no writer and does not implicitly authorize retention.
 
 The leaf uses shared tokens/Button and native controls, with no custom motion, blur, CSS or theme
@@ -90,3 +100,44 @@ callback behavior and synthetic failures/races. Actual host keyboard navigation,
 light/dark/reduced-preference rendering, supported-platform serialization, transport/writer spies
 and integrated acceptance remain coordinator-owned. The scoped-core/UI correction needs fresh
 independent exact-head acceptance before mounting; this leaf does not certify host dispatch or storage.
+
+## Saved-record integration (W10 v20 continuation)
+
+`SavedReviewsPanel` is reachable in the real Workspace. It lists and reads reports, keeps named
+corrupt/future-file issues visible with separate pagination, shows captured revisions/attribution
+and historical verified-at-capture quotations, reads saved disposition history, and keeps local
+choices/notes through failed reads, refused saves, filtering and collapse/reopen in the same view.
+Its browser adapter uses the current `LibraryService.reviewRecords`.
+
+The host transport binds every request/reply to a nonce, complete request digest, opaque Library
+identity, book and view. Reads bind report ID/raw hash; disposition reads additionally bind their
+report hash. The receiver verifies exact bytes, profile digest, record semantics and save intent.
+Neither transport nor UI retries malformed/foreign/uncertain replies.
+
+Desktop `Library` now forwards its existing service's `reviewRecords`; registered IPC and actual
+preload are tested against that real wrapper. The browser and desktop share the validated handler.
+
+`saveDisposition` submits the inspected report bytes/hash and absent or exact disposition
+bytes/hash/revision. `recordDispositionChecked` consumes them under the existing Library queue,
+builds from the author's baseline, and preserves the complete intended stale history as a conflict
+copy. It never invokes the older host-internal append-to-current method. Both transport edges
+verify the complete saved output or conflict copy, including supported unknown fields. Drafts bind
+to the baseline when editing starts; rereading does not silently rebase them. A submitted draft stays
+locked on failure/uncertainty until fresh inspection and explicit “Use inspected history for this
+draft”. A late success does not discard text edited during the await or revive a retired view.
+
+Recovery lists at most 50 trash groups per page. Active/trash inspection returns exact report and
+disposition content plus a host-issued one-use confirmation bound to the Library/book/view and
+group identity/hash. The confirmation UI shows attribution, historical findings/quotes, disposition
+history and raw content (including unknown fields), then requires an explicit checkbox and action.
+No arbitrary renderer path or copied snapshot grants permission. Confirmation consumes permission
+before mutation, rechecks all sources/absent members, and only restores to free destinations.
+Partial disposition-only groups can recover beside their exact active report dependency. Unknown,
+future or corrupt files remain unavailable and untouched. Multi-file moves are not a transaction;
+partial/uncertain outcomes keep their files and demand fresh inspection, never automatic replay.
+Collapse, host replacement and A → B → A retire pending replies and recovery permission in the UI.
+
+Focused synthetic API/Library, mounted browser and actual desktop wrapper/preload tests establish
+this connected disposition/trash/restore slice. Connected generation, safe Markdown export,
+archive/continuation acceptance, provider quality, native keyboard/theme accessibility and release
+acceptance remain separate gates. 039 T014/T015 and 038 T022 remain unchecked.

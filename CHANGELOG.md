@@ -7,6 +7,44 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Saved-review receipt and draft recovery corrections
+
+- Verify complete intended report-conflict copies at the store, handler and receiver, including a
+  separate bound readback of the named file; unverifiable publication remains uncertain.
+- Keep pending/uncertain report saves latched across equivalent wrappers and require same-view
+  inspection plus explicit acknowledgement before another submission. Retain newer disposition
+  typing but require explicit adoption of superseding history, including other drafts after an
+  unconfirmed save; distinguish absent notes from intentionally entered empty or whitespace notes.
+- Admit disposition inputs before reading their properties, use portable test fixture roots and the
+  shared complete Electron mock, and cover these paths with focused synthetic regressions. Native,
+  built-app, integrated verification and independent review remain outstanding; 039 T014/T015 and
+  038 T022 stay unchecked.
+
+### Checked saved-review dispositions and recovery
+
+- Complete the authorized saved-record mutation slice through the existing Library queue/writer:
+  desktop forwarding, inspected raw disposition baselines, complete stale-history conflict copies,
+  and validated success/conflict receipts preserving supported unknown own fields.
+- Connect exact-content inspection and one-use confirmed trash/free-path restore in Workspace,
+  including bounded trash pages, partial-group recovery, occupied-target refusals and truthful
+  uncertainty. Retain exact local drafts and prevent replay/late/ABA replies from becoming success.
+- Add focused synthetic real desktop wrapper/IPC/preload and browser/mounted recovery evidence.
+  Document the format/API clarification. 039 T014/T015 remain partial for production execution,
+  export/archive/continuation, native and independent integrated gates; 038 T022 stays unchecked.
+
+### Saved review inspection and explicit save
+
+- Add a bounded saved-review API with exact request/Library/book/view binding, immutable explicit
+  reader saves, checked report/disposition reads, preserved conflict-copy receipts and honest
+  refusal/not-kept/uncertain outcomes. Browser storage uses the current Library's existing writer.
+- Mount Saved reviews in Workspace with captured-source attribution, historical quotations,
+  separately paged unavailable files and retained local disposition drafts; add explicit Save review
+  to the structured reader result leaf. Opening/filtering never saves or calls a provider.
+- Keep 039 T015 partial: the desktop Library forwarding getter, caller-base-checked disposition
+  mutation and inspected trash/recovery seams are coordinator-owned prerequisites. Their unavailable
+  state is explicit. Synthetic browser/Workspace and injected desktop IPC/preload checks do not claim
+  connected reader generation, completed recovery, provider quality, export/archive or release gates.
+
 ### Pure full-book review campaign planning
 
 - Normalize valid synthesis evidence windows within their selected segments, accepting overlap,

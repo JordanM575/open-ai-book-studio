@@ -15,6 +15,7 @@ import {
 import { idSchema, type BookChanges } from "@ai-book-studio/core/schema";
 import { MATTER_LIMITS, matterSchema } from "@ai-book-studio/core/matter";
 import { planningChannels, planningHandler, type PlanningOperation } from "@ai-book-studio/core/library/planning-api";
+import { reviewRecordChannel, reviewRecordHandler } from "@ai-book-studio/core/library/review-record-api";
 import { PROVIDER_LIST } from "@ai-book-studio/core/providers/registry";
 import { EXTERNAL_LINKS } from "@ai-book-studio/core/providers/links";
 import { IMAGE_SIZES } from "@ai-book-studio/core/providers/images";
@@ -210,6 +211,8 @@ export function registerIpc(
   };
 
   const handlePlanning = planningHandler(() => studio.requireLibrary());
+  const handleReviewRecords = reviewRecordHandler(() => studio.requireLibrary());
+  ipcMain.handle(reviewRecordChannel, (_event, payload: unknown) => handleReviewRecords(payload));
   for (const operation of Object.keys(planningChannels) as PlanningOperation[]) {
     ipcMain.handle(planningChannels[operation], (_event, payload: unknown) => handlePlanning(operation, payload));
   }
