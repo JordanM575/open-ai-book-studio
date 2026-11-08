@@ -188,6 +188,10 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Gate the workspace More sheet's Back to library control with the same planning navigation guard as
+  the header Back. A dirty, pending or uncertain planning draft now blocks that exit without queueing
+  navigation; the sheet closes, the discard confirmation stays reachable, and Back works after explicit
+  discard. A mounted workspace regression covers the dirty-goal path.
 - W05 export safety: Word, Markdown, PDF and EPUB reject destinations that resolve inside the
   open library, including parent-directory aliases. They recheck destination identity and content
   immediately before atomic publication, preserve the supplied saved snapshot, and name any

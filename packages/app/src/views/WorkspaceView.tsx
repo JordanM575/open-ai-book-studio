@@ -1480,7 +1480,7 @@ export function WorkspaceView({
               data-testid="more-back"
               onClick={() => {
                 setMoreOpen(false);
-                onBack();
+                if (navigation.allow()) onBack();
               }}
             >
               <ChevronLeft size={16} />

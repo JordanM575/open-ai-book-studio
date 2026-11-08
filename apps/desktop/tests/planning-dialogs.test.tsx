@@ -170,6 +170,23 @@ describe("mounted Workspace through real checked filesystem and registered IPC",
     await page().findByText("Copy target: 100");
   });
 
+  test("More-sheet Back respects the planning guard and leaves the dirty draft usable", async () => {
+    const { back, navigation } = await realPlanningWorkspace();
+    click("Set saved-word goal"); await ready(); change("Total saved-word target", "777");
+    testing.fireEvent.click(page().getByTestId("mobile-more"));
+    testing.fireEvent.click(await page().findByTestId("more-back"));
+    expect(back).not.toHaveBeenCalled();
+    expect(input("Total saved-word target").value).toBe("777");
+    testing.fireEvent.click(testing.within(page().getByRole("group", { name: "Confirm draft discard" })).getByRole("button", { name: "Keep editing" }));
+    expect(input("Total saved-word target").value).toBe("777");
+    expect(back).not.toHaveBeenCalled();
+    click("Close editor"); click("Discard draft and close");
+    testing.fireEvent.click(page().getByTestId("mobile-more"));
+    testing.fireEvent.click(await page().findByTestId("more-back"));
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(navigation.begin({ bookId: "book_fresh01", viewGeneration: 99 })).toBe(true);
+  });
+
   test("dirty host navigation, unregistered/foreign guards, pending save and observed unreadable sources", async () => {
     const { api, book, root, back, navigation, changed } = await realPlanningWorkspace();
     const foreign = { bookId: book.id, viewGeneration: "foreign" };
