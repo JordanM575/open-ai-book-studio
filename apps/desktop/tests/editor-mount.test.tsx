@@ -562,3 +562,21 @@ describe("editor review corrections P2", () => {
     expect(clarity().getAttribute("aria-current")).toBeNull();
   });
 });
+
+describe("review request withdrawal", () => {
+  test("removing the host request clears marks, list and status", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    const request = await reviewRequest(editor.getSnapshot());
+    mounted.rerender({ reviewRequest: request });
+    await testing.waitFor(() => expect(document.querySelectorAll(".inline-review-mark").length).toBe(2));
+    const body = testing.within(document.body);
+    expect(body.queryByRole("complementary", { name: "Review findings" })).not.toBeNull();
+
+    mounted.rerender({ reviewRequest: null });
+    await testing.act(async () => {});
+    expect(document.querySelectorAll(".inline-review-mark")).toHaveLength(0);
+    expect(body.queryByRole("complementary", { name: "Review findings" })).toBeNull();
+    expect(editor.getLayer()).toBeNull();
+  });
+});

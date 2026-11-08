@@ -199,6 +199,22 @@ export class InlineEditor {
     if (hadLayer && !this.destroyed) this.options.onReviewStatus("stale");
   }
 
+  /**
+   * The host removed its review request (or closed the review surface): drop the current layer,
+   * marks and any in-flight proof without claiming the text changed.
+   */
+  discardEvidence(): void {
+    this.revision += 1;
+    this.request += 1;
+    this.pending?.abort();
+    this.pending = null;
+    this.layer = null;
+    this.fullIndex = emptyIndex;
+    this.index = emptyIndex;
+    this.active = null;
+    if (!this.destroyed) this.view.dispatch({ effects: replaceMarks.of(Decoration.none) });
+  }
+
   /** Host must call synchronously on saved-base, clean/pending, availability or source epoch changes. */
   syncSource(): void { this.invalidate(); }
 

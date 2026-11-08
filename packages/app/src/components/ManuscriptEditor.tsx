@@ -495,7 +495,15 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
 
   // Host-supplied synthetic request: the trusted port verifies it; nothing is sent or saved here.
   useEffect(() => {
-    if (!editor || reviewRequest === undefined || reviewRequest === null) return;
+    if (!editor) return;
+    if (reviewRequest === undefined || reviewRequest === null) {
+      // The host withdrew its request: no marks, no list, and no late proof may paint one.
+      editor.discardEvidence();
+      setLayer(null);
+      setActive(null);
+      setAnnouncement("");
+      return;
+    }
     let live = true;
     setLayer(null);
     setActive(null);

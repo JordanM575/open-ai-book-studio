@@ -50,6 +50,8 @@ HEAD
   caret to a code-point boundary and put the history transition back if the replacement is still
   refused. Select a list row's finding by identity, so two findings on one passage can each be
   chosen from the list.
+- Clear marks, the findings list and any pending proof when the host withdraws its review request,
+  instead of leaving stale underlines visible.
 
 ### Mounted exact-current manuscript editor
 - Mount the accepted CodeMirror plain-text surface in `ManuscriptEditor` in place of the textarea.
