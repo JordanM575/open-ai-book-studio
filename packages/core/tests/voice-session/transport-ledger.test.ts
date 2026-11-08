@@ -119,10 +119,23 @@ test("cancellation after dispatch aborts best-effort, retains the slot and ignor
   expect(late.ledger.slots.stt).toBeNull();
   expect(late.ledger.receipts[0]).toMatchObject({
     outcome: "cancellation", reportedUsd: 0.04, unknownChunks: 0, unsentChunks: 0,
+    finalChunkOutcome: "success", finalChunkFailure: null,
   });
   // A second cancellation cannot emit another abort or a second receipt.
   expect(h.send({ type: "cancel", operationId, reason: "Again." }).effects).toEqual([]);
   expect(h.ledger.receipts).toHaveLength(1);
+});
+
+test("cancellation between chunks preserves the last actual settlement separately", () => {
+  const h = harness();
+  const { operationId } = dispatched(h, "tts", 2);
+  h.send({ type: "settle", operationId, chunkId: 1, outcome: "success" });
+  const cancelled = h.send({ type: "cancel", operationId, reason: "Stopped between chunks." });
+  expect(cancelled.ledger.receipts[0]).toMatchObject({
+    outcome: "cancellation", finalChunkOutcome: "success", finalChunkFailure: null,
+    unknownChunks: 1, unsentChunks: 1,
+  });
+  expect(cancelled.ledger.receipts[0]?.operation.chunks[0]).toMatchObject({ outcome: "success", failure: null });
 });
 
 test("duplicate and late settlements never double-count a charge or release another slot", () => {

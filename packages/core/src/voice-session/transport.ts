@@ -32,6 +32,9 @@ export interface TransportChunk {
   readonly chunkId: number;
   readonly state: TransportChunkState;
   readonly charge: TransportCharge;
+  /** The actual settlement, even if the operation was cancelled while this chunk was in flight. */
+  readonly outcome: TransportOutcome | null;
+  readonly failure: string | null;
 }
 
 /** One bounded STT request or one TTS speaking run, pinned to the route chosen at `begin`. */
@@ -50,6 +53,9 @@ export interface TransportReceipt extends SessionToken {
   readonly operation: TransportOperation;
   readonly outcome: TransportOutcome;
   readonly failure: string | null;
+  /** Actual final dispatched-chunk settlement, independent of a prior cancellation request. */
+  readonly finalChunkOutcome: TransportOutcome | null;
+  readonly finalChunkFailure: string | null;
   /** Sum of provider-reported charges only. Unknown chunks are counted below, never added as 0. */
   readonly reportedUsd: number;
   readonly unknownChunks: number;
@@ -182,12 +188,14 @@ export function reduceTransport(ledger: TransportLedger, event: TransportEvent):
     );
     const unknownChunks = settled.filter((chunk) => chunk.charge.state === "unknown").length;
     const unsentChunks = operation.planned - settled.length;
+    const lastChunk = settled.at(-1);
     const snapshot: TransportOperation = { ...operation, chunks };
     update({
       slots: { ...state.slots, [operation.kind]: null },
       receipts: [...state.receipts, {
         sessionId: operation.sessionId, generation: operation.generation,
-        operation: snapshot, outcome, failure, reportedUsd, unknownChunks, unsentChunks,
+        operation: snapshot, outcome, failure, finalChunkOutcome: lastChunk?.outcome ?? null,
+        finalChunkFailure: lastChunk?.failure ?? null, reportedUsd, unknownChunks, unsentChunks,
       }],
       reason: null,
     });
@@ -239,7 +247,7 @@ export function reduceTransport(ledger: TransportLedger, event: TransportEvent):
         return result();
       }
       const chunk: TransportChunk = {
-        chunkId: operation.chunks.length + 1, state: "queued", charge: { state: "unsent" },
+        chunkId: operation.chunks.length + 1, state: "queued", charge: { state: "unsent" }, outcome: null, failure: null,
       };
       update({
         slots: { ...state.slots, [operation.kind]: { ...operation, chunks: [...operation.chunks, chunk] } },
@@ -290,7 +298,8 @@ export function reduceTransport(ledger: TransportLedger, event: TransportEvent):
       const settled: TransportOperation = {
         ...operation,
         chunks: operation.chunks.map((entry) => entry.chunkId === chunk.chunkId
-          ? { ...entry, state: "settled" as const, charge }
+          ? { ...entry, state: "settled" as const, charge, outcome: event.outcome,
+            failure: event.outcome === "failure" ? failureText(event.failure) : null }
           : entry),
       };
       if (!operation.cancelled && event.outcome === "success" && chunk.chunkId < operation.planned) {
