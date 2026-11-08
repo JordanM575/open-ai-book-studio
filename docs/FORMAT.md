@@ -530,7 +530,12 @@ invalidated. Provably independent work may keep its captured direction.
 The body is `artifacts/<artifactId>.md` for Markdown or `artifacts/<artifactId>.json` for JSON. A JSON
 body is an ordinary candidate document, not a workflow record and not an envelope. Artifact references
 hash the body bytes, not the metadata file. Both files are immutable. Missing, unreadable or
-metadata/body hash-mismatched artifacts are unavailable; they are never rewritten or guessed.
+metadata/body hash-mismatched artifacts cannot be used; they are never rewritten or guessed.
+Standalone reads distinguish `unavailable` (missing components or unknown semantics) from `corrupt`
+(malformed known values or mismatching bytes/hashes). Creation and current no-op confirmation require
+the final metadata and body bytes/hashes to match the intended pair exactly. A different internally
+valid pair, missing/corrupt components or an I/O failure at that final read is `uncertain`, never
+successful or automatically retried. Keep the intended candidate and inspect the artifact files.
 
 ### `contexts/<contextId>.json` — immutable captured-source manifest
 

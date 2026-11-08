@@ -437,7 +437,7 @@ function validateReservationReceipt(value: unknown): void {
   exactKeys(receipt, ['id', 'outcome', 'accounting'], 'invalid-receipt');
   idValue(receipt.id);
   requireValue(typeof receipt.outcome === 'string' && RECEIPT_OUTCOMES.has(receipt.outcome),
-    'invalid-receipt-outcome');
+    typeof receipt.outcome === 'string' ? 'unknown-receipt-outcome' : 'invalid-receipt-outcome');
   validateAccounting(receipt.accounting);
 }
 
@@ -479,7 +479,8 @@ function validateRun(record: Record<string, unknown>, owner: Owner): void {
   for (const key of ['attempts', 'effects', 'questions', 'commands', 'artifacts', 'snapshot']) {
     requireValue(!Object.hasOwn(record, key), 'embedded-run-aggregate');
   }
-  requireValue(typeof record.mode === 'string' && RUN_MODES.has(record.mode), 'invalid-mode');
+  requireValue(typeof record.mode === 'string' && RUN_MODES.has(record.mode),
+    typeof record.mode === 'string' ? 'unknown-mode' : 'invalid-mode');
   referenceValue(record.phasePlan, 'phase-plan', owner);
   referenceValue(record.policy, 'policy', owner);
   referenceValue(record.direction, 'direction', owner);
@@ -565,7 +566,7 @@ function validatePhasePlan(record: Record<string, unknown>, owner: Owner): void 
 function validateDirection(record: Record<string, unknown>, owner: Owner): void {
   stringValue(record.exactText, 262_144, 262_144, 'invalid-text');
   requireValue(typeof record.origin === 'string' && DIRECTIONS.has(record.origin),
-    'invalid-direction-origin');
+    typeof record.origin === 'string' ? 'unknown-direction-origin' : 'invalid-direction-origin');
   if (record.previous === null) {
     requireValue(record.revision === 1, 'stale-direction-link');
   } else {
@@ -600,9 +601,9 @@ function validateTask(record: Record<string, unknown>, owner: Owner): void {
   integer(record.phase, 1);
   const definition = objectValue(record.definition, 'invalid-definition');
   requireValue(typeof definition.role === 'string' && ROLES.includes(definition.role as Role),
-    'unknown-role');
+    typeof definition.role === 'string' ? 'unknown-role' : 'invalid-role');
   requireValue(definition.completion === 'candidate' || definition.completion === 'adoption',
-    'unknown-completion');
+    typeof definition.completion === 'string' ? 'unknown-completion' : 'invalid-completion');
   const dependsOn = arrayValue(definition.dependsOn, 'invalid-definition');
   requireValue(dependsOn.length <= WORKFLOW_LIMITS.tasksPerPlan, 'record-count');
   const dependencies = new Set<string>();
@@ -619,7 +620,7 @@ function validateTask(record: Record<string, unknown>, owner: Owner): void {
   requireValue(typeof record.needsDirection === 'boolean', 'invalid-record');
   if (Object.hasOwn(record, 'status')) {
     requireValue(typeof record.status === 'string' && TASK_STATUSES.has(record.status),
-      'invalid-task-status');
+      typeof record.status === 'string' ? 'unknown-task-status' : 'invalid-task-status');
   }
   isoValue(record.createdAt);
   isoValue(record.updatedAt);
@@ -630,13 +631,14 @@ function validateCommand(record: Record<string, unknown>): void {
   integer(record.expectedRevision, 0);
   digestValue(record.payloadDigest);
   const action = objectValue(record.action, 'invalid-action');
-  requireValue(typeof action.type === 'string' && ACTION_TYPES.has(action.type), 'unknown-action');
+  requireValue(typeof action.type === 'string' && ACTION_TYPES.has(action.type),
+    typeof action.type === 'string' ? 'unknown-action' : 'invalid-action');
   isoValue(record.recordedAt);
 }
 
 function validateJournalPage(record: Record<string, unknown>, owner: Owner): void {
   requireValue(typeof record.journal === 'string' && JOURNAL_KINDS.has(record.journal),
-    'invalid-journal');
+    typeof record.journal === 'string' ? 'unknown-journal' : 'invalid-journal');
   const pageSize = integer(record.pageSize, 1, WORKFLOW_LIMITS.journalPageSize);
   const first = integer(record.firstSequence, 1);
   const last = integer(record.lastSequence, first);
@@ -666,7 +668,7 @@ function validateProviderReceipt(value: unknown, receiptIds: Set<string>): void 
   receiptIds.add(receiptId);
   idValue(receipt.reservationId);
   requireValue(typeof receipt.outcome === 'string' && RECEIPT_OUTCOMES.has(receipt.outcome),
-    'invalid-receipt-outcome');
+    typeof receipt.outcome === 'string' ? 'unknown-receipt-outcome' : 'invalid-receipt-outcome');
   validateAccounting(receipt.accounting);
 }
 
@@ -677,7 +679,7 @@ function validateAttempt(record: Record<string, unknown>, owner: Owner): void {
   digestValue(record.inputDigest);
   if (record.revisionOf !== null) referenceValue(record.revisionOf, 'artifact', owner);
   requireValue(typeof record.phase === 'string' && ATTEMPT_PHASES.has(record.phase),
-    'invalid-attempt-phase');
+    typeof record.phase === 'string' ? 'unknown-attempt-phase' : 'invalid-attempt-phase');
   requireValue(typeof record.historical === 'boolean', 'invalid-record');
   requireValue(typeof record.noProgress === 'boolean', 'invalid-record');
   const outputs = arrayValue(record.outputs, 'invalid-outputs');
@@ -738,7 +740,7 @@ function validateEffectReceipt(value: unknown): void {
   }
   requireValue(typeof receipt.outcome === 'string' &&
     ['confirmed', 'conflict', 'not-published', 'uncertain'].includes(receipt.outcome),
-    'invalid-receipt-outcome');
+    typeof receipt.outcome === 'string' ? 'unknown-receipt-outcome' : 'invalid-receipt-outcome');
   isoValue(receipt.at);
   if (Object.hasOwn(receipt, 'resultVersion')) {
     integer(receipt.resultVersion, 1);
@@ -758,7 +760,7 @@ function validateEffect(record: Record<string, unknown>, owner: Owner): void {
   referenceValue(record.attempt, 'attempt', owner);
   referenceValue(record.candidate, 'artifact', owner);
   requireValue(typeof record.phase === 'string' && EFFECT_PHASES.has(record.phase),
-    'invalid-effect-phase');
+    typeof record.phase === 'string' ? 'unknown-effect-phase' : 'invalid-effect-phase');
   const target = objectValue(record.target, 'invalid-target');
   exactKeys(target, ['kind', 'chapterId', 'path'], 'invalid-target');
   requireValue(target.kind === 'new-chapter' || target.kind === 'replace-chapter',
@@ -823,7 +825,7 @@ function validateQuestion(record: Record<string, unknown>, owner: Owner): void {
     referenceValue(reference, item.kind as WorkflowKind, owner);
   }
   requireValue(typeof record.state === 'string' && QUESTION_STATES.has(record.state),
-    'invalid-question-state');
+    typeof record.state === 'string' ? 'unknown-question-state' : 'invalid-question-state');
   const options = arrayValue(record.options, 'invalid-options');
   requireValue(options.length <= WORKFLOW_LIMITS.questionOptions, 'record-count');
   const optionIds = new Set<string>();
@@ -856,7 +858,7 @@ function validateArtifact(record: Record<string, unknown>, owner: Owner): void {
   integer(record.bytes, 0, WORKFLOW_LIMITS.artifactBytes);
   digestValue(record.hash);
   requireValue(typeof record.role === 'string' && ROLES.includes(record.role as Role),
-    'unknown-role');
+    typeof record.role === 'string' ? 'unknown-role' : 'invalid-role');
   referenceValue(record.producedBy, 'attempt', owner);
   isoValue(record.createdAt);
 }
@@ -894,7 +896,7 @@ function validateReservation(record: Record<string, unknown>, owner: Owner): voi
   digestValue(request.policyDigest);
   referenceValue(request.attempt, 'attempt', owner);
   requireValue(typeof request.role === 'string' && ROLES.includes(request.role as Role),
-    'unknown-role');
+    typeof request.role === 'string' ? 'unknown-role' : 'invalid-role');
   const destination = objectValue(request.destination, 'invalid-destination');
   validateDestination(destination);
   digestValue(request.requestDigest);
@@ -938,7 +940,7 @@ function validateObservation(record: Record<string, unknown>, owner: Owner): voi
   integer(record.sequence, 1);
   referenceValue(record.reservation, 'reservation', owner);
   requireValue(typeof record.type === 'string' && OBSERVATION_KINDS.has(record.type),
-    'invalid-observation');
+    typeof record.type === 'string' ? 'unknown-observation' : 'invalid-observation');
   isoValue(record.at);
   if (record.facts !== null) {
     const facts = objectValue(record.facts, 'invalid-facts');

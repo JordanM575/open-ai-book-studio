@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 HEAD
 ### Workflow records
+- Bind final artifact readback to the exact intended metadata/body on both creation and no-op;
+  changed, missing, corrupt or unreadable final pairs report uncertainty without replay. Distinguish
+  future string semantics from malformed known states in workflow record reads.
 - Refuse copy-only metadata before any active workflow publication and enforce the run header's
   control-only format. Document bounded conflict names and baseline tokens; artifact recovery
   metadata points to its verified retained body. Unknown artifact/target/accounting semantics stay

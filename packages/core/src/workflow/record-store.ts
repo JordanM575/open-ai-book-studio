@@ -120,9 +120,9 @@ const RECORD_BOUND: Readonly<Record<StoredWorkflowKind, number>> = Object.freeze
 /** Codes that mean this build does not understand a current, otherwise readable record. */
 const UNSUPPORTED_CODES = new Set([
   "foreign-kind", "foreign-owner", "foreign-reference", "unknown-record-kind",
-  "unsupported-version", "invalid-mode", "invalid-task-status", "invalid-attempt-phase",
-  "invalid-effect-phase", "invalid-question-state", "invalid-direction-origin", "unknown-action",
-  "invalid-journal", "invalid-observation", "unknown-role", "unknown-completion", "invalid-receipt-outcome",
+  "unsupported-version", "unknown-mode", "unknown-task-status", "unknown-attempt-phase",
+  "unknown-effect-phase", "unknown-question-state", "unknown-direction-origin", "unknown-action",
+  "unknown-journal", "unknown-observation", "unknown-role", "unknown-completion", "unknown-receipt-outcome",
   "unknown-artifact-media-type", "unknown-target-kind", "unknown-accounting-kind", "unsupported-accounting"
 ]);
 
@@ -331,13 +331,7 @@ export class WorkflowRecordStore {
             savedAs
           );
         }
-        const artifact = await this.readArtifactUnlocked(bookId, runId, id);
-        if (!artifact) {
-          throw new WorkflowRecordError(
-            "uncertain",
-            "The artifact metadata and body read differently between checks. Check the artifacts folder before retrying."
-          );
-        }
+        const artifact = await this.verifyArtifactPair(bookId, runId, id, prepared.bytes, body);
         return { status: "unchanged", artifact };
       }
 
@@ -392,13 +386,7 @@ export class WorkflowRecordStore {
         wrote = true;
       }
 
-      const artifact = await this.readArtifactUnlocked(bookId, runId, id);
-      if (!artifact) {
-        throw new WorkflowRecordError(
-          "uncertain",
-          "The artifact was written but its metadata and body did not read back as one pair. Check the artifacts folder before retrying."
-        );
-      }
+      const artifact = await this.verifyArtifactPair(bookId, runId, id, prepared.bytes, body);
       return { status: wrote ? "created" : "unchanged", artifact };
     });
   }
@@ -753,6 +741,32 @@ export class WorkflowRecordStore {
       ...metadata,
       body: { bytes: bodySnapshot.bytes, hash: bodySnapshot.sha256 }
     };
+  }
+
+  /** A valid pair is not necessarily the pair this call intended to retain. */
+  private async verifyArtifactPair(
+    bookId: string,
+    runId: string,
+    artifactId: string,
+    metadata: Uint8Array,
+    body: Uint8Array
+  ): Promise<WorkflowArtifactSnapshot> {
+    const location = libraryPathToArchivePath(artifactMetaPath(bookId, runId, artifactId));
+    const uncertain = new WorkflowRecordError(
+      "uncertain",
+      `The artifact's final metadata/body readback could not be confirmed as your exact pair. Keep your candidate and inspect ${location} and its body before another save.`
+    );
+    try {
+      const artifact = await this.readArtifactUnlocked(bookId, runId, artifactId);
+      if (!artifact || !bytesEqual(artifact.bytes, metadata) || !bytesEqual(artifact.body.bytes, body) ||
+          artifact.hash !== await this.host.runtime.sha256(metadata) ||
+          artifact.body.hash !== await this.host.runtime.sha256(body)) throw uncertain;
+      return artifact;
+    } catch {
+      // Once publication/no-op verification began, missing/corrupt/I/O results cannot be read-only
+      // refusals. No retry, conflict copy, rollback or orphan completion follows this observation.
+      throw uncertain;
+    }
   }
 
   private async readObserved(
