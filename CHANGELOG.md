@@ -18,6 +18,11 @@ Update the `Unreleased` section before every commit.
   window-close/quit revocation, checked through the core permission predicates. 34 synthetic host
   tests cover the decisions; OS grants, microphone, mounted hands-free capture and 038 T022 remain
   unclaimed.
+- Correct the permission owner after independent review: a present-but-unrecognised origin field now
+  denies instead of deferring to its sibling, a same-id re-registration can no longer rebind or
+  extend a live grant, and an observed expiry is latched so a clock that moves backwards cannot
+  revive it. Rename the decision to `captureAllowed` and state in the README that it is a capture
+  gate, not hands-free authority, with the adapter's exact-grant obligation.
 
 ### Hands-free pure core
 

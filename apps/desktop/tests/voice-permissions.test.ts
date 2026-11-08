@@ -107,7 +107,7 @@ test("the trusted studio main frame keeps push-to-talk audio and creates no gran
     origin: TRUSTED_ORIGIN,
     permission: "media",
     mediaTypes: ["audio"]
-  })).toEqual({ allow: true, handsFree: false, reason: "push-to-talk" });
+  })).toEqual({ captureAllowed: true, handsFree: false, reason: "push-to-talk" });
 
   // Push-to-talk is an explicit press, not a hands-free session: nothing was registered.
   expect(h.registry.current()).toBeNull();
@@ -193,7 +193,7 @@ test("the exact active hands-free grant allows audio and is reported as hands-fr
     origin: TRUSTED_ORIGIN,
     permission: "media",
     mediaTypes: ["audio"]
-  })).toEqual({ allow: true, handsFree: true, reason: "hands-free" });
+  })).toEqual({ captureAllowed: true, handsFree: true, reason: "hands-free" });
 });
 
 test("an expired grant stops hands-free while trusted push-to-talk still works", () => {
@@ -211,7 +211,7 @@ test("an expired grant stops hands-free while trusted push-to-talk still works",
     origin: TRUSTED_ORIGIN,
     permission: "media",
     mediaTypes: ["audio"]
-  })).toEqual({ allow: true, handsFree: false, reason: "push-to-talk" });
+  })).toEqual({ captureAllowed: true, handsFree: false, reason: "push-to-talk" });
 });
 
 test("an already expired or malformed grant is not registered", () => {
@@ -317,4 +317,71 @@ test("a packaged file renderer is trusted by its file origin, not by a wildcard"
     securityOrigin: "https://foreign.invalid",
     mediaType: "audio"
   })).toBe(false);
+});
+
+/*
+ * Review findings F1–F3 (2026-11-08): a present-but-unrecognised origin denies, a same-id
+ * re-registration cannot rebind a live grant, and a clock that moves backwards cannot revive one.
+ */
+test("a present but unrecognised origin field denies instead of deferring to the other field", () => {
+  const { owner } = harness();
+  for (const bad of ["", "   ", "not a url", "chrome-extension://abc", 42, {}]) {
+    expect(owner.check(sender(), "media", bad as unknown as string, checkFacts() as never)).toBe(false);
+    expect(owner.check(sender(), "media", `${TRUSTED_ORIGIN}/`, checkFacts({ securityOrigin: bad }) as never)).toBe(false);
+    expect(owner.request(sender(), "media", requestFacts({ securityOrigin: bad }) as never)).toBe(false);
+    expect(owner.request(sender(), "media", requestFacts({ requestingUrl: bad }) as never)).toBe(false);
+  }
+  // An absent field still defers to the present one (an empty string is present, so it denies).
+  expect(owner.check(sender(), "media", undefined as unknown as string, checkFacts() as never)).toBe(true);
+  expect(owner.request(sender(), "media", { isMainFrame: true, mediaTypes: ["audio"], requestingUrl: `${TRUSTED_ORIGIN}/` } as never)).toBe(true);
+});
+
+test("re-registering the same grant id with a different binding is refused", () => {
+  const { owner, registry } = harness();
+  const first = grant();
+  expect(owner.registerHandsFreeGrant(first)).toBe(true);
+  expect(owner.registerHandsFreeGrant(grant())).toBe(true);
+
+  const rebinds = [
+    grant({ expiresAt: 200_000 }),
+    grant({ origin: "http://foreign.example" }),
+    grant({ windowId: String(FOREIGN_WINDOW_ID) }),
+    grant({ sessionId: "other-session" }),
+    grant({ generation: 2 }),
+    grant({ frameId: "99" }),
+    grant({ hostId: "other-host" })
+  ];
+  for (const changed of rebinds) {
+    expect(owner.registerHandsFreeGrant(changed)).toBe(false);
+    expect(registry.active()).toEqual(first);
+  }
+
+  // Only the explicit generation change may rebind.
+  expect(owner.replaceHandsFreeGrant(grant({ generation: 2, expiresAt: 200_000 }))).toBe(true);
+  expect(registry.active()?.generation).toBe(2);
+});
+
+test("an observed expiry cannot be revived by a clock that moves backwards", () => {
+  const { owner, registry, setNow } = harness();
+  const value = grant({ expiresAt: 2_000 });
+  expect(owner.registerHandsFreeGrant(value)).toBe(true);
+  expect(registry.active()?.grantId).toBe(value.grantId);
+
+  setNow(2_000);
+  expect(registry.active()).toBeNull();
+  setNow(1_000);
+  expect(registry.active()).toBeNull();
+  expect(registry.permits({
+    senderWindowId: String(STUDIO_WINDOW_ID),
+    senderHostId: HOST_ID,
+    frameId: String(STUDIO_FRAME_ID),
+    topLevel: true,
+    origin: TRUSTED_ORIGIN,
+    permission: "media",
+    mediaTypes: ["audio"]
+  })).toBe(false);
+
+  // An explicit new grant is still possible after a lapse.
+  expect(owner.replaceHandsFreeGrant(grant({ expiresAt: 5_000 }))).toBe(true);
+  expect(registry.active()?.grantId).toBe(value.grantId);
 });

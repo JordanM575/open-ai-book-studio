@@ -107,7 +107,15 @@ grant is still not mounted.
    hands-free audio additionally needs the exact in-memory grant through `permitsAudio` /
    `activeAudioGrant`, and window close or quit revokes it. This is source and synthetic-test
    evidence, not an OS grant, microphone, mounted hands-free adapter or owned-track qualification.
-   Missing or ambiguous callback facts always deny.
+   Missing or ambiguous callback facts always deny. A field that is present but empty,
+malformed or of an unsupported scheme denies rather than deferring to the other origin field.
+An unset or empty development server URL follows the real `loadFile` fallback to `file://`; a
+present but unparseable or non-`http(s)` URL denies.
+
+`VoicePermissionDecision.captureAllowed` is a **capture gate only**, not hands-free authority. The
+future adapter must still require the exact active grant (`activeAudioGrant`/`permits` with the
+expected token) immediately before PCM intake; the permission callback cannot distinguish
+push-to-talk from hands-free `getUserMedia`.
 4. Call `mayCapture` before PCM intake; `maySend` immediately before **every** external request or
    checked intent dispatch and after every await; `mayPlay` before decoded audio playback;
    `mayDeliverAnswer` immediately before the authoritative 037 checked-answer operation. Recheck the

@@ -83,7 +83,11 @@ export type VoicePermissionDenial =
 export type VoicePermissionReason = VoicePermissionDenial | "push-to-talk" | "hands-free";
 
 export interface VoicePermissionDecision {
-  readonly allow: boolean;
+  /**
+   * This is a trusted-frame **capture** gate, not hands-free authority. A future adapter must still
+   * call `activeAudioGrant`/`permits` with the expected token before any PCM intake.
+   */
+  readonly captureAllowed: boolean;
   readonly handsFree: boolean;
   readonly reason: VoicePermissionReason;
 }
@@ -92,9 +96,10 @@ export interface VoicePermissionDecision {
  * The real origin of the studio renderer, from the two paths `index.ts` actually loads.
  *
  * A development run uses the electron-vite server's exact `http(s)` origin. A packaged run loads
- * the bundled `renderer/index.html` through `file:`, whose Chromium origin is `file://`. There is
- * no wildcard and no `*` fallback: an unparseable server URL or a non-absolute renderer path
- * yields `null`, and every permission then denies.
+ * the bundled `renderer/index.html` through `file:`, whose Chromium origin is `file://`. An unset or
+ * empty development URL therefore follows the real `loadFile` fallback and yields `file://`, not a
+ * wildcard; a present but unparseable or non-`http(s)` server URL yields `null`, as does a
+ * non-absolute renderer path, and every permission then denies.
  */
 export function trustedRendererOrigin(input: {
   readonly devServerUrl?: string | undefined;
@@ -130,9 +135,20 @@ function normalizeOrigin(value: unknown): string | null {
   return null;
 }
 
+function originField(value: unknown): string | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  return normalizeOrigin(value) ?? "invalid";
+}
+
+/**
+ * One origin from two callback fields. An absent field defers to the other; a field that is present
+ * but empty, malformed or of an unsupported scheme is a fact we do not understand, so it denies.
+ * Two present fields that disagree also deny rather than choosing the friendlier value.
+ */
 function originFromFacts(primary: unknown, secondary: unknown): string | null {
-  const first = normalizeOrigin(primary);
-  const second = normalizeOrigin(secondary);
+  const first = originField(primary);
+  const second = originField(secondary);
+  if (first === "invalid" || second === "invalid") return null;
   if (first !== null && second !== null) return first === second ? first : null;
   return first ?? second;
 }
@@ -180,15 +196,23 @@ interface TrustedStudio {
  */
 export class AudioGrantRegistry {
   private grant: AudioGrant | null = null;
+  /** Once expiry has been observed, a clock that moves backwards cannot revive the grant. */
+  private lapsed = false;
 
   constructor(private readonly now: () => number) {}
 
-  /** Keep the exact grant when the slot is empty or already this grant; false otherwise. */
+  /**
+   * Keep the exact grant when the slot is empty or already this exact grant; false otherwise.
+   * The same `grantId` with a different binding is a rebind, which only `replace` may do.
+   */
   register(grant: AudioGrant): boolean {
     if (!this.valid(grant)) return false;
-    const current = this.active();
-    if (current && current.grantId !== grant.grantId) return false;
+    const current = this.grant;
+    if (current && !this.lapsed && this.now() < current.expiresAt) {
+      if (current.grantId !== grant.grantId || !sameGrant(current, grant)) return false;
+    }
     this.grant = grant;
+    this.lapsed = false;
     return true;
   }
 
@@ -196,6 +220,7 @@ export class AudioGrantRegistry {
   replace(grant: AudioGrant): boolean {
     if (!this.valid(grant)) return false;
     this.grant = grant;
+    this.lapsed = false;
     return true;
   }
 
@@ -203,11 +228,13 @@ export class AudioGrantRegistry {
   revoke(grantId: string): boolean {
     if (!identifier(grantId) || this.grant?.grantId !== grantId) return false;
     this.grant = null;
+    this.lapsed = false;
     return true;
   }
 
   clear(): void {
     this.grant = null;
+    this.lapsed = false;
   }
 
   /** The stored grant, even after expiry or revocation facts change; for attributable cleanup. */
@@ -219,7 +246,13 @@ export class AudioGrantRegistry {
   active(): AudioGrant | null {
     const grant = this.grant;
     if (!grant) return null;
-    return activeAudioGrant(authorityFor(grant, this.now())) ? grant : null;
+    const now = this.now();
+    if (this.lapsed || now >= grant.expiresAt) {
+      // Latch the lapse: a later clock read that moved backwards must not revive this grant.
+      this.lapsed = true;
+      return null;
+    }
+    return activeAudioGrant(authorityFor(grant, now)) ? grant : null;
   }
 
   /** True only for the exact active grant and an audio-only observation from its binding. */
@@ -234,6 +267,7 @@ export class AudioGrantRegistry {
   windowClosed(windowId: string): boolean {
     if (!identifier(windowId) || this.grant?.windowId !== windowId) return false;
     this.grant = null;
+    this.lapsed = false;
     return true;
   }
 
@@ -243,6 +277,13 @@ export class AudioGrantRegistry {
       [grant.grantId, grant.sessionId, grant.hostId, grant.windowId, grant.frameId, grant.origin].every(identifier) &&
       safeCounter(grant.generation) && safeCounter(grant.expiresAt) && safeCounter(now) && grant.expiresAt > now;
   }
+}
+
+function sameGrant(a: AudioGrant, b: AudioGrant): boolean {
+  return a.grantId === b.grantId && a.sessionId === b.sessionId && a.generation === b.generation &&
+    a.hostId === b.hostId && a.windowId === b.windowId && a.frameId === b.frameId &&
+    a.origin === b.origin && a.active === b.active && a.audioOnly === b.audioOnly &&
+    a.expiresAt === b.expiresAt;
 }
 
 function authorityFor(grant: AudioGrant, now: number): PermissionAuthority {
@@ -284,11 +325,11 @@ export class VoicePermissionOwner {
     requestingOrigin: string,
     details: CheckPermissionDetails | null
   ): boolean {
-    return this.decide(this.observeCheck(contents, permission, requestingOrigin, details)).allow;
+    return this.decide(this.observeCheck(contents, permission, requestingOrigin, details)).captureAllowed;
   }
 
   request(contents: PermissionSender, permission: string, details: RequestPermissionDetails | null): boolean {
-    return this.decide(this.observeRequest(contents, permission, details)).allow;
+    return this.decide(this.observeRequest(contents, permission, details)).captureAllowed;
   }
 
   /** The single decision both handlers use. Public so a test can prove the shared path. */
@@ -313,7 +354,7 @@ export class VoicePermissionOwner {
       mediaTypes: facts.mediaTypes
     });
     return {
-      allow: true,
+      captureAllowed: true,
       handsFree,
       reason: handsFree ? "hands-free" : "push-to-talk"
     };
@@ -399,5 +440,5 @@ export class VoicePermissionOwner {
 }
 
 function deny(reason: VoicePermissionDenial): VoicePermissionDecision {
-  return { allow: false, handsFree: false, reason };
+  return { captureAllowed: false, handsFree: false, reason };
 }
