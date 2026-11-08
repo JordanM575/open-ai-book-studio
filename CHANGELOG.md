@@ -7,6 +7,16 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Pure full-book review campaign planning
+
+- Add explicit all-range review campaign planning with scalar-safe primary/context separation,
+  exact existing-envelope admission, immutable source/profile/category attribution and deterministic
+  synthesis dependencies. Actual summaries are admitted without trimming and cannot manufacture
+  verified citations. Add independent primary union coverage, execution, synthesis and currency
+  aggregation; retain complete non-persistable plans when current campaign record bounds overflow.
+  Synthetic 70k/250k and oversized-chapter checks accompany the pure leaves. Continuation formats,
+  lossless record mapping, scheduler/host integration and fresh independent review remain gated.
+
 HEAD
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only

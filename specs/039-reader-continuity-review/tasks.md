@@ -45,6 +45,14 @@ task is completed. T010 retains the independent correction gate. The policy amen
   composition/dirty/source-change/conflict/duplicate application cannot bypass the writer.
 - [ ] T017 Add a pure all-range campaign planner, versioned source/category union coverage, boundary and
   attributed synthesis stages; test 70k/250k/oversized chapters under all per-request bounds.
+  - November 8, W10 v19: new pure `review/campaign-planner.ts` and `campaign-coverage.ts` implement
+    explicit scalar-safe all-range planning, existing-envelope admission, bounded attributed synthesis
+    reservations/actual-input admission, and exact revision/category/profile union coverage. Dedicated
+    synthetic tests include 70k/250k single chapters and a 120-chapter/250k selection. Oversized durable
+    plans remain whole and explicitly non-persistable under existing 64-source/64-stage limits.
+    `review/CAMPAIGN-README.md` names continuation-format, lossless persistence mapping and execution
+    prerequisites. T017 stays unchecked pending fresh independent exact-head review; these checks
+    provide no host/provider-quality/device/release evidence and do not complete T018/T019.
 - [ ] T018 Integrate campaign/check-in artifacts into the separately authorized 037 coordinator.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
