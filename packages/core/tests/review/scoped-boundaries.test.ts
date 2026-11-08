@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { assertReviewData, canonicalJson, digestJson } from "../../src/review/contract";
 import { buildReviewEnvelope, checkReviewStart, parseReviewEnvelope, serializeReviewEnvelope, sourceCurrency } from "../../src/review/envelope";
 import { createReviewReadFacade } from "../../src/review/facade";
@@ -64,6 +64,35 @@ test("canonical JSON preserves supported numbers, null-prototype keys, shared va
   let deep: unknown = null;
   for (let i = 0; i < 6_000; i++) deep = [deep];
   expect(canonicalJson(deep)).toBe(`${"[".repeat(6_000)}null${"]".repeat(6_000)}`);
+});
+
+test("plain-data validation bounds shared DAG visits and rechecks mutations on every call", () => {
+  const leaf: Record<string, unknown> = { value: true };
+  let graph: object = leaf;
+  const nodes = new Set([graph]);
+  for (let i = 0; i < 128; i++) {
+    graph = { left: graph, right: graph };
+    nodes.add(graph);
+  }
+  let visits = 0;
+  const ownKeys = Reflect.ownKeys;
+  const scan = spyOn(Reflect, "ownKeys").mockImplementation((value) => {
+    if (nodes.has(value) && ++visits > nodes.size * 4) throw new Error("Unbounded shared-DAG traversal");
+    return ownKeys(value);
+  });
+  try {
+    expect(() => assertReviewData(graph)).not.toThrow();
+    expect(visits).toBeLessThanOrEqual(nodes.size * 2);
+  } finally { scan.mockRestore(); }
+
+  leaf.value = -0;
+  expect(() => assertReviewData(graph)).toThrow("non-json-number");
+  leaf.value = graph;
+  expect(() => assertReviewData(graph)).toThrow("cyclic-json");
+  let invoked = 0;
+  Object.defineProperty(leaf, "value", { enumerable: true, get() { invoked++; return true; } });
+  expect(() => assertReviewData(graph)).toThrow("non-json-property");
+  expect(invoked).toBe(0);
 });
 
 test("navigation requires actual boolean cleanliness and plain current facts", async () => {
