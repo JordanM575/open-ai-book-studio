@@ -1,19 +1,21 @@
 # Pure voice-session core — D-200 / ADR 0021
 
-This is an **unmounted, platform-independent leaf**, implementing 017 T013/T014 and the pure part
-of T015. Import its local `index.ts` directly in leaf tests. The leaf itself changes no shared
-package export, existing PTT hook, profile preference, provider transport, permission handler or
-editor. The separately owned desktop host now imports these predicates for both real permission
-handlers (see below); that wiring does not upgrade the leaf's evidence to OS, microphone or device
-qualification.
+This is an **unmounted, platform-independent leaf**, implementing 017 T013/T014, the pure part of
+T015 and the partial T016 transport contract. Import its local `index.ts` directly in leaf tests.
+The leaf itself changes no shared package export, existing PTT hook, profile preference, permission
+handler or editor. The separately owned desktop host now imports these predicates for both real
+permission handlers (see below), and T016 adds one typed edge that lets the two existing provider
+services take a host abort signal; neither wiring upgrades the leaf's evidence to OS, microphone,
+provider or device qualification.
 
 ## Selected basis and bounded implementation decisions
 
 ADR 0021 / D-200 is the accepted policy, rather than the earlier research recommendations.
 D-125 keeps audio in memory; D-192 pins explicit routes without fallback. The existing
 `VoiceService` checks selected STT connection/model and the existing `SpeechService` loops TTS
-chunks; neither currently supplies this module's cancellation or session authority. They remain
-host-integration work, not implicitly upgraded by these files.
+chunks. T016 adds an optional abort signal to both, but neither supplies this module's session
+authority or a mounted cancellation registry; those remain host-integration work, not implicitly
+upgraded by these files.
 
 Use a synchronous immutable reducer plus **effect descriptions**, rather than embedding promises
 or transports: a never-settling effect cannot delay revocation. Keep one bounded outstanding slot
@@ -149,6 +151,42 @@ push-to-talk from hands-free `getUserMedia`.
    insertion/replacement still needs checked editor mutation/undo. There is deliberately no unchecked
    replace-selection helper here.
 
+## Cancellable transport ledger (T016, partial)
+
+`transport.ts` is the pure host-neutral half of ADR 0021 item 6. It holds no audio, text, promise
+or transport handle: `reduceTransport` returns `send`/`abort` effect descriptions for the trusted
+host to execute once, and it never calls a provider.
+
+- `begin` pins the exact session token and route and allocates a monotonic `operationId`. One
+  operation per kind (`stt`/`tts`) may occupy its slot, including a cancelled operation whose
+  dispatched chunk has not settled. A second `begin` for that kind is refused with a visible
+  reason instead of silently overlapping or dropping the request.
+- `chunk` allocates a monotonic `chunkId` within the operation; only one chunk may be outstanding.
+  `dispatch` rechecks `TransportFacts` immediately before send: same session token, exact same
+  route including revision, current audio permission and a safe clock. `mayDispatch` exposes the
+  same check so the host can repeat it after every await and immediately before `fetch`. A changed
+  route, revoked permission or replaced session therefore stops the next chunk locally.
+- Settlement is `success | refusal | failure | cancellation`, separately from charge. A dispatched
+  chunk starts `unknown`; a provider-reported finite non-negative amount becomes `reported`; a
+  never-dispatched chunk is `unsent` (a local fact). A receipt keeps the exact operation snapshot,
+  `reportedUsd` (known subtotal only), `unknownChunks` and `unsentChunks`. Unknown charge cannot be
+  read as a fabricated zero.
+- Cancellation closes the local gate immediately. Before dispatch it emits no abort and releases
+  the slot at once with an `unsent` charge. After dispatch it emits a best-effort `abort` and keeps
+  the owned slot until an exact settlement; a late success/failure is attributed to that request
+  as `cancellation` and cannot release a newer operation's slot. Duplicate, late and foreign
+  receipts change nothing. There is no automatic retry. Receipts are bounded (256); at capacity
+  `begin` refuses rather than evicting attributable history, and the host keeps its durable
+  accounting record separately.
+
+`apps/desktop/src/main/voice-transport.ts` is the typed edge: it maps a provider-reported cost to
+`reported`/`unknown`, maps `ProviderError`/abort to refusal, failure or cancellation with bounded
+copy, and combines a host `AbortSignal` with the existing per-request deadline. `VoiceService` and
+`SpeechService` accept an optional `signal`; `SpeechService` rechecks it before every chunk and
+neither service retries or falls back. This is still not a mounted host: there is no IPC/preload
+cancellation surface, no session-owned abort registry, no proof an in-flight provider request
+stopped, and no live/provider/device evidence. T016 remains unchecked.
+
 ## PCM/VAD adapter and bounds
 
 `PcmSegmenter` owns normalized mono float PCM, an injected monotonic millisecond clock and an injected
@@ -189,6 +227,7 @@ bun test ./packages/core/tests/voice-session/
 bunx --no-install tsc -p packages/core/tests/voice-session/tsconfig.strict.json
 bunx --no-install biome lint packages/core/src/voice-session packages/core/tests/voice-session
 bun test ./apps/desktop/tests/voice-permissions.test.ts
+bun test ./apps/desktop/tests/voice-transport.test.ts
 bun run typecheck
 ```
 

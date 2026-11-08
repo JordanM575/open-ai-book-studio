@@ -90,6 +90,13 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   `permitsAudio`/`activeAudioGrant`; 37 synthetic host tests pass. Actual OS grants/microphone,
   mounted hands-free capture, owned-track stop and T022–T024 remain unclaimed.
 - [ ] T016 Add host-owned cancellable STT/TTS request IDs, per-chunk route checks and honest unknown-charge state.
+  Partial: pure `voice-session/transport.ts` owns monotonic operation/chunk IDs, one-slot
+  backpressure, exact session/route/permission rechecks immediately before each dispatch,
+  best-effort abort with owned-slot retention, duplicate/late-receipt rejection and
+  success/refusal/failure/cancellation plus unsent/reported/unknown charge. A typed edge maps
+  provider cost and service failures, and `VoiceService`/`SpeechService` accept an optional host
+  abort signal (TTS rechecks before every chunk). No mounted host registry, IPC/preload cancel
+  surface, proof of provider-side cancellation, live call or device evidence exists yet.
 - [ ] T017 Mount session/transcript/correct/confirm/stop controls with actual Discuss/book/chapter/thread binding.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
   uses checked editor mutation/undo and exact-source confirmation.
