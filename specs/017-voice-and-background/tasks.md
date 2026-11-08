@@ -98,6 +98,17 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   abort signal (TTS rechecks before every chunk). No mounted host registry, IPC/preload cancel
   surface, proof of provider-side cancellation, live call or device evidence exists yet.
 - [ ] T017 Mount session/transcript/correct/confirm/stop controls with actual Discuss/book/chapter/thread binding.
+  Partial: the Discuss panel mounts an explicit hands-free bar and a host-neutral controller
+  (`packages/app/src/lib/hands-free.ts`, `components/HandsFreeBar.tsx`,
+  `hooks/use-hands-free-session.ts`). It composes the T013 session reducer, the T015 grant predicates
+  and the T016 transport ledger; a session starts only from an active audio-only grant and the
+  grant's own session identity, a transcript becomes an editable draft, confirm reuses the existing
+  checked Discuss turn start exactly once, and Stop reports stopping until the host settles. A
+  book/chapter/thread change ends the session, keeps the unsent words visible and cannot send them to
+  the new target; a transcript after Stop is ignored. Synthetic controller and component tests pass.
+  No capture adapter, OS prompt, live provider, playback arbitration or device evidence is mounted:
+  without a host adapter the bar states that hands-free audio is not connected and records nothing.
+  T018–T024 and 038 T022 remain unchecked.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
   uses checked editor mutation/undo and exact-source confirmation.
 - [ ] T019 Integrate qualified interruption/playback arbitration with real settlement; no premature Stopped

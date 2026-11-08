@@ -45,6 +45,8 @@ import {
 import { Suggestion, Suggestions } from "@ai-book-studio/ui/ai-elements/suggestion";
 import { Tool, ToolContent, ToolHeader, ToolLine, ToolOutput, Tools } from "@ai-book-studio/ui/ai-elements/tool";
 import { cn, must } from "../lib/utils";
+import type { HandsFreePort, HandsFreeTurn } from "../lib/hands-free";
+import { HandsFreeBar } from "./HandsFreeBar";
 import {
   approvalLabel,
   keptNote,
@@ -75,11 +77,26 @@ interface Props {
   /** A tool kept a conflict copy, so the workspace can count it. */
   onConflictCopy?: () => void;
   onNotice: (error: unknown) => void;
+  /**
+   * A trusted hands-free host adapter. This build ships none: without one the Discuss bar says so
+   * and records nothing. A synthetic test adapter proves the mounted controls and binding.
+   */
+  handsFreePort?: HandsFreePort | undefined;
   className?: string;
 }
 
 function nextId(): string {
   return `m_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** What a typed or hands-free turn carries into the one checked start path. */
+interface SendOptions {
+  readonly mode: AgentMode;
+  readonly threadId: string | undefined;
+  readonly guidance: string | undefined;
+  readonly model: { connectionId: string; modelId: string } | undefined;
+  readonly background: boolean;
+  readonly resetComposer: boolean;
 }
 
 const APPROVAL_STATUS: Record<Approval["status"], string> = {
@@ -131,6 +148,7 @@ export function ChatPanel({
   onTurnModelUsed,
   onConflictCopy,
   onNotice,
+  handsFreePort,
   className
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -160,10 +178,15 @@ export function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadToken = useRef(0);
   const noticeRef = useRef(onNotice);
+  const threadIdRef = useRef<string | null>(threadId);
 
   useEffect(() => {
     noticeRef.current = onNotice;
   }, [onNotice]);
+
+  useEffect(() => {
+    threadIdRef.current = threadId;
+  }, [threadId]);
 
   // The refs are read now, not inside the update: the callers clear them right after
   // patching, and an update that runs later must still land on this turn's message.
@@ -304,7 +327,10 @@ export function ChatPanel({
     }
   };
 
-  const startAttempt = async (assistantId: string, request: AgentTurnInput): Promise<void> => {
+  const startAttempt = async (
+    assistantId: string,
+    request: AgentTurnInput
+  ): Promise<{ ok: true; threadId: string } | { ok: false; reason: string }> => {
     assistantRef.current = assistantId;
     turnRef.current = null;
     setRunning(true);
@@ -328,6 +354,7 @@ export function ChatPanel({
       retryRequestsRef.current.set(assistantId, { ...request, threadId: started.data.threadId });
       if (request.model) onTurnModelUsed();
       setWaiting(false);
+      return { ok: true, threadId: started.data.threadId };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : undefined;
@@ -342,6 +369,7 @@ export function ChatPanel({
       setRunning(false);
       setWaiting(false);
       onNotice(error);
+      return { ok: false, reason: message };
     }
   };
 
@@ -483,13 +511,24 @@ export function ChatPanel({
     return unsubscribe;
   }, [onChanged, onConflictCopy, patchAssistant]);
 
-  const send = async (event?: FormEvent): Promise<void> => {
-    event?.preventDefault();
-    const prompt = input.trim();
-    if (!prompt || running || guidanceTooLong) return;
-    setInput("");
-    const user: Message = { id: nextId(), role: "user", text: prompt, tools: [], mode, guidance: guidance || undefined };
-    const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [], mode };
+  /**
+   * The one checked turn-start path. A typed message and a confirmed hands-free turn both come
+   * through here, so there is no second send path and no second provider call.
+   */
+  const sendPrompt = async (raw: string, options: SendOptions): Promise<{ ok: boolean; reason?: string }> => {
+    const prompt = raw.trim();
+    if (!prompt) return { ok: false, reason: "There are no words to send." };
+    if (running) return { ok: false, reason: "The conversation is already answering. Wait for it to finish." };
+    if (guidanceTooLong) return { ok: false, reason: "Shorten the guidance before sending." };
+    const user: Message = {
+      id: nextId(),
+      role: "user",
+      text: prompt,
+      tools: [],
+      mode: options.mode,
+      ...(options.guidance ? { guidance: options.guidance } : {})
+    };
+    const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [], mode: options.mode };
     const history = messages
       .filter((message) => message.text.trim() && !(message.role === "assistant" && message.failed))
       .slice(-20)
@@ -498,20 +537,55 @@ export function ChatPanel({
       bookId,
       chapterId,
       prompt,
-      mode,
-      ...(guidance ? { guidance } : {}),
-      threadId: threadId ?? undefined,
+      mode: options.mode,
+      ...(options.guidance ? { guidance: options.guidance } : {}),
+      ...(options.threadId ? { threadId: options.threadId } : {}),
       history,
-      ...(background ? { background: true } : {}),
-      ...(turnModel ? { model: turnModel } : {})
+      ...(options.background ? { background: true } : {}),
+      ...(options.model ? { model: options.model } : {})
     };
-    setBackground(false);
-    setMode("discuss");
-    setGuidance("");
+    if (options.resetComposer) {
+      setBackground(false);
+      setMode("discuss");
+      setGuidance("");
+    }
     loadToken.current += 1;
     retryRequestsRef.current.set(assistant.id, request);
     setMessages((current) => [...current, user, assistant]);
-    await startAttempt(assistant.id, request);
+    const outcome = await startAttempt(assistant.id, request);
+    return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
+  };
+
+  const send = async (event?: FormEvent): Promise<void> => {
+    event?.preventDefault();
+    const prompt = input.trim();
+    if (!prompt || running || guidanceTooLong) return;
+    setInput("");
+    await sendPrompt(prompt, {
+      mode,
+      threadId: threadId ?? undefined,
+      guidance: guidance || undefined,
+      model: turnModel ?? undefined,
+      background,
+      resetComposer: true
+    });
+  };
+
+  const sendVoiceTurn = async (turn: HandsFreeTurn): Promise<{ ok: boolean; reason?: string }> => {
+    if (turn.bookId !== bookId || turn.chapterId !== chapterId || turn.mode !== "discuss") {
+      return { ok: false, reason: "The book or chapter changed. Nothing was sent." };
+    }
+    if (turn.threadId !== threadIdRef.current) {
+      return { ok: false, reason: "The conversation changed. Nothing was sent." };
+    }
+    return sendPrompt(turn.text, {
+      mode: "discuss",
+      threadId: turn.threadId,
+      guidance: undefined,
+      model: undefined,
+      background: false,
+      resetComposer: false
+    });
   };
 
   const approve = async (message: Message, approval: Approval, approved: boolean, pressed: HTMLElement): Promise<void> => {
@@ -1020,6 +1094,17 @@ export function ChatPanel({
           </details>
           {guidanceTooLong ? <p role="alert">Shorten guidance to 2,000 characters before sending. Your text is kept.</p> : null}
         </div>
+        {mode === "discuss" ? (
+          <HandsFreeBar
+            bookId={bookId}
+            chapterId={chapterId}
+            threadId={threadId}
+            {...(handsFreePort ? { port: handsFreePort } : {})}
+            onSendTurn={sendVoiceTurn}
+            onNotice={onNotice}
+            disabled={running}
+          />
+        ) : null}
         <PromptInput onSubmit={(event) => void send(event)} groupClassName="rounded-[var(--corner-lg)]">
           <PromptInputTextarea
             ref={inputRef}

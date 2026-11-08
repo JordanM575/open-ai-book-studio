@@ -7,6 +7,18 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Hands-free Discuss controls
+
+- Mount explicit hands-free controls in the Discuss panel: start, the words as heard, correction
+  before sending, one explicit confirm and stop, bound to the open book, chapter and conversation.
+  A host-neutral controller composes the existing session reducer, audio-grant predicates and
+  transport ledger. A confirmed turn reuses the checked Discuss turn start exactly once, a
+  book/chapter/conversation change ends the session and keeps the unsent words visible instead of
+  sending them to the new target, and Stop reports stopping until the host settles, so a late
+  transcript cannot send. No capture adapter, OS prompt, microphone, provider call, playback
+  arbitration, IPC/preload change or device evidence is added: without a host adapter the bar says
+  hands-free audio is not connected and records nothing. 017 T017 remains unchecked.
+
 ### Voice transport
 
 - Allow `refusal` in the transport settle event (the four-way settlement the README and the
