@@ -29,6 +29,9 @@ Policy fields:
   range**. Context never enters primary coverage. Separate selected ranges never bridge a gap.
 - `synthesis: null`, or explicit `fanIn`, per-dependency `summaryBytes` and original-source `evidence`
   windows. Evidence windows must lie in the selection, and are disclosed in every synthesis request.
+  Every original window must be nonempty and scalar-safe inside one selected segment. Windows are
+  sorted and overlapping, adjacent or duplicate windows union before admission, separately within
+  each selected segment. Reversed input order is accepted; genuine gaps never become disclosed text.
 
 Selected overlapping/adjacent ranges union first using existing capture logic. Source/range order is
 retained; stage IDs are campaign ID plus deterministic ordinal. Scalar endpoint/line indexes support
@@ -65,6 +68,12 @@ Summaries are labelled derived feedback, never source text or verified citations
 citation verifier accepts only original text inside the synthesis evidence windows. Attribution to a
 larger primary range does not make quotes outside those windows verified. The host must separately
 select/admit any further original evidence it needs; no automatic retrieval is provided.
+
+Generated feedback IDs prefer `derived-<dependency-stage-id>` and add the first free positive integer
+suffix on collision with selected history or a previously generated ID. Allocation is deterministic,
+within the existing 200-character ID bound, and its full serialized overhead participates in normal
+reservation/admission. Selected history IDs, labels, text and run attribution are never renamed or
+discarded. Actual synthesis admission retains the allocated IDs and exact dependency run IDs.
 
 ## Coverage
 

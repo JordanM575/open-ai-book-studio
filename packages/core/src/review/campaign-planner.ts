@@ -101,21 +101,26 @@ function at(values: readonly number[], index: number): number {
 }
 
 function sliceSource(source: ChapterSource, ranges: readonly Span[]): ChapterSource {
-  return freeze({ ...source, segments: ranges.map((range) => {
+  const groups = new Map<ChapterSource["segments"][number], Span[]>();
+  for (const range of ranges) {
     const segment = source.segments.find((item) => range.start >= item.start && range.end <= item.end);
     requireContract(segment && range.end > range.start, "synthesis-outside-selection");
-    const start = range.start - segment.start;
-    const end = range.end - segment.start;
-    // Reuse capture's scalar validation without trusting arbitrary selected endpoints.
+    const group = groups.get(segment) ?? [];
+    group.push({ start: range.start - segment.start, end: range.end - segment.start });
+    groups.set(segment, group);
+  }
+  return freeze({ ...source, segments: source.segments.flatMap((segment) => {
+    const selected = groups.get(segment);
+    if (!selected) return [];
+    // Capture validates EVERY original endpoint before sorting/unioning, within this one selected
+    // segment. A valid union must not conceal an invalid scalar endpoint or bridge a source gap.
     const captured = captureChapterSource({
       sourceId: source.sourceId, saved: { ...source.identity, body: segment.text },
       bookTitle: source.bookTitle, title: source.title, position: source.position,
-      capturedAt: source.capturedAt, ranges: [{ start, end }]
+      capturedAt: source.capturedAt, ranges: selected
     });
-    const selected = captured.segments[0];
-    requireContract(selected, "empty-synthesis-selection");
-    return { ...range, text: selected.text,
-      startLine: segment.startLine + selected.startLine - 1 };
+    return captured.segments.map((range) => ({ start: segment.start + range.start, end: segment.start + range.end,
+      text: range.text, startLine: segment.startLine + range.startLine - 1 }));
   }) });
 }
 
@@ -256,6 +261,16 @@ export async function planReviewCampaign(value: unknown): Promise<CampaignPlanni
         requireContract(source, "foreign-synthesis-source");
         return sliceSource(source, entry.ranges);
       });
+      const feedbackIds = new Set(input.request.priorFeedback.map((feedback) => feedback.id));
+      const feedbackId = (stageId: string): string => {
+        const base = `derived-${stageId}`;
+        let id = base;
+        let suffix = 0;
+        while (feedbackIds.has(id)) id = `${base}-${++suffix}`;
+        idSchema.parse(id);
+        feedbackIds.add(id);
+        return id;
+      };
       let layer = [...stages];
       // Even a single range receives the explicitly requested synthesis operation.
       do {
@@ -264,7 +279,7 @@ export async function planReviewCampaign(value: unknown): Promise<CampaignPlanni
           const dependencies = layer.slice(offset, offset + synthesis.fanIn);
           const descriptor = { stageId: stageId(), kind: "synthesis" as const,
             dependencies: dependencies.map((stage) => stage.stageId), origins: originsOf(dependencies), primary: [], boundary: [] };
-          const feedback = dependencies.map((stage) => ({ id: `derived-${stage.stageId}`, runId: stage.stageId,
+          const feedback = dependencies.map((stage) => ({ id: feedbackId(stage.stageId), runId: stage.stageId,
             label: canonicalJson({ derived: true, stageId: stage.stageId, origins: stage.origins,
               profile: { id: input.profile.id, version: input.profile.version, digest: input.profile.digest }, categories: input.categories }),
             // U+0000 maximizes JSON escaping per UTF-8 byte, including nested provider serialization.

@@ -57,6 +57,12 @@ task is completed. T010 retains the independent correction gate. The policy amen
     equal-length cross-owner receipt/summary refusal tests. Shared plain-data validation memoizes
     completed objects per call to avoid exponential malformed DAG traversal while preserving active
     cycle, accessor and lossy-value rejection. Fresh independent review remains required.
+  - November 8, synthesis follow-through: individually validated evidence windows now sort/union
+    inside their selected segments, preserving scalar boundaries, exact original text/line numbers
+    and all genuine gaps. Generated summary-feedback IDs avoid selected-history collisions with
+    deterministic bounded suffixes; actual admission retains every history field and dependency.
+    Positive interval/citation/ID-collision regressions accompany both review corrections. T017 and
+    connected host/continuation/provider acceptance remain open pending fresh exact-head review.
 - [ ] T018 Integrate campaign/check-in artifacts into the separately authorized 037 coordinator.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.

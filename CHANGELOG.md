@@ -9,6 +9,11 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Pure full-book review campaign planning
 
+- Normalize valid synthesis evidence windows within their selected segments, accepting overlap,
+  adjacency, duplication and reversed order without bridging gaps or accepting invalid original
+  scalar endpoints. Preserve original text/line maps and citation scope. Allocate deterministic
+  collision-free summary-feedback IDs without changing retained history, and account for their
+  exact serialized reservation overhead. Add focused interval/citation/history regressions.
 - Retain the chosen owning book in immutable campaign plans and their digests, refusing cross-owner
   coverage receipts and synthesis summaries even for equal-length owner IDs. Check shared plain-data
   subgraphs once per validation while retaining cycle, accessor, lossy-value and fresh-call checks.

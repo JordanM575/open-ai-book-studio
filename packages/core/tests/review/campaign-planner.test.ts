@@ -258,6 +258,95 @@ describe("explicit campaign planning", () => {
 });
 
 describe("attributed synthesis admission", () => {
+  test.each([
+    { ranges: [{ start: 0, end: 4 }, { start: 2, end: 6 }] },
+    { ranges: [{ start: 0, end: 2 }, { start: 2, end: 6 }] },
+    { ranges: [{ start: 0, end: 6 }, { start: 0, end: 6 }] },
+    { ranges: [{ start: 4, end: 6 }, { start: 0, end: 4 }] }
+  ])("normalizes equivalent synthesis windows %j without duplicating disclosed text", async ({ ranges }) => {
+    const input = withSynthesis(await campaignInput("abcdefghij\n"));
+    input.policy.maxPrimaryScalars = 2;
+    first(input.policy.synthesis.evidence).ranges = [{ start: 0, end: 6 }];
+    const canonical = await planned(input);
+    first(input.policy.synthesis.evidence).ranges = ranges.map((range) => ({ ...range }));
+    const plan = await planned(input);
+    expect(plan.stages).toEqual(canonical.stages);
+    const stage = first(plan.stages.filter((entry) => entry.kind === "synthesis"));
+    const source = first(stage.envelope.sources);
+    if (source.kind !== "chapter") throw new Error("Expected chapter evidence");
+    expect(source.segments).toEqual([{ start: 0, end: 6, text: "abcdef", startLine: 1 }]);
+    const citation = { kind: "chapter", sourceId: source.sourceId, identity: source.identity, start: 1, end: 5, quote: "bcde" };
+    expect(verifyReviewCitation(stage.envelope, citation).status).toBe("verified-captured");
+    expect(verifyReviewCitation(stage.envelope, { ...citation, start: 5, end: 7, quote: "fg" }).status).toBe("invalid");
+  });
+
+  test("sorts disjoint multibyte windows within selected segments while preserving genuine gaps and line maps", async () => {
+    const input = withSynthesis(await campaignInput("a😀b\nxxc界d\n"));
+    first(input.sources).ranges = [{ start: 0, end: 5 }, { start: 7, end: 11 }];
+    first(input.policy.synthesis.evidence).ranges = [
+      { start: 9, end: 11 }, { start: 7, end: 9 }, { start: 3, end: 5 }, { start: 0, end: 3 }, { start: 0, end: 3 }
+    ];
+    const plan = await planned(input);
+    const stage = first(plan.stages.filter((entry) => entry.kind === "synthesis"));
+    const source = first(stage.envelope.sources);
+    if (source.kind !== "chapter") throw new Error("Expected chapter evidence");
+    expect(source.segments).toEqual([
+      { start: 0, end: 5, text: "a😀b\n", startLine: 1 }, { start: 7, end: 11, text: "c界d\n", startLine: 2 }
+    ]);
+    const admitted = await admitCampaignSynthesis(plan, stage.stageId, stage.dependencies.map((stageId) => ({
+      stageId, planDigest: plan.digest, status: "completed", text: "Retained summary"
+    })));
+    expect(admitted.sources).toEqual(stage.envelope.sources);
+    const citation = { kind: "chapter", sourceId: source.sourceId, identity: source.identity, start: 7, end: 10, quote: "c界d" };
+    expect(verifyReviewCitation(admitted, citation)).toMatchObject({ status: "verified-captured", evidence: { label: expect.stringContaining("lines 2–2") } });
+    expect(verifyReviewCitation(admitted, { ...citation, start: 4, end: 8, quote: "\nxxc" }).status).toBe("invalid");
+    first(input.policy.synthesis.evidence).ranges = [{ start: 3, end: 5 }, { start: 0, end: 1 }];
+    const disjoint = first((await planned(input)).stages.filter((entry) => entry.kind === "synthesis")).envelope.sources[0];
+    expect(disjoint?.kind === "chapter" && disjoint.segments.map(({ start, end }) => ({ start, end })))
+      .toEqual([{ start: 0, end: 1 }, { start: 3, end: 5 }]);
+  });
+
+  test.each([
+    { start: 2, end: 3 }, // A split scalar hidden inside an otherwise-valid union still refuses.
+    { start: 4, end: 8 }, { start: 5, end: 7 }, { start: 0, end: 0 }, { start: 0, end: 12 }
+  ])("refuses invalid original synthesis span %j before unioning", async (invalid) => {
+    const input = withSynthesis(await campaignInput("a😀b\nxxc界d\n"));
+    first(input.sources).ranges = [{ start: 0, end: 5 }, { start: 7, end: 11 }];
+    first(input.policy.synthesis.evidence).ranges = [{ start: 0, end: 5 }, invalid];
+    expect((await planReviewCampaign(input)).status).toBe("refused");
+  });
+
+  test.each(["campaign-synthetic", "c".repeat(160)])("generated feedback IDs avoid retained history deterministically for %s", async (campaignId) => {
+    const input = withSynthesis(await campaignInput("abcdefg\n"));
+    input.campaignId = campaignId;
+    input.policy.maxPrimaryScalars = 1;
+    input.policy.synthesis.fanIn = 2;
+    const base = `derived-${campaignId}.000001`;
+    input.request.priorFeedback = [base, `${base}-1`, `${base}-2`, `${base}-3`, `derived-${campaignId}.000002`]
+      .map((id, index) => ({ id, runId: `old-run-${index}`, label: `Retained ${index}`, text: "Retain exactly: \u0000\\😀" }));
+    const plan = await planned(input);
+    expect(await planned(input)).toEqual(plan);
+    const ids = new Set(input.request.priorFeedback.map((item) => item.id));
+    for (const stage of plan.stages.filter((item) => item.kind === "synthesis")) {
+      expect(stage.envelope.priorFeedback.slice(0, input.request.priorFeedback.length)).toEqual(input.request.priorFeedback);
+      const generated = stage.envelope.priorFeedback.slice(input.request.priorFeedback.length);
+      expect(generated.map((item) => item.runId)).toEqual([...stage.dependencies]);
+      for (const item of generated) {
+        expect(ids.has(item.id)).toBe(false); ids.add(item.id);
+        expect(item.id.length).toBeLessThanOrEqual(200);
+        if (item.runId === `${campaignId}.000001`) expect(item.id).toBe(`${base}-4`);
+      }
+      const admitted = await admitCampaignSynthesis(plan, stage.stageId, stage.dependencies.map((stageId) => ({
+        stageId, planDigest: plan.digest, status: "completed", text: "Actual summary"
+      })));
+      expect(admitted.priorFeedback.slice(0, input.request.priorFeedback.length)).toEqual(input.request.priorFeedback);
+      expect(admitted.priorFeedback.map((item) => item.id)).toEqual(stage.envelope.priorFeedback.map((item) => item.id));
+      expect(utf8Bytes(serializeProviderRequest(admitted))).toBeLessThanOrEqual(stage.serializedBytes);
+    }
+    input.request.priorFeedback.push({ ...first(input.request.priorFeedback), text: "Conflicting caller duplicate" });
+    expect(await planReviewCampaign(input)).toEqual({ status: "refused", code: "ambiguous-feedback-id" });
+  });
+
   test("dependencies and original-source attribution survive multiple levels; summaries are not citations", async () => {
     const input = withSynthesis(await campaignInput("abcdefg\n"));
     input.policy.maxPrimaryScalars = 1;
