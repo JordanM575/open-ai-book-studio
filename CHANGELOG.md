@@ -10,6 +10,11 @@ Update the `Unreleased` section before every commit.
 HEAD
 ### Hands-free Discuss controls
 
+- Keep transcription queued and uncharged until capture closes and fresh session/scope/route/grant
+  facts admit the exact operation immediately before the adapter call. Stop revokes queued work
+  synchronously, including intents still awaiting host facts; dispatched cancellation retains
+  unknown charges. Foreign/late results cannot replace another draft. Clearing a correction keeps
+  the same focused editor mounted, updates its value synchronously and disables empty confirmation.
 - Mount explicit hands-free controls in the Discuss panel: start, the words as heard, correction
   before sending, one explicit confirm and stop, bound to the open book, chapter and conversation.
   A host-neutral controller composes the existing session reducer, audio-grant predicates and

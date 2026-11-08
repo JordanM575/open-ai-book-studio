@@ -59,9 +59,9 @@ interface HandsFreeStore {
   get(): HandsFreeState;
   observe(): Promise<void>;
   start(): Promise<void>;
-  stop(): Promise<void>;
+  stop(): void;
   confirm(): Promise<void>;
-  correct(text: string): Promise<void>;
+  correct(text: string): void;
   discard(): Promise<void>;
   continueSession(): Promise<void>;
   acknowledge(): Promise<void>;
@@ -74,9 +74,12 @@ function createHandsFreeStore(
   getScope: () => HandsFreeScope,
 ): HandsFreeStore {
   let state = initialHandsFreeState();
+  let lastFacts: HandsFreeFacts | null = null;
   const listeners = new Set<() => void>();
   const aborts = new Map<number, AbortController>();
   let confirmPending = false;
+  // Stop invalidates queued effects synchronously, even while fresh host facts are pending.
+  let dispatchEpoch = 0;
   // React StrictMode runs an effect cleanup and setup again on the same mount. A permanent
   // `disposed` flag would leave the store dead in development, so cleanup only closes it and a
   // later subscribe re-arms it. A real unmount has no subscribe, so the store stays closed.
@@ -98,15 +101,20 @@ function createHandsFreeStore(
     }
   };
 
-  /** Every intent carries freshly rebuilt facts; nothing here is cached authority. */
+  /** Activation and sends require fresh host facts; a revoked pending intent cannot resume. */
   const send = async (intent: HandsFreeIntent): Promise<void> => {
     if (!open) return;
+    const epoch = dispatchEpoch;
     const facts = await readFacts();
     if (!open) return;
+    if (epoch !== dispatchEpoch &&
+        (intent.type === "start" || intent.type === "segment" || intent.type === "confirm" || intent.type === "continue")) return;
     dispatch({ ...intent, facts, scope: getScope() });
   };
 
   const runEffects = async (effects: readonly HandsFreeEffect[]): Promise<void> => {
+    const epoch = dispatchEpoch;
+    let captureClosed = true;
     // One capture close per session per batch: a Stop emits both `stop-capture` and `revoke-grant`,
     // which describe the same host action.
     const closing = new Set<string>();
@@ -151,12 +159,14 @@ function createHandsFreeStore(
           const outcome = port?.stopCapture
             ? await port.stopCapture(effect.token)
             : { ok: false, reason: "This build has no capture host to stop." };
+          captureClosed = captureClosed && outcome.ok;
           await send({
             type: "stop-settled",
             ok: outcome.ok,
             ...(outcome.reason ? { reason: outcome.reason } : {}),
           });
         } catch (error) {
+          captureClosed = false;
           getOptions().onNotice?.(error);
           await send({ type: "stop-settled", ok: false, reason: "The host did not confirm that capture closed." });
         }
@@ -164,18 +174,22 @@ function createHandsFreeStore(
       }
       if (effect.type === "transcribe") {
         const port = getOptions().port;
-        if (!port?.transcribeSegment) {
-          await send({
-            type: "transcript-failed",
-            reason: "No transcription adapter is mounted in this build.",
-            operationId: effect.operationId,
-            chunkId: effect.chunkId,
-          });
-          continue;
-        }
         const controller = new AbortController();
         aborts.set(effect.operationId, controller);
         try {
+          const facts = await readFacts();
+          if (!open) return;
+          const ready = captureClosed && epoch === dispatchEpoch && !controller.signal.aborted &&
+            port === getOptions().port && !!port?.transcribeSegment;
+          dispatch({
+            type: "dispatch-transcribe", requestId: effect.requestId,
+            operationId: effect.operationId, chunkId: effect.chunkId,
+            ready, facts, scope: getScope(),
+          });
+          const operation = state.transport.slots.stt;
+          if (!ready || !port?.transcribeSegment || operation?.operationId !== effect.operationId ||
+              operation.cancelled || operation.chunks.find((chunk) => chunk.chunkId === effect.chunkId)?.state !== "dispatched") continue;
+          // No await between the exact admission above and this external boundary.
           const result = await port.transcribeSegment({
             requestId: effect.requestId,
             segmentId: effect.segmentId,
@@ -243,6 +257,7 @@ function createHandsFreeStore(
   /** The single writer. Kept synchronous so two rapid confirms see each other's state. */
   const dispatch = (event: HandsFreeEvent): void => {
     if (!open) return;
+    lastFacts = event.facts;
     const next = reduceHandsFree(state, event);
     state = next.state;
     emit();
@@ -265,15 +280,23 @@ function createHandsFreeStore(
     },
     observe: () => send({ type: "sync" }),
     start: () => send({ type: "start" }),
-    stop: () => send({ type: "stop" }),
+    stop: () => {
+      dispatchEpoch += 1;
+      for (const controller of aborts.values()) controller.abort();
+      // Revocation must not wait for a host snapshot. Cached facts can only close work here.
+      dispatch({ type: "stop", facts: lastFacts, scope: getScope() });
+    },
     confirm: () => send({ type: "confirm" }),
-    correct: (text) => send({ type: "correct", text }),
+    // Local text changes must be synchronous to preserve the controlled editor and caret.
+    // This cannot send; confirm still rebuilds host facts before authorizing a turn.
+    correct: (text) => dispatch({ type: "correct", text, facts: lastFacts, scope: getScope() }),
     discard: () => send({ type: "discard" }),
     continueSession: () => send({ type: "continue" }),
     acknowledge: () => send({ type: "acknowledge" }),
     segment: (segmentId) => send({ type: "segment", segmentId }),
     dispose() {
       open = false;
+      dispatchEpoch += 1;
       // Leaving the Discuss surface must not leave capture open. This is best-effort cleanup; the
       // store is gone, so no result is presented and no retry is attempted.
       const token = state.session.token;

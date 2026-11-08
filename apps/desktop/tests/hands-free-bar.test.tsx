@@ -138,6 +138,12 @@ function status(view: ReturnType<typeof testing.within>): string {
   return view.getByTestId("hands-free-status").textContent ?? "";
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 async function beginSession(view: ReturnType<typeof testing.within>): Promise<void> {
   await testing.waitFor(() => expect((view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
   await testing.act(async () => {
@@ -197,6 +203,30 @@ describe("mounted hands-free controls", () => {
       expect((view.getByTestId("hands-free-draft") as HTMLTextAreaElement).value).toBe("The gate was locked.")
     );
     expect(onSendTurn).not.toHaveBeenCalled();
+  });
+
+  test("clearing and retyping keeps the same focused editor, even while host facts are pending", async () => {
+    const fake = makePort();
+    const { view, onSendTurn } = renderBar(fake.port);
+    await beginSession(view);
+    await speak(view, fake);
+    const snapshot = await fake.port.snapshot({ bookId: BOOK, chapterId: CHAPTER, threadId: THREAD, mode: "discuss" });
+    const pending = deferred<HandsFreeSnapshot | null>();
+    fake.port.snapshot = () => pending.promise;
+    const draft = view.getByTestId("hands-free-draft") as HTMLTextAreaElement;
+    draft.focus();
+    testing.fireEvent.change(draft, { target: { value: "" } });
+    expect(view.getByTestId("hands-free-draft")).toBe(draft);
+    expect(draft.value).toBe("");
+    expect(document.activeElement).toBe(draft);
+    expect((view.getByTestId("hands-free-confirm") as HTMLButtonElement).disabled).toBe(true);
+    testing.fireEvent.change(draft, { target: { value: "Replacement words." } });
+    expect(view.getByTestId("hands-free-draft")).toBe(draft);
+    expect(draft.value).toBe("Replacement words.");
+    expect(document.activeElement).toBe(draft);
+    expect((view.getByTestId("hands-free-confirm") as HTMLButtonElement).disabled).toBe(false);
+    expect(onSendTurn).not.toHaveBeenCalled();
+    await testing.act(async () => { pending.resolve(snapshot); });
   });
 
   test("one confirm sends one Discuss turn to the exact bound thread", async () => {
@@ -310,6 +340,92 @@ describe("mounted hands-free controls", () => {
     expect(status(view)).toContain("Stop was not confirmed");
     expect(status(view)).not.toContain("Stopped");
     expect(view.queryByTestId("hands-free-confirm")).toBeNull();
+  });
+
+  test("Stop revokes a transcription queued behind a pending capture close", async () => {
+    const close = deferred<{ ok: boolean }>();
+    let closes = 0;
+    const fake = makePort({ stopCapture: () => ++closes === 1 ? close.promise : Promise.resolve({ ok: true }) });
+    const { view, onSendTurn } = renderBar(fake.port);
+    await beginSession(view);
+    await testing.act(async () => { fake.emitSegment(1); });
+    await testing.waitFor(() => expect(fake.stopCapture).toHaveBeenCalledTimes(1));
+    expect(fake.transcribeSegment).not.toHaveBeenCalled();
+    await testing.act(async () => { testing.fireEvent.click(view.getByTestId("hands-free-stop")); });
+    await testing.waitFor(() => expect(status(view)).toBe("Stopped."));
+    await testing.act(async () => { close.resolve({ ok: true }); });
+    expect(fake.transcribeSegment).not.toHaveBeenCalled();
+    expect(onSendTurn).not.toHaveBeenCalled();
+    expect(view.queryByTestId("hands-free-draft")).toBeNull();
+  });
+
+  test("Stop takes effect while an earlier segment is still reading host facts", async () => {
+    const fake = makePort();
+    const { view } = renderBar(fake.port);
+    await beginSession(view);
+    const originalSnapshot = fake.port.snapshot;
+    const snapshot = await originalSnapshot({ bookId: BOOK, chapterId: CHAPTER, threadId: THREAD, mode: "discuss" });
+    const pending = deferred<HandsFreeSnapshot | null>();
+    fake.port.snapshot = () => pending.promise;
+    await testing.act(async () => { fake.emitSegment(1); });
+    await testing.act(async () => { testing.fireEvent.click(view.getByTestId("hands-free-stop")); });
+    expect(status(view)).toContain("Stopping");
+    expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+    fake.port.snapshot = originalSnapshot;
+    await testing.act(async () => { pending.resolve(snapshot); });
+    await testing.waitFor(() => expect(status(view)).toBe("Stopped."));
+    expect(fake.transcribeSegment).not.toHaveBeenCalled();
+    expect(view.queryByTestId("hands-free-draft")).toBeNull();
+  });
+
+  test.each([
+    ["revoked permission", { grant: null }],
+    ["changed route", { routes: { stt: { ...ROUTE, revision: 2 }, tts: null, agent: ROUTE } }],
+    ["hidden host", { visible: false }],
+  ] satisfies [string, Partial<HandsFreeSnapshot>][])('%s while capture closes prevents adapter dispatch', async (_label, changed) => {
+    const close = deferred<{ ok: boolean }>();
+    const fake = makePort({ stopCapture: () => close.promise });
+    const { view } = renderBar(fake.port);
+    await beginSession(view);
+    await testing.act(async () => { fake.emitSegment(1); });
+    await testing.waitFor(() => expect(fake.stopCapture).toHaveBeenCalledTimes(1));
+    const originalSnapshot = fake.port.snapshot;
+    fake.port.snapshot = async (scope) => ({ ...await originalSnapshot(scope) as HandsFreeSnapshot, ...changed });
+    await testing.act(async () => { close.resolve({ ok: true }); });
+    expect(fake.transcribeSegment).not.toHaveBeenCalled();
+    expect(view.queryByTestId("hands-free-draft")).toBeNull();
+  });
+
+  test("a conversation change or unmount while capture closes never dispatches old audio", async () => {
+    for (const leave of ["switch", "unmount"]) {
+      const close = deferred<{ ok: boolean }>();
+      const fake = makePort({ stopCapture: () => close.promise });
+      const onSendTurn = mock(() => Promise.resolve({ ok: true }));
+      const props = { bookId: BOOK, chapterId: CHAPTER, threadId: THREAD, port: fake.port, onSendTurn };
+      const rendered = testing.render(React.createElement(HandsFreeBar, props));
+      const view = testing.within(document.body);
+      await beginSession(view);
+      await testing.act(async () => { fake.emitSegment(1); });
+      await testing.waitFor(() => expect(fake.stopCapture).toHaveBeenCalledTimes(1));
+      await testing.act(async () => {
+        if (leave === "switch") rendered.rerender(React.createElement(HandsFreeBar, { ...props, threadId: "thread_other" }));
+        else rendered.unmount();
+      });
+      await testing.act(async () => { close.resolve({ ok: true }); });
+      expect(fake.transcribeSegment).not.toHaveBeenCalled();
+      expect(onSendTurn).not.toHaveBeenCalled();
+      rendered.unmount();
+    }
+  });
+
+  test("a failed capture close cannot admit queued transcription", async () => {
+    const fake = makePort({ stopCapture: async () => ({ ok: false, reason: "Capture did not close." }) });
+    const { view } = renderBar(fake.port);
+    await beginSession(view);
+    await testing.act(async () => { fake.emitSegment(1); });
+    await testing.waitFor(() => expect(view.getByTestId("hands-free-note").textContent).toContain("Nothing was sent"));
+    expect(fake.transcribeSegment).not.toHaveBeenCalled();
+    expect(view.queryByTestId("hands-free-draft")).toBeNull();
   });
 
   test("the status is announced and every control is keyboard reachable", async () => {

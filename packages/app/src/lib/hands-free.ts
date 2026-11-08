@@ -7,10 +7,12 @@ import {
   immutable,
   initialTransportLedger,
   initialVoiceSession,
+  maySend,
   reduceTransport,
   reduceVoiceSession,
   type Route,
   safeCounter,
+  sameToken,
   type SessionToken,
   type TransportLedger,
   type TransportReceipt,
@@ -156,6 +158,8 @@ export interface HandsFreeState {
   readonly revision: number;
   readonly capture: HandsFreeCaptureState;
   readonly captureReason: string | null;
+  /** A correction remains editable even when the author clears every character. */
+  readonly editing: boolean;
   readonly stop: HandsFreeStopState;
   readonly send: HandsFreeSendState;
   readonly transport: TransportLedger;
@@ -195,6 +199,13 @@ export type HandsFreeIntent =
   | { readonly type: "sync" }
   | { readonly type: "start" }
   | { readonly type: "segment"; readonly segmentId: number }
+  | {
+      readonly type: "dispatch-transcribe";
+      readonly requestId: number;
+      readonly operationId: number;
+      readonly chunkId: number;
+      readonly ready: boolean;
+    }
   | {
       readonly type: "transcript";
       readonly text: string;
@@ -259,6 +270,7 @@ export function initialHandsFreeState(): HandsFreeState {
     revision: 0,
     capture: "closed" as HandsFreeCaptureState,
     captureReason: null,
+    editing: false,
     stop: { status: "idle", reason: null } as HandsFreeStopState,
     send: { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
     transport: initialTransportLedger(),
@@ -378,7 +390,7 @@ function phaseOf(state: HandsFreeState): HandsFreePhase {
   if (state.send.status === "sending") return "confirming";
   if (session.permissionPending || state.capture === "opening") return "starting";
   if (session.requests.stt || session.status === "processing") return "transcribing";
-  if (session.draft && !session.confirmation) return "correcting";
+  if ((state.editing || session.draft) && !session.confirmation) return "correcting";
   if (session.status === "requesting") return "starting";
   if (session.status === "interrupted") return "interrupted";
   if (session.status === "speaking") return "speaking";
@@ -473,6 +485,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     // discards it so it can never be sent to a new target; `preserved` keeps it visible instead.
     update({
       session: { ...state.session, draft: "", confirmation: null, active: false, capture: false },
+      editing: false,
       capture: "closed" as HandsFreeCaptureState,
       ...(hadCapture ? { stop: { status: "stopping", reason: null } as HandsFreeStopState } : {}),
       send: sending
@@ -500,6 +513,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       preserveDraft();
       update({
         session: { ...state.session, draft: "", confirmation: null },
+        editing: false,
         note: "The book, chapter or conversation changed. Those words were not sent.",
         scope: { ...scope },
         binding: null,
@@ -590,6 +604,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         revision,
         capture: "closed" as HandsFreeCaptureState,
         captureReason: null,
+        editing: false,
         stop: { status: "idle", reason: null } as HandsFreeStopState,
         send: state.send.status === "failed"
           ? state.send
@@ -626,7 +641,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         facts: { now, session: token, route: transcribe.request.route, permitted },
       });
       const operationId = begin.ledger.slots.stt?.operationId;
-      if (!operationId) {
+      if (!operationId || operationId === state.transport.slots.stt?.operationId) {
         update({ transport: begin.ledger, note: begin.ledger.reason ?? "The transcription could not start." });
         const failure = begin.ledger.reason ?? "The transcription could not start.";
         core({ type: "settled", request: transcribe.request, failure });
@@ -638,25 +653,39 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         update({ transport: chunk.ledger, note: chunk.ledger.reason ?? "The transcription could not start." });
         break;
       }
-      const dispatch = reduceTransport(chunk.ledger, {
-        type: "dispatch",
+      // Capture closure can await the host. Keep this chunk queued/unsent until the runner
+      // revalidates fresh facts immediately before the adapter call.
+      update({ transport: chunk.ledger });
+      effects.push({
+        type: "transcribe",
+        requestId: transcribe.request.id,
+        segmentId: event.segmentId,
         operationId,
         chunkId,
-        facts: { now, session: token, route: transcribe.request.route, permitted },
       });
-      update({ transport: dispatch.ledger });
-      if (dispatch.effects.some((effect) => effect.type === "send")) {
-        effects.push({
-          type: "transcribe",
-          requestId: transcribe.request.id,
-          segmentId: event.segmentId,
-          operationId,
-          chunkId,
-        });
-      } else {
-        const failure = dispatch.ledger.reason ?? "The route or permission changed before transcription.";
-        update({ note: failure });
-        core({ type: "settled", request: transcribe.request, failure });
+      break;
+    }
+
+    case "dispatch-transcribe": {
+      const operation = state.transport.slots.stt;
+      if (!operation || operation.operationId !== event.operationId ||
+          operation.chunks.find((chunk) => chunk.chunkId === event.chunkId)?.state !== "queued") break;
+      const request = state.session.requests.stt;
+      if (!event.ready || !request || request.id !== event.requestId || !sameToken(operation, request) ||
+          !maySend(state.session, request, hostFacts(facts, currentBinding))) {
+        cancelSttTransport("Transcription was cancelled before dispatch. Nothing was sent.");
+        if (request && request.id === event.requestId && sameToken(operation, request)) settleOutstanding("stt");
+        update({ note: "Transcription was cancelled before dispatch. Nothing was sent." });
+        break;
+      }
+      const dispatched = reduceTransport(state.transport, {
+        type: "dispatch", operationId: event.operationId, chunkId: event.chunkId,
+        facts: { now: facts?.now ?? 0, session: request, route: request.route, permitted: permitFor(state.session, facts) },
+      });
+      update({ transport: dispatched.ledger });
+      if (!dispatched.effects.some((effect) => effect.type === "send")) {
+        settleOutstanding("stt");
+        update({ note: dispatched.ledger.reason ?? "The transcription was not dispatched." });
       }
       break;
     }
@@ -665,7 +694,9 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       const token = state.session.token;
       const request = state.session.requests.stt;
       const operation = state.transport.slots.stt;
-      if (operation && operation.operationId === event.operationId) {
+      const matching = operation?.operationId === event.operationId &&
+        operation.chunks.find((chunk) => chunk.chunkId === event.chunkId)?.state === "dispatched";
+      if (matching) {
         const settle = reduceTransport(state.transport, {
           type: "settle",
           operationId: operation.operationId,
@@ -676,7 +707,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
       }
       const stopped = state.stop.status === "stopping" || state.stop.status === "failed" || !state.session.active;
-      if (stopped || !request || !token) {
+      if (!matching || stopped || !request || !token || !sameToken(operation, request)) {
         update({
           ignoredTranscripts: state.ignoredTranscripts + 1,
           note: "A transcript arrived after this session stopped. It was ignored and nothing was sent.",
@@ -694,7 +725,8 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         break;
       }
       core({ type: "transcript", token, request, text: event.text });
-      update({ note: state.session.status === "interrupted" ? state.session.reason : null });
+      update({ editing: state.session.active && Boolean(state.session.draft),
+        note: state.session.status === "interrupted" ? state.session.reason : null });
       break;
     }
 
@@ -702,7 +734,9 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       const token = state.session.token;
       const request = state.session.requests.stt;
       const operation = state.transport.slots.stt;
-      if (operation && operation.operationId === event.operationId) {
+      const matching = operation?.operationId === event.operationId &&
+        operation.chunks.find((chunk) => chunk.chunkId === event.chunkId)?.state === "dispatched";
+      if (matching) {
         const settle = reduceTransport(state.transport, {
           type: "settle",
           operationId: operation.operationId,
@@ -712,7 +746,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         });
         update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
       }
-      if (!request || !token) {
+      if (!matching || !request || !token || !sameToken(operation, request)) {
         update({ ignoredTranscripts: state.ignoredTranscripts + 1 });
         break;
       }
@@ -749,6 +783,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         input: "control",
       });
       closeCaptureEffects(coreEffects);
+      if (state.session.active && state.session.draft === event.text) update({ editing: true });
       if (state.session.draft !== event.text) {
         update({ note: state.session.reason ?? "The correction could not be applied." });
       } else if (state.session.correctionPending) {
@@ -763,7 +798,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       const token = state.session.token;
       if (!state.session.active || !token) break;
       core({ type: "command", token, command: { kind: "discard" }, input: "control" });
-      update({ note: null });
+      update({ note: null, editing: false });
       break;
     }
 
@@ -820,6 +855,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
           reason: null,
           requestId: submit.request.id,
         },
+        editing: false,
         note: null,
       });
       effects.push({
@@ -890,6 +926,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       update({
         stop: { status: "stopping", reason: null } as HandsFreeStopState,
         session: { ...state.session, draft: "" },
+        editing: false,
         send: state.send.status === "sending" ? state.send
           : { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
         note: "Stopping. Waiting for the host to confirm that capture closed.",
