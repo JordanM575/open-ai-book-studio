@@ -19,8 +19,10 @@ HEAD
   saved report to live in one of the books it reviewed, cap `coverage.items`, refuse
   `contentBytes < sourceBytes`, refuse mis-ordered dispositions, treat an unknown member inside a
   closed lens as unsupported, validate campaign synthesis stages and allow a completed synthesis to
-  repeat its own stage report. 039 T014/T015 remain partial: segmented continuation, IPC/UI/export
-  mounting and independent review are still open.
+  repeat its own stage report. Re-saving the same run after the clock advances stays idempotent by
+  reusing the saved report's own timestamp, and a stale author-lens edit keeps its conflict copy
+  instead of being rejected before the base can be compared. 039 T014/T015 remain partial: segmented
+  continuation, IPC/UI/export mounting and independent review are still open.
 ### Voice transport
 
 - Allow `refusal` in the transport settle event (the four-way settlement the README and the

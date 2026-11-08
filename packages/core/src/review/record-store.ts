@@ -116,10 +116,24 @@ export class ReviewRecordStore {
     return this.host.withBook(bookId, async () => {
       await this.assertOwner(bookId);
       await this.writable(bookId);
+      // Saving the same run again must stay idempotent after the clock advances: only a report
+      // whose bytes match exactly (including savedAt) is unchanged. An existing-but-different report
+      // keeps its own time in the conflict copy and this save uses the current time.
+      let savedAt = this.now();
+      const existing = await this.loadReport(bookId, run.runId).catch(() => null);
+      if (existing) {
+        const reused = await buildReviewReport({
+          ownerBookId: bookId,
+          run,
+          savedAt: existing.record.savedAt,
+          sha256: (text) => this.sha256Text(text)
+        });
+        if (bytesEqual(reportRecordBytes(reused), existing.bytes)) savedAt = existing.record.savedAt;
+      }
       const report = await buildReviewReport({
         ownerBookId: bookId,
         run,
-        savedAt: this.now(),
+        savedAt,
         sha256: (text) => this.sha256Text(text)
       });
       const bytes = reportRecordBytes(report);
@@ -294,7 +308,12 @@ export class ReviewRecordStore {
         if (canonicalProfile(verified.record.profile) === canonicalProfile(profile)) {
           return { status: "unchanged" as const, record: verified };
         }
-        if (profile.version !== verified.record.profile.version + 1) {
+        // Only judge the next version when this save is actually based on the record it read. A
+        // stale base must reach commitValue, which keeps the author's edit as a conflict copy
+        // instead of rejecting it before anything can be preserved.
+        const basedOnCurrent = base.kind === "sha256" &&
+          base.value === current.hash && base.revision === current.record.revision;
+        if (basedOnCurrent && profile.version !== verified.record.profile.version + 1) {
           throw new ReviewRecordError("invalid", "A lens edit advances its version by exactly one. Nothing was written.");
         }
       }

@@ -54,10 +54,12 @@ describe("checked review record store", () => {
     expect(service).toContain("new ReviewRecordStore(");
   });
 
-  test("same-id equal bytes are idempotent; unequal bytes keep a conflict copy and replace nothing", async () => {
-    const { library, book, port } = await makeBook();
+  test("same-id equal bytes are idempotent after the clock advances; unequal bytes keep a conflict copy", async () => {
+    const clock = clockAt(afterRun);
+    const { library, book, port } = await makeBook(clock);
     const run = await readerRun(book.id);
     const first = await library.reviewRecords.createReport(book.id, run);
+    clock.value = at;
     const again = await library.reviewRecords.createReport(book.id, run);
     expect(again.status).toBe("unchanged");
     expect(again.report.hash).toBe(first.report.hash);
@@ -237,6 +239,23 @@ describe("checked review record store", () => {
       revision: 1
     });
     expect(updated.record.record.revision).toBe(2);
+    // Two authors editing version 1 into different version 2 lenses: the loser keeps a copy.
+    const rivalProfile = await editReaderProfile(firstProfile, { ...authorContent, guidance: "Rival guidance." });
+    let savedAs = "";
+    try {
+      await library.reviewRecords.saveProfile(book.id, rivalProfile, {
+        kind: "sha256",
+        value: saved.record.hash,
+        revision: 1
+      });
+      throw new Error("A stale lens edit was accepted");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReviewRecordError);
+      if (!(error instanceof ReviewRecordError)) throw error;
+      expect(error.code).toBe("conflict");
+      savedAs = error.savedAs ?? "";
+    }
+    expect(savedAs).toContain(`books/${book.id}/conflicts/`);
     const thirdProfile = await editReaderProfile(secondProfile, { ...authorContent, guidance: "Third guidance." });
     await expect(
       library.reviewRecords.saveProfile(book.id, thirdProfile, { kind: "sha256", value: saved.record.hash, revision: 1 })
