@@ -6,6 +6,11 @@
 
 ## Overview
 
+**Scope amendment, November 7:** D-194–D-196 / ADR 0019 selects a distinct durable 037 Workflow
+operation. FR-006/012/018 and ordinary-plan restart/explicit-turn/no-live-guidance rules below
+remain ordinary 031 policy. They do not prohibit 037's bounded host scheduling or versioned direction
+between immutable attempts. Discuss/Edit and destructive approvals retain their boundaries.
+
 This specification adds an author-facing permission choice and visible progress around the existing
 writing agent. It does not add a second writer or a second approval system. Manuscript and Story Bible
 changes continue through the registered tools, checked library writes, existing destructive approvals,

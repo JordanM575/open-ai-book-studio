@@ -3,6 +3,12 @@
 **Status:** Accepted, 2026-11-07, under delegated feature-delivery authority.
 **Decision:** D-193. **Scope:** U-037-01/02 and U-039-01/02/04; pure contracts first.
 
+**November 7 follow-through:** [ADR 0019](0019-bounded-autonomous-authoring.md) selects D-113 checked
+conversation safety and the distinct bounded workflow; [ADR 0020](0020-inline-editorial-review.md)
+selects explicit recoverable retention, versioned editorial extensions and disclosed multi-stage
+campaigns. Ordinary v1 request limits and read-only generation stay intact. Unsaved 039 remains
+volatile, including dispositions. Detailed formats/independent implementation gates still apply.
+
 ## Context
 
 Ordinary Discuss mode is a no-mutation boundary, not a selected-source boundary. Current ordinary
@@ -49,8 +55,8 @@ untested migration by implication.
 
 **039 structured reader/continuity runs** reuse the envelope, citation and execution contracts but
 keep selected snapshots, reports and profile versions only in volatile run state. They do not append
-review payloads/results to conversations or any other durable store until U-039-03/D-171 are
-individually accepted. The volatile 039 slice does not depend on implementing 037 conversation storage.
+review payloads/results to conversations. Explicit Save review is separately selected by D-199/D-171
+and requires its own format/writer integration. The volatile 039 slice does not depend on 037 storage.
 
 ## Exact evidence
 
@@ -107,9 +113,9 @@ work is independent of a later multi-book picker and 030 planning records.
 
 ## Separate work retained
 
-Reports/profiles remain volatile until D-171/U-039-03 are individually accepted with their storage
-contract. Broader autonomous authority, scheduling, candidates, strict spend enforcement, routing,
-cover storage/rendering and audiobook jobs retain their own design/implementation work. No retained
+Reports/profiles default to volatile; D-199/U-039-03 now selects explicit recoverable retention.
+D-194–D-196 select autonomous authority, scheduling, candidates, admission and pinned role routing,
+with implementation still open. Cover storage/rendering and audiobook jobs retain their own work. No retained
 roadmap feature is deleted or marked implemented by choosing a narrow first review slice.
 
 ## Verification

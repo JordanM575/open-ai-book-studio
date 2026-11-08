@@ -437,6 +437,22 @@ describe("the tools and the session", () => {
     expect(result.calls.find((call) => call.method === "turn")?.args[1]).toBe("carry on");
   });
 
+  for (const stopped of [false, true]) {
+    test(`prints a save warning alongside a ${stopped ? "stopped" : "successful"} answer without resending`, async () => {
+      const result = { turnId: "turn_cli00001", threadId: "thread_cli00001", text: stopped ? "" : "Tightened it.",
+        changed: 1, stopped, undoAvailable: true, persistenceError: "Usage could not be saved." };
+      const options = { overrides: { turn: async () => result } };
+      const plain = await run(["ask", BOOK, "carry on"], options);
+      expect(plain.out).toBe(stopped ? "Stopped · 1 chapter changed\n" : "Tightened it.\n");
+      expect(plain.err).toBe("Save warning: Usage could not be saved.\n");
+      expect(plain.code).toBe(0);
+      expect(plain.calls.filter((call) => call.method === "turn")).toHaveLength(1);
+      const json = await run(["ask", BOOK, "carry on", "--json"], options);
+      expect(JSON.parse(json.out)).toEqual(result);
+      expect(json.err).toBe("");
+    });
+  }
+
   test("undoes, and pluralises what it restored", async () => {
     const one = await run(["undo", BOOK]);
     expect(one.out).toBe("Restored 1 chapter.\n");

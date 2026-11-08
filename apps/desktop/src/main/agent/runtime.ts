@@ -68,7 +68,7 @@ import { DISCUSS_NEXT_STEP, modeAllowsTool } from "./mode";
 
 interface PendingApproval {
   approvalId: string;
-  resume: (approved: boolean) => void;
+  resume: (approved: boolean | null) => void;
 }
 
 interface ActiveTurn {
@@ -82,6 +82,8 @@ interface ActiveTurn {
   chapterId?: string | undefined;
   state: TurnState;
   pending?: PendingApproval | undefined;
+  /** Retained through tool, approval and outcome persistence settlement. */
+  completion: Promise<void>;
 }
 
 export type AgentOutcomeKind = "done" | "error" | "stopped" | "approval";
@@ -98,11 +100,16 @@ export interface AgentOutcome {
   background: boolean;
   text: string;
   changed: number;
+  undoAvailable?: boolean;
+  /** Orthogonal to the model/tool outcome: a local outcome or usage write failed. */
+  persistenceError?: string;
   message?: string;
   approvalName?: string;
 }
 
 interface TurnState {
+  phase: "active" | "stopping" | "settled";
+  persistenceError?: string;
   text: string;
   reasoning: string;
   toolParts: AgentPart[];
@@ -126,6 +133,8 @@ interface TurnState {
   proposed: ProposedBases;
   /** Tool calls still running. A stop or a failure waits for them before it reports. */
   running: Set<Promise<void>>;
+  /** Executed calls get their receipt from the wrapper, never an early SDK abort result. */
+  executions: Set<string>;
 }
 
 /** How far the turn's one checkpoint file has caught up with the chapters the turn changed. */
@@ -142,8 +151,21 @@ interface CheckpointProgress {
 }
 
 const MAX_STEPS = 20;
-/** How long a stop or a failure waits for a tool call that is still running. */
-const RUNNING_CALL_WAIT_MS = 5_000;
+
+// Fixed, public-safe warnings. Multiple failed writes must not replace one another, and repeated
+// attempts to save the same outcome must not grow its warning without bound.
+const PERSISTENCE_WARNINGS = {
+  approval: "The approval could not be saved. Its action was not started.",
+  conversation: "The conversation outcome could not be fully saved. Changes to the book remain.",
+  usage: "The turn's usage could not be saved. Local usage and spend history may be incomplete."
+} as const;
+
+function recordPersistenceError(state: TurnState, kind: keyof typeof PERSISTENCE_WARNINGS): void {
+  const warning = PERSISTENCE_WARNINGS[kind];
+  if (!state.persistenceError?.includes(warning)) {
+    state.persistenceError = [state.persistenceError, warning].filter(Boolean).join(" ");
+  }
+}
 
 /** Replaceable at the edge so tests and future provider adapters do not need a network. */
 export type AgentModelFactory = (credential: StoredCredential, modelId: string) => LanguageModel;
@@ -198,7 +220,7 @@ export class AgentRuntime {
     return [...this.active.values()].some((turn) => turn.bookId === bookId);
   }
 
-  /** Stop every running turn for a book, and say how many were stopped. */
+  /** Request stop for every running turn in a book; terminal events acknowledge settlement. */
   async stopBook(bookId: string): Promise<number> {
     const turns = [...this.active.entries()]
       .filter(([, turn]) => turn.bookId === bookId)
@@ -232,6 +254,28 @@ export class AgentRuntime {
     }
   }
 
+  private recordToolStart(turnId: string, state: TurnState, id: string, name: string, input: unknown): void {
+    if (state.toolParts.some((part) => part.type === "tool-call" && part.id === id)) return;
+    state.toolParts.push({ type: "tool-call", id, name, input });
+    this.publish({ type: "tool", turnId, id, name, status: "start", input });
+  }
+
+  private async recordToolResult(turnId: string, bookId: string, state: TurnState, id: string, name: string, output: unknown): Promise<void> {
+    if (state.toolParts.some((part) => part.type === "tool-result" && part.id === id)) return;
+    const result = output as { ok?: boolean; message?: string } | undefined;
+    state.toolParts.push({ type: "tool-result", id, name, output, ...(result?.ok === false ? { isError: true } : {}) });
+    this.publish({ type: "tool", turnId, id, name, status: "end", output, ...(result?.message ? { detail: result.message } : {}) });
+    await this.recordToolCall(bookId, name, result?.ok !== false);
+  }
+
+  private terminal(turnId: string, state: TurnState, event: Extract<AgentEvent, { type: "done" | "error" | "stopped" }>): void {
+    if (state.phase === "settled") return;
+    state.phase = "settled";
+    this.reportOutcome(turnId, event.type, state, event.type === "error" ? { message: event.message } : {});
+    this.active.delete(turnId);
+    this.publish({ ...event, ...(state.persistenceError ? { persistenceError: state.persistenceError } : {}) });
+  }
+
   /**
    * Tell the shell what happened so it can notify when the window is hidden. The callback is
    * best-effort: a failed notification must never fail a turn or lose its saved message.
@@ -256,6 +300,8 @@ export class AgentRuntime {
         background: turn.background,
         text: state.text,
         changed: state.changes.length,
+        ...(kind !== "approval" ? { undoAvailable: checkpointCovers(state) } : {}),
+        ...(state.persistenceError ? { persistenceError: state.persistenceError } : {}),
         ...(extra.message ? { message: extra.message } : {}),
         ...(extra.approvalName ? { approvalName: extra.approvalName } : {})
       });
@@ -313,11 +359,20 @@ export class AgentRuntime {
             threadId: started.threadId,
             text: event.text,
             changed: event.changed ?? 0,
-            costUsd: event.costUsd
+            costUsd: event.costUsd,
+            ...(event.undoAvailable !== undefined ? { undoAvailable: event.undoAvailable } : {}),
+            ...(event.persistenceError ? { persistenceError: event.persistenceError } : {})
           });
         } else if (event.type === "error") {
           unsubscribe();
-          reject(new ProviderError("unknown", event.message));
+          // Existing HTTP/bridge error envelopes carry the message, so retain both facts there
+          // as well as the orthogonal fields for in-process callers. Never replace the failure.
+          reject(Object.assign(new ProviderError("unknown",
+            [event.message, event.persistenceError].filter(Boolean).join(" ")), {
+            changed: event.changed ?? 0,
+            ...(event.undoAvailable !== undefined ? { undoAvailable: event.undoAvailable } : {}),
+            ...(event.persistenceError ? { persistenceError: event.persistenceError } : {})
+          }));
         } else if (event.type === "stopped") {
           unsubscribe();
           resolve({
@@ -325,7 +380,9 @@ export class AgentRuntime {
             threadId: started.threadId,
             text: "",
             changed: event.changed ?? 0,
-            stopped: true
+            stopped: true,
+            ...(event.undoAvailable !== undefined ? { undoAvailable: event.undoAvailable } : {}),
+            ...(event.persistenceError ? { persistenceError: event.persistenceError } : {})
           });
         } else if (event.type === "approval") {
           /*
@@ -347,6 +404,7 @@ export class AgentRuntime {
   async start(input: AgentTurnInput): Promise<AgentTurnStarted> {
     // Capture caller-owned objects before the first await. A live turn cannot be steered by mutation.
     input = structuredClone(input);
+    this.assertNotStopping(input.bookId);
     if (!agentModeSchema.safeParse(input.mode).success) {
       throw new ProviderError("invalid-request", "Choose Discuss or Edit before sending this turn.");
     }
@@ -394,6 +452,7 @@ export class AgentRuntime {
       console.warn("[agent] Could not read the model's context length:", redact((error as Error).message));
     }
     const model = this.makeModel(credential, modelId);
+    this.assertNotStopping(input.bookId);
     const prepared = await prepareThread(library.threads, input);
     await this.expireStaleApprovals(input.bookId, prepared.thread);
     const activeChapter = input.chapterId ? (chapters.find((chapter) => chapter.id === input.chapterId) ?? null) : null;
@@ -411,6 +470,7 @@ export class AgentRuntime {
     );
     const messageId = newId("msg");
     const state: TurnState = {
+      phase: "active",
       text: "",
       reasoning: "",
       toolParts: [],
@@ -428,7 +488,8 @@ export class AgentRuntime {
       createdAt: new Date().toISOString(),
       checkpoint: { revision: 0, saved: 0, at: null, file: null, queue: Promise.resolve() },
       proposed: new ProposedBases(library, input.bookId),
-      running: new Set()
+      running: new Set(),
+      executions: new Set()
     };
     const turnId = newId("turn");
     const cache = cachePrefixFor(
@@ -449,7 +510,8 @@ export class AgentRuntime {
         await this.saveCheckpoint(turnId, input, state);
       }
     });
-    trackRunningCalls(tools, state.running);
+    trackRunningCalls(tools, state, (id, name, toolInput) => this.recordToolStart(turnId, state, id, name, toolInput),
+      (id, name, output) => this.recordToolResult(turnId, input.bookId, state, id, name, output));
     const agent = new ToolLoopAgent({
       id: "chapter-writer",
       model,
@@ -469,7 +531,8 @@ export class AgentRuntime {
     });
 
     const controller = new AbortController();
-    this.active.set(turnId, {
+    this.assertNotStopping(input.bookId);
+    const active: ActiveTurn = {
       controller,
       bookId: input.bookId,
       bookTitle: book.title,
@@ -477,10 +540,12 @@ export class AgentRuntime {
       messageId,
       background: input.background === true,
       chapterId: activeChapter?.id,
-      state
-    });
+      state,
+      completion: Promise.resolve()
+    };
+    this.active.set(turnId, active);
 
-    void this.run(
+    active.completion = this.run(
       turnId,
       input,
       agent,
@@ -498,49 +563,50 @@ export class AgentRuntime {
     return { turnId, threadId: prepared.thread.id };
   }
 
-  /** Stop a turn. A turn waiting on approval has no live stream, so close it here. */
-  async stop(turnId: string): Promise<null> {
-    const turn = this.active.get(turnId);
-    if (!turn) return null;
-    const pending = turn.pending;
-    if (pending) {
-      await this.setApprovalStatus(turn, pending.approvalId, "expired");
-      const undoAvailable = checkpointCovers(turn.state);
-      // No stream is left to write the turn's end, so its checkpoint is listed with the conversation
-      // here, on the terms a finished turn's is.
-      if (turn.state.changes.length > 0 && undoAvailable) await this.listCheckpointTurn(turn.bookId, turn.threadId, turnId);
-      this.publish({
-        type: "stopped",
-        turnId,
-        changed: turn.state.changes.length,
-        undoAvailable
-      });
+  private assertNotStopping(bookId: string): void {
+    if ([...this.active.values()].some((turn) => turn.bookId === bookId && turn.state.phase === "stopping")) {
+      throw new ProviderError("invalid-request", "The previous turn is still stopping. Wait for its outcome before starting another turn.");
     }
-    turn.controller.abort();
-    this.active.delete(turnId);
-    return null;
   }
 
-  /** Add a turn to its conversation's checkpoint turns, newest last, so a reload offers its undo. */
-  private async listCheckpointTurn(bookId: string, threadId: string, turnId: string): Promise<void> {
-    try {
-      const threads = this.studio.requireLibrary().threads;
-      const thread = await threads.read(bookId, threadId);
-      if (!thread || thread.checkpointTurns.includes(turnId)) return;
-      await threads.save({ ...thread, checkpointTurns: [...thread.checkpointTurns, turnId] });
-    } catch (error) {
-      console.warn("[agent] Could not record the turn's checkpoint:", redact((error as Error).message));
-    }
+  /** Request stop synchronously. Only the run's settlement barrier can acknowledge it. */
+  async stop(turnId: string): Promise<null> {
+    const turn = this.active.get(turnId);
+    if (!turn || turn.state.phase === "settled") return null;
+    turn.state.phase = "stopping";
+    const pending = turn.pending;
+    turn.pending = undefined;
+    expirePendingApprovals(turn.state);
+    const firstStop = !turn.controller.signal.aborted;
+    turn.controller.abort();
+    if (firstStop) this.publish({ type: "stopping", turnId });
+    pending?.resume(null);
+    return null;
   }
 
   /** Continue a turn that paused on a destructive tool call. */
   async approve(turnId: string, approvalId: string, approved: boolean): Promise<null> {
     const turn = this.active.get(turnId);
-    if (!turn?.pending || turn.pending.approvalId !== approvalId) {
+    if (!turn?.pending || turn.state.phase !== "active" || turn.pending.approvalId !== approvalId) {
       throw new ProviderError("not-found", "That approval is no longer waiting. The turn may have stopped.");
     }
-    await this.setApprovalStatus(turn, approvalId, approved ? "approved" : "denied");
-    turn.pending.resume(approved);
+    // Consume ownership before persistence yields. Stop cannot expire an already consumed answer.
+    const pending = turn.pending;
+    turn.pending = undefined;
+    const part = turn.state.approvals.find((entry) => entry.approvalId === approvalId);
+    if (part) {
+      part.status = approved ? "approved" : "denied";
+      part.resolvedAt = new Date().toISOString();
+    }
+    try {
+      await this.setApprovalStatus(turn, approvalId, approved ? "approved" : "denied");
+      pending.resume(turn.controller.signal.aborted ? null : approved);
+    } catch {
+      recordPersistenceError(turn.state, "approval");
+      void this.stop(turnId);
+      pending.resume(null);
+      throw new ProviderError("invalid-request", PERSISTENCE_WARNINGS.approval);
+    }
     return null;
   }
 
@@ -566,17 +632,13 @@ export class AgentRuntime {
     approvalId: string,
     status: AgentApprovalStatus
   ): Promise<void> {
-    try {
-      await this.studio.requireLibrary().threads.updateApproval(
-        turn.bookId,
-        turn.threadId,
-        turn.messageId,
-        approvalId,
-        status
-      );
-    } catch (error) {
-      console.warn("[agent] Could not record the approval:", redact((error as Error).message));
-    }
+    await this.studio.requireLibrary().threads.updateApproval(
+      turn.bookId,
+      turn.threadId,
+      turn.messageId,
+      approvalId,
+      status
+    );
   }
 
   /**
@@ -716,12 +778,14 @@ export class AgentRuntime {
           thread = await threadStore.save({ ...thread, checkpointTurns });
         }
       } catch (error) {
+        recordPersistenceError(state, "conversation");
         console.warn("[agent] Could not save the conversation:",
           error instanceof Error ? redact(error.message) : "The conversation write failed.");
       }
     };
 
     try {
+      controller.signal.throwIfAborted();
       const stream = await agent.stream({ messages, abortSignal: controller.signal });
       for await (const part of stream.fullStream) {
         if (part.type === "text-delta") {
@@ -731,55 +795,17 @@ export class AgentRuntime {
           state.reasoning += part.text;
           this.publish({ type: "reasoning", turnId, delta: part.text });
         } else if (part.type === "tool-call") {
-          state.toolParts.push({
-            type: "tool-call",
-            id: part.toolCallId,
-            name: part.toolName,
-            input: part.input
-          });
-          this.publish({
-            type: "tool",
-            turnId,
-            id: part.toolCallId,
-            name: part.toolName,
-            status: "start",
-            input: part.input
-          });
+          this.recordToolStart(turnId, state, part.toolCallId, part.toolName, part.input);
         } else if (part.type === "tool-result") {
-          const output = part.output as { ok?: boolean; message?: string } | undefined;
-          state.toolParts.push({
-            type: "tool-result",
-            id: part.toolCallId,
-            name: part.toolName,
-            output: part.output,
-            ...(output?.ok === false ? { isError: true } : {})
-          });
-          await this.recordToolCall(input.bookId, part.toolName, output?.ok !== false);
-          this.publish({
-            type: "tool",
-            turnId,
-            id: part.toolCallId,
-            name: part.toolName,
-            status: "end",
-            output: part.output,
-            ...(output?.message ? { detail: output.message } : {})
-          });
+          if (state.executions.has(part.toolCallId)) continue;
+          await this.recordToolResult(turnId, input.bookId, state, part.toolCallId, part.toolName, part.output);
         } else if (part.type === "tool-error") {
+          if (state.executions.has(part.toolCallId)) continue;
           // A tool that throws ends like one that answered `ok: false`: a failed step in the chat and
           // the thread, and a failed call in the metrics. Without this it would stay running forever.
           const output = { ok: false, message: input.mode === "discuss" && !modeAllowsTool(input.mode, part.toolName)
             ? DISCUSS_NEXT_STEP : toolErrorMessage(part.error) };
-          state.toolParts.push({ type: "tool-result", id: part.toolCallId, name: part.toolName, output, isError: true });
-          await this.recordToolCall(input.bookId, part.toolName, false);
-          this.publish({
-            type: "tool",
-            turnId,
-            id: part.toolCallId,
-            name: part.toolName,
-            status: "end",
-            output,
-            detail: output.message
-          });
+          await this.recordToolResult(turnId, input.bookId, state, part.toolCallId, part.toolName, output);
         } else if (part.type === "tool-approval-request") {
           waiting = true;
           approval = {
@@ -793,6 +819,7 @@ export class AgentRuntime {
         }
       }
 
+      controller.signal.throwIfAborted();
       const usage = await stream.totalUsage;
       state.inputTokens += usage.inputTokens ?? 0;
       state.outputTokens += usage.outputTokens ?? 0;
@@ -829,63 +856,57 @@ export class AgentRuntime {
           requestedAt: new Date().toISOString()
         });
         await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text), ...state.approvals]);
+        controller.signal.throwIfAborted();
+        if (state.persistenceError) throw new Error("The approval request could not be saved. The proposed action was not started.");
         const active = this.active.get(turnId);
         if (active) {
           const captured = approval;
-          active.pending = {
-            approvalId: captured.approvalId,
-            resume: (approved) => {
-              active.pending = undefined;
-              const part = state.approvals.find((entry) => entry.approvalId === captured.approvalId);
-              if (part) {
-                part.status = approved ? "approved" : "denied";
-                part.resolvedAt = new Date().toISOString();
+          const answer = new Promise<boolean | null>((resolve) => {
+            active.pending = { approvalId: captured.approvalId, resume: resolve };
+          });
+          this.publish({ type: "approval", turnId, approvalId: captured.approvalId, name: captured.name, input: captured.input });
+          this.reportOutcome(turnId, "approval", state, { approvalName: captured.name });
+          const approved = await answer;
+          controller.signal.throwIfAborted();
+          if (approved !== null) {
+            const responses: ToolApprovalResponse[] = [
+              {
+                type: "tool-approval-response",
+                approvalId: captured.approvalId,
+                approved,
+                reason: approved ? "Approved by the author." : "Denied by the author."
               }
-              const responses: ToolApprovalResponse[] = [
-                {
-                  type: "tool-approval-response",
-                  approvalId: captured.approvalId,
-                  approved,
-                  reason: approved ? "Approved by the author." : "Denied by the author."
-                }
-              ];
-              // The resume is the same conversation: what this stream was sent (the history and the
-              // author's prompt, or an earlier resume), what it answered, then the approval. The
-              // stream's response alone would leave the model without the request it is carrying out.
-              const resumed: ModelMessage[] = [
-                ...messages,
-                ...responseMessages,
-                { role: "tool", content: responses }
-              ];
-              void this.run(
-                turnId,
-                input,
-                agent,
-                resumed,
-                controller,
-                threadId,
-                threadStore,
-                provider,
-                connectionId,
-                connectionLabel,
-                modelId,
-                messageId,
-                state
-              );
-            }
-          };
+            ];
+            // Only this live destructive approval continues the SDK conversation. This is not
+            // a stopped-turn or plan resume, and the host gate still controls every invocation.
+            const resumed: ModelMessage[] = [
+              ...messages,
+              ...responseMessages,
+              { role: "tool", content: responses }
+            ];
+            await this.run(
+              turnId,
+              input,
+              agent,
+              resumed,
+              controller,
+              threadId,
+              threadStore,
+              provider,
+              connectionId,
+              connectionLabel,
+              modelId,
+              messageId,
+              state
+            );
+          }
         }
-        this.publish({
-          type: "approval",
-          turnId,
-          approvalId: approval.approvalId,
-          name: approval.name,
-          input: approval.input
-        });
-        this.reportOutcome(turnId, "approval", state, { approvalName: approval.name });
         return;
       }
 
+      // Close dispatch even on ordinary completion before draining the execution receipts.
+      state.phase = "stopping";
+      await settleRunningCalls(state.running);
       const undoAvailable = await saveCheckpoint();
       const usageRecord: AgentUsage = {
         inputTokens: state.inputTokens,
@@ -900,7 +921,8 @@ export class AgentRuntime {
         usage: usageRecord,
         checkpoint: state.changes.length > 0 && undoAvailable
       });
-      this.publish({
+      controller.signal.throwIfAborted();
+      const done: Extract<AgentEvent, { type: "done" }> = {
         type: "done",
         turnId,
         text: state.text,
@@ -918,8 +940,7 @@ export class AgentRuntime {
         context: state.context,
         changed: state.changes.length,
         undoAvailable
-      });
-      this.reportOutcome(turnId, "done", state);
+      };
 
       try {
         await new UsageStore(() => this.studio.library?.root ?? null).append({
@@ -939,21 +960,25 @@ export class AgentRuntime {
           steps: state.steps
         });
       } catch (error) {
-        console.warn("[agent] Could not record usage:", redact((error as Error).message));
+        recordPersistenceError(state, "usage");
+        console.warn("[agent] Could not record usage:",
+          error instanceof Error ? redact(error.message) : "The usage write failed.");
       }
+      controller.signal.throwIfAborted();
+      this.terminal(turnId, state, done);
     } catch (error) {
       // A tool call that was still writing finishes first, so the changes this reports, and the
       // checkpoint it leaves, include that write.
+      state.phase = "stopping";
       await settleRunningCalls(state.running);
+      const undoAvailable = await saveCheckpoint();
+      expirePendingApprovals(state);
       if (controller.signal.aborted) {
-        const undoAvailable = await saveCheckpoint();
-        expirePendingApprovals(state);
-        const stopped: AgentErrorPart = { type: "error", code: "stopped", message: "Stopped by the author." };
+        const stopped: AgentErrorPart = { type: "error", code: "stopped", message: state.persistenceError ?? "Stopped by the author." };
         await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, stopped), ...state.approvals], {
           checkpoint: state.changes.length > 0 && undoAvailable
         });
-        this.publish({ type: "stopped", turnId, changed: state.changes.length, undoAvailable });
-        this.reportOutcome(turnId, "stopped", state);
+        this.terminal(turnId, state, { type: "stopped", turnId, changed: state.changes.length, undoAvailable });
       } else {
         // A provider transport failure arrives as an API error carrying its status, body and
         // headers. Anything else is only words, and the normalizer treats it that way.
@@ -969,8 +994,6 @@ export class AgentRuntime {
           ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {})
         });
         const wait = normalized.options.retryAfterSeconds;
-        const undoAvailable = await saveCheckpoint();
-        expirePendingApprovals(state);
         const contextNote =
           normalized.code === "context" && state.contextLength
             ? ` This model's context is ${state.contextLength.toLocaleString()} tokens.`
@@ -987,8 +1010,14 @@ export class AgentRuntime {
         await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, failure), ...state.approvals], {
           checkpoint: state.changes.length > 0 && undoAvailable
         });
-        this.publish({
-          type: "error",
+        if (controller.signal.aborted) {
+          const stopped: AgentErrorPart = { type: "error", code: "stopped", message: "Stopped by the author." };
+          await writeMessage([...assistantParts(state.reasoning, state.toolParts, state.text, stopped), ...state.approvals], {
+            checkpoint: state.changes.length > 0 && undoAvailable
+          });
+        }
+        this.terminal(turnId, state, {
+          type: controller.signal.aborted ? "stopped" : "error",
           turnId,
           code: normalized.code,
           message,
@@ -996,10 +1025,7 @@ export class AgentRuntime {
           undoAvailable,
           ...(wait !== undefined ? { retryAfterSeconds: wait } : {})
         });
-        this.reportOutcome(turnId, "error", state, { message });
       }
-    } finally {
-      if (!waiting) this.active.delete(turnId);
     }
   }
 }
@@ -1113,37 +1139,44 @@ function checkpointCovers(state: TurnState): boolean {
   return state.changes.length === 0 || state.checkpoint.saved === state.checkpoint.revision;
 }
 
-/** Note each tool call while it runs, without changing what it returns. */
-function trackRunningCalls(tools: ToolSet, running: Set<Promise<void>>): void {
-  for (const definition of Object.values(tools)) {
+/** Host-owned dispatch gate and receipts survive an SDK stream abort. */
+function trackRunningCalls(
+  tools: ToolSet,
+  state: TurnState,
+  started: (id: string, name: string, input: unknown) => void,
+  finished: (id: string, name: string, output: unknown) => Promise<void>
+): void {
+  for (const [name, definition] of Object.entries(tools)) {
     const execute = definition.execute;
     if (!execute) continue;
     definition.execute = (toolInput, options) => {
-      const result = execute(toolInput, options);
-      if (result instanceof Promise) {
-        const settled = result.then(
-          () => undefined,
-          () => undefined
-        );
-        running.add(settled);
-        void settled.then(() => running.delete(settled));
-      }
+      // No await between the gate and invoking the tool. Already executing checked effects
+      // may finish; no queued invocation gains permission from an old SDK call or approval.
+      if (state.phase !== "active") throw new Error("The turn is stopping. No new tool can start.");
+      state.executions.add(options.toolCallId);
+      const result = (async () => {
+        started(options.toolCallId, name, toolInput);
+        try {
+          if (state.phase !== "active") throw new Error("The turn is stopping. No new tool can start.");
+          const output = await execute(toolInput, options);
+          await finished(options.toolCallId, name, output);
+          return output;
+        } catch (error) {
+          await finished(options.toolCallId, name, { ok: false, message: toolErrorMessage(error) });
+          throw error;
+        }
+      })();
+      const settled = result.then(() => undefined, () => undefined);
+      state.running.add(settled);
+      void settled.then(() => state.running.delete(settled));
       return result;
     };
   }
 }
 
-/** Wait for the tool calls still running, but never longer than a stop should take to show. */
+/** Elapsed time is not evidence of settlement. A hung adapter stays unresolved. */
 async function settleRunningCalls(running: Set<Promise<void>>): Promise<void> {
-  if (running.size === 0) return;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([
-    Promise.all(running),
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, RUNNING_CALL_WAIT_MS);
-    })
-  ]);
-  clearTimeout(timer);
+  while (running.size > 0) await Promise.all(running);
 }
 
 /** What undoing one checkpoint entry did. */

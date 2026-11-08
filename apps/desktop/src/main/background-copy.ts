@@ -17,6 +17,18 @@ const PREVIEW_LENGTH = 140;
  * the assistant's opening words; an approval pause names the tool but not its contents.
  */
 export function notificationFor(outcome: AgentOutcome): NotificationCopy | null {
+  if (outcome.persistenceError && outcome.kind !== "approval") {
+    const changed = `${outcome.changed} ${outcome.changed === 1 ? "chapter" : "chapters"} changed.`;
+    const undo = outcome.changed > 0
+      ? outcome.undoAvailable === true ? " Undo available."
+        : outcome.undoAvailable === false ? " No undo checkpoint." : ""
+      : "";
+    return {
+      title: `${outcome.bookTitle} — ${outcome.kind === "done" ? "finished" : "stopped"} with a save warning`,
+      body: [outcome.kind === "error" ? outcome.message?.trim() : "", outcome.persistenceError, `${changed}${undo}`]
+        .filter(Boolean).join(" ")
+    };
+  }
   switch (outcome.kind) {
     case "done": {
       const preview = previewText(outcome.text);
@@ -57,10 +69,10 @@ const APPROVAL_PHRASES: Record<string, string> = {
 
 /**
  * Notify when the author asked for a background turn or cannot see the window. A stopped turn was
- * the author's own action, so it stays silent.
+ * the author's own action, so it stays silent unless local persistence failed.
  */
 export function shouldNotify(outcome: AgentOutcome, state: WindowState): boolean {
-  if (outcome.kind === "stopped") return false;
+  if (outcome.kind === "stopped" && !outcome.persistenceError) return false;
   return outcome.background || !state.visible || !state.focused;
 }
 

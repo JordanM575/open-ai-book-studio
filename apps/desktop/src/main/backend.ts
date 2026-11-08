@@ -95,7 +95,7 @@ export interface BackendAgent {
    * turn owns the newest checkpoint; the CLI and MCP name none and take the newest.
    */
   undo(bookId: string, turnId?: string): Promise<{ restored: number; skipped: number }>;
-  /** Stop the agent if it is working on this book, because the status reports that it is. */
+  /** Request Stop; `stopped` counts requested turns, not completed settlement. */
   stop(bookId: string): Promise<{ stopped: number }>;
 }
 

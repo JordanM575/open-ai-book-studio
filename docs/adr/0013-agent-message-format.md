@@ -4,6 +4,12 @@
 **Supersedes:** none
 **Related:** [0007](0007-agent-runtime.md), [0009](0009-multi-target-storage.md), [0010](0010-bun-and-workspaces.md)
 
+**November 7 amendment:** D-113 / [ADR 0019](0019-bounded-autonomous-authoring.md#shared-conversation-prerequisite-d-113)
+selects checked raw-hash whole-thread writes, lossless issue-bearing reads, recoverable deletion and
+explicit backed-up v2 migration. Unknown/future semantic parts are read-only and never ordinary replay.
+The original context below is historical. Detailed FORMAT and all-caller migration precede new writers;
+current v1 persistence is not proof that these safety extensions are implemented.
+
 ## Context
 
 The studio streams text, reasoning and tool activity from the main process, but it does not store a

@@ -9,9 +9,26 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Compose the accepted planning and bounded-authoring policy, terminal Stop delivery and merged
+  chapter-history restore work in one integration candidate. Preserve each exact candidate's
+  bounded evidence; connected mounting and product acceptance remain separate follow-through.
 - Keep history restore/undo success results complete for partial saved front matter without adding
   runtime defaults to the file. Require a post-failure history refresh to unlock uncertain capture,
   and make close notifications idempotent even when the host callback fails.
+- Accept individually researched full-book authoring, inline editorial-review and hands-free
+  contracts (D-194–D-200 / ADRs 0019–0021), with the bounded workflow/session authority amendment,
+  checked conversation policy, explicit cost modes and recoverable saved-review ownership.
+  Reserve formats before writers and add implementation/failure/evidence tasks; no new runtime,
+  microphone, provider-spend or full-book acceptance is claimed by these documentation changes.
+- Reconcile current candidate/merged statuses and original retained Bible/series, local reading/input,
+  illustration recovery, migration, folder export and native-target ownership. Update every current
+  development dispatch instruction to GPT-6 Astra/high, preserving historical model/audit records.
+- Record expanded hands-free, inline editorial review, brief-to-full-book and asynchronous
+  multi-agent requirements; set the current development queue to five concurrent agents while
+  preserving the historical six-agent dispatch and existing completion DAG.
+- Refuse lossy JSON numbers in planning/goal active files and recovery baselines; independently
+  verify saved goal source bytes, UTF-8, body and identity. Retain planning drafts after observer or
+  close callback failures, keep checked save outcomes intact, and restore focus after re-enabling.
 - Invalidate Format dialog export continuations after close, navigation or unmount; delayed
   chapter/matter saves cannot submit an obsolete export, and late replies cannot update a new visit.
 - Bind header export receipts, errors, preflight and busy state to the originating book view;
@@ -32,6 +49,18 @@ Update the `Unreleased` section before every commit.
 
 ### Agent interaction
 
+- Give failed initial approval publication a distinct action-specific error while retaining the
+  orthogonal conversation warning. Completion, visible/spoken event consumers and notifications
+  no longer receive the same persistence text as both fields; no destructive action resumes.
+- Keep Ambient controls owned through request-only Stop and show settled changes, undo availability
+  and save warnings. Ignore late replies/events, expose failed Stop requests and retain typed input.
+  Accumulate usage/conversation/approval persistence warnings without losing successful book effects;
+  carry them through completion results, background notifications and plain-text toolkit replies.
+- Keep stopped turns owned until in-flight tools, approval decisions, checkpoints and outcome
+  persistence settle. Remove the five-second false-stop deadline, capture late tool receipts outside
+  the SDK stream, close dispatch synchronously, and serialize approval versus Stop. The composer
+  shows Stopping until one terminal event, with actual changes, undo and conversation-save failures.
+  A never-settling adapter remains unresolved; no plan resume or background permission is added.
 - Add the first Discuss/Edit interaction slice: new composer requests default to Discuss,
   whose enabled built-in read tools cannot mutate the book and never load plugins. Edit
   retains checked writes, destructive approval and turn undo. Mode is recorded per request
@@ -70,6 +99,17 @@ Update the `Unreleased` section before every commit.
   unavailable files, and survive archive/trash journeys without changing chapters or flushing drafts.
   Document the format and ADR 0016; retain every snapshot, safety record and intent without automatic
   pruning. IPC/UI, restoration, undo and explicit cleanup remain separate follow-through.
+- Add isolated, callback-driven worldbuilding create/edit and saved-word goal set/clear/progress
+  components. Retain exact drafts and original baselines across refusals; distinguish checked
+  current no-ops, verified conflict copies and uncertain outcomes, with explicit compare/reload/
+  discard choices and view-bound replies. Add focused synthetic component coverage and narrow
+  planning/goal type exports. Product mounting and the reviewed core corrections remain separate.
+- Add the first Library-owned planning/organization core slice: bounded loose planning and goal
+  schemas, worldbuilding create/read/edit and goal set/clear with exact raw baselines, no-write
+  current no-ops, owner checks, one checked commit attempt and verified complete conflict copies.
+  Saved goal progress distinguishes complete, incomplete and unavailable sources. Document the
+  sidecar/recovery format and add synthetic boundary/failure tests; host/API/UI integration remains
+  a separate delivery slice.
 
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at

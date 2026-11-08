@@ -2,7 +2,8 @@
 
 Original review baseline: public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab`, November 4.
 Current-state reconciliation: November 7, 2026, public `main` at
-`55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34`. The JSON retains both dates/baselines. Merged changes
+`a9997624ac28b970c0a656c50233753ad375982f` (PR #33), plus explicitly labelled candidate/decision
+follow-through. The JSON retains the original audit baseline. Merged changes
 and [dated automated results](TESTING.md#recorded-baseline) inform this update; it is not a fresh
 runtime audit, live-provider/device check or release sign-off.
 This is a dependency map for remaining work, not a statement that every proposed capability is
@@ -10,17 +11,23 @@ implemented or approved. The machine-readable graph is [product-completion.json]
 The [distilled requirements](completion-requirements.json) record stable IDs, current classifications
 and acceptance criteria without including private research provenance.
 The [spec ownership and dependency map](SPEC-DAG.md) links every requirement and lane to its
-existing or new spec, including the four new Draft/Planned proposals 039–042.
-The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into six active agent slots,
+existing or new spec; 039 is now In progress, while 040–042 remain Draft/Planned.
+The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into five active agent slots,
 bounded work packages, decision packets and an event-driven continuation loop.
+
+The author's [expanded November 7 requirements](EXPANDED-AUTHORING-REQUIREMENTS.md) explicitly retain
+hands-free operation, inline-underlined critique, short-brief onboarding and continuous asynchronous
+multi-agent full-book authoring with human check-ins. Four additional requirement IDs map to
+L05/L09/L12; the earlier foreground-only review slices do not complete these journeys.
 
 ## Two completion milestones
 
 - **L23: desktop release sign-off.** Complete the supported desktop product and its installation,
   safety, accessibility, documentation and release evidence. Planned Android, glasses and audiobooks
   do not block this milestone.
-- **L24: requested roadmap complete.** Close or explicitly defer every retained research-derived
-  feature and platform lane. Each new capability still needs an accepted spec and relevant decisions.
+- **L24: requested roadmap complete.** Close every retained feature/platform lane with acceptance
+  evidence, or record an explicit author-approved scope change. Delegated engineering decisions do
+  not permit quiet deferral. [Retained follow-through](RETAINED-DELIVERY.md) owns original omissions.
 
 The published CLI/MCP and ambient voice workflows are existing capabilities. Their lanes finish
 conformance and gaps; integrated spec 038 owns the voice preferences. They do not rebuild those features from scratch. The ambient
@@ -105,8 +112,8 @@ or narrator-only audio. The union of both edge types is acyclic.
 
 ## Execution and ownership
 
-Use up to six concurrent agents as specified in [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md):
-initially three bounded builders, two decision researchers and one independent auditor.
+Use up to five concurrent GPT-6 Astra/high agents as specified in
+[CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md); the original six-agent wave is historical.
 The graph does not require starting every lane at once. Edges identify required contracts: an
 existing verified implementation may already satisfy one while other work in that lane remains.
 A lane may implement an independent slice before all predecessors finish; its final acceptance
@@ -135,7 +142,8 @@ cross-device trust, real-device distribution and glasses transport are not impli
 
 - **L06 → L24 coverage repaired November 7:** the author's all-planned-features direction explicitly
   includes Story Bible/series extensions. The graph now has a direct unconditional edge; optional
-  review/casting use cannot silently remove this lane from completion. Its design decisions remain open.
+  review/casting use cannot silently remove this lane from completion. D-163–D-168 select the first
+  manual planning/organization contracts; series/generated follow-on decisions remain individual work.
 - **Claim-scoped dependencies:** cover inputs for publishing, voice for Android and the supported
   desktop matrix need explicit acceptance scope. The graph's coarse lanes are not permission to
   make every future capability a desktop release blocker, or to skip a prerequisite of a claimed
@@ -168,12 +176,12 @@ features with independent contracts can advance without waiting for unrelated ro
 | Work / owner | First deliverable | Prerequisites and acceptance before broadening |
 | --- | --- | --- |
 | Voice acceptance · 038 / L12 | Complete the author's review of T022's automated record; inventory live microphone/provider/playback gaps separately | T022 stays unchecked until the author closes it. Decide `marin`/`cedar` separately; current catalogs are model-specific. Any paid check needs explicit scope/budget. |
-| Named history · 032 / L07 | T001 format/ADR follow-through, T003 record schema, then T004–T006 saved-only capture/list/compare | D-175/D-176 already accepted. Prove identity, body hashes, no draft flush, unknown-field preservation and archive/trash travel. Add T007–T010 checked restore/undo only after fault and interruption boundaries are defined. |
-| Agent interaction · 031 / L05 | Enforce the accepted Discuss/Edit boundary and expose the composer choice together | D-177–D-179 already accepted; T004/T010 exist. T006–T009 must prove no writes/plugins in Discuss, unchanged Edit approvals and correct mode attribution. Retain the decisions' matching demo/script/runbook condition; plans and new-turn continuation follow, with no live steering. |
-| Planning and organization · 030/033 / L06–L07 | Implement the ADR 0017 checked-sidecar/schema slice, then one manual record journey at a time | D-163–D-168 accepted November 7 after current D-190 premise review. Test failed writes, two writers, foreign identities and exact source anchors before persistence/UI. No automatic series authority. |
+| Named history · 032 / L07 | Fresh independent review of restore/UI correction `56c7b7d`, then API/Workspace mounting | Saved-only core merged PR #33. Correction passed 2,580 tests, coverage and 12/12 e2e; interrupted review is not acceptance. Preserve original candidates; no repeat broad suite absent changes/concerns. |
+| Agent interaction · 031/037 / L05 | Correct stop consumers/accounting warnings; implement D-113 checked threads and ADR 0019 pure graph/admission | Discuss/Edit/guidance merged PR #32. Ordinary plans remain distinct; 037 T018–T042 own bounded background work, onboarding, verified saved adoption, revision and character direction. |
+| Planning and organization · 030/033 / L06–L07 | Integrate accepted `320defb` worldbuilding/goal leaves through real Library/API/Workspace | D-163–D-168/ADR 0017; complete enumeration and raw-source validation, same queue/journal, checked save/reopen and failures. Other manual/series/collection/anchor capabilities remain owned. |
 | Formatting · 035 / L11 | T014 Markdown folder export from the saved ordered book, with failure-safe destination handling | Keep existing exports usable. Separate future physical layout, templates and named publishing rules; unknown measurements cannot pass KDP/EPUB/PDF readiness. |
-| Review · 034/037/039 / L08–L09 | Finish deterministic saved-text evidence; develop the explicit foreground, selected-source review boundary before structured readers | D-171 gates report persistence/export; 037 scope/consent questions and U-039-01/02/04 gate dependent model work. Start with one volatile selected-source report, then attributed rereads and explicit cross-book scope. No automatic edits or routing. |
-| Routing · 036 / L14 | Resolve taxonomy, capability/price evidence and author selection around the existing offline preview | Preview remains zero-call/zero-write. Dispatch, fallback, retry and hard spend enforcement each need their accepted policy; D-116 is not an implemented ceiling. |
+| Review · 034/037/039 / L08–L09 | Correct scoped leaves; build exact-current inline editor adapter and D-198 repetition v1 | D-193 per-call bounds remain; ADR 0020 selects explicit save/application and disclosed campaigns. Detailed formats before writers; generation remains read-only, dirty/stale underlines refuse. |
+| Routing · 036 / L14 | Mount neutral preview and implement explicitly pinned workflow routes/admission | D-196/D-116 select bounded operations versus qualified strict money; no ranking, fallback or automatic retry. Enforcement/adapter qualification is not established by policy. |
 | Cover design · 041 / L10 | Existing art → saved front-cover composition → approximate preview → independently measured export | U-041-01/02 govern storage/output. Prove original-asset/manuscript preservation and failed-export recovery. Print wraps need measured pagination/paper inputs; generation waits on U-041-03. |
 | Audiobooks · 042 / L13 | Stock narrator/script approval, then one recoverable chapter render | Reuse integrated 038 and lower-level TTS helpers; U-042-01/03 gate requests, U-042-02 storage/recovery and U-042-04 packaging. Test partial/uncertain requests, no paid retry without consent, stale audio and reuse of successful chapters before optional character casting. |
 | Desktop release · 009/013 / L20–L23 | Accepted support/lifecycle matrix and candidate-specific install/upgrade/recovery evidence | D-115 and D-172–D-174 retain their scopes. Recheck D-174 against D-189's profile recovery text before any cleanup design. Signing/distribution need approval; test library/profile preservation and newer-schema refusal. L23 can close without Android/glasses/audiobooks. |
@@ -195,7 +203,8 @@ devices and release approval get their own records. Retain failed results and co
 The U-039-04 gate remains on T003: overflow can affect a single large chapter as well as multi-book
 work. D-193 / ADR 0018 now accepts the shared bounded-envelope policy and rejects a single-book
 exemption. Pure review contracts can proceed; shared thread safety and provider/UI integration
-remain implementation prerequisites, and later persistence/autonomy decisions remain separate work.
+remain implementation prerequisites. ADRs 0019–0021 now select the specific persistence/autonomy/
+inline/voice extensions; their schemas, implementation and independent evidence remain open.
 
 Release links belong in the repository only when their artifacts are ready. A configured installer,
 responsive viewport, Simulator capture or successful submission is not by itself release evidence.

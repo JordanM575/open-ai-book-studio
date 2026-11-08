@@ -17,14 +17,16 @@ no real manuscript, credential, live provider, paid service or device is in scop
   host-specific UI wiring; it does not block pure core contracts and tests. Decided 2026-11-03:
   desktop first through the shared app component; browser and mobile reuse it later after proving the
   same saved version/hash revalidation. Recorded in spec.md decision 2.
-- [ ] T003 Record a follow-on decision on whether reports may be saved/exported and what retention,
+- [x] T003 Record a follow-on decision on whether reports may be saved/exported and what retention,
   excerpt and deletion rules apply. This is not a prerequisite for the volatile first milestone; no
   persistence work is included here.
   Research recorded 2026-11-03 (not accepted): `research/report-retention.md` pins the report
   shape (references and excerpts, never bodies; unbounded excerpts; computed freshness) against
   the volatile baseline; D-171 proposes narrow export with capped excerpts and markings, JSON
   save under `books/<bookId>/reviews/` with a 20-per-book cap, explicit and book-fate deletion,
-  and archive/sync exclusion. No persistence task may begin before acceptance.
+  and archive/sync exclusion. Historical proposal replaced November 7 by D-199/D-171/ADR 0020:
+  explicit save, recoverable author-owned feedback, no pruning and truthful archive/sync inclusion.
+  Detailed formats and implementation remain 039 T014–T015.
 
 ## Phase 2 — Read a confirmed saved snapshot
 
@@ -48,9 +50,9 @@ no real manuscript, credential, live provider, paid service or device is in scop
 
 ## Phase 3 — Deterministic findings and honest run states
 
-- [ ] T008 Deferred by the recorded T001 outcome (word count and coverage only; no approved phrase
-  metric for this milestone). When a future spec approves the signal — unifying curly and straight
-  apostrophes — implement it in pure core with deterministic occurrence ordering and exact source
+- [ ] T008 Implement D-198/FR-005 repetition v1, now accepted after T001's historical deferral:
+  unify curly and straight apostrophes, keep original spans and combining marks, count every
+  overlapping three-token window in pure core with deterministic occurrence ordering and exact source
   spans, covering punctuation/case normalization, repeated phrases, overlapping phrases and
   chapter-boundary behavior with synthetic fixtures.
 - [x] T009 Produce coverage for every in-scope chapter: included with prose, included but empty, or
@@ -109,10 +111,15 @@ no real manuscript, credential, live provider, paid service or device is in scop
 
 ## Dependency notes
 
-- T001 is recorded (word count and coverage only); T008 and any phrase-metric copy stay deferred.
+- T001 records the initial counts-only choice; D-198 now unblocks T008 and its exact metric copy.
 - T002 is recorded (desktop first); browser and mobile reuse the shared component after proving the
   same saved version/hash revalidation, and T016 journeys for those surfaces wait on that.
-- T003 does not block this milestone. Any later persistence/export task needs that decision first,
-  plus format/ADR review if its outcome changes the public architecture.
+- T003 is decided under ADR 0020. New writers still require detailed format/continuation and
+  recovery review; ordinary unsaved analysis remains write-free.
 - No model-backed task is included. A separate spec must settle provider disclosure, cost/unknown
   price, consent, data-use terms and no-write behavior before any such task is planned.
+
+- [ ] T018 Connect real repetition findings to D-197's exact-current inline adapter/sidebar; test
+  complete overlap/occurrence paging, long books, Unicode, dirty/stale suppression and no network.
+- [ ] T019 Complete 034 T016's real-finding navigation and retained-report adapter using 039's shared
+  explicit-save/export contracts; keep analyzer/source version and actual coverage in every output.

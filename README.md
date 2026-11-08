@@ -77,8 +77,10 @@ there is a working slice with remaining work; **planned** means it is not availa
 | External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
 | CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
 | Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
-| Guided/autonomous authoring and task-aware routing | Planned beyond current slices | See specs 036–037; no unattended multi-turn authority or automatic cost-based dispatch is claimed |
-| Named chapter history and library organization | Planned | See specs 032–033 for retained snapshots, collections, goals and source-linked notes |
+| Inline editorial critique | Contracts accepted; implementation pending | Exact-current underlines, accessible feedback, explicit suggestion application and saved reviews selected in ADR 0020 |
+| Hands-free authoring | Contracts accepted beyond current voice controls | Bound sessions, interruption, confirmation and spoken check-ins selected in ADR 0021; integrated and acoustic acceptance remain |
+| Guided/autonomous authoring and task-aware routing | Contracts accepted; runtime pending | ADR 0019 selects short-brief onboarding, bounded asynchronous drafting toward ~70,000 saved words, revision and character check-ins; no full-book delivery claimed |
+| Named chapter history and library organization | In progress | Core merged in PR #33; restore/UI correction passed full gates pending fresh review; planning/goal leaves accepted, host integration and remaining organization open |
 | Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
 
 ### Delivery mechanisms
@@ -94,6 +96,8 @@ there is a working slice with remaining work; **planned** means it is not availa
 | Glasses / companion | Status surface and integration groundwork | A concept/prototype surface, not a verified glasses release or native cross-device sync |
 
 The [spec roadmap](specs/README.md) records acceptance criteria and unfinished tasks. The
+[expanded authoring requirements](docs/EXPANDED-AUTHORING-REQUIREMENTS.md) track the full-book,
+hands-free and inline-review journeys and the current five-agent development queue. The
 [voice pipeline](docs/VOICE.md) distinguishes transcription from synthesis, and the
 [keychain runbook](docs/KEYCHAIN.md) explains protected storage and its platform limits.
 App store and release-download links will be posted in this repository when ready.
@@ -284,7 +288,7 @@ keeps its screenshot and console log for seven days.
 | `bun run coverage` | Function and line coverage stay at or above a floor that only moves up |
 
 The current recorded results and their limits are in [docs/TESTING.md](docs/TESTING.md#recorded-baseline).
-The [submission packet](hackathon/SUBMISSION.md#verification-evidence) retains the historical event evidence.
+The [submission packet](hackathon/SUBMISSION.md#verification-and-limits) retains the historical event evidence.
 
 ## Documentation
 

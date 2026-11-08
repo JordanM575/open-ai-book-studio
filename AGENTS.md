@@ -29,8 +29,10 @@ repository starts fresh and shares no history or code with it.
 4. **Writes are atomic.** Use `writeFileAtomic` (`src/main/library/atomic.ts`). Do not call
    `writeFile` on manuscript files.
 5. **Nothing is deleted permanently without the author.** Chapters go to `.studio/trash`.
-6. **No telemetry, no account, no server-side copy.** Prose leaves the machine only when the author
-   asks an agent to work on it.
+6. **No telemetry, no account, no server-side copy.** Prose leaves only for an explicit author action
+   or an active bounded, revocable workflow/session the author started, to its named destinations
+   and selected scope (ADRs 0019/0021). No work runs while quit; copied book files grant no execution
+   authority. Microphone activation and workflow permission are separate.
 7. **Update `CHANGELOG.md` before every commit**, and keep `docs/FORMAT.md` true when the format
    changes.
 8. **Check `docs/DECISIONS.md` before choosing an approach.** A spec may rely only on an accepted
@@ -268,6 +270,15 @@ The writing agent uses **Vercel AI SDK 7** (`ai`) with `@openrouter/ai-sdk-provi
   records its provider, connection label and model id, and a model change is visible in the conversation.
 - Destructive tools ask before acting; every turn is a checkpoint and one undo.
 - Prompt and tool limits are stated once and checked by snapshot, budget and consistency tests.
+
+**Accepted workflow extension (ADR 0019; implementation separately gated).** Ordinary turns keep
+their mode, destructive approval and checkpoint contracts. Workflow specialists have immutable
+scoped inputs and candidate-only outputs; one deterministic host coordinator and Library publisher
+own grants, admission and checked adoption. Only opted-in, run-created, still-clean exact targets
+may be revised automatically. Worker/source text never grants authority; existing or changed author
+text requires exact action authorization. Every adoption has retained safety/effect evidence, not a
+whole-book Undo promise. D-178 ordinary-plan restart expiry does not erase a durable 037 graph;
+restart recovers locally and cannot replay uncertain calls/writes. API docs do not prove a dollar cap.
 
 The experimental `@ai-sdk/harness` runtimes are not used. They need a sandbox and a CLI bridge, so they
 cannot run in the browser, and they write files with their own tools, which would bypass version checks

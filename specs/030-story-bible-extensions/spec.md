@@ -1,7 +1,7 @@
 # Feature Specification: Story Bible extensions
 
 **Feature Branch**: `030-story-bible-extensions`  
-**Status**: Draft (Planned)  
+**Status**: In progress — accepted core/editor candidate; host integration and retained follow-ons open
 **Number**: 030  
 **Depends on**: [002 — AI Book Studio v1](../002-studio-v1/spec.md) for the existing Story Bible; [010 — Browser target](../010-web-target/spec.md) and ADR 0009 for the shared library/storage architecture.
 
@@ -15,7 +15,9 @@ This extension adds those manual planning materials without replacing the existi
 chapter order, or creating a series-wide planning surface. Every new record belongs to the book the
 author has open and is saved through a checked write. D-163–D-165 and
 [ADR 0017](../../docs/adr/0017-planning-and-organization.md) accepted its storage, revision and bounds
-contracts on November 7. Implementation and acceptance remain outstanding.
+contracts on November 7. The core/editor candidate is independently accepted; the real host journey
+and full retained scope remain. [RF-01/RF-02](../../docs/RETAINED-DELIVERY.md) explicitly own complete
+Bible fields, series, relationships, templates and scoped generated planning after this manual slice.
 
 ## Current public behavior and proposed behavior
 
@@ -27,8 +29,8 @@ contracts on November 7. Implementation and acceptance remain outstanding.
   tool reads the fields it currently supports.
 - Chapter saves carry a base version and hash. D-190 now gives the Story Bible field-level checked
   merges; planning deliberately uses the separate all-or-stale policy below rather than that merge policy.
-- No typed worldbuilding list, timeline list, story-notes group or outline-beat list is part of the
-  public format today.
+- The new typed planning format and isolated worldbuilding editor exist in the W08 candidate;
+  these lists are not yet mounted in the public app.
 
 ### Proposed by this spec
 

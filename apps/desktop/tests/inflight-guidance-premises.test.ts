@@ -170,7 +170,11 @@ describe("in-flight guidance premises", () => {
       turnId: started.turnId,
       name: "remove_memory"
     });
+    const stopped = new Promise<void>((resolve) => {
+      const off = runtime.onEvent((event) => { if (event.type === "stopped") { off(); resolve(); } });
+    });
     await runtime.stop(started.turnId);
+    await stopped;
   });
 
   test("revised guidance travels by stopping and starting a new turn in the same thread", async () => {

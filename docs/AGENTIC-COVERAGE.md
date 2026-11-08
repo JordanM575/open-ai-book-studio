@@ -1,5 +1,30 @@
 # Agentic coverage audit
 
+## Current reconciliation — November 7, 2026
+
+The October audit below is preserved as history. Its missing/unspecified rows and suggested spec
+numbers are not current instructions. Reconciliation uses merged PRs #32/#33, the `320defb` expanded
+requirements audit and exact candidate reports; it is not a new live-provider or release audit.
+
+| Area | Current evidence | Remaining owned work |
+| --- | --- | --- |
+| Discuss/Edit, request guidance and attribution | Reviewed PR #32 merged | Ordinary plans and corrected stop consumers, then separate 037 graph under ADR 0019 |
+| Word/length, memory and search | Tools expose saved counts, memory CRUD and scoped chapter search; the old “no search” claim is obsolete | Complete constraint reporting/context evaluation, independently of tool presence; no implicit cross-book access |
+| Conversations | V1 files and compaction exist | D-113 now selects checked writes, explicit backed-up migration, recoverable deletion and replay exclusion; all-caller implementation remains |
+| History | PR #33 merged verified saved-only core; `56c7b7d` restore/UI passed broad gates | Fresh exact-head restore review and real API/Workspace mount |
+| Planning/organization | `320defb` core/UI independently accepted | Library/API/Workspace integration and full Bible/series/collections/notes scope |
+| Review | Local count report exists; D-193 scoped leaves require corrections | D-197–D-199 exact-current underlines, explicit saved feedback/application and full-book campaigns |
+| Autonomous authoring | D-194–D-196 explicitly select authority, graph, direction, recovery and admission | 037 T018–T042; actual brief→full-book pipeline, independent attempts and separate literary evaluation |
+| Hands-free | PTT/spoken reply and 038 routes exist; D-200 selects sessions | 017 T013–T024 including original local input/read-following; 038 T022 remains unchecked |
+| Verification | 012 has tasks and substantial contract/e2e/quality gates; candidate results are recorded separately | Unfinished adversarial/quality/platform/live gates remain; the old “no tasks” statement is obsolete |
+
+Spec 017 is voice/background, 031 owns ordinary interaction and 037 owns full-book workflows; do not
+create the historical proposed `017-agent-suite`. [Retained follow-through](RETAINED-DELIVERY.md)
+assigns the original omissions. Accepted contracts and isolated leaves do not establish an integrated
+full agentic product. The original audit follows unchanged.
+
+## Historical October audit
+
 **Checked:** 2026-10-26, branch `015-web-target`, commit `5ea08e9` (a pre-event commit); prompt, context, approval,
 per-turn model and untrusted-data rows updated after that audit.
 **Question:** do the specs cover the full agentic suite?

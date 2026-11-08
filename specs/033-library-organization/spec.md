@@ -2,7 +2,7 @@
 
 **Feature Branch**: `033-library-organization`
 
-**Status**: Draft / Planned
+**Status**: In progress — accepted goal core/editor candidate; Library/API/Workspace and remaining organization journeys open
 
 **Input**: Add author-managed local collections and recent work, saved-word goals, and
 source-anchored bookmarks and notes without changing the existing library or manuscript safety
