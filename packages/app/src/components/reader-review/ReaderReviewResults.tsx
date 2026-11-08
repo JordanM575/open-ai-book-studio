@@ -3,6 +3,7 @@ import { compareReaderRuns, reviewCitationNavigation, type Citation, type Reader
 import { Button } from "@ai-book-studio/ui/button";
 import type { ReaderReviewProps } from "./contracts";
 import { ProfileAttribution, reviewActionClass, reviewTextClass, SelectedScope } from "./ReviewDisclosure";
+import { SaveReviewControl, type ReviewPersistence } from "./SaveReviewControl";
 
 export function navigationKey(run: ReaderRun, citation: Citation): string {
   return JSON.stringify([run.runId, citation]);
@@ -16,7 +17,8 @@ export function navigationState(run: ReaderRun, citation: Citation, currentSourc
   } catch { return "unavailable" as const; }
 }
 
-export function ReaderReviewResults({ runs, currentSources, editor, navigationBusy, navigationRefusals, onNavigate }: {
+export function ReaderReviewResults({ runs, currentSources, editor, navigationBusy, navigationRefusals, onNavigate, persistence }: {
+  persistence?: ReviewPersistence | undefined;
   runs: readonly ReaderRun[];
   currentSources: readonly CurrentSource[];
   editor: ReaderReviewProps["editor"];
@@ -40,6 +42,7 @@ export function ReaderReviewResults({ runs, currentSources, editor, navigationBu
       <h3 className="font-semibold">Run {run.runId} · {run.envelope.destination.provider} · {run.envelope.destination.model}</h3>
       <p className="text-muted-foreground">Started {run.startedAt} · Completed {run.completedAt}</p>
       {run.envelope.profile ? <ProfileAttribution profile={run.envelope.profile} /> : null}
+      <SaveReviewControl run={run} persistence={persistence} />
       <p>Source status: {sourcesCurrent(run, currentSources) ? "Current saved sources" : "Stale or unavailable sources"} · Interpretations are subjective.</p>
       <details><summary className={reviewActionClass}>Inspect this run's historical scope</summary><SelectedScope envelope={run.envelope} /></details>
       {run.findings.length === 0 ? <p>No findings returned. This does not establish that the manuscript has no issues.</p> : null}

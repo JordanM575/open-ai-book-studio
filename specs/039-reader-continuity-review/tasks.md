@@ -100,3 +100,64 @@ disposition/rerun relations, mounted save fidelity, accessible full sidebar and
 whole-product performance/license/bundle gates still need their named owners and
 independent exact-candidate review. No mounted T013 or saved/application completion
 is inferred from the isolated controls or synthetic proof port.
+
+### November 8 — W10 v19 saved-record API and Workspace inspection (T015 partial)
+
+`library/review-record-api.ts` adds bounded request/reply validation, per-request nonce/digest and
+Library/book/view binding, explicit immutable reader saves, exact-hash report reads, bounded report
+and unavailable-file pages, and report-bound disposition inspection. The browser adapter uses the
+current Library service. Workspace mounts Saved reviews; the structured result leaf has an explicit
+Save review control with no provider dispatch. Local choices/notes and inspected feedback survive
+failed reads/refused saves; historical quotes are labelled verified-at-capture, never current.
+
+Focused synthetic tests exercise the actual browser adapter and mounted Workspace, registered
+desktop IPC/preload with an injected filesystem LibraryService, same-ID no-op, conflict `savedAs`,
+refusal/not-kept/uncertain results, malformed/foreign/late/ABA replies, missing API, draft retention
+and unchanged original chapter hashes. Desktop's actual `Library` wrapper lacks the forwarding
+getter and is tested to refuse. Its addition remains coordinator-owned. The store also lacks
+caller-base-checked disposition mutation and exact-inspection trash/recovery APIs; those controls
+remain explicitly unavailable rather than using a racy read-before-write substitute. No complete
+mounted recovery or persisted disposition-save journey is claimed. Production reader execution,
+Markdown/export/archive acceptance, native accessibility and fresh exact-head review remain open.
+T014/T015 and all other task checkboxes stay unchanged; 038 T022 stays unchecked.
+
+### November 8 — W10 v20 checked disposition and recovery continuation (T015 partial)
+
+The explicitly expanded store/desktop ownership closes v19's three seam prerequisites: desktop
+forwards the current Library service, `recordDispositionChecked` consumes inspected raw report and
+disposition bases in the existing queue, and one-use inspected group confirmation drives bounded
+trash inspection and free-path restore. Complete stale histories/unknown own fields survive as
+checked conflict copies; transport edges validate complete success/conflict outputs. The mounted
+Workspace journey retains exact drafts on failure/uncertainty, prevents replay until inspection,
+and retires late/foreign/ABA replies. Partial moves are uncertain and remain recoverable, including
+disposition-only groups bound to an exact active report. FORMAT and the reader README describe the
+contract before exposure; no second writer or provider dispatch was introduced.
+
+Candidate-local automated evidence covers actual desktop wrapper/IPC/preload, browser Library/API
+and mounted save/reopen/trash/restore, competing/missing/replaced bases, future/unavailable records,
+occupied targets, partial/concurrent moves, uncertain receipts, unknown fields and unchanged
+synthetic manuscript hashes. Production selected-source execution, safe Markdown export, archive
+acceptance, segmented continuation, campaign execution, native accessibility, broad integrated
+gates and fresh independent exact-head review remain open. T014/T015 stay unchecked; 038 T022 is
+untouched. Final focused evidence: 147 tests / 898 assertions across six dedicated/relevant files,
+workspace typechecks, strict core-test typecheck, ten-file lint and diff checks passed. Detailed
+executed commands and limits are in the separate v20 finish report.
+
+### November 8 — W10 v21 saved-review recovery corrections (T014/T015 partial)
+
+Report conflicts now require full reconstructed intended content, verified conflict metadata and
+independent reads of the named copy at the handler and receiver; an unverifiable copy or publication
+stays uncertain. Pending and uncertain report saves survive equivalent prop wrappers and require
+same-view inspection and explicit acknowledgement before another save. Disposition drafts retain
+newer typing but cannot use a known or possibly superseded baseline without inspection and explicit
+history adoption, including other drafts around an unconfirmed save; untouched blank notes are absent,
+while explicit empty and whitespace notes remain exact. Caller-owned
+disposition inputs are admitted before property reads. Desktop tests use the shared complete Electron
+mock and portable, individually owned temporary roots.
+
+Focused synthetic store/transport, mounted browser and mocked desktop wrapper/IPC/preload regressions
+exercise these corrections and their uncertainty paths. They do not establish built Electron or native
+device behavior, nor close production reader execution, export/archive, segmented continuation,
+campaign, accessibility, broad integration or fresh independent exact-head review. T014/T015 stay
+unchecked and 038 T022 is unchanged. Exact commands, results and limits belong to the separate v21
+recovery finish report.
