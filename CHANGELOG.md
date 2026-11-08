@@ -7,6 +7,19 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Saved review inspection and explicit save
+
+- Add a bounded saved-review API with exact request/Library/book/view binding, immutable explicit
+  reader saves, checked report/disposition reads, preserved conflict-copy receipts and honest
+  refusal/not-kept/uncertain outcomes. Browser storage uses the current Library's existing writer.
+- Mount Saved reviews in Workspace with captured-source attribution, historical quotations,
+  separately paged unavailable files and retained local disposition drafts; add explicit Save review
+  to the structured reader result leaf. Opening/filtering never saves or calls a provider.
+- Keep 039 T015 partial: the desktop Library forwarding getter, caller-base-checked disposition
+  mutation and inspected trash/recovery seams are coordinator-owned prerequisites. Their unavailable
+  state is explicit. Synthetic browser/Workspace and injected desktop IPC/preload checks do not claim
+  connected reader generation, completed recovery, provider quality, export/archive or release gates.
+
 HEAD
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only

@@ -82,3 +82,23 @@ disposition/rerun relations, mounted save fidelity, accessible full sidebar and
 whole-product performance/license/bundle gates still need their named owners and
 independent exact-candidate review. No mounted T013 or saved/application completion
 is inferred from the isolated controls or synthetic proof port.
+
+### November 8 — W10 v19 saved-record API and Workspace inspection (T015 partial)
+
+`library/review-record-api.ts` adds bounded request/reply validation, per-request nonce/digest and
+Library/book/view binding, explicit immutable reader saves, exact-hash report reads, bounded report
+and unavailable-file pages, and report-bound disposition inspection. The browser adapter uses the
+current Library service. Workspace mounts Saved reviews; the structured result leaf has an explicit
+Save review control with no provider dispatch. Local choices/notes and inspected feedback survive
+failed reads/refused saves; historical quotes are labelled verified-at-capture, never current.
+
+Focused synthetic tests exercise the actual browser adapter and mounted Workspace, registered
+desktop IPC/preload with an injected filesystem LibraryService, same-ID no-op, conflict `savedAs`,
+refusal/not-kept/uncertain results, malformed/foreign/late/ABA replies, missing API, draft retention
+and unchanged original chapter hashes. Desktop's actual `Library` wrapper lacks the forwarding
+getter and is tested to refuse. Its addition remains coordinator-owned. The store also lacks
+caller-base-checked disposition mutation and exact-inspection trash/recovery APIs; those controls
+remain explicitly unavailable rather than using a racy read-before-write substitute. No complete
+mounted recovery or persisted disposition-save journey is claimed. Production reader execution,
+Markdown/export/archive acceptance, native accessibility and fresh exact-head review remain open.
+T014/T015 and all other task checkboxes stay unchanged; 038 T022 stays unchecked.

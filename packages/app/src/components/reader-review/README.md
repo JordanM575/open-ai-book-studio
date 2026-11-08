@@ -1,7 +1,10 @@
 # Structured reader review leaf
 
 `ReaderReviewPanel` is an isolated, one-book, volatile spec 039 UI under D-193 / corrected ADR 0018.
-It is not connected to Workspace, IPC, a provider runtime, Library, ThreadStore or persistence.
+Its execution is not connected to Workspace or a production provider runtime. Optional explicit
+Save review now uses an injected validated review-record API and a pre-bound Library/view scope;
+there are no implicit writes or ThreadStore calls. Saved-record inspection is mounted separately
+in Workspace and does not invent a reader executor.
 Import the component from `@ai-book-studio/app/components/reader-review/ReaderReviewPanel`.
 The colocated `contracts.ts` defines its callback types. Core imports use the `review/*` leaf exports.
 
@@ -14,6 +17,12 @@ The colocated `contracts.ts` defines its callback types. Core imports use the `r
   price, terms or consent change, even if the display names remain equal. It cancels in-flight work
   and clears an unsent disclosure, while preserving completed historical runs in the same view.
 - `supported`: must be known before source preparation. False disables preparation/Start.
+- `persistence`: optional `{ api, scope }` from `StudioApi.reviewRecords` and
+  `api.open(bookId, viewKey)`. Use a fresh UUID `viewKey` for each view lifetime, bind the scope when
+  opening the view, and never resolve a new Library lazily on Save. A mismatched book/view scope
+  disables Save. The button preserves the volatile result on refusal/conflict/failure, displays
+  verified conflict-copy paths, and disables another save after an uncertain receipt until the
+  author has inspected saved records. A confirmed repeated save uses the existing immutable writer.
 - `currentSources`, `editor`: host-supplied current saved snapshots and actual editor identity/
   cleanliness. Missing, malformed, ambiguous or changed evidence cannot enable exact navigation.
   Publish new facts when sources/editor state change. An unavailable prepared source clears its
@@ -81,7 +90,8 @@ profile guidance/request/feedback, cost facts (including known zero), unknown co
 consent readiness are inspectable before Start. Historical runs retain attribution and quotes;
 comparison separates source/profile/destination/request changes from interpretation changes and
 labels same-input model variation without improvement scores. Runs remain in memory until close or
-book/view change. D-199/D-171 select separate explicit saved-review files; this volatile leaf implements
+book/view change unless explicitly saved. D-199/D-171's saved-review writer retains only feedback,
+attribution and bounded quotations, not the full source bodies or provider payload. The UI implements
 no writer and does not implicitly authorize retention.
 
 The leaf uses shared tokens/Button and native controls, with no custom motion, blur, CSS or theme
@@ -90,3 +100,31 @@ callback behavior and synthetic failures/races. Actual host keyboard navigation,
 light/dark/reduced-preference rendering, supported-platform serialization, transport/writer spies
 and integrated acceptance remain coordinator-owned. The scoped-core/UI correction needs fresh
 independent exact-head acceptance before mounting; this leaf does not certify host dispatch or storage.
+
+## Saved-record integration limits (W10 v19)
+
+`SavedReviewsPanel` is reachable in the real Workspace. It lists and reads reports, keeps named
+corrupt/future-file issues visible with separate pagination, shows captured revisions/attribution
+and historical verified-at-capture quotations, reads saved disposition history, and keeps local
+choices/notes through failed reads, refused saves, filtering and collapse/reopen in the same view.
+Its browser adapter uses the current `LibraryService.reviewRecords`.
+
+The host transport binds every request/reply to a nonce, complete request digest, opaque Library
+identity, book and view. Reads bind report ID/raw hash; disposition reads additionally bind their
+report hash. The receiver verifies exact bytes, profile digest, record semantics and save intent.
+Neither transport nor UI retries malformed/foreign/uncertain replies.
+
+Three coordinator-owned prerequisites are explicit rather than bypassed:
+
+1. Desktop `Library` needs `get reviewRecords() { return this.service.reviewRecords; }`; its private
+   service currently has no forwarding member. Registered IPC/preload refuse until it is exposed.
+2. `recordDisposition` must accept and atomically consume the renderer's inspected report hash and
+   disposition hash/revision inside the shared queue, retaining stale intent as a conflict copy.
+   Current `recordDisposition(bookId, runId, change)` silently starts from the latest stored state.
+   `saveDisposition` therefore validates its input but returns `unsupported`, retaining local drafts.
+3. The store has no trash list/inspection API, and `trashReport`/`restoreReport` accept no inspected
+   report/disposition/group hashes. Exact-version confirmed recovery needs those shared-store seams;
+   the mounted recovery section says unavailable and submits nothing. No renderer path is exposed.
+
+No completed recovery journey, connected generation, safe Markdown export, archive acceptance,
+provider quality, native keyboard/theme accessibility or release acceptance is claimed by this slice.

@@ -14,6 +14,7 @@ import { cancelOpenRouterFlow, startOpenRouterFlow } from "./openrouter";
 import { fetchLicenses } from "./licenses";
 import { ambientStatus } from "@ai-book-studio/core/agent/ambient";
 import { createPlanningApi, planningHandler } from "@ai-book-studio/core/library/planning-api";
+import { createReviewRecordApi, reviewRecordHandler } from "@ai-book-studio/core/library/review-record-api";
 
 /**
  * Staged publication needs the desktop atomic rename, and only the desktop app converts Word
@@ -62,6 +63,7 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
 
   return {
     planning: createPlanningApi(planningHandler(() => libraries.require())),
+    reviewRecords: createReviewRecordApi(reviewRecordHandler(() => libraries.require())),
     app: {
       // The browser reports its own platform channel as "web"; CPU architecture is
       // not reliably detectable there, so it stays honestly unknown.
