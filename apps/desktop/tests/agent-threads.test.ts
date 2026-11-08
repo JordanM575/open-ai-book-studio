@@ -541,3 +541,19 @@ describe("base-bound saves (review F1/F2)", () => {
     await expect(racingStore.create(BOOK, "Collision")).rejects.toMatchObject({ code: "exists" });
   });
 });
+
+describe("generated titles at a Unicode boundary (review P2)", () => {
+  test("a prompt that ends a 60-unit title in an emoji keeps a readable conversation", async () => {
+    const service = await LibraryService.open(env);
+    const boundary = `${"a".repeat(59)}😀 tail`;
+    const prepared = await prepareThread(store, { bookId: BOOK, prompt: boundary });
+    expect(prepared.thread.title.endsWith("…")).toBe(true);
+    expect(prepared.thread.title).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+
+    const reopened = await store.read(BOOK, prepared.thread.id);
+    expect(reopened?.title).toBe(prepared.thread.title);
+    const listed = await store.list(BOOK);
+    expect(listed.some((summary) => summary.id === prepared.thread.id)).toBe(true);
+    expect(service).toBeTruthy();
+  });
+});

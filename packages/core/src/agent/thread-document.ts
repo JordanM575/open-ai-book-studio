@@ -162,6 +162,8 @@ export function buildThreadDocument(
 }
 
 function finish(raw: Record<string, unknown>, maxBytes: number): BuiltThreadDocument {
+  // A lone surrogate survives JSON escaping but is rejected on read; refuse it before publishing.
+  wellFormed(String(raw.title ?? ""));
   const text = `${JSON.stringify(raw, null, 2)}\n`;
   const bytes = encoder.encode(text);
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) fail("io", "The conversation size limit is not valid.");

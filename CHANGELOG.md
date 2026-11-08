@@ -14,6 +14,9 @@ Update the `Unreleased` section before every commit.
   copy. Internal fork/checkpoint updates go through the checked mutate path, so no production
   caller needs a blind whole-document save. Report the conflict reason from the bytes actually on
   disk, and report a create collision as `exists` without a misleading copy.
+- Generate conversation titles by code point, not UTF-16 unit, and refuse a non-well-formed title
+  before publishing: a prompt ending a 60-unit title in an emoji can no longer create a conversation
+  the checked reader rejects.
 
 ### Checked conversation storage
 - Route every v1 conversation write through the Library's per-book queue and journal-aware checked

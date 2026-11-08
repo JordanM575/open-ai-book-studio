@@ -1329,5 +1329,8 @@ function assistantParts(reasoning: string, tools: AgentPart[], text: string, err
 function titleFromPrompt(prompt: string): string {
   const line = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
   if (!line) return "New conversation";
-  return line.length > 60 ? `${line.slice(0, 60)}…` : line;
+  // Count code points, not UTF-16 units: a 60-unit slice can split an emoji and store a lone
+  // surrogate, which the checked conversation reader refuses.
+  const points = Array.from(line);
+  return points.length > 60 ? `${points.slice(0, 60).join("")}…` : line;
 }
