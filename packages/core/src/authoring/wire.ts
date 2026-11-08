@@ -553,6 +553,9 @@ function validatePhasePlan(record: Record<string, unknown>, owner: Owner): void 
   const graph = validateGraph(graphInput as unknown as Graph);
   requireValue(sameOwner(graph.owner, owner), 'foreign-owner');
   requireValue(graph.generation === record.generation, 'stale-generation');
+  for (const task of graph.tasks) validateImpact(task.impact);
+  // Phase 1 begins the plan; every later phase names its predecessor.
+  requireValue((record.phase === 1) === (record.previous === null), 'stale-phase-link');
   isoValue(record.createdAt);
 }
 
@@ -574,6 +577,21 @@ function validateDirection(record: Record<string, unknown>, owner: Owner): void 
   isoValue(record.createdAt);
 }
 
+/** FORMAT's impact rule: exactly `complete`+`keys`, at most 256 unique keys, no extra fields. */
+function validateImpact(value: unknown): void {
+  const impact = objectValue(value, 'invalid-definition');
+  exactKeys(impact, ['complete', 'keys'], 'invalid-definition');
+  requireValue(typeof impact.complete === 'boolean', 'invalid-definition');
+  const keys = arrayValue(impact.keys, 'invalid-definition');
+  requireValue(keys.length <= WORKFLOW_LIMITS.impactKeysPerTask, 'record-count');
+  const impactKeys = new Set<string>();
+  for (const key of keys) {
+    const impactKey = idValue(key);
+    requireValue(!impactKeys.has(impactKey), 'duplicate-impact');
+    impactKeys.add(impactKey);
+  }
+}
+
 function validateTask(record: Record<string, unknown>, owner: Owner): void {
   referenceValue(record.plan, 'phase-plan', owner);
   integer(record.phase, 1);
@@ -591,17 +609,7 @@ function validateTask(record: Record<string, unknown>, owner: Owner): void {
     requireValue(!dependencies.has(dependencyId), 'duplicate-dependency');
     dependencies.add(dependencyId);
   }
-  const impact = objectValue(definition.impact, 'invalid-definition');
-  exactKeys(impact, ['complete', 'keys'], 'invalid-definition');
-  requireValue(typeof impact.complete === 'boolean', 'invalid-definition');
-  const keys = arrayValue(impact.keys, 'invalid-definition');
-  requireValue(keys.length <= WORKFLOW_LIMITS.impactKeysPerTask, 'record-count');
-  const impactKeys = new Set<string>();
-  for (const key of keys) {
-    const impactKey = idValue(key);
-    requireValue(!impactKeys.has(impactKey), 'duplicate-impact');
-    impactKeys.add(impactKey);
-  }
+  validateImpact(definition.impact);
   referenceValue(record.direction, 'direction', owner);
   if (record.currentAttempt !== null) referenceValue(record.currentAttempt, 'attempt', owner);
   requireValue(typeof record.retryAllowed === 'boolean', 'invalid-record');
@@ -707,6 +715,14 @@ function validateAttempt(record: Record<string, unknown>, owner: Owner): void {
   isoValue(record.updatedAt);
 }
 
+/** A bounded library-relative path: non-empty, forward slashes, no absolute or `..` segment. */
+function relativePathValue(value: unknown, code: string): string {
+  const path = stringValue(value, 1_024, 4_096, code);
+  requireValue(path.length > 0 && !path.startsWith('/') && !path.includes('\\') &&
+    !path.split('/').includes('..'), code);
+  return path;
+}
+
 function validateEffectReceipt(value: unknown): void {
   const receipt = objectValue(value, 'invalid-receipt');
   const allowed = ['outcome', 'at', 'resultVersion', 'resultHash', 'savedAs'];
@@ -721,9 +737,7 @@ function validateEffectReceipt(value: unknown): void {
     integer(receipt.resultVersion, 1);
     digestValue(receipt.resultHash);
   } else requireValue(!Object.hasOwn(receipt, 'resultHash'), 'invalid-receipt');
-  if (Object.hasOwn(receipt, 'savedAs')) {
-    stringValue(receipt.savedAs, 1_024, 4_096, 'invalid-receipt');
-  }
+  if (Object.hasOwn(receipt, 'savedAs')) relativePathValue(receipt.savedAs, 'invalid-receipt');
   if (receipt.outcome === 'confirmed') {
     requireValue(Object.hasOwn(receipt, 'resultVersion') && Object.hasOwn(receipt, 'resultHash'),
       'invalid-receipt');
@@ -743,9 +757,7 @@ function validateEffect(record: Record<string, unknown>, owner: Owner): void {
   requireValue(target.kind === 'new-chapter' || target.kind === 'replace-chapter',
     'invalid-target');
   idValue(target.chapterId);
-  const targetPath = stringValue(target.path, 1_024, 4_096, 'invalid-target');
-  requireValue(targetPath.length > 0 && !targetPath.startsWith('/') &&
-    !targetPath.includes('\\') && !targetPath.split('/').includes('..'), 'invalid-target');
+  relativePathValue(target.path, 'invalid-target');
   if (record.intent !== null) {
     const intent = objectValue(record.intent, 'invalid-intent');
     exactKeys(intent, ['at', 'baseVersion', 'baseHash', 'intendedHash', 'intendedBytes', 'safety'],
@@ -1110,7 +1122,7 @@ export function decodeWorkflowRecord<K extends WorkflowKind>(bytes: Uint8Array,
   requireValue(bytes instanceof Uint8Array, 'invalid-bytes');
   const spec = RECORDS[options.kind];
   requireValue(spec, 'unknown-record-kind');
-  const limit = options.maxBytes ?? spec.maxBytes;
+  const limit = Math.min(options.maxBytes ?? spec.maxBytes, spec.maxBytes);
   requireValue(Number.isSafeInteger(limit) && limit >= 0, 'invalid-limit');
   requireValue(bytes.byteLength <= limit, 'record-overflow');
   const record = objectValue(parseJsonBytes(bytes), 'invalid-record');
@@ -1127,7 +1139,7 @@ export function encodeWorkflowRecord(record: WorkflowRecord, maxBytes?: number):
   requireValue(spec, 'unknown-record-kind');
   checkRecord(copy, spec, kind as WorkflowKind, copy.owner as Owner);
   const bytes = encoder.encode(canonicalWorkflowJson(copy));
-  const limit = maxBytes ?? spec.maxBytes;
+  const limit = Math.min(maxBytes ?? spec.maxBytes, spec.maxBytes);
   requireValue(Number.isSafeInteger(limit) && limit >= 0, 'invalid-limit');
   requireValue(bytes.byteLength <= limit, 'record-overflow');
   return bytes;

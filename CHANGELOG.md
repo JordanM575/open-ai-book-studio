@@ -9,6 +9,11 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Pure authoring foundation
 
+- Tighten the workflow codec after independent review: a `maxBytes` override may only lower the
+  record-kind bound, receipt `savedAs` uses the same bounded library-relative path rule as a
+  target, phase-plan graph tasks enforce the 256-key strict impact rule, and phase 1 has no
+  predecessor while every later phase names one.
+
 - Specify schema-1 workflow records in FORMAT for the durable run/brief/policy/phase-plan/direction/
   task/command-journal/attempt/effect/question/artifact/context/admission surfaces, with exact
   identity/hash/reference, base, bounds, ordering/pagination and related-file recovery rules. Add a

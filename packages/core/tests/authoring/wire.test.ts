@@ -430,3 +430,56 @@ describe('accepted leaf aggregate depth', () => {
     expect(() => encodeWorkflowRecord(tooDeep)).toThrow('value-depth');
   });
 });
+
+describe("review corrections: limits, paths, impact and phase links", () => {
+  test("a byte override can lower the kind bound but never raise it", () => {
+    const oversized = new Uint8Array(WORKFLOW_LIMITS.recordBytes + 1);
+    expect(() => decodeWorkflowRecord(oversized, { kind: "task", owner, maxBytes: 2_500_000 }))
+      .toThrow("record-overflow");
+    expect(() => decodeWorkflowRecord(oversized, { kind: "task", owner }))
+      .toThrow("record-overflow");
+    expect(() => decodeWorkflowRecord(oversized, { kind: "task", owner, maxBytes: 16 }))
+      .toThrow("record-overflow");
+
+    const padded = { ...briefRecord(), padding: "x".repeat(WORKFLOW_LIMITS.recordBytes + 1) };
+    expect(() => encodeWorkflowRecord(padded as WorkflowRecord, 2_500_000)).toThrow("record-overflow");
+  });
+
+  test("a receipt path is bounded and library-relative, like a target path", () => {
+    const base = effectRecord();
+    const withReceipt = (savedAs: string): WorkflowRecord => ({
+      ...base, phase: "conflict",
+      receipt: { outcome: "conflict", at, savedAs }
+    });
+    for (const bad of ["", "/etc/passwd", "../escape.md", "chapters/../../x.md", "chapters\\x.md"]) {
+      expect(() => encodeWorkflowRecord(withReceipt(bad))).toThrow("invalid-receipt");
+    }
+    expect(() => encodeWorkflowRecord(withReceipt("conflicts/0001-mara (conflict).md"))).not.toThrow();
+  });
+
+  test("a phase plan enforces the task impact rule inside its graph", () => {
+    const firstTask = graph().tasks[0];
+    if (!firstTask) throw new Error("fixture task missing");
+    const withImpact = (impact: unknown): WorkflowRecord => ({
+      ...planRecord(),
+      graph: { ...graph(), tasks: [{ ...firstTask, impact }] },
+    });
+    expect(() => encodeWorkflowRecord(withImpact({
+      complete: true,
+      keys: Array.from({ length: 257 }, (_, i) => `key${i.toString().padStart(4, "0")}`),
+    }))).toThrow("record-count");
+    expect(() => encodeWorkflowRecord(withImpact({ complete: true, keys: ["mara"], extra: 1 })))
+      .toThrow("invalid-definition");
+    // The original fixture remains valid.
+    expect(() => encodeWorkflowRecord(planRecord())).not.toThrow();
+  });
+
+  test("phase 1 has no predecessor and every later phase names one", () => {
+    const orphan = { ...planRecord(), phase: 2, previous: null };
+    expect(() => encodeWorkflowRecord(orphan)).toThrow("stale-phase-link");
+    const backwards = { ...planRecord(), phase: 1, previous: ref("phase-plan", "plan_0") };
+    expect(() => encodeWorkflowRecord(backwards)).toThrow("stale-phase-link");
+    const second = { ...planRecord(), phase: 2, previous: ref("phase-plan", "plan_0") };
+    expect(() => encodeWorkflowRecord(second)).not.toThrow();
+  });
+});
