@@ -85,7 +85,8 @@ function worldDraft(request: PlanningSaveRequest | undefined) {
 }
 async function ready() { await page().findByText(/Ready · changes save/); }
 function conflict(): SidecarSave<Planning> & { status: "conflict" } {
-  return { status: "conflict", bookId, reason: "external-edit", savedAs: "conflicts/planning-synthetic.json", observed: { kind: "sha256", revision: 4, value: "c".repeat(64) } };
+  return { status: "conflict", bookId, reason: "external-edit", savedAs: "conflicts/planning-synthetic.json", observed: { kind: "sha256", revision: 4, value: "c".repeat(64) },
+    preserved: { rawJson: "{}", hash: "d".repeat(64) } };
 }
 
 async function realPlanningWorkspace() {

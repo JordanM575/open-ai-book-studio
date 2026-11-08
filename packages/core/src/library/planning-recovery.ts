@@ -17,12 +17,14 @@ export type PlanningCopy = z.infer<typeof copySchema>;
 /** Inspection only. Copy metadata is never returned as an active save baseline. */
 export function inspectPlanningCopy(copy: PlanningCopy) {
   const parsed = parseJson(encoder.encode(copy.rawJson), RECOVERY_BYTES);
-  const envelope = z.looseObject({ conflictMetadata: z.strictObject({ reason: z.enum(["external-edit", "missing-file"]), baseline: sourceSchema, observed: sourceSchema }) }).parse(parsed);
+  const envelope = z.object({ conflictMetadata: z.strictObject({ reason: z.enum(["external-edit", "missing-file"]), baseline: sourceSchema, observed: sourceSchema,
+    requestHash: hashSchema.optional() }) }).parse(parsed);
   if (!copy.name.includes(`.conflict-${envelope.conflictMetadata.reason}.`)) throw new Error("Copy reason mismatch.");
-  const { conflictMetadata: _metadata, ...document } = envelope;
+  // Keep the original own JSON values, including __proto__, rather than a rebuilt loose object.
+  const { conflictMetadata: _metadata, ...document } = parsed as Record<string, unknown>;
   return copy.name.startsWith("planning.")
-    ? { kind: "planning" as const, data: validateDocument(planningSchema, document, copy.bookId) }
-    : { kind: "goals" as const, data: validateDocument(goalSchema, document, copy.bookId) };
+    ? { kind: "planning" as const, data: validateDocument(planningSchema, document, copy.bookId), metadata: envelope.conflictMetadata }
+    : { kind: "goals" as const, data: validateDocument(goalSchema, document, copy.bookId), metadata: envelope.conflictMetadata };
 }
 
 export class PlanningRecovery {

@@ -47,7 +47,7 @@ function definition(editor: ManualEditor): DraftDefinition<Planning, Draft, Plan
       intent = { kind: "set-story-notes", fields: notes ? { workingNotes: notes.workingNotes, styleNotes: notes.styleNotes, synopsis: notes.synopsis } : emptyNotes };
     } else if (editor.kind === "order-timeline" || editor.kind === "order-beats") {
       const timeline = editor.kind === "order-timeline";
-      for (const item of (timeline ? data?.timeline : data?.beats) ?? []) titles[item.id] = `${item.title}${item.archived ? " · archived" : ""}`;
+      for (const item of (timeline ? data?.timeline : data?.beats) ?? []) titles[item.id] = `${item.title}${timeline && item.when ? ` · ${String(item.when)}` : ""}${item.archived ? " · archived" : ""}`;
       intent = { kind: editor.kind, ids: [...((timeline ? data?.timelineOrder : data?.beatOrder) ?? [])] };
     } else {
       const list = editor.kind === "archive-worldbuilding" ? data?.worldbuilding : editor.kind === "archive-timeline" ? data?.timeline : data?.beats;
@@ -94,7 +94,7 @@ function ManualFields({ draft, change }: { draft: Draft; change: (draft: Draft) 
     <ol aria-label="Draft planning order" className="space-y-2">{intent.ids.map((recordId, index) => <li key={recordId} className="flex flex-wrap items-center gap-2">
       <span className="break-words">{index + 1}. {draft.labels[recordId]}</span>
       {([-1, 1] as const).map((direction) => <Button key={direction} type="button" variant="secondary"
-        aria-label={`Move ${draft.labels[recordId]} ${direction < 0 ? "up" : "down"}`} disabled={index + direction < 0 || index + direction >= intent.ids.length}
+        aria-label={`Move ${draft.labels[recordId]} · position ${index + 1} ${direction < 0 ? "up" : "down"}`} disabled={index + direction < 0 || index + direction >= intent.ids.length}
         onClick={() => {
           const ids = [...intent.ids];
           const other = ids[index + direction];

@@ -36,16 +36,17 @@ Dedicated synthetic evidence lives in `packages/core/tests/planning/manual-plann
 `apps/desktop/tests/manual-planning.test.tsx`: real Library/handler/filesystem mounted journeys,
 save/reopen/reorder/archive/restore, exact fields on stale/uncertain/validation failure, retained
 limits, no-op/no-journal, corrupt/future refusal, book/view ABA, and unchanged Bible/chapter bytes.
-This is implementation and automated synthetic evidence only. Workspace typecheck remains blocked
-by three old worldbuilding-only assertions in `apps/desktop/tests/planning-dialogs.test.tsx`
-(231, 251, 322) that need discriminant narrowing after the draft union expansion. They are outside
-this brief's dedicated-new-test ownership. Web/toolkit, strict core integration and dedicated new
-mounted-test typechecks pass. The focused planning regression set passes 197 tests across nine
-files (816 assertions); touched-file lint and diff checks pass.
+This is implementation and automated synthetic evidence only. The coordinator narrowed the three
+older worldbuilding-only assertions and reconciled the FORMAT intent inventory/notes-clear semantics;
+workspace and strict core integration typechecks now pass. The original focused set passed 197 tests
+across nine files (816 assertions). The review follow-through adds complete intent-bound recovery
+receipts with named-copy verification, canonical changed-save correspondence, proven pre-publication
+output refusal with shorten-and-save recovery, dense-array response validation and distinguishable
+duplicate record/control labels. The expanded planning/goal regression set passes 251 tests across
+ten files (1,187 assertions), including real Library/handler and synthetic mounted paths.
 
-No task checkbox is closed by this candidate: exact-head independent review, coordinator FORMAT
-reconciliation (expanded intent inventory and notes-clear semantics), desktop typecheck repair,
-native theme/viewport/keyboard acceptance and integrated host/adapter gates remain. The new mounted
+No task checkbox is closed by this candidate: fresh exact-head independent review, integrated broad
+gates, native theme/viewport/keyboard/accessibility acceptance and integrated host/adapter gates remain. The new mounted
 tests exercise the existing handler directly; native IPC/preload acceptance for the new intents
 remains with the coordinator. RF-01/RF-02 still retain series, relationships, templates, complete
 Bible fields and generated planning. No provider-quality, device or release evidence is claimed.

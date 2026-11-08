@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { copyListInput, copyListSchema, copyReadInput, copySchema, inspectPlanningCopy, type PlanningCopy, type PlanningCopyList, type PlanningRecovery } from "./planning-recovery";
 import type { Result } from "../ipc";
-import { envelopeFields, sameSource, SidecarWriteError, type SidecarRead, type SidecarSave } from "../planning/checked-sidecar";
-import { bookIdSchema, checkBytes, encoder, increment, parseJson, planningSchema, sourceSchema, validateDocument, type Planning, type SidecarDocument } from "../planning/schema";
+import { envelopeFields, sameSource, sidecarIntentBytes, SidecarRefusalError, SidecarWriteError, type SidecarRead, type SidecarSave } from "../planning/checked-sidecar";
+import { bookIdSchema, decoder, encoder, hashSchema, increment, parseJson, planningSchema, RECOVERY_BYTES, serializeDocument, sourceSchema, validateDocument, type Planning, type SidecarDocument } from "../planning/schema";
 import { applyPlanningDraft, planningSaveSchema, type PlanningSaveRequest, type PlanningService } from "../planning/service";
 import { goalSchema, goalSaveSchema, type Goal, type GoalProgress, type GoalSaveRequest, type GoalService } from "../organization/goals";
 
@@ -46,12 +46,21 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 
 /** Exact JSON ownership matters even for own __proto__: inherited properties are not data. */
 function sameValue(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (a === null || b === null || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return false;
-  const left = a as Record<string, unknown>;
-  const right = b as Record<string, unknown>;
-  const keys = Object.keys(left);
-  return keys.length === Object.keys(right).length && keys.every((key) => Object.hasOwn(right, key) && sameValue(left[key], right[key]));
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return Object.is(a, b);
+  const array = Array.isArray(a);
+  if (array !== Array.isArray(b)) return false;
+  if (!array && [a, b].some((value) => Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) return false;
+  const keys = Reflect.ownKeys(a);
+  if (keys.length !== Reflect.ownKeys(b).length) return false;
+  if (array && (a.length !== (b as unknown[]).length || keys.length !== a.length + 1)) return false;
+  return keys.every((key) => {
+    if (typeof key !== "string") return false;
+    if (array && key === "length") return true;
+    if (array && !/^(0|[1-9]\d*)$/.test(key)) return false;
+    const left = Object.getOwnPropertyDescriptor(a, key);
+    const right = Object.getOwnPropertyDescriptor(b, key);
+    return !!left?.enumerable && !!right?.enumerable && "value" in left && "value" in right && sameValue(left.value, right.value);
+  });
 }
 
 export async function validateSidecarRead<T extends SidecarDocument>(schema: z.ZodType<T>, value: unknown, bookId: string): Promise<SidecarRead<T>> {
@@ -65,10 +74,11 @@ export async function validateSidecarRead<T extends SidecarDocument>(schema: z.Z
     if (read.baselineJson === null || read.data === null) throw new Error("Missing planning baseline.");
     const bytes = encoder.encode(read.baselineJson);
     const raw = validateDocument(schema, parseJson(bytes), bookId);
-    checkBytes(encoder.encode(JSON.stringify(read.data)));
-    if (await sha256(bytes) !== read.source.value || raw.revision !== read.source.revision || !sameValue(raw, read.data)) {
+    if (raw.revision !== read.source.revision || !sameValue(raw, read.data) || await sha256(bytes) !== read.source.value) {
       throw new Error("The planning baseline could not be verified.");
     }
+    // Return the independently parsed raw data, detached before the first await.
+    read.data = raw;
   }
   return read;
 }
@@ -76,11 +86,13 @@ export async function validateSidecarRead<T extends SidecarDocument>(schema: z.Z
 async function validateSave<T extends SidecarDocument>(schema: z.ZodType<T>, value: unknown, bookId: string, kind: "planning" | "goals"): Promise<SidecarSave<T>> {
   const result = z.discriminatedUnion("status", [
     z.strictObject({ status: z.enum(["saved", "unchanged"]), current: z.unknown() }),
-    z.strictObject({ status: z.literal("conflict"), bookId: bookIdSchema, reason: z.enum(["external-edit", "missing-file"]), savedAs: z.string().max(600), observed: sourceSchema })
+    z.strictObject({ status: z.literal("conflict"), bookId: bookIdSchema, reason: z.enum(["external-edit", "missing-file"]), savedAs: z.string().max(600), observed: sourceSchema,
+      preserved: z.strictObject({ hash: hashSchema, rawJson: z.string().refine((text) => encoder.encode(text).byteLength <= RECOVERY_BYTES) }) })
   ]).parse(value);
   if (result.status === "conflict") {
     if (result.bookId !== bookId || !result.savedAs.startsWith(`books/${bookId}/conflicts/${kind}.conflict-${result.reason}.`) ||
       !/^books\/[A-Za-z0-9_-]+\/conflicts\/[A-Za-z0-9_.-]+\.json$/.test(result.savedAs)) throw new Error("Foreign conflict response.");
+    if (await sha256(encoder.encode(result.preserved.rawJson)) !== result.preserved.hash) throw new Error("Unverified conflict bytes.");
     return result;
   }
   const current = await validateSidecarRead(schema, result.current, bookId);
@@ -111,9 +123,20 @@ export function planningHandler(getLibrary: () => { planning: PlanningService; g
         : operation === "progress" ? await library.goals.progress(bookId)
         : operation === "save" ? await library.planning.save(request) : await library.goals.save(request);
       const output = await validateOutput(operation, data, bookId);
-      if (operation === "save") await validatePlanningResult(planningSaveSchema.parse(request), output as SidecarSave<Planning>);
+      if (operation === "save" || operation === "saveGoal") {
+        const result = output as SidecarSave<Planning | Goal>;
+        await validateIntentResult(request as PlanningSaveRequest | GoalSaveRequest, result, operation === "save" ? "planning" : "goals");
+        if (result.status === "conflict") {
+          const copy = await library.planningRecovery.read({ bookId, name: result.savedAs.split("/").at(-1) });
+          const verified = await validateOutput("readCopy", copy, bookId) as PlanningCopy;
+          if (`books/${bookId}/conflicts/${verified.name}` !== result.savedAs || verified.hash !== result.preserved.hash || verified.rawJson !== result.preserved.rawJson) {
+            throw new Error("The named recovery copy no longer matches the submitted draft.");
+          }
+        }
+      }
       return { ok: true, data: output };
     } catch (error) {
+      if (error instanceof SidecarRefusalError) return { ok: false, error: { code: "invalid", message: error.message, outcome: "refused" } };
       // Unknown failures (including output validation) cannot prove nonpublication.
       return { ok: false, error: { code: "io", message: error instanceof SidecarWriteError ? error.message : "Planning storage could not be verified. Keep your draft and inspect the saved version before another save.",
         outcome: error instanceof SidecarWriteError ? error.outcome : "uncertain",
@@ -150,29 +173,21 @@ export function createPlanningApi(invoke: (operation: PlanningOperation, payload
   const call = async (operation: PlanningOperation, payload: unknown, bookId: string): Promise<Result<unknown>> => {
     payload = structuredClone(payload);
     scopeSchema.parse({ bookId });
-    if (operation === "save") planningSaveSchema.parse(payload);
-    if (operation === "saveGoal") goalSaveSchema.parse(payload);
+    // Retain a schema-detached intent before invoke can yield or mutate its own payload object.
+    const request = operation === "save" ? planningSaveSchema.parse(payload)
+      : operation === "saveGoal" ? goalSaveSchema.parse(payload) : undefined;
     if (operation === "listCopies") copyListInput.parse(payload);
-    if (operation === "readCopy") copyReadInput.parse(payload);
+    const copyRequest = operation === "readCopy" ? copyReadInput.parse(payload) : undefined;
     const response = resultEnvelope.parse(await invoke(operation, payload));
     if (!response.ok) return { ok: false, error: { code: response.error.code, message: response.error.message,
       ...(response.error.outcome ? { outcome: response.error.outcome } : {}),
       ...(response.error.phase ? { phase: response.error.phase } : {}) } };
     const data = await validateOutput(operation, response.data, bookId);
-    if (operation === "save" || operation === "saveGoal") {
-      const request = operation === "save" ? planningSaveSchema.parse(payload) : goalSaveSchema.parse(payload);
+    if (request) {
       const result = data as SidecarSave<Planning | Goal>;
-      if (result.status === "unchanged" && !sameSource(result.current.source, request.source)) throw new Error("Foreign unchanged baseline.");
-      if (result.status === "saved" && result.current.source.revision !== request.source.revision + 1) throw new Error("Unexpected saved revision.");
-      if (result.status !== "conflict") {
-        if (request.draft.kind === "set-goal") {
-          if ((result.current.data?.targetWords ?? null) !== request.draft.targetWords) throw new Error("Foreign goal result.");
-        } else {
-          await validatePlanningResult(planningSaveSchema.parse(request), result as SidecarSave<Planning>);
-        }
-      }
+      await validateIntentResult(request, result, operation === "save" ? "planning" : "goals");
     }
-    if (operation === "readCopy" && (data as PlanningCopy).name !== copyReadInput.parse(payload).name) throw new Error("Foreign copy reply.");
+    if (copyRequest && (data as PlanningCopy).name !== copyRequest.name) throw new Error("Foreign copy reply.");
     return { ok: true, data };
   };
   return {
@@ -186,25 +201,45 @@ export function createPlanningApi(invoke: (operation: PlanningOperation, payload
   };
 }
 
-async function validatePlanningResult(request: PlanningSaveRequest, result: SidecarSave<Planning>): Promise<void> {
-  if (result.status === "conflict") return;
-  const baseline = await validateSidecarRead(planningSchema, { bookId: request.bookId, source: request.source, baselineJson: request.baselineJson,
+async function validateIntentResult(request: PlanningSaveRequest | GoalSaveRequest, result: SidecarSave<Planning | Goal>, kind: "planning" | "goals"): Promise<void> {
+  const baseline = await validateSidecarRead<Planning | Goal>(kind === "planning" ? planningSchema : goalSchema, { bookId: request.bookId, source: request.source, baselineJson: request.baselineJson,
     data: request.baselineJson === null ? null : parseJson(encoder.encode(request.baselineJson))
   }, request.bookId);
   const base = baseline.data;
-  const current = result.current.data;
-  const proposed = applyPlanningDraft(base, request.bookId, request.draft, (prefix) => {
-    const list = prefix === "wb" ? current?.worldbuilding : prefix === "tl" ? current?.timeline
-      : prefix === "beat" ? current?.beats : current?.storyNotes ? [current.storyNotes] : [];
-    const previous = prefix === "wb" ? base?.worldbuilding : prefix === "tl" ? base?.timeline
-      : prefix === "beat" ? base?.beats : base?.storyNotes ? [base.storyNotes] : [];
+  const copy = result.status === "conflict" ? inspectPlanningCopy(copySchema.parse({ bookId: request.bookId,
+    name: result.savedAs.split("/").at(-1), hash: result.preserved.hash, rawJson: result.preserved.rawJson })) : null;
+  const current = copy ? copy.data : result.status !== "conflict" ? result.current.data : null;
+  const proposed = request.draft.kind === "set-goal" ? {
+    data: { ...(base ?? { schemaVersion: 1, bookId: request.bookId, revision: 1 }), targetWords: request.draft.targetWords },
+    changed: (base?.targetWords ?? null) !== request.draft.targetWords
+  } : applyPlanningDraft(base as Planning | null, request.bookId, request.draft, (prefix) => {
+    const planning = current as Planning | null;
+    const original = base as Planning | null;
+    const list = prefix === "wb" ? planning?.worldbuilding : prefix === "tl" ? planning?.timeline
+      : prefix === "beat" ? planning?.beats : planning?.storyNotes ? [planning.storyNotes] : [];
+    const previous = prefix === "wb" ? original?.worldbuilding : prefix === "tl" ? original?.timeline
+      : prefix === "beat" ? original?.beats : original?.storyNotes ? [original.storyNotes] : [];
     const added = list?.filter((record) => !previous?.some((old) => old.id === record.id)) ?? [];
     if (added.length !== 1 || !added[0]) throw new Error("Foreign created planning record.");
     return added[0].id;
   });
+  const projected = proposed.changed ? { ...proposed.data, revision: increment(base?.revision ?? 0) } : proposed.data;
+  if (result.status === "conflict") {
+    const reason = result.observed.kind === "absent" && request.source.kind !== "absent" ? "missing-file" : "external-edit";
+    const requestHash = await sha256(sidecarIntentBytes(request));
+    if (!copy || copy.kind !== kind || result.reason !== reason || copy.metadata.reason !== reason ||
+        copy.metadata.requestHash !== requestHash || !sameSource(copy.metadata.baseline, request.source) ||
+        !sameSource(copy.metadata.observed, result.observed) || !sameValue(current, projected)) {
+      throw new Error("The recovery copy does not match the exact intended operation.");
+    }
+    const raw = decoder.decode(serializeDocument({ ...projected, conflictMetadata: { reason, baseline: request.source, observed: result.observed, requestHash } }, RECOVERY_BYTES));
+    if (raw !== result.preserved.rawJson) throw new Error("Unexpected recovery serialization.");
+    return;
+  }
   if (proposed.changed !== (result.status === "saved")) throw new Error("Unexpected planning save status.");
-  const expected = proposed.changed ? { ...proposed.data, revision: increment(base?.revision ?? 0) } : base;
+  const expected = proposed.changed ? projected : base;
   if (!sameValue(current, expected)) throw new Error("The planning reply does not match the exact intended operation.");
+  if (proposed.changed && result.current.baselineJson !== decoder.decode(serializeDocument(projected))) throw new Error("Unexpected saved serialization.");
   if (!proposed.changed && (!sameSource(result.current.source, request.source) || result.current.baselineJson !== request.baselineJson)) {
     throw new Error("Foreign unchanged planning baseline.");
   }

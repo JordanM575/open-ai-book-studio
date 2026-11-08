@@ -218,8 +218,12 @@ budget: it does not reserialize or publish that form.
 A stale request (even a same-content request), missing-after-read or commit race preserves its
 complete intended document under
 `books/<bookId>/conflicts/<planning|goals>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
-The copy adds a reserved `conflictMetadata` object with `reason`, original `baseline` token and
-observed token. Recovery copies are bounded to 5,000,000 bytes. Colliding names use absent-only
+The copy adds a reserved `conflictMetadata` object with `reason`, original `baseline` token,
+`observed` token and `requestHash`. The latter is SHA-256 of the UTF-8 `JSON.stringify` output of
+`{bookId,source,draft}`, in that key order with the strict schema-parsed source and typed draft;
+the source's raw hash already binds the complete original baseline bytes. Older copies without
+`requestHash` remain inspectable but cannot confirm a new save request. Recovery copies are bounded
+to 5,000,000 bytes. Colliding names use absent-only
 suffix attempts; returned bytes and their hash must verify before reporting `conflict`/`savedAs`.
 Only conflict-copy names may be retried, never the active-file commit. A copy cannot be loaded as
 an active baseline; eventual explicit recovery must remove the copy-only context and create a
@@ -229,8 +233,26 @@ replay automatically or remove a possibly published file. Copy failure never cla
 Owner/schema checks run again before copy creation and each publication attempt.
 
 Transport preserves exact raw baselines, validates strict request/result envelopes and verifies reply
-owner, raw hash, revision and submitted fields. Only known request-admission failures return
-`outcome: "refused"`; unknown exceptions remain uncertain. Write errors retain `phase: "active" |
+owner, raw hash, revision and the complete projected document, including unknown own JSON fields.
+Data correspondence checks dense array lengths and own data properties; sparse or non-JSON transport
+values cannot stand in for the raw document. Changed `saved` replies must contain the exact writer
+serialization (two-space indentation, original property order and final newline) and its hash.
+Valid compact reads and current `unchanged` replies keep their original bytes without canonicalizing.
+
+A `conflict` result carries `preserved: {rawJson,hash}`: the complete recovery bytes verified at
+publication, not an echoed nonce. Handler and client independently validate the intended operation,
+baseline, observed token, reason, created identity, full projected draft and exact recovery
+serialization against that receipt. Before returning, the handler also reads the named durable copy
+through the captured Library and requires its name/hash/raw bytes to match. A missing, changed or
+unverifiable copy is uncertain, never a claim that this draft was kept. These are snapshot and
+correspondence checks, not cryptographic transport authentication or a guarantee against later edits.
+
+Known request-admission failures and typed deterministic preparation failures return
+`outcome: "refused"` without a publication phase. The latter are constructed only while projecting,
+validating and bounding the complete output, before any active or recovery commit/layout/journal
+attempt. Their drafts and original baselines remain usable for correction and a later explicit save.
+Read/adapter errors and unknown exceptions remain uncertain; no general `LibraryError` downgrade is
+allowed after a possible publication. Write errors retain `phase: "active" |
 "recovery"` and `outcome: "uncertain" | "not-kept"`. The browser adapter marks a `changed` result
 after publication with `publication: "uncertain"`; planning treats that as an uncertain outcome,
 never as a prepublication conflict or a collision to retry. This adds no cross-process CAS guarantee.

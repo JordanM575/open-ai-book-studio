@@ -10,6 +10,15 @@ Update the `Unreleased` section before every commit.
 
 ### Manual planning records
 
+- Bind conflict receipts to the exact typed intent and complete byte-verified recovery document,
+  recheck the named copy in the handler, and reject replayed replies for another draft. Require
+  changed-save replies to match the writer's exact serialization while retaining valid compact
+  reads/no-ops and unknown own data; refuse sparse/non-JSON response arrays.
+- Surface deterministic output-budget/validation refusal only before any publication attempt, so
+  authors can shorten a retained draft and explicitly save again. Keep genuinely uncertain active
+  and recovery outcomes paused with no retry. Disambiguate duplicate planning edit/archive/restore
+  labels and keep move-control position names accurate after reorder. Add real Library/API and
+  mounted regressions; native accessibility and fresh independent acceptance remain separate gates.
 - Extend the existing checked planning save/API with timeline events, optional story notes, outline
   beats, explicit author ordering and reversible worldbuilding/event/beat archive controls. Mount
   these in the planning panel with literal fields, archive confirmation and the existing exact-draft
