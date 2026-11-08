@@ -80,7 +80,7 @@ there is a working slice with remaining work; **planned** means it is not availa
 | Inline editorial critique | Contracts accepted; implementation pending | Exact-current underlines, accessible feedback, explicit suggestion application and saved reviews selected in ADR 0020 |
 | Hands-free authoring | Contracts accepted beyond current voice controls | Bound sessions, interruption, confirmation and spoken check-ins selected in ADR 0021; integrated and acoustic acceptance remain |
 | Guided/autonomous authoring and task-aware routing | Contracts accepted; runtime pending | ADR 0019 selects short-brief onboarding, bounded asynchronous drafting toward ~70,000 saved words, revision and character check-ins; no full-book delivery claimed |
-| Named chapter history and library organization | In progress | Core merged in PR #33; restore/UI correction passed full gates pending fresh review; planning/goal leaves accepted, host integration and remaining organization open |
+| Named chapter history and library organization | In progress | Core merged in PR #33; restore/UI correction accepted and merged in PR #34; planning/goal leaves accepted, host/API integration and remaining organization open |
 | Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
 
 ### Delivery mechanisms

@@ -20,8 +20,8 @@ individual work; the completed research packets are reused rather than commissio
 **Latest delivered foundation:** PR #32 merged the reviewed agent/export corrections; PR #33 merged
 the verified saved-history core as `a9997624ac28b970c0a656c50233753ad375982f`. Its exact candidate
 passed 2,500 tests and all 12 e2e suites. W02 restore/UI correction `56c7b7d` passed 2,580 tests,
-93.12% function / 94.88% line coverage, toolkit build and all 12 e2e suites; its interrupted recheck
-gave no verdict, so fresh independent review precedes publication. W08 core/UI at `320defb` is
+93.12% function / 94.88% line coverage, toolkit build and all 12 e2e suites; fresh independent
+review accepted that exact head and PR #34 merged it as `c2089ca`. Host/API mounting remains. W08 core/UI at `320defb` is
 independently accepted, with Library/API/Workspace integration next. Expanded journeys remain open.
 
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
@@ -121,7 +121,7 @@ decisions are coordinator work; no duplicate research assignment is needed.
 
 | Package | Next acceptance slice | Exclusive ownership |
 | --- | --- | --- |
-| W02 | Fresh independent review of immutable `56c7b7d`; prior exact-head broad gates already pass | Read-only candidate and unique report |
+| W02 | Real history API/Workspace mounting from accepted, merged `56c7b7d`; prior exact-head broad gates and fresh review pass | History Library/API/IPC/preload/Workspace seams, dedicated tests |
 | W08 | Real worldbuilding/goal save/reopen and complete saved-word progress | Planning Library/API/IPC/preload/browser/Workspace seams, dedicated tests |
 | W04 | Pure task graph, direction invalidation and finite admission | New `core/authoring` leaves; no storage/runtime/host writer |
 | W10 | Minimal plain-text editor adapter and exact-current overlap underlines | New inline editor leaves and dependency manifest/lock only; no mounted editor replacement yet |

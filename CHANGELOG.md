@@ -12,6 +12,9 @@ Update the `Unreleased` section before every commit.
 - Compose the accepted planning and bounded-authoring policy, terminal Stop delivery and merged
   chapter-history restore work in one integration candidate. Preserve each exact candidate's
   bounded evidence; connected mounting and product acceptance remain separate follow-through.
+- Clarify that history record creation is absent-only while intent transitions use checked updates,
+  and reconcile merged PR #34 history status across current-state records without claiming host
+  mounting or whole-feature acceptance.
 - Keep history restore/undo success results complete for partial saved front matter without adding
   runtime defaults to the file. Require a post-failure history refresh to unlock uncertain capture,
   and make close notifications idempotent even when the host callback fails.

@@ -11,7 +11,7 @@ requirements audit and exact candidate reports; it is not a new live-provider or
 | Discuss/Edit, request guidance and attribution | Reviewed PR #32 merged | Ordinary plans and corrected stop consumers, then separate 037 graph under ADR 0019 |
 | Word/length, memory and search | Tools expose saved counts, memory CRUD and scoped chapter search; the old “no search” claim is obsolete | Complete constraint reporting/context evaluation, independently of tool presence; no implicit cross-book access |
 | Conversations | V1 files and compaction exist | D-113 now selects checked writes, explicit backed-up migration, recoverable deletion and replay exclusion; all-caller implementation remains |
-| History | PR #33 merged verified saved-only core; `56c7b7d` restore/UI passed broad gates | Fresh exact-head restore review and real API/Workspace mount |
+| History | PR #33 merged verified saved-only core; exact restore/UI correction accepted and merged in PR #34 | Real API/Workspace mount, restore confirmation/recovery controls and cleanup |
 | Planning/organization | `320defb` core/UI independently accepted | Library/API/Workspace integration and full Bible/series/collections/notes scope |
 | Review | Local count report exists; D-193 scoped leaves require corrections | D-197–D-199 exact-current underlines, explicit saved feedback/application and full-book campaigns |
 | Autonomous authoring | D-194–D-196 explicitly select authority, graph, direction, recovery and admission | 037 T018–T042; actual brief→full-book pipeline, independent attempts and separate literary evaluation |

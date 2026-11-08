@@ -379,7 +379,7 @@ everything left out instead.
 record per ordinary file (D-175/D-176, [ADR 0016](adr/0016-chapter-history.md)). The timestamp
 is UTC ISO with milliseconds and `:`/`.` replaced by `-`; the slug is a 60-character
 filename hint, never identity. Collisions append `-2`, `-3`, etc., with absent-only atomic
-commits. No operation requests replacement of an existing record. Capture is explicit and never runs on ordinary saves.
+commits. Creating a record never replaces an existing record; intent transitions use the checked update described below. Capture is explicit and never runs on ordinary saves.
 The filesystem adapter's existence check and rename are not a cross-process compare-and-swap;
 an external writer racing between them is outside that guarantee. Returned bytes are checked
 against the intended snapshot. A write/readback failure can leave a complete snapshot: review

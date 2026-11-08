@@ -30,7 +30,7 @@ they are not replacement implementations. Acceptance criteria in
 | REQ-COVER-001 | 041 (new) | 019/035; distinct book-level composition, original asset preservation and target geometry | L10 |
 | REQ-AUDIOBOOK-001 | 042 (new) | 038 preferences and existing TTS helpers; 017 background boundary, 011/022 consent and 035 snapshot concepts; stock cast/text consent and recovery | L13 |
 | REQ-LIBRARY-001 | 033 | 001/002; identity, unknown-field preservation, checked collections/notes/goals and stale anchors | L07 |
-| REQ-HISTORY-001 | 032 | Core merged PR #33; restore/UI correction passed gates, fresh review and host mount remain | L07 |
+| REQ-HISTORY-001 | 032 | Core merged PR #33; restore/UI correction accepted and merged in PR #34, host mount remains | L07 |
 | REQ-ROUTING-001 | 036 | 011/022; advisory-only preview, zero side effects and honest unknown price/capability; D-116 not a cap | L14 |
 | REQ-RELEASE-001 | 009 | 013; signing/update decision gates, unsigned provenance and install/update library preservation | L20 |
 | REQ-SURFACE-001 | 013 | 010/014/026/040; per-surface matrix and refusal before capture/request/write | L16 |

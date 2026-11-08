@@ -225,7 +225,7 @@
     {
       "id": "REQ-HISTORY-001",
       "classification": "partial",
-      "statusNote": "Verified saved-only core merged in PR33. Restore/UI correction56c7b7d passed exact-head broad gates; fresh independent review and host mounting remain. Original candidates are preserved.",
+      "statusNote": "Verified saved-only core merged in PR33. Restore/UI correction56c7b7d passed exact-head broad gates, was accepted by fresh independent review and merged in PR34; host mounting remains. Original candidates are preserved.",
       "public_anchors": [
         "002",
         "032"

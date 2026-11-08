@@ -17,7 +17,7 @@ quiet deferral. All tasks below remain open; linked task lists provide detailed 
 | Inline editorial critique and retained feedback | D-197–D-199 / ADR 0020; [039 T010–T019](../specs/039-reader-continuity-review/tasks.md), [034 T008/T018–T019](../specs/034-manuscript-review/tasks.md) | Correct scoped candidate, exact-current editor adapter, accessible overlap handling, recoverable explicit save/application/campaign; no seeded-finding completion claim |
 | Hands-free and original local reading/input | D-200 / ADR 0021; [017 T013–T024](../specs/017-voice-and-background/tasks.md) | Pure session/permission/PCM first; real STT/TTS/host integration, then separately authorized acoustic/device qualification; 038 T022 stays unchecked |
 | Planning and goals | D-163–D-168 / ADR 0017; [030](../specs/030-story-bible-extensions/tasks.md), [033](../specs/033-library-organization/tasks.md) | `320defb` core/UI independently accepted; real Library/API/Workspace save/reopen and complete source enumeration remain |
-| History | D-175/D-176 / ADR 0016; [032](../specs/032-chapter-history/tasks.md) | Core merged in PR #33. Restore/UI `56c7b7d` broad gates pass; fresh review and mounting remain |
+| History | D-175/D-176 / ADR 0016; [032](../specs/032-chapter-history/tasks.md) | Core merged in PR #33. Restore/UI `56c7b7d` accepted and merged in PR #34; mounting and host controls remain |
 
 ## Original capabilities that remain owned
 
