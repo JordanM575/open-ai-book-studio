@@ -101,7 +101,7 @@ light/dark/reduced-preference rendering, supported-platform serialization, trans
 and integrated acceptance remain coordinator-owned. The scoped-core/UI correction needs fresh
 independent exact-head acceptance before mounting; this leaf does not certify host dispatch or storage.
 
-## Saved-record integration limits (W10 v19)
+## Saved-record integration (W10 v20 continuation)
 
 `SavedReviewsPanel` is reachable in the real Workspace. It lists and reads reports, keeps named
 corrupt/future-file issues visible with separate pagination, shows captured revisions/attribution
@@ -114,17 +114,30 @@ identity, book and view. Reads bind report ID/raw hash; disposition reads additi
 report hash. The receiver verifies exact bytes, profile digest, record semantics and save intent.
 Neither transport nor UI retries malformed/foreign/uncertain replies.
 
-Three coordinator-owned prerequisites are explicit rather than bypassed:
+Desktop `Library` now forwards its existing service's `reviewRecords`; registered IPC and actual
+preload are tested against that real wrapper. The browser and desktop share the validated handler.
 
-1. Desktop `Library` needs `get reviewRecords() { return this.service.reviewRecords; }`; its private
-   service currently has no forwarding member. Registered IPC/preload refuse until it is exposed.
-2. `recordDisposition` must accept and atomically consume the renderer's inspected report hash and
-   disposition hash/revision inside the shared queue, retaining stale intent as a conflict copy.
-   Current `recordDisposition(bookId, runId, change)` silently starts from the latest stored state.
-   `saveDisposition` therefore validates its input but returns `unsupported`, retaining local drafts.
-3. The store has no trash list/inspection API, and `trashReport`/`restoreReport` accept no inspected
-   report/disposition/group hashes. Exact-version confirmed recovery needs those shared-store seams;
-   the mounted recovery section says unavailable and submits nothing. No renderer path is exposed.
+`saveDisposition` submits the inspected report bytes/hash and absent or exact disposition
+bytes/hash/revision. `recordDispositionChecked` consumes them under the existing Library queue,
+builds from the author's baseline, and preserves the complete intended stale history as a conflict
+copy. It never invokes the older host-internal append-to-current method. Both transport edges
+verify the complete saved output or conflict copy, including supported unknown fields. Drafts bind
+to the baseline when editing starts; rereading does not silently rebase them. A submitted draft stays
+locked on failure/uncertainty until fresh inspection and explicit “Use inspected history for this
+draft”. A late success does not discard text edited during the await or revive a retired view.
 
-No completed recovery journey, connected generation, safe Markdown export, archive acceptance,
-provider quality, native keyboard/theme accessibility or release acceptance is claimed by this slice.
+Recovery lists at most 50 trash groups per page. Active/trash inspection returns exact report and
+disposition content plus a host-issued one-use confirmation bound to the Library/book/view and
+group identity/hash. The confirmation UI shows attribution, historical findings/quotes, disposition
+history and raw content (including unknown fields), then requires an explicit checkbox and action.
+No arbitrary renderer path or copied snapshot grants permission. Confirmation consumes permission
+before mutation, rechecks all sources/absent members, and only restores to free destinations.
+Partial disposition-only groups can recover beside their exact active report dependency. Unknown,
+future or corrupt files remain unavailable and untouched. Multi-file moves are not a transaction;
+partial/uncertain outcomes keep their files and demand fresh inspection, never automatic replay.
+Collapse, host replacement and A → B → A retire pending replies and recovery permission in the UI.
+
+Focused synthetic API/Library, mounted browser and actual desktop wrapper/preload tests establish
+this connected disposition/trash/restore slice. Connected generation, safe Markdown export,
+archive/continuation acceptance, provider quality, native keyboard/theme accessibility and release
+acceptance remain separate gates. 039 T014/T015 and 038 T022 remain unchecked.

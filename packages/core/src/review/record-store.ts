@@ -10,7 +10,9 @@ import type { ReaderRun } from "./findings";
 import type { ReaderProfile } from "./profiles";
 import { builtinReaderProfile, validateReaderProfile } from "./profiles";
 import { ReviewRecordError } from "./record-error";
-import { bytesEqual, jsonBytes, REVIEW_RECORD_BYTES } from "./record-json";
+import { prepareDispositionIntent, type DispositionIntent } from "./record-intent";
+import { reviewConfirmationSchema, reviewGroupHash, validateReviewGroup, type ReviewGroup, type ReviewInspection, type ReviewConfirmation, type ReviewTrashList, type ReviewMoveReceipt } from "./record-recovery";
+import { bytesEqual, canonicalJsonText, jsonBytes, REVIEW_RECORD_BYTES } from "./record-json";
 import {
   applyDispositionEvent, buildCampaignRecord, buildProfileRecord, buildReviewReport, decodeReviewRecord,
   dispositionStateSchema, encodeReviewRecord, newDispositionsRecord, recordIdSchema, reportRecordBytes,
@@ -108,6 +110,7 @@ function baseOf(record: Record<string, unknown>): ReviewRecordBase {
 const CONFLICT_NAME_LIMIT = 200;
 
 export class ReviewRecordStore {
+  private readonly inspections = new Map<string, ReviewInspection>();
   constructor(private readonly host: ReviewRecordHost) {}
 
   /* --------------------------------------------------------------- reports */
@@ -275,6 +278,207 @@ export class ReviewRecordStore {
   }
 
   /* --------------------------------------------------------------- lenses */
+
+  async recordDispositionChecked(bookId: string, runId: string, input: DispositionIntent) {
+    // Snapshot caller-owned data before entering a queued asynchronous operation.
+    const captured = JSON.parse(canonicalJsonText(input, { maxDepth: 70 })) as DispositionIntent;
+    return this.host.withBook(bookId, async () => {
+      await this.assertOwner(bookId);
+      await this.writable(bookId);
+      const at = this.now();
+      const prepared = await prepareDispositionIntent(bookId, runId, captured, at, (bytes) => this.host.runtime.sha256(bytes));
+      await validateReaderProfile(prepared.report.record.profile);
+      const observedReport = await this.host.storage.readFile(reportPath(bookId, runId));
+      const observed = await this.host.storage.readFile(dispositionPath(bookId, runId));
+      const base = prepared.intent.base;
+      const matching = base.kind === "absent" ? observed === null : observed?.sha256 === base.value && bytesEqual(observed.bytes, prepared.baseline?.bytes ?? new Uint8Array());
+      if (!matching || observedReport?.sha256 !== prepared.intent.report.hash || !bytesEqual(observedReport.bytes, prepared.report.bytes)) {
+        const savedAs = await this.preserve("review-dispositions", bookId, runId, prepared.bytes, observed?.sha256 ?? null);
+        throw await this.dispositionConflict(new ReviewRecordError("conflict", "The inspected report or dispositions changed or disappeared. Your complete intended history was kept as a copy; active files were not replaced.", savedAs), prepared.bytes, at, bookId);
+      }
+      if (!prepared.changed && prepared.baseline && base.kind === "sha256") {
+        return { status: "unchanged" as const, at, record: { ...prepared.baseline, hash: base.value } };
+      }
+      const saved = await this.commitValue("review-dispositions", bookId, prepared.value,
+        prepared.baseline && base.kind === "sha256" ? { ...prepared.baseline, hash: base.value } : null).catch(async (error: unknown) => {
+          if (error instanceof ReviewRecordError && error.code === "conflict") throw await this.dispositionConflict(error, prepared.bytes, at, bookId);
+          throw error;
+        });
+      // The queue protects Library callers, not an external filesystem writer of the immutable report.
+      const afterReport = await this.host.storage.readFile(reportPath(bookId, runId)).catch(() => null);
+      if (afterReport?.sha256 !== prepared.intent.report.hash || !bytesEqual(afterReport.bytes, prepared.report.bytes)) {
+        throw new ReviewRecordError("uncertain", "The report changed during disposition publication. Keep your draft and inspect both files before another save.");
+      }
+      return { ...saved, at };
+    });
+  }
+
+  /** Inspect exact active contents; a snapshot alone never grants move permission. */
+  async inspectReportGroup(bookId: string, runId: string, reportHash: string): Promise<ReviewInspection> {
+    return this.host.withBook(bookId, async () => {
+      await this.assertOwner(bookId);
+      const group = await this.loadGroup(bookId, runId, null);
+      if (group.report?.hash !== reportHash) throw new ReviewRecordError("invalid", "The selected report changed. Inspect it again before moving anything.");
+      return this.rememberInspection(group);
+    });
+  }
+
+  async listTrashGroups(bookId: string, offset = 0): Promise<ReviewTrashList> {
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new ReviewRecordError("invalid", "Invalid trash page.");
+    return this.host.withBook(bookId, async () => {
+      await this.assertOwner(bookId);
+      const entries = await this.listDirectory(reviewTrashPath(bookId));
+      const groups: ReviewTrashList["groups"] = [];
+      for (const entry of entries.sort((a, b) => b.name.localeCompare(a.name))) {
+        const available = entry.kind === "directory" && recordIdSchema.safeParse(entry.name).success;
+        if (available && (await this.groupMembers(bookId, entry.name).catch(() => ["unavailable"])).length === 0) continue;
+        groups.push({ groupId: entry.name, available });
+      }
+      return { bookId, offset, total: groups.length, groups: groups.slice(offset, offset + 50) };
+    });
+  }
+
+  async inspectTrashGroup(bookId: string, groupId: string): Promise<ReviewInspection> {
+    return this.host.withBook(bookId, async () => {
+      await this.assertOwner(bookId);
+      recordIdSchema.parse(groupId);
+      const names = await this.groupMembers(bookId, groupId);
+      const ids = new Set(names.map((name) => name.replace(/^dispositions\//, "").replace(/\.json$/, "")));
+      const id = [...ids][0];
+      if (ids.size !== 1 || !id || !recordIdSchema.safeParse(id).success) throw new ReviewRecordError("unsupported", "This trash group has unsupported or mixed records. All files were left untouched.");
+      return this.rememberInspection(await this.loadGroup(bookId, id, groupId));
+    });
+  }
+
+  async moveInspectedGroup(bookId: string, input: ReviewConfirmation): Promise<ReviewMoveReceipt> {
+    const confirmation = reviewConfirmationSchema.parse(input);
+    return this.host.withBook(bookId, async () => {
+      const inspected = this.inspections.get(confirmation.token);
+      this.inspections.delete(confirmation.token); // single use, including refusals and uncertainty
+      if (!inspected || inspected.bookId !== bookId || inspected.id !== confirmation.id || inspected.groupId !== confirmation.groupId || inspected.hash !== confirmation.hash) {
+        throw new ReviewRecordError("invalid", "This recovery confirmation expired or belongs to another inspection. Inspect the files again.");
+      }
+      await this.assertOwner(bookId);
+      await this.writable(bookId);
+      const fresh = await this.loadGroup(bookId, inspected.id, inspected.groupId);
+      if (await reviewGroupHash(fresh, (bytes) => this.host.runtime.sha256(bytes)) !== inspected.hash) throw new ReviewRecordError("invalid", "The inspected group changed. Nothing was moved; inspect it again.");
+      const restoring = inspected.groupId !== null;
+      const destinationGroupId = restoring ? null : await this.freeReviewGroup(bookId);
+      const paths = (groupId: string | null, kind: "review-report" | "review-dispositions") => groupId === null ? pathFor(kind, bookId, inspected.id)
+        : toLibraryFilePath([...reviewTrashGroupPath(bookId, groupId), ...relativeFor(kind, inspected.id)]);
+      const entries = (["review-dispositions", "review-report"] as const).flatMap((kind) => {
+        const wire = kind === "review-report" ? inspected.report : inspected.dispositions;
+        return wire ? [{ kind, wire, from: paths(inspected.groupId, kind), to: paths(destinationGroupId, kind) }] : [];
+      });
+      if (restoring) entries.reverse();
+      // Check both target slots, including absent group members, before the first move.
+      for (const kind of ["review-report", "review-dispositions"] as const) {
+        if (restoring && kind === "review-report" && inspected.dependencyReport) continue;
+        if (await this.host.storage.stat(paths(destinationGroupId, kind))) throw new ReviewRecordError("exists", "A record occupies a restore destination. Nothing was moved; the recovery copy was kept.");
+      }
+      // Directory creation may yield to another writer. Check all content once more before moves.
+      for (const entry of entries) await this.host.storage.ensureDirectory(parentOf(entry.to));
+      if (await reviewGroupHash(await this.loadGroup(bookId, inspected.id, inspected.groupId), (bytes) => this.host.runtime.sha256(bytes)) !== inspected.hash) throw new ReviewRecordError("invalid", "The inspected group changed. Nothing was moved.");
+      let attempted = false;
+      try {
+        for (const entry of entries) {
+          const before = await this.requireVerified(entry.from);
+          if (before.sha256 !== entry.wire.hash || await this.host.storage.stat(entry.to)) throw new ReviewRecordError("invalid", "A source or destination changed before moving.");
+          attempted = true;
+          await this.host.moveFile(entry.from, entry.to);
+          const after = await this.requireVerified(entry.to);
+          if (after.sha256 !== entry.wire.hash || !bytesEqual(after.bytes, new TextEncoder().encode(entry.wire.rawJson)) || await this.host.storage.stat(entry.from)) throw new Error("Move readback changed.");
+          await this.noteMove(entry.from, entry.to);
+        }
+        // Final whole-group verification catches a competing member appearing during a multi-file move.
+        const destination = await this.loadGroup(bookId, inspected.id, destinationGroupId);
+        if ((destination.report?.hash !== inspected.report?.hash && !inspected.dependencyReport) || destination.dispositions?.hash !== inspected.dispositions?.hash) throw new Error("Destination changed.");
+        if (inspected.dependencyReport && destination.report?.hash !== inspected.dependencyReport.hash) throw new Error("Dependency changed.");
+        for (const kind of ["review-report", "review-dispositions"] as const) {
+          if (await this.host.storage.stat(paths(inspected.groupId, kind))) throw new Error("Source reappeared.");
+        }
+        if (inspected.groupId !== null && (await this.groupMembers(bookId, inspected.groupId)).length > 0) throw new Error("Source group membership changed.");
+      } catch (error) {
+        if (!attempted && error instanceof ReviewRecordError) throw error;
+        throw new ReviewRecordError("uncertain", "The review move may be partial or unconfirmed. Inspect active reviews and review trash before another action; no move was retried.");
+      }
+      return { status: restoring ? "restored" : "trashed", inspection: inspected, destinationGroupId };
+    });
+  }
+
+  private async rememberInspection(group: ReviewGroup): Promise<ReviewInspection> {
+    const inspection = { ...group, hash: await reviewGroupHash(group, (bytes) => this.host.runtime.sha256(bytes)), token: this.host.runtime.newId("review") };
+    recordIdSchema.parse(inspection.token);
+    while (this.inspections.size >= 64) {
+      const oldest = this.inspections.keys().next().value;
+      if (oldest) this.inspections.delete(oldest);
+    }
+    this.inspections.set(inspection.token, structuredClone(inspection));
+    return inspection;
+  }
+
+  private async dispositionConflict(error: ReviewRecordError, intended: Uint8Array, at: string, bookId: string): Promise<ReviewRecordError> {
+    try {
+      if (!error.savedAs) throw new Error("Missing conflict location");
+      const snapshot = await this.requireVerified(libraryPathFromArchivePath(error.savedAs));
+      const decoded = decodeReviewRecord(snapshot.bytes, { kind: "review-dispositions", bookId, allowConflictMetadata: true });
+      const { conflictMetadata: _metadata, ...value } = decoded.raw;
+      if (!bytesEqual(encodeReviewRecord("review-dispositions", value), intended)) throw new Error("Changed conflict copy");
+      return new ReviewRecordError(error.code, error.message, error.savedAs, { at, hash: snapshot.sha256, rawJson: decoder.decode(snapshot.bytes) });
+    } catch {
+      return new ReviewRecordError("uncertain", "The disposition conflict copy could not be verified. Keep your draft and inspect the conflicts folder before another save.");
+    }
+  }
+
+  private async groupMembers(bookId: string, groupId: string): Promise<string[]> {
+    const root = reviewTrashGroupPath(bookId, recordIdSchema.parse(groupId));
+    const names: string[] = [];
+    for (const entry of await this.listDirectory(root)) {
+      if (entry.name === "dispositions" && entry.kind === "directory") {
+        for (const child of await this.listDirectory(toLibraryPath([...root, "dispositions"]))) {
+          if (child.kind !== "file" || !child.name.endsWith(".json")) throw new ReviewRecordError("unsupported", "Unexpected trash member. All files were left untouched.");
+          names.push(`dispositions/${child.name}`);
+          if (names.length > 2) throw new ReviewRecordError("unsupported", "This group contains additional records. All files were left untouched.");
+        }
+      } else if (entry.kind === "file" && entry.name.endsWith(".json")) names.push(entry.name);
+      else throw new ReviewRecordError("unsupported", "Unexpected trash member. All files were left untouched.");
+      if (names.length > 2) throw new ReviewRecordError("unsupported", "This group contains additional records. All files were left untouched.");
+    }
+    return names.sort();
+  }
+
+  private async loadGroup(bookId: string, id: string, groupId: string | null): Promise<ReviewGroup> {
+    recordIdSchema.parse(id);
+    const read = async (kind: "review-report" | "review-dispositions") => {
+      const path = groupId === null ? pathFor(kind, bookId, id) : toLibraryFilePath([...reviewTrashGroupPath(bookId, groupId), ...relativeFor(kind, id)]);
+      const stat = await this.host.storage.stat(path);
+      if (!stat) return null;
+      if (stat.size > REVIEW_RECORD_BYTES) throw new ReviewRecordError("too-large", "This recovery record is too large to inspect. It was left untouched.");
+      const snapshot = await this.requireVerified(path);
+      decodeReviewRecord(snapshot.bytes, { kind, bookId });
+      return { hash: snapshot.sha256, rawJson: decoder.decode(snapshot.bytes) };
+    };
+    const report = await read("review-report");
+    const dispositions = await read("review-dispositions");
+    if (groupId !== null) {
+      const names = await this.groupMembers(bookId, groupId);
+      const expected = [...(report ? [`${id}.json`] : []), ...(dispositions ? [`dispositions/${id}.json`] : [])].sort();
+      if (JSON.stringify(names) !== JSON.stringify(expected)) throw new ReviewRecordError("unsupported", "This trash group changed or contains additional records. Nothing was moved.");
+    }
+    const dependency = !report && groupId !== null ? await this.loadReport(bookId, id) : null;
+    const group = { bookId, id, groupId, report, dispositions, dependencyReport: dependency ? { hash: dependency.hash, rawJson: decoder.decode(dependency.bytes) } : null };
+    try { await validateReviewGroup(group, (bytes) => this.host.runtime.sha256(bytes)); }
+    catch { throw new ReviewRecordError("unsupported", "This review group is unavailable or its report dependency does not verify. All files were left untouched."); }
+    return group;
+  }
+
+  private async freeReviewGroup(bookId: string): Promise<string> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const id = `${this.stamp()}${attempt ? `-${attempt + 1}` : ""}`;
+      if (!await this.host.storage.stat(reviewTrashGroupPath(bookId, id))) return id;
+    }
+    throw new ReviewRecordError("io", "No free review trash group was found. Nothing was moved.");
+  }
 
   async readProfile(bookId: string, id: string): Promise<ReviewRecordSnapshot<"reader-profile-record"> | null> {
     return this.host.withBook(bookId, async () => {

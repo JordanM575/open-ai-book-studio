@@ -7,6 +7,18 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Checked saved-review dispositions and recovery
+
+- Complete the authorized saved-record mutation slice through the existing Library queue/writer:
+  desktop forwarding, inspected raw disposition baselines, complete stale-history conflict copies,
+  and validated success/conflict receipts preserving supported unknown own fields.
+- Connect exact-content inspection and one-use confirmed trash/free-path restore in Workspace,
+  including bounded trash pages, partial-group recovery, occupied-target refusals and truthful
+  uncertainty. Retain exact local drafts and prevent replay/late/ABA replies from becoming success.
+- Add focused synthetic real desktop wrapper/IPC/preload and browser/mounted recovery evidence.
+  Document the format/API clarification. 039 T014/T015 remain partial for production execution,
+  export/archive/continuation, native and independent integrated gates; 038 T022 stays unchecked.
+
 ### Saved review inspection and explicit save
 
 - Add a bounded saved-review API with exact request/Library/book/view binding, immutable explicit

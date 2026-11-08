@@ -1,12 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
-  createReviewRecordApi, reviewRecordHandler, type ReviewRecordResult
+  createReviewRecordApi, reviewRecordHandler, type ReviewRecordResult, type ReviewRecordScope, type SavedReview, type SavedDispositions
 } from "../../src/library/review-record-api";
-import { encodeReviewRecord } from "../../src/review/record-format";
+import { decodeReviewRecord, encodeReviewRecord } from "../../src/review/record-format";
 import { ReviewRecordError } from "../../src/review/record-error";
 import { dispositionPath, reportPath } from "../../src/review/record-store";
 import { makeBook, readerRun } from "./record-fixtures";
 import { toLibraryFilePath } from "../../src/library/path";
+import type { ReviewInspection } from "../../src/review/record-recovery";
 
 function value<T>(result: ReviewRecordResult<T>): T {
   if (!result.ok) throw new Error(JSON.stringify(result.error));
@@ -16,13 +17,28 @@ function required<T>(item: T | null | undefined): T {
   if (item == null) throw new Error("Missing synthetic fixture value");
   return item;
 }
+const manuscriptChecks: Array<() => Promise<void>> = [];
+afterEach(async () => { for (const check of manuscriptChecks.splice(0)) await check(); });
 async function fixture() {
   const result = await makeBook();
+  const chapter = await result.library.createChapter(result.book.id, { title: "Sentinel manuscript", content: "Synthetic sentinel: every review outcome leaves me unchanged." });
+  const path = toLibraryFilePath(["books", result.book.id, "chapters", chapter.path]);
+  const read = result.port.readFile.bind(result.port);
+  const before = required(await read(path)).sha256;
+  manuscriptChecks.push(async () => { expect(required(await read(path)).sha256).toBe(before); });
   const handler = reviewRecordHandler(() => result.library);
   const api = createReviewRecordApi(async (payload) => structuredClone(await handler(structuredClone(payload))));
   const scope = value(await api.open(result.book.id, crypto.randomUUID()));
   const run = await readerRun(result.book.id);
   return { ...result, handler, api, scope, run };
+}
+function intent(scope: ReviewRecordScope, report: SavedReview, base: SavedDispositions | null = null) {
+  return { scope, id: report.record.id, hash: report.hash, report: { hash: report.hash, rawJson: report.rawJson },
+    base: base ? { kind: "sha256" as const, value: base.hash, revision: base.record.revision, rawJson: base.rawJson } : { kind: "absent" as const },
+    findingId: "finding-1", state: "ignored" as const, note: "Retain my exact note  \n" };
+}
+function confirmation(group: ReviewInspection) {
+  return { id: group.id, groupId: group.groupId, hash: group.hash, token: group.token };
 }
 
 describe("bound saved-review transport", () => {
@@ -136,15 +152,278 @@ describe("bound saved-review transport", () => {
     expect((await api.readDispositions(scope, run.runId, report.hash)).ok).toBe(false);
   });
 
-  test("unsupported checked disposition seam refuses before calling the unchecked method", async () => {
+  test("checked disposition save/reopen never calls the unchecked method", async () => {
     const { api, scope, run, library } = await fixture();
     const report = value(await api.save(scope, run)).report;
     let calls = 0;
     library.reviewRecords.recordDisposition = async () => { calls++; throw new Error("Unchecked mutation"); };
-    const result = await api.saveDisposition({ scope, id: run.runId, hash: report.hash, base: { kind: "absent" },
-      findingId: "finding-1", state: "ignored", note: "Retain my exact note  " });
-    expect(result).toMatchObject({ ok: false, error: { code: "unsupported", outcome: "refused" } });
+    const result = value(await api.saveDisposition(intent(scope, report)));
+    expect(result.record.record.dispositions[0]?.events[0]?.note).toBe("Retain my exact note  \n");
+    expect(value(await api.readDispositions(scope, run.runId, report.hash))).toEqual(result.record);
     expect(calls).toBe(0);
+  });
+
+  test.each(["competing", "missing", "report-replaced", "report-missing"])("%s inspected base keeps full stale history and unknown own fields", async (fault) => {
+    const { api, scope, run, port, book } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const initial = value(await api.saveDisposition(intent(scope, report))).record;
+    const unknown = JSON.parse(initial.rawJson);
+    Object.defineProperty(unknown, "__proto__", { value: { kept: true }, enumerable: true });
+    unknown.dispositions[0].extension = "entry kept";
+    unknown.dispositions[0].events[0].extension = "event kept";
+    await port.commitFile(dispositionPath(book.id, run.runId), new TextEncoder().encode(JSON.stringify(unknown)), { kind: "any" });
+    const base = required(value(await api.readDispositions(scope, run.runId, report.hash)));
+    if (fault === "competing") value(await api.saveDisposition({ ...intent(scope, report, base), note: "Other author", state: "author-resolved" }));
+    if (fault === "missing") await port.removeFile(dispositionPath(book.id, run.runId));
+    if (fault === "report-missing") await port.removeFile(reportPath(book.id, run.runId));
+    if (fault === "report-replaced") await port.commitFile(reportPath(book.id, run.runId), encodeReviewRecord("review-report", { ...report.record, extra: "replacement" }), { kind: "any" });
+    const before = await port.readFile(dispositionPath(book.id, run.runId));
+    const result = await api.saveDisposition({ ...intent(scope, report, base), state: "reopened", note: "Stale exact intent  \n" });
+    expect(result).toMatchObject({ ok: false, error: { outcome: "conflict" } });
+    if (result.ok) throw new Error("Expected conflict");
+    const copy = required(await port.readFile(toLibraryFilePath(required(result.error.savedAs).split("/"))));
+    const decoded = decodeReviewRecord(copy.bytes, { kind: "review-dispositions", bookId: book.id, allowConflictMetadata: true });
+    expect(decoded.record.dispositions[0]?.events.map((event) => event.note)).toEqual(["Retain my exact note  \n", "Stale exact intent  \n"]);
+    expect(Object.hasOwn(decoded.raw, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(decoded.raw, "__proto__")?.value).toEqual({ kept: true });
+    expect(decoded.record.dispositions[0]?.extension).toBe("entry kept");
+    expect(decoded.record.dispositions[0]?.events[0]?.extension).toBe("event kept");
+    expect((await port.readFile(dispositionPath(book.id, run.runId)))?.sha256).toBe(before?.sha256);
+  });
+
+  test("two commands with the same inspected absent base serialize to saved plus conflict, not a fresh-state append", async () => {
+    const { api, scope, run } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const results = await Promise.all([api.saveDisposition(intent(scope, report)), api.saveDisposition({ ...intent(scope, report), note: "Second author" })]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.error.outcome === "conflict")).toHaveLength(1);
+    expect(value(await api.readDispositions(scope, run.runId, report.hash))?.record.dispositions[0]?.events).toHaveLength(1);
+  });
+
+  test("forged hash/revision/raw baseline and altered complete output never become saved success", async () => {
+    const { api, scope, run, handler } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const base = value(await api.saveDisposition(intent(scope, report))).record;
+    const input = intent(scope, report, base);
+    expect((await api.saveDisposition({ ...input, base: { kind: "sha256", value: base.hash, revision: 2, rawJson: base.rawJson } })).ok).toBe(false);
+    expect((await api.saveDisposition({ ...input, base: { kind: "sha256", value: "b".repeat(64), revision: 1, rawJson: base.rawJson } })).ok).toBe(false);
+    const forged = createReviewRecordApi(async (payload) => {
+      const response = await handler(payload) as { result: { data: { record: { hash: string; rawJson: string } } } };
+      const raw = JSON.parse(response.result.data.record.rawJson);
+      raw.extra = "Not part of the complete intended output";
+      const bytes = encodeReviewRecord("review-dispositions", raw);
+      response.result.data.record = { rawJson: new TextDecoder().decode(bytes), hash: Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes.slice())), (n) => n.toString(16).padStart(2, "0")).join("") };
+      return response;
+    });
+    expect(await forged.saveDisposition(input)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+  });
+
+  test("supported unknown fields survive a checked active update; exact no-note repeat is read-only", async () => {
+    const { api, scope, run, port, book } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const initial = value(await api.saveDisposition(intent(scope, report))).record;
+    const raw = JSON.parse(initial.rawJson);
+    raw.extra = { preserved: [1, "exact"] };
+    raw.dispositions[0].events[0].extra = true;
+    await port.commitFile(dispositionPath(book.id, run.runId), encodeReviewRecord("review-dispositions", raw), { kind: "any" });
+    const base = required(value(await api.readDispositions(scope, run.runId, report.hash)));
+    const saved = value(await api.saveDisposition({ ...intent(scope, report, base), state: "author-resolved" })).record;
+    expect(saved.record.extra).toEqual({ preserved: [1, "exact"] });
+    expect(saved.record.dispositions[0]?.events[0]?.extra).toBe(true);
+    let writes = 0;
+    port.commitFile = async () => { writes++; throw new Error("No-op cannot write"); };
+    const { note: _note, ...repeat } = intent(scope, report, saved);
+    expect(value(await api.saveDisposition({ ...repeat, state: "author-resolved" })).status).toBe("unchanged");
+    expect(writes).toBe(0);
+  });
+
+  test.each(["active-readback", "report-race", "conflict-readback", "conflict-forged"])("disposition %s is uncertain and never retried", async (fault) => {
+    const { api, scope, run, port, book, handler } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const input = intent(scope, report);
+    const commit = port.commitFile.bind(port);
+    let writes = 0;
+    if (fault.startsWith("conflict")) value(await api.saveDisposition(input));
+    port.commitFile = async (path, bytes, expected) => {
+      if (path.includes("dispositions") || path.includes("conflicts")) {
+        writes++;
+        if (fault === "active-readback" || fault === "conflict-readback") {
+          await commit(path, bytes, expected);
+          return { status: "changed", current: null, publication: "uncertain" };
+        }
+        if (fault === "report-race") await commit(reportPath(book.id, run.runId), encodeReviewRecord("review-report", { ...report.record, raced: true }), { kind: "any" });
+      }
+      return commit(path, bytes, expected);
+    };
+    const receiver = fault === "conflict-forged" ? createReviewRecordApi(async (payload) => {
+      const response = await handler(payload) as { result: { error: { copy: { rawJson: string } } } };
+      response.result.error.copy.rawJson = "{}";
+      return response;
+    }) : api;
+    expect(await receiver.saveDisposition(input)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(writes).toBe(1);
+  });
+
+  test("confirmed trash and free-path restore preserve exact bytes and use one-use host inspection", async () => {
+    const { api, scope, run, port, library, book } = await fixture();
+    const chapter = await library.createChapter(book.id, { title: "Unchanged manuscript", content: "Never edit these synthetic bytes." });
+    const path = toLibraryFilePath(["books", book.id, "chapters", chapter.path]);
+    const manuscript = required(await port.readFile(path)).sha256;
+    const report = value(await api.save(scope, run)).report;
+    const dispositions = value(await api.saveDisposition(intent(scope, report))).record;
+    const group = value(await api.inspectGroup(scope, run.runId, report.hash));
+    expect(await api.moveGroup(scope, { ...confirmation(group), token: "forged-token" })).toMatchObject({ ok: false, error: { outcome: "refused" } });
+    const trashed = value(await api.moveGroup(scope, confirmation(group)));
+    expect(trashed.status).toBe("trashed");
+    expect((await api.moveGroup(scope, confirmation(group))).ok).toBe(false);
+    expect(value(await api.list(scope)).total).toBe(0);
+    const listed = value(await api.listTrash(scope));
+    expect(listed.total).toBe(1);
+    const trash = value(await api.inspectTrash(scope, required(trashed.destinationGroupId)));
+    expect(trash.report?.rawJson).toBe(report.rawJson);
+    expect(trash.dispositions?.rawJson).toBe(dispositions.rawJson);
+    expect(value(await api.moveGroup(scope, confirmation(trash))).status).toBe("restored");
+    expect(value(await api.read(scope, run.runId, report.hash)).rawJson).toBe(report.rawJson);
+    expect(value(await api.readDispositions(scope, run.runId, report.hash))?.rawJson).toBe(dispositions.rawJson);
+    expect(value(await api.listTrash(scope)).total).toBe(0);
+    expect(required(await port.readFile(path)).sha256).toBe(manuscript);
+  });
+
+  test.each(["new-dispositions", "changed-report"])("trash refuses %s after inspection without moving any files", async (fault) => {
+    const { api, scope, run, port, book } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const group = value(await api.inspectGroup(scope, run.runId, report.hash));
+    if (fault === "new-dispositions") value(await api.saveDisposition(intent(scope, report)));
+    else await port.commitFile(reportPath(book.id, run.runId), encodeReviewRecord("review-report", { ...report.record, external: true }), { kind: "any" });
+    expect((await api.moveGroup(scope, confirmation(group))).ok).toBe(false);
+    expect(value(await api.listTrash(scope)).total).toBe(0);
+    expect(await port.readFile(reportPath(book.id, run.runId))).not.toBeNull();
+  });
+
+  test("recovery permissions are bound to the inspecting view and expire without touching files", async () => {
+    const { api, scope, run } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const group = value(await api.inspectGroup(scope, run.runId, report.hash));
+    const otherView = value(await api.open(scope.bookId, crypto.randomUUID()));
+    expect((await api.moveGroup(otherView, confirmation(group))).ok).toBe(false);
+    expect((await api.moveGroup(scope, confirmation(group))).ok).toBe(false);
+    const oldest = value(await api.inspectGroup(scope, run.runId, report.hash));
+    for (let index = 0; index < 64; index++) value(await api.inspectGroup(scope, run.runId, report.hash));
+    expect((await api.moveGroup(scope, confirmation(oldest))).ok).toBe(false);
+    expect(value(await api.list(scope)).total).toBe(1);
+    expect(value(await api.listTrash(scope)).total).toBe(0);
+  });
+
+  test("trash paging is bounded and inspection refuses extra group members without writes", async () => {
+    const { api, scope, port, book, run } = await fixture();
+    for (let index = 0; index < 53; index++) await port.commitFile(toLibraryFilePath([".studio", "trash", book.id, "reviews", `group-${index}`, "future.json"]), new TextEncoder().encode('{"schemaVersion":2}'), { kind: "absent" });
+    expect(value(await api.listTrash(scope)).groups).toHaveLength(50);
+    expect(value(await api.listTrash(scope, 50)).groups).toHaveLength(3);
+    const report = value(await api.save(scope, run)).report;
+    const moved = value(await api.moveGroup(scope, confirmation(value(await api.inspectGroup(scope, run.runId, report.hash)))));
+    const id = required(moved.destinationGroupId);
+    const inspected = value(await api.inspectTrash(scope, id));
+    await port.commitFile(toLibraryFilePath([".studio", "trash", book.id, "reviews", id, "extra.json"]), new TextEncoder().encode("{}"), { kind: "absent" });
+    let moves = 0;
+    port.moveFile = async () => { moves++; throw new Error("Extra content cannot move"); };
+    expect((await api.moveGroup(scope, confirmation(inspected))).ok).toBe(false);
+    expect((await api.inspectTrash(scope, id)).ok).toBe(false);
+    expect(moves).toBe(0);
+  });
+
+  test("partial restore reopens as a disposition-only group against the exact active report", async () => {
+    const { api, scope, run, port } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const saved = value(await api.saveDisposition(intent(scope, report))).record;
+    const moved = value(await api.moveGroup(scope, confirmation(value(await api.inspectGroup(scope, run.runId, report.hash)))));
+    const group = value(await api.inspectTrash(scope, required(moved.destinationGroupId)));
+    const move = port.moveFile.bind(port);
+    let calls = 0;
+    port.moveFile = async (from, to) => { calls++; if (calls === 2) throw new Error("Synthetic second restore interruption"); await move(from, to); };
+    expect(await api.moveGroup(scope, confirmation(group))).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    port.moveFile = move;
+    const remaining = value(await api.inspectTrash(scope, required(group.groupId)));
+    expect(remaining.dependencyReport?.hash).toBe(report.hash);
+    expect(value(await api.moveGroup(scope, confirmation(remaining))).status).toBe("restored");
+    expect(value(await api.readDispositions(scope, run.runId, report.hash))?.rawJson).toBe(saved.rawJson);
+  });
+
+  test.each(["source-change", "restore-destination", "source-member"])("%s during primitive move is uncertain, preserves external bytes and never overwrites", async (fault) => {
+    const { api, scope, run, port } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    let inspected = value(await api.inspectGroup(scope, run.runId, report.hash));
+    if (fault !== "source-change") {
+      const moved = value(await api.moveGroup(scope, confirmation(inspected)));
+      inspected = value(await api.inspectTrash(scope, required(moved.destinationGroupId)));
+    }
+    const move = port.moveFile.bind(port);
+    const external = new TextEncoder().encode("Concurrent external bytes");
+    let calls = 0;
+    let preservedPath = toLibraryFilePath(["unused"]);
+    port.moveFile = async (from, to) => {
+      calls++;
+      if (fault === "source-change") { await port.commitFile(from, external, { kind: "any" }); preservedPath = to; }
+      else if (fault === "restore-destination") { await port.commitFile(to, external, { kind: "absent" }); preservedPath = to; }
+      await move(from, to);
+      if (fault === "source-member") {
+        preservedPath = toLibraryFilePath([...from.slice(0, -1), "extra.json"]);
+        await port.commitFile(preservedPath, external, { kind: "absent" });
+      }
+    };
+    expect(await api.moveGroup(scope, confirmation(inspected))).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(required(await port.readFile(preservedPath)).bytes).toEqual(external);
+    expect((await api.moveGroup(scope, confirmation(inspected))).ok).toBe(false);
+    expect(calls).toBe(1);
+  });
+
+  test("occupied restore destination and changed trash content refuse; future groups remain inspectably unavailable", async () => {
+    const { api, scope, run, port, book } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const moved = value(await api.moveGroup(scope, confirmation(value(await api.inspectGroup(scope, run.runId, report.hash)))));
+    const groupId = required(moved.destinationGroupId);
+    const trash = value(await api.inspectTrash(scope, groupId));
+    value(await api.save(scope, run));
+    expect(await api.moveGroup(scope, confirmation(trash))).toMatchObject({ ok: false, error: { code: "exists" } });
+    expect(value(await api.listTrash(scope)).total).toBe(1);
+    const path = toLibraryFilePath([".studio", "trash", book.id, "reviews", groupId, `${run.runId}.json`]);
+    const next = value(await api.inspectTrash(scope, groupId));
+    await port.commitFile(path, new TextEncoder().encode('{"schemaVersion":2}'), { kind: "any" });
+    expect((await api.moveGroup(scope, confirmation(next))).ok).toBe(false);
+    expect(await api.inspectTrash(scope, groupId)).toMatchObject({ ok: false, error: { code: "newer-schema" } });
+    expect(value(await api.listTrash(scope)).total).toBe(1);
+    expect(new TextDecoder().decode(required(await port.readFile(path)).bytes)).toBe('{"schemaVersion":2}');
+  });
+
+  test.each(["second-move", "readback", "destination-race"])("%s remains uncertain, never replays, and partial files remain recoverable", async (fault) => {
+    const { api, scope, run, port } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    value(await api.saveDisposition(intent(scope, report)));
+    const group = value(await api.inspectGroup(scope, run.runId, report.hash));
+    const move = port.moveFile.bind(port);
+    const read = port.readFile.bind(port);
+    let moves = 0;
+    let failReads = false;
+    port.moveFile = async (from, to) => {
+      moves++;
+      if (fault === "second-move" && moves === 2) throw new Error("Synthetic interruption");
+      if (fault === "destination-race") await port.commitFile(to, new TextEncoder().encode("External destination"), { kind: "absent" });
+      await move(from, to);
+      if (fault === "readback") failReads = true;
+    };
+    port.readFile = async (path) => { if (failReads && path.includes("reviews")) throw new Error("Synthetic unreadable receipt"); return read(path); };
+    expect(await api.moveGroup(scope, confirmation(group))).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect((await api.moveGroup(scope, confirmation(group))).ok).toBe(false);
+    expect(moves).toBe(fault === "second-move" ? 2 : 1);
+    failReads = false;
+    port.moveFile = move;
+    port.readFile = read;
+    if (fault !== "destination-race") {
+      const listed = value(await api.listTrash(scope));
+      const partial = value(await api.inspectTrash(scope, required(listed.groups[0]).groupId));
+      expect(partial.report).toBeNull();
+      expect(partial.dependencyReport?.hash).toBe(report.hash);
+      expect(value(await api.moveGroup(scope, confirmation(partial))).status).toBe("restored");
+    }
   });
 
   test("library switch during validation never retargets a write; old tokens refuse", async () => {

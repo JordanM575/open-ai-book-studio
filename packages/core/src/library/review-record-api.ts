@@ -4,12 +4,14 @@ import { validateReviewEnvelope } from "../review/envelope";
 import { verifyReviewCitation, type ReaderRun } from "../review/findings";
 import { ReviewRecordError } from "../review/record-error";
 import {
-  buildReviewReport, canonicalRecordText, decodeReviewRecord, dispositionStateSchema,
+  buildReviewReport, canonicalRecordText, decodeReviewRecord,
   recordIdSchema, reportFindingSchema, type ReviewDispositions, type ReviewReport
 } from "../review/record-format";
 import { canonicalJsonText, encodeCanonicalJson, REVIEW_RECORD_BYTES } from "../review/record-json";
 import { validateReaderProfile } from "../review/profiles";
 import type { ReportListing, ReviewRecordSnapshot, ReviewRecordStore } from "../review/record-store";
+import { dispositionIntentSchema, prepareDispositionIntent } from "../review/record-intent";
+import { reviewConfirmationSchema, reviewInspectionSchema, reviewTrashListSchema, reviewGroupHash, validateReviewGroup, type ReviewInspection, type ReviewConfirmation, type ReviewTrashList, type ReviewMoveReceipt } from "../review/record-recovery";
 
 export const reviewRecordChannel = "reviewRecords:request";
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -18,25 +20,25 @@ const book = bookIdSchema.max(200);
 const scopeSchema = z.strictObject({ bookId: book, viewId: token, libraryId: token });
 export type ReviewRecordScope = z.infer<typeof scopeSchema>;
 const identity = { scope: scopeSchema, id: recordIdSchema, hash: hashSchema };
-const baseSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("absent") }),
-  z.strictObject({ kind: z.literal("sha256"), value: hashSchema, revision: count.min(1) })
-]);
 const requestSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("open"), bookId: book, viewId: token }),
   z.strictObject({ operation: z.literal("list"), scope: scopeSchema, offset: count, issueOffset: count }),
   z.strictObject({ operation: z.literal("read"), ...identity }),
   z.strictObject({ operation: z.literal("readDispositions"), ...identity }),
   z.strictObject({ operation: z.literal("save"), scope: scopeSchema, run: z.unknown() }),
-  z.strictObject({ operation: z.literal("saveDisposition"), ...identity, base: baseSchema,
-    findingId: idSchema, state: dispositionStateSchema, note: z.string().max(4000) })
+  z.strictObject({ operation: z.literal("saveDisposition"), ...identity, ...dispositionIntentSchema.shape }),
+  z.strictObject({ operation: z.literal("inspectGroup"), ...identity }),
+  z.strictObject({ operation: z.literal("listTrash"), scope: scopeSchema, offset: count }),
+  z.strictObject({ operation: z.literal("inspectTrash"), scope: scopeSchema, groupId: recordIdSchema }),
+  z.strictObject({ operation: z.literal("moveGroup"), scope: scopeSchema, confirmation: reviewConfirmationSchema })
 ]);
 type Request = z.infer<typeof requestSchema>;
 const errorSchema = z.strictObject({
   code: z.enum(["invalid", "exists", "conflict", "not-found", "corrupt", "newer-schema", "unsupported", "too-large", "uncertain", "not-kept", "io", "changed"]),
   message: z.string().max(4096),
   outcome: z.enum(["refused", "not-kept", "uncertain", "conflict"]),
-  savedAs: z.string().max(600).optional()
+  savedAs: z.string().max(600).optional(),
+  copy: z.strictObject({ at: timestampSchema, hash: hashSchema, rawJson: z.string().max(REVIEW_RECORD_BYTES) }).optional()
 });
 export type ReviewRecordFailure = z.infer<typeof errorSchema>;
 export type ReviewRecordResult<T> = { ok: true; data: T } | { ok: false; error: ReviewRecordFailure };
@@ -57,8 +59,11 @@ export interface ReviewRecordApi {
   read(scope: ReviewRecordScope, id: string, hash: string): Promise<ReviewRecordResult<SavedReview>>;
   readDispositions(scope: ReviewRecordScope, id: string, hash: string): Promise<ReviewRecordResult<SavedDispositions | null>>;
   save(scope: ReviewRecordScope, run: ReaderRun): Promise<ReviewRecordResult<{ status: "created" | "unchanged"; report: SavedReview }>>;
-  /** Refuses until the shared store can consume the inspected base atomically. Never falls back to an unchecked edit. */
-  saveDisposition(input: Omit<Extract<Request, { operation: "saveDisposition" }>, "operation">): Promise<ReviewRecordResult<never>>;
+  saveDisposition(input: Omit<Extract<Request, { operation: "saveDisposition" }>, "operation">): Promise<ReviewRecordResult<{ status: "saved" | "unchanged"; at: string; record: SavedDispositions }>>;
+  inspectGroup(scope: ReviewRecordScope, id: string, hash: string): Promise<ReviewRecordResult<ReviewInspection>>;
+  listTrash(scope: ReviewRecordScope, offset?: number): Promise<ReviewRecordResult<ReviewTrashList>>;
+  inspectTrash(scope: ReviewRecordScope, groupId: string): Promise<ReviewRecordResult<ReviewInspection>>;
+  moveGroup(scope: ReviewRecordScope, confirmation: ReviewConfirmation): Promise<ReviewRecordResult<ReviewMoveReceipt>>;
 }
 
 const encoder = new TextEncoder();
@@ -67,6 +72,8 @@ async function sha256(text: string): Promise<string> {
   const bytes = await globalThis.crypto.subtle.digest("SHA-256", encoder.encode(text));
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+const sha256Bytes = (bytes: Uint8Array) => sha256(decoder.decode(bytes));
+const REQUEST_BYTES = 32_100_000; // Two maximum-size raw records, including worst-case JSON escaping.
 function bounded(value: unknown, maxBytes: number): string {
   // Descriptor-first: no getters, toJSON, lossy numbers, cycles or unbounded nesting.
   const text = canonicalJsonText(value, { maxDepth: 70 });
@@ -150,16 +157,56 @@ async function validateOutput(request: Request, value: unknown): Promise<unknown
     if (canonicalRecordText(expected) !== canonicalRecordText(report.record)) throw new Error("Foreign saved result.");
     return { status: saved.status, report };
   }
-  throw new Error("Unsupported mutation cannot return success.");
+  if (request.operation === "saveDisposition") {
+    const saved = z.strictObject({ status: z.enum(["saved", "unchanged"]), at: timestampSchema, record: snapshotSchema }).parse(value);
+    const record = await snapshot(saved.record, "review-dispositions", request.scope.bookId, request.id);
+    const { scope: _scope, id: _id, hash: _hash, operation: _operation, ...intent } = request;
+    if (request.hash !== request.report.hash) throw new Error("Foreign report intent.");
+    const prepared = await prepareDispositionIntent(request.scope.bookId, request.id, intent, saved.at, sha256Bytes);
+    if (canonicalRecordText(record.record) !== canonicalRecordText(prepared.value) || saved.status !== (prepared.changed ? "saved" : "unchanged")) throw new Error("Foreign disposition output.");
+    return { ...saved, record };
+  }
+  if (request.operation === "listTrash") {
+    const list = reviewTrashListSchema.parse(value);
+    if (list.bookId !== request.scope.bookId || list.offset !== request.offset || list.groups.length !== Math.min(50, Math.max(0, list.total - list.offset)) || new Set(list.groups.map((g) => g.groupId)).size !== list.groups.length) throw new Error("Foreign trash list.");
+    return list;
+  }
+  const receipt = request.operation === "moveGroup" ? z.strictObject({ status: z.enum(["trashed", "restored"]), inspection: reviewInspectionSchema, destinationGroupId: recordIdSchema.nullable() }).parse(value) : null;
+  const inspected = reviewInspectionSchema.parse(receipt ? receipt.inspection : value);
+  const { hash, token: _token, ...group } = inspected;
+  await validateReviewGroup(group, sha256Bytes);
+  if (inspected.bookId !== request.scope.bookId || await reviewGroupHash(group, sha256Bytes) !== hash) throw new Error("Foreign group contents.");
+  if (request.operation === "inspectGroup" && (inspected.id !== request.id || inspected.groupId !== null || inspected.report?.hash !== request.hash)) throw new Error("Foreign active group.");
+  if (request.operation === "inspectTrash" && inspected.groupId !== request.groupId) throw new Error("Foreign trash group.");
+  if (request.operation === "moveGroup" && receipt) {
+    const expected = request.confirmation;
+    if (inspected.id !== expected.id || inspected.hash !== expected.hash || inspected.token !== expected.token || inspected.groupId !== expected.groupId ||
+      receipt.status !== (expected.groupId === null ? "trashed" : "restored") || (expected.groupId === null ? receipt.destinationGroupId === null : receipt.destinationGroupId !== null)) throw new Error("Foreign move receipt.");
+    return receipt;
+  }
+  return inspected;
 }
 
-function validateFailure(error: ReviewRecordFailure, request: Request): ReviewRecordFailure {
+async function validateFailure(error: ReviewRecordFailure, request: Request): Promise<ReviewRecordFailure> {
   const bookId = request.operation === "open" ? request.bookId : request.scope.bookId;
   if (error.outcome === "conflict") {
     if (error.code !== "conflict" || !error.savedAs ||
       !error.savedAs.startsWith(`books/${bookId}/conflicts/`) ||
       !/^books\/[A-Za-z0-9_-]+\/conflicts\/[A-Za-z0-9_.-]+\.json$/.test(error.savedAs) || error.savedAs.includes("..")) throw new Error("Foreign conflict.");
-  } else if (error.savedAs !== undefined || error.code === "conflict") throw new Error("Invalid copy receipt.");
+    if (request.operation === "saveDisposition") {
+      if (request.hash !== request.report.hash) throw new Error("Foreign report intent.");
+      if (!error.copy || !error.savedAs.startsWith(`books/${bookId}/conflicts/review-dispositions.`)) throw new Error("Missing disposition conflict contents.");
+      const copy = decodeReviewRecord(encoder.encode(error.copy.rawJson), { kind: "review-dispositions", bookId, allowConflictMetadata: true });
+      if (await sha256(error.copy.rawJson) !== error.copy.hash || copy.record.id !== request.id) throw new Error("Foreign conflict contents.");
+      const { scope: _scope, id: _id, hash: _hash, operation: _operation, ...intent } = request;
+      const expected = await prepareDispositionIntent(bookId, request.id, intent, error.copy.at, sha256Bytes);
+      const { conflictMetadata, ...value } = copy.raw;
+      const metadata = z.strictObject({ reason: z.enum(["missing-file", "external-edit"]), baseline: z.unknown(),
+        observed: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("absent") }), z.strictObject({ kind: z.literal("sha256"), value: hashSchema })]) }).parse(conflictMetadata);
+      if (canonicalRecordText(value) !== canonicalRecordText(expected.value) || canonicalRecordText(metadata.baseline) !== canonicalRecordText(expected.value.base) ||
+        metadata.reason !== (metadata.observed.kind === "absent" ? "missing-file" : "external-edit")) throw new Error("Foreign conflict intent.");
+    } else if (error.copy) throw new Error("Unexpected conflict contents.");
+  } else if (error.savedAs !== undefined || error.copy !== undefined || error.code === "conflict") throw new Error("Invalid copy receipt.");
   if ((error.code === "uncertain") !== (error.outcome === "uncertain") ||
     (error.code === "not-kept") !== (error.outcome === "not-kept")) throw new Error("Invalid outcome.");
   return error;
@@ -168,17 +215,18 @@ function validateFailure(error: ReviewRecordFailure, request: Request): ReviewRe
 /** One handler instance per host. All async work keeps the Library resolved before its first await. */
 export function reviewRecordHandler(getLibrary: () => object) {
   const libraries = new WeakMap<object, string>();
+  const confirmations = new Map<string, string>();
   return async (payload: unknown): Promise<unknown> => {
     // Invalid envelopes are deliberately not echoed (they cannot be bound safely).
     let input: z.infer<typeof inputSchema>;
-    try { input = inputSchema.parse(JSON.parse(bounded(payload, 1_100_000))); }
+    try { input = inputSchema.parse(JSON.parse(bounded(payload, REQUEST_BYTES))); }
     catch { throw new ReviewRecordError("invalid", "The review request is invalid. Nothing was submitted."); }
     const { request, requestId } = input;
     let result: ReviewRecordResult<unknown>;
     let library: object | null;
     try { library = getLibrary(); }
     catch { library = null; }
-    const requestDigest = await sha256(bounded(request, 1_100_000));
+    const requestDigest = await sha256(bounded(request, REQUEST_BYTES));
     if (!library) result = failure("not-found", "Open a library before inspecting saved reviews.");
     else {
       let libraryId = libraries.get(library);
@@ -188,9 +236,7 @@ export function reviewRecordHandler(getLibrary: () => object) {
         if (!store) result = failure("unsupported", "Saved review storage is unavailable on this host. Your review remains in this view; nothing was submitted to storage.");
         else if (request.operation === "open") result = { ok: true, data: { bookId: request.bookId, viewId: request.viewId, libraryId } };
         else if (request.scope.libraryId !== libraryId) result = failure("changed", "The open library changed. Keep your draft, then return to the library and reopen this book.");
-        else if (request.operation === "saveDisposition") {
-          result = failure("unsupported", "Checked disposition saving is unavailable in this build. Your local choice and note are retained in this view.");
-        } else {
+        else {
           let data: unknown;
           if (request.operation === "list") {
             const list = await store.listReports(request.scope.bookId, { offset: request.offset, limit: 50 });
@@ -207,7 +253,21 @@ export function reviewRecordHandler(getLibrary: () => object) {
             if (getLibrary() !== library) throw new ReviewRecordError("invalid", "The open library changed before saving. Nothing was written.");
             const saved = await store.createReport(request.scope.bookId, run);
             data = { status: saved.status, report: wire(saved.report) };
-          } else {
+          } else if (request.operation === "saveDisposition") {
+            const { scope: _scope, id: _id, hash: _hash, operation: _operation, ...intent } = request;
+            if (request.hash !== request.report.hash) throw new ReviewRecordError("invalid", "The disposition command names another report. Nothing was written.");
+            const saved = await store.recordDispositionChecked(request.scope.bookId, request.id, intent);
+            data = { status: saved.status, at: saved.at, record: wire(saved.record) };
+          } else if (request.operation === "listTrash") data = await store.listTrashGroups(request.scope.bookId, request.offset);
+          else if (request.operation === "inspectTrash") data = await store.inspectTrashGroup(request.scope.bookId, request.groupId);
+          else if (request.operation === "inspectGroup") data = await store.inspectReportGroup(request.scope.bookId, request.id, request.hash);
+          else if (request.operation === "moveGroup") {
+            const owner = confirmations.get(request.confirmation.token);
+            confirmations.delete(request.confirmation.token);
+            if (owner !== canonicalRecordText(request.scope)) throw new ReviewRecordError("invalid", "This confirmation belongs to another view or has expired. Inspect the group again.");
+            data = await store.moveInspectedGroup(request.scope.bookId, request.confirmation);
+          }
+          else {
             const report = await store.readReport(request.scope.bookId, request.id);
             if (!report) throw new ReviewRecordError("not-found", "This saved review is missing. Refresh the list; the inspected version is still here.");
             if (report.hash !== request.hash) throw new ReviewRecordError("invalid", "This saved review changed. Refresh the list; the inspected version is still here.");
@@ -223,8 +283,16 @@ export function reviewRecordHandler(getLibrary: () => object) {
           }
           // Validate wire data here as well as at the receiver; do not send duplicate raw/parsed bodies.
           try {
-            bounded(data, 16_000_000);
+            bounded(data, REQUEST_BYTES);
             await validateOutput(request, data);
+            if (request.operation === "inspectGroup" || request.operation === "inspectTrash") {
+              const inspection = reviewInspectionSchema.parse(data);
+              while (confirmations.size >= 64) {
+                const oldest = confirmations.keys().next().value;
+                if (oldest) confirmations.delete(oldest);
+              }
+              confirmations.set(inspection.token, canonicalRecordText(request.scope));
+            }
           } catch {
             // A malformed receipt after a writer returned cannot establish nonpublication.
             throw new Error("The review storage reply could not be verified.");
@@ -235,12 +303,12 @@ export function reviewRecordHandler(getLibrary: () => object) {
         if (error instanceof ReviewRecordError) {
           result = { ok: false, error: { code: error.code, message: error.message,
             outcome: error.code === "conflict" ? "conflict" : error.code === "not-kept" ? "not-kept" : error.code === "uncertain" ? "uncertain" : "refused",
-            ...(error.savedAs ? { savedAs: error.savedAs } : {}) } };
+            ...(error.savedAs ? { savedAs: error.savedAs } : {}), ...(error.copy ? { copy: error.copy } : {}) } };
         } else result = failure("uncertain", "The review operation could not be verified. Keep your draft and inspect the saved version before another save.", "uncertain");
       }
     }
     if (!result.ok) {
-      try { validateFailure(errorSchema.parse(result.error), request); }
+      try { await validateFailure(errorSchema.parse(result.error), request); }
       catch { result = failure("uncertain", "The review failure receipt could not be verified. Keep your draft and inspect the saved version before another save.", "uncertain"); }
     }
     return { requestId, requestDigest, result };
@@ -251,14 +319,14 @@ export function reviewRecordHandler(getLibrary: () => object) {
 export function createReviewRecordApi(invoke: (payload: unknown) => Promise<unknown>): ReviewRecordApi {
   async function call(requestInput: Request): Promise<ReviewRecordResult<unknown>> {
     let request: Request;
-    try { request = requestSchema.parse(JSON.parse(bounded(requestInput, 1_100_000))); }
+    try { request = requestSchema.parse(JSON.parse(bounded(requestInput, REQUEST_BYTES))); }
     catch { return failure("invalid", "The review request is invalid. Nothing was submitted."); }
     const requestId = globalThis.crypto.randomUUID();
-    const requestDigest = await sha256(bounded(request, 1_100_000));
+    const requestDigest = await sha256(bounded(request, REQUEST_BYTES));
     try {
-      const response = transportSchema.parse(JSON.parse(bounded(await invoke({ requestId, request }), 16_100_000)));
+      const response = transportSchema.parse(JSON.parse(bounded(await invoke({ requestId, request }), REQUEST_BYTES + 100_000)));
       if (response.requestId !== requestId || response.requestDigest !== requestDigest) throw new Error("Foreign review response.");
-      if (!response.result.ok) return { ok: false, error: validateFailure(response.result.error, request) };
+      if (!response.result.ok) return { ok: false, error: await validateFailure(response.result.error, request) };
       return { ok: true, data: await validateOutput(request, response.result.data) };
     } catch {
       return failure("uncertain", "The review reply could not be verified. Keep your draft and inspect the saved version before another save.", "uncertain");
@@ -270,6 +338,10 @@ export function createReviewRecordApi(invoke: (payload: unknown) => Promise<unkn
     read: (scope, id, hash) => call({ operation: "read", scope, id, hash }) as ReturnType<ReviewRecordApi["read"]>,
     readDispositions: (scope, id, hash) => call({ operation: "readDispositions", scope, id, hash }) as ReturnType<ReviewRecordApi["readDispositions"]>,
     save: (scope, run) => call({ operation: "save", scope, run }) as ReturnType<ReviewRecordApi["save"]>,
-    saveDisposition: (input) => call({ ...input, operation: "saveDisposition" }) as ReturnType<ReviewRecordApi["saveDisposition"]>
+    saveDisposition: (input) => call({ ...input, operation: "saveDisposition" }) as ReturnType<ReviewRecordApi["saveDisposition"]>,
+    inspectGroup: (scope, id, hash) => call({ operation: "inspectGroup", scope, id, hash }) as ReturnType<ReviewRecordApi["inspectGroup"]>,
+    listTrash: (scope, offset = 0) => call({ operation: "listTrash", scope, offset }) as ReturnType<ReviewRecordApi["listTrash"]>,
+    inspectTrash: (scope, groupId) => call({ operation: "inspectTrash", scope, groupId }) as ReturnType<ReviewRecordApi["inspectTrash"]>,
+    moveGroup: (scope, confirmation) => call({ operation: "moveGroup", scope, confirmation }) as ReturnType<ReviewRecordApi["moveGroup"]>
   };
 }

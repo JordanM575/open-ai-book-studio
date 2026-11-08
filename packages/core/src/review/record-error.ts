@@ -22,7 +22,9 @@ export class ReviewRecordError extends Error {
     readonly code: ReviewRecordErrorCode,
     message: string,
     /** Library-relative path of the kept copy, when the failure preserved the author's version. */
-    readonly savedAs?: string
+    readonly savedAs?: string,
+    /** Checked disposition conflicts carry the verified copy for receiver-side intent validation. */
+    readonly copy?: { at: string; hash: string; rawJson: string }
   ) {
     super(message);
     this.name = "ReviewRecordError";

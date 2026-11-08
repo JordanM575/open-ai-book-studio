@@ -102,3 +102,25 @@ remain explicitly unavailable rather than using a racy read-before-write substit
 mounted recovery or persisted disposition-save journey is claimed. Production reader execution,
 Markdown/export/archive acceptance, native accessibility and fresh exact-head review remain open.
 T014/T015 and all other task checkboxes stay unchanged; 038 T022 stays unchecked.
+
+### November 8 — W10 v20 checked disposition and recovery continuation (T015 partial)
+
+The explicitly expanded store/desktop ownership closes v19's three seam prerequisites: desktop
+forwards the current Library service, `recordDispositionChecked` consumes inspected raw report and
+disposition bases in the existing queue, and one-use inspected group confirmation drives bounded
+trash inspection and free-path restore. Complete stale histories/unknown own fields survive as
+checked conflict copies; transport edges validate complete success/conflict outputs. The mounted
+Workspace journey retains exact drafts on failure/uncertainty, prevents replay until inspection,
+and retires late/foreign/ABA replies. Partial moves are uncertain and remain recoverable, including
+disposition-only groups bound to an exact active report. FORMAT and the reader README describe the
+contract before exposure; no second writer or provider dispatch was introduced.
+
+Candidate-local automated evidence covers actual desktop wrapper/IPC/preload, browser Library/API
+and mounted save/reopen/trash/restore, competing/missing/replaced bases, future/unavailable records,
+occupied targets, partial/concurrent moves, uncertain receipts, unknown fields and unchanged
+synthetic manuscript hashes. Production selected-source execution, safe Markdown export, archive
+acceptance, segmented continuation, campaign execution, native accessibility, broad integrated
+gates and fresh independent exact-head review remain open. T014/T015 stay unchecked; 038 T022 is
+untouched. Final focused evidence: 147 tests / 898 assertions across six dedicated/relevant files,
+workspace typechecks, strict core-test typecheck, ten-file lint and diff checks passed. Detailed
+executed commands and limits are in the separate v20 finish report.

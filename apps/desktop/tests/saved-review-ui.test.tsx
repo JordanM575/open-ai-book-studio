@@ -50,7 +50,7 @@ async function openReview(id: string) {
 }
 
 describe("saved reviews mounted over the real browser adapter and Library", () => {
-  test("explicit result save/repeat/reopen, attribution, local disposition refusal and unchanged manuscript", async () => {
+  test("explicit result save/repeat/reopen, persisted disposition, confirmed recovery and unchanged manuscript", async () => {
     const { api, scope, run, book, library, port } = await fixture();
     const chapter = await library.createChapter(book.id, { title: "Synthetic manuscript", content: "Keep these synthetic words." });
     const path = toLibraryFilePath(["books", book.id, "chapters", chapter.path]);
@@ -73,12 +73,29 @@ describe("saved reviews mounted over the real browser adapter and Library", () =
     testing.fireEvent.change(note, { target: { value: "Exact local note  \n" } });
     testing.fireEvent.change(disposition, { target: { value: "ignored" } });
     click("Save disposition");
-    await page().findByText(/Request refused · Checked disposition saving/);
-    expect(note.value).toBe("Exact local note  \n");
+    await page().findByText(/Disposition saved · Exact history/);
     expect(disposition.value).toBe("ignored");
-    expect(value(await api.readDispositions(scope, run.runId, required(value(await api.list(scope)).reports[0]).hash))).toBeNull();
+    const saved = required(value(await api.readDispositions(scope, run.runId, required(value(await api.list(scope)).reports[0]).hash)));
+    expect(saved.record.dispositions[0]?.events[0]?.note).toBe("Exact local note  \n");
+    testing.fireEvent.change(note, { target: { value: "Unsaved draft survives recovery  \n" } });
     click("Saved reviews"); click("Saved reviews");
-    expect((page().getByRole("textbox", { name: "Local note for finding-1" }) as HTMLTextAreaElement).value).toBe("Exact local note  \n");
+    expect((page().getByRole("textbox", { name: "Local note for finding-1" }) as HTMLTextAreaElement).value).toBe("Unsaved draft survives recovery  \n");
+    click("Move review to trash");
+    await page().findByText(/Exact recovery contents inspected/);
+    expect(value(await api.list(scope)).total).toBe(1);
+    testing.fireEvent.click(page().getByRole("checkbox"));
+    click("Confirm move to trash");
+    await page().findByText(/Review moved to recoverable trash/);
+    expect(value(await api.list(scope)).total).toBe(0);
+    click("Inspect review trash");
+    const groups = value(await api.listTrash(scope));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect trash group ${required(groups.groups[0]).groupId}` }));
+    await page().findByText(/Exact recovery contents inspected/);
+    testing.fireEvent.click(page().getByRole("checkbox"));
+    click("Confirm restore review");
+    await page().findByText(/Review restored · Exact inspected/);
+    expect(value(await api.readDispositions(scope, run.runId, saved.record.report.hash))?.rawJson).toBe(saved.rawJson);
+    expect((page().getByRole("textbox", { name: "Local note for finding-1" }) as HTMLTextAreaElement).value).toBe("Unsaved draft survives recovery  \n");
     expect((await port.readFile(path))?.sha256).toBe(before);
   });
 
@@ -183,5 +200,109 @@ describe("saved reviews mounted over the real browser adapter and Library", () =
     expect(page().queryByRole("button", { name: `Inspect review ${run.runId}` })).toBeNull();
     expect(page().getByRole("article", { name: `Saved review ${run.runId}` })).toBeTruthy();
     expect(writes).toBe(0);
+  });
+
+  test("uncertain disposition receipt preserves exact draft, locks replay and requires fresh inspection", async () => {
+    const { api, scope, run, book } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    let calls = 0;
+    const lost: ReviewRecordApi = { ...api, saveDisposition: async (input) => { calls++; await api.saveDisposition(input); throw new Error("Lost disposition receipt"); } };
+    testing.render(<SavedReviewsPanel bookId={book.id} libraryKey="synthetic" api={lost} />);
+    await openReview(run.runId);
+    const note = page().getByRole("textbox", { name: "Local note for finding-1" }) as HTMLTextAreaElement;
+    testing.fireEvent.change(note, { target: { value: "Exact uncertain note  \n" } });
+    click("Save disposition");
+    await page().findByText(/disposition save could not be confirmed/);
+    expect(note.value).toBe("Exact uncertain note  \n");
+    expect((page().getByRole("button", { name: "Save disposition" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((page().getByRole("button", { name: "Use inspected history for this draft" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Saved reviews"); click("Saved reviews"); click("Save disposition");
+    expect(calls).toBe(1);
+    click(`Inspect review ${run.runId}`);
+    await page().findByText(/Review opened · Quotations/);
+    expect((page().getByRole("button", { name: "Save disposition" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(value(await api.readDispositions(scope, run.runId, report.hash))?.record.dispositions[0]?.events).toHaveLength(1);
+    expect(note.value).toBe("Exact uncertain note  \n");
+  });
+
+  test("refresh does not silently rebase a draft; stale save preserves a conflict and the note", async () => {
+    const { api, scope, run, book, library } = await fixture();
+    value(await api.save(scope, run));
+    testing.render(<SavedReviewsPanel bookId={book.id} libraryKey="synthetic" api={api} />);
+    await openReview(run.runId);
+    const note = page().getByRole("textbox", { name: "Local note for finding-1" }) as HTMLTextAreaElement;
+    testing.fireEvent.change(note, { target: { value: "My stale note" } });
+    await library.reviewRecords.recordDisposition(book.id, run.runId, { findingId: "finding-1", state: "ignored", note: "Competing author" });
+    click(`Inspect review ${run.runId}`);
+    await page().findByText(/Competing author/);
+    click("Save disposition");
+    await page().findByText(/Conflict copy kept/);
+    expect(note.value).toBe("My stale note");
+    expect((await library.reviewRecords.readDispositions(book.id, run.runId))?.record.dispositions[0]?.events).toHaveLength(1);
+  });
+
+  test.each(["disposition", "recovery"])("late %s completion cannot revive a collapsed or ABA view", async (kind) => {
+    const { api, scope, run, book } = await fixture();
+    value(await api.save(scope, run));
+    const wait = deferred<void>();
+    let calls = 0;
+    const slow: ReviewRecordApi = { ...api,
+      saveDisposition: async (input) => { calls++; await wait.promise; return api.saveDisposition(input); },
+      moveGroup: async (...args) => { calls++; await wait.promise; return api.moveGroup(...args); }
+    };
+    const mounted = testing.render(<SavedReviewsPanel bookId={book.id} libraryKey="A" api={slow} />);
+    await openReview(run.runId);
+    if (kind === "disposition") {
+      testing.fireEvent.change(page().getByRole("textbox", { name: "Local note for finding-1" }), { target: { value: "Late exact draft" } });
+      click("Save disposition");
+    } else {
+      click("Move review to trash");
+      await page().findByText(/Exact recovery contents inspected/);
+      testing.fireEvent.click(page().getByRole("checkbox"));
+      click("Confirm move to trash");
+    }
+    await testing.waitFor(() => expect(calls).toBe(1));
+    click("Saved reviews"); click("Saved reviews");
+    mounted.rerender(<SavedReviewsPanel bookId={book.id} libraryKey="B" api={slow} />);
+    mounted.rerender(<SavedReviewsPanel bookId={book.id} libraryKey="A" api={slow} />);
+    await testing.act(async () => wait.resolve());
+    expect(page().queryByText(/Disposition saved ·|Review moved to recoverable trash ·/)).toBeNull();
+    expect(calls).toBe(1);
+  });
+
+  test("uncertain recovery preserves inspected contents and cannot replay confirmation", async () => {
+    const { api, scope, run, book } = await fixture();
+    value(await api.save(scope, run));
+    let calls = 0;
+    const lost: ReviewRecordApi = { ...api, moveGroup: async (...args) => { calls++; await api.moveGroup(...args); throw new Error("Lost move receipt"); } };
+    testing.render(<SavedReviewsPanel bookId={book.id} libraryKey="synthetic" api={lost} />);
+    await openReview(run.runId);
+    click("Move review to trash");
+    await page().findByText(/Exact recovery contents inspected/);
+    testing.fireEvent.click(page().getByRole("checkbox"));
+    click("Confirm move to trash");
+    await page().findByText(/Recovery outcome could not be confirmed/);
+    expect(page().getByRole("region", { name: "Inspected recovery contents" })).toBeTruthy();
+    expect((page().getByRole("button", { name: "Confirm move to trash" }) as HTMLButtonElement).disabled).toBe(true);
+    click("Confirm move to trash");
+    expect(calls).toBe(1);
+    expect(value(await api.listTrash(scope)).total).toBe(1);
+  });
+
+  test("an exact disposition success never discards newer typing during the await", async () => {
+    const { api, scope, run, book } = await fixture();
+    const report = value(await api.save(scope, run)).report;
+    const wait = deferred<void>();
+    const slow: ReviewRecordApi = { ...api, saveDisposition: async (input) => { await wait.promise; return api.saveDisposition(input); } };
+    testing.render(<SavedReviewsPanel bookId={book.id} libraryKey="synthetic" api={slow} />);
+    await openReview(run.runId);
+    const note = page().getByRole("textbox", { name: "Local note for finding-1" }) as HTMLTextAreaElement;
+    testing.fireEvent.change(note, { target: { value: "Submitted exact note" } });
+    click("Save disposition");
+    testing.fireEvent.change(note, { target: { value: "Newer typing stays  \n" } });
+    await testing.act(async () => wait.resolve());
+    await page().findByText(/Disposition saved · Exact history/);
+    expect(note.value).toBe("Newer typing stays  \n");
+    expect(value(await api.readDispositions(scope, run.runId, report.hash))?.record.dispositions[0]?.events[0]?.note).toBe("Submitted exact note");
   });
 });
