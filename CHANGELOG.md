@@ -9,6 +9,13 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Pure authoring foundation
 
+- Specify schema-1 workflow records in FORMAT for the durable run/brief/policy/phase-plan/direction/
+  task/command-journal/attempt/effect/question/artifact/context/admission surfaces, with exact
+  identity/hash/reference, base, bounds, ordering/pagination and related-file recovery rules. Add a
+  pure host-neutral raw codec that refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy
+  numeric lexemes, unsupported versions, foreign owner/kind and depth/size overflow before constructing
+  values, preserves supported unknown fields and encodes deterministically. No writer, scheduler,
+  provider, host permission, runtime journey or independent review is claimed.
 - Preserve admitted depth-64 extensions through aggregate run/ledger control and receipt transitions
   without widening external record admission. Reject connection-Continue clock accessors before any
   reads. Add boundary regressions for graph, policy, command, request and retained clock/receipt data.

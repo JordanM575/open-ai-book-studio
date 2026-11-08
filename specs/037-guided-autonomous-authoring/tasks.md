@@ -76,6 +76,11 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
 
 - [x] T017 Record the individual authority/lifecycle/admission/evidence amendments (ADR 0019).
 - [ ] T018 Specify and review every workflow/thread/host-permission wire schema in FORMAT before writers.
+  **Partial (2026-11-07):** workflow record schema 1 — run/brief/policy/plans/directions/tasks/
+  command journal/attempts/effects/questions/artifacts/contexts/admission records — is specified in
+  FORMAT with a pure raw codec in `packages/core/src/authoring/wire.ts` and synthetic round-trip/refusal
+  tests. Shared thread migration, host-permission schemas, checked writers, real streaming and
+  independent review remain; T018 stays open.
 - [ ] T019 Implement checked/lossless shared threads, explicit migration, recoverable deletion and all callers.
 - [ ] T020 Integrate truthful stop settlement, consumer/persistence warnings and pinned-Library quiescence.
 - [ ] T021 Implement pure versioned graph, dependency/direction invalidation, command identity and reducers.
