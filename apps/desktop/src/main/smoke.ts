@@ -548,8 +548,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         `(() => {
           const el = document.querySelector('[data-testid="manuscript-text"]');
           if (!el) return false;
-          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-          setter.call(el, el.value + "\\n\\n" + ${JSON.stringify(marker)});
+          el.value = el.value + "\\n\\n" + ${JSON.stringify(marker)};
           el.dispatchEvent(new Event("input", { bubbles: true }));
           const review = document.querySelector('[data-testid="review-manuscript"]');
           if (!review) return false;
@@ -655,8 +654,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         `(() => {
           const el = document.querySelector('[data-testid="manuscript-text"]');
           if (!el) return false;
-          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-          setter.call(el, el.value + "\\n\\n" + ${JSON.stringify(marker)});
+          el.value = el.value + "\\n\\n" + ${JSON.stringify(marker)};
           el.dispatchEvent(new Event("input", { bubbles: true }));
           return true;
         })()`
@@ -1067,8 +1065,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         `(() => {
           const el = document.querySelector('[data-testid="manuscript-text"]');
           if (!el) return false;
-          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-          setter.call(el, el.value + "\\n\\n" + ${JSON.stringify(marker)});
+          el.value = el.value + "\\n\\n" + ${JSON.stringify(marker)};
           el.dispatchEvent(new Event("input", { bubbles: true }));
           return true;
         })()`
@@ -1183,11 +1180,10 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
         `(async () => {
           const el = document.querySelector('[data-testid="manuscript-text"]');
           if (!el) return 0;
-          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
           const keys = [..."\\n" + ${JSON.stringify(sentence)}];
           for (let index = 0; index < keys.length; index += 1) {
             if (index > 0) await new Promise((resolve) => setTimeout(resolve, 60));
-            setter.call(el, el.value + keys[index]);
+            el.value = el.value + keys[index];
             el.dispatchEvent(new Event("input", { bubbles: true }));
           }
           return Date.now();
@@ -1230,8 +1226,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
           `(() => {
             const el = document.querySelector('[data-testid="manuscript-text"]');
             if (!el) return false;
-            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-            setter.call(el, el.value + ${JSON.stringify(`\n${sentence}`)});
+            el.value = el.value + ${JSON.stringify(`\n${sentence}`)};
             el.dispatchEvent(new Event("input", { bubbles: true }));
             return true;
           })()`
@@ -1308,8 +1303,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
           `(() => {
             const el = document.querySelector('[data-testid="manuscript-text"]');
             if (!el) return false;
-            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-            setter.call(el, el.value + ${JSON.stringify(line)});
+            el.value = el.value + ${JSON.stringify(line)};
             el.dispatchEvent(new Event("input", { bubbles: true }));
             return true;
           })()`
@@ -1409,8 +1403,7 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
           const el = document.querySelector('[data-testid="manuscript-text"]');
           const row = document.querySelector('[data-testid="chapter-row"][aria-current="page"]');
           if (!el || !row) return "";
-          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-          setter.call(el, el.value + "\\n" + ${JSON.stringify(sentence)});
+          el.value = el.value + "\\n" + ${JSON.stringify(sentence)};
           el.dispatchEvent(new Event("input", { bubbles: true }));
           return row.getAttribute("data-chapter-id") ?? "";
         })()`

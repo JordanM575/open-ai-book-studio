@@ -186,9 +186,8 @@ try {
     const [before] = await chapterFiles(book.dir);
     await page.evaluate((text) => {
       const editor = document.querySelector('[data-testid="manuscript-text"]');
-      if (!(editor instanceof HTMLTextAreaElement)) throw new Error("the manuscript editor was not found");
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-      setter.call(editor, editor.value ? `${editor.value}\n\n${text}` : text);
+      if (!editor) throw new Error("the manuscript editor was not found");
+      editor.value = editor.value ? `${editor.value}\n\n${text}` : text;
       editor.dispatchEvent(new Event("input", { bubbles: true }));
     }, marker);
     let after = before;

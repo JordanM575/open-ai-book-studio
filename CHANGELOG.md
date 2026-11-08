@@ -37,6 +37,37 @@ Update the `Unreleased` section before every commit.
   restore that requires an absent destination and an unchanged book/conversation identity. No
   automatic pruning, quota or expiry. 037 T019 remains partial; v2 semantic migration, restore
   UI/IPC and independent review are still open.
+HEAD
+### Mounted editor
+
+- Mount the exact-current CodeMirror surface in the manuscript editor: the existing wrapper keeps
+  title, autosave, drafts, save queue, conflicts, custom undo and hold/rebase; shared-verifier
+  evidence paints underlines only after it applies, and a minimal accessible findings aside lists
+  them with keyboard navigation. Edits clear marks; no provider or persistence is added.
+- Clear the aside's current finding when a category filter hides it, and count findings rather
+  than evidence spans so a finding with two citations is not reported as two findings.
+- Keep undo history intact when a restored selection would split a surrogate pair: clamp the
+  caret to a code-point boundary and put the history transition back if the replacement is still
+  refused. Select a list row's finding by identity, so two findings on one passage can each be
+  chosen from the list.
+- Clear marks, the findings list and any pending proof when the host withdraws its review request,
+  instead of leaving stale underlines visible. Regenerate the third-party notices for the web
+  closure, which now includes the editor's CodeMirror packages.
+
+### Mounted exact-current manuscript editor
+- Mount the accepted CodeMirror plain-text surface in `ManuscriptEditor` in place of the textarea.
+  The wrapper keeps title, the 700 ms autosave, the 300 ms draft copy, one serialized save queue,
+  the custom 100-state undo, retry/conflict/flush, hold/rebase and voice ownership; the surface
+  reports every change back through that one apply path. Typing, plain Enter, paste normalization,
+  dictation spacing, selection, Ctrl/Cmd-S/Z/Shift-Z/Ctrl-Y, the composition guard, hold/rebase and
+  the latest-buffer flush keep their existing behaviour. The smoke `manuscript-text` hook now reads
+  and writes the mounted surface through its automation contract.
+- Add a minimal accessible findings aside for a host-supplied synthetic layer. The shared
+  exact-source verifier (`createSharedEvidencePort`) validates it; the editor paints exact-current
+  underlines; the aside lists per-finding rows with Next/Previous/Inspect/Return, focus return,
+  category filtering and filtered/total counts. Editing removes current marks and the list. No
+  provider request, report write, disposition, suggestion application or saved review is added.
+  039 T012/T013 remain partial and 038 T022 is untouched.
 
 ### Pure authoring foundation
 - Tighten the workflow codec after independent review: a `maxBytes` override may only lower the

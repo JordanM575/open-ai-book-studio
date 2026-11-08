@@ -82,6 +82,10 @@ export interface InlineEditorOptions {
   readonly onSelection?: (selection: TextSelection) => void;
   readonly label?: string;
   readonly describedBy?: string;
+  /** Test hook id for the mounted surface; the isolated leaf keeps its own when this is absent. */
+  readonly testId?: string;
+  /** Shown when the chapter has no words yet. */
+  readonly placeholder?: string;
 }
 
 export function sameInlineSource(a: InlineSource, b: InlineSource): boolean {

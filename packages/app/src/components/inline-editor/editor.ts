@@ -1,5 +1,5 @@
 import { Annotation, EditorState, StateEffect, StateField, type Transaction } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, keymap, placeholder as placeholderExtension } from "@codemirror/view";
 import { insertNewline, standardKeymap } from "@codemirror/commands";
 import { normalizePasteText } from "@ai-book-studio/core/paste";
 import { insertTranscript } from "../../lib/voice-text";
@@ -28,6 +28,7 @@ const theme = EditorView.theme({
   ".cm-line": { padding: "0" },
   ".inline-review-mark": { textDecorationLine: "underline", textDecorationStyle: "dotted", textDecorationColor: "var(--primary)", textUnderlineOffset: "0.2em" },
   ".inline-review-active": { textDecorationStyle: "double" },
+  ".cm-placeholder": { color: "var(--muted-foreground)", opacity: "0.6" },
   "@media (forced-colors: active)": {
     ".inline-review-mark": { textDecorationColor: "LinkText", forcedColorAdjust: "auto" },
     "&.cm-focused": { outline: "1px solid Highlight" }
@@ -63,10 +64,11 @@ export class InlineEditor {
         extensions: [
           EditorState.lineSeparator.of("\n"), EditorState.allowMultipleSelections.of(false),
           EditorView.lineWrapping, theme, marks,
+          ...(options.placeholder ? [placeholderExtension(options.placeholder)] : []),
           EditorView.contentAttributes.of({
             "aria-label": options.label ?? "Chapter text", "aria-multiline": "true",
             ...(options.describedBy ? { "aria-describedby": options.describedBy } : {}),
-            spellcheck: "true", "data-testid": "inline-manuscript-text"
+            spellcheck: "true", "data-testid": options.testId ?? "inline-manuscript-text"
           }),
           keymap.of([
             { key: "Enter", run: insertNewline, shift: insertNewline },
@@ -197,6 +199,22 @@ export class InlineEditor {
     if (hadLayer && !this.destroyed) this.options.onReviewStatus("stale");
   }
 
+  /**
+   * The host removed its review request (or closed the review surface): drop the current layer,
+   * marks and any in-flight proof without claiming the text changed.
+   */
+  discardEvidence(): void {
+    this.revision += 1;
+    this.request += 1;
+    this.pending?.abort();
+    this.pending = null;
+    this.layer = null;
+    this.fullIndex = emptyIndex;
+    this.index = emptyIndex;
+    this.active = null;
+    if (!this.destroyed) this.view.dispatch({ effects: replaceMarks.of(Decoration.none) });
+  }
+
   /** Host must call synchronously on saved-base, clean/pending, availability or source epoch changes. */
   syncSource(): void { this.invalidate(); }
 
@@ -228,6 +246,15 @@ export class InlineEditor {
   /** Compare-and-set prevents a delayed React echo/history/dictation result overwriting newer input. */
   replaceText(text: string, expectedRevision: number, origin: EditOrigin = "controlled", selection?: TextSelection): boolean {
     return this.applyReplace(text, expectedRevision, origin, selection, false);
+  }
+
+  /**
+   * A user-origin commit of exact text, as an input method or the mount's automation contract
+   * delivers it: compare-and-set, one isolated history unit, and allowed during a hold exactly as
+   * native typing is. Controlled replacement, dictation and evidence stay refused during a hold.
+   */
+  typeText(text: string, expectedRevision: number, selection?: TextSelection): boolean {
+    return this.applyReplace(text, expectedRevision, "input", selection, true);
   }
 
   private applyReplace(text: string, expectedRevision: number, origin: EditOrigin, selection: TextSelection | undefined, allowDuringHold: boolean): boolean {
@@ -305,6 +332,15 @@ export class InlineEditor {
     this.renderMarks();
   }
 
+  /**
+   * The validated layer this visit is showing, or null once it is no longer exact-current.
+   * The host uses it for its own accessible finding list; it never certifies anything itself.
+   */
+  getLayer(): ValidatedInlineLayer | null {
+    if (!this.currentLayer()) return null;
+    return this.layer;
+  }
+
   private currentLayer(): boolean {
     if (!this.layer) return false;
     if (isExactCurrent(this.getSnapshot(), this.layer.source)) return true;
@@ -332,6 +368,26 @@ export class InlineEditor {
   }
 
   /** Pointer inspection does not replace selection or move focus away from the text. */
+  /**
+   * Select one finding by identity, for a list row that names it. Resolving by offset alone picks
+   * whichever overlapping member happens to be first, so two findings on one passage could not be
+   * chosen separately from the list.
+   */
+  inspectSpan(span: InlineSpan): boolean {
+    if (this.hidden || !this.currentLayer()) return false;
+    // Match the finding the row names, not one evidence span: a finding can cite several passages
+    // and two findings can share a passage, so evidence-level keys are not a stable row identity.
+    const match = this.index.spans.find((candidate) =>
+      candidate.runId === span.runId && candidate.findingId === span.findingId);
+    if (!match) return false;
+    this.active = match;
+    this.renderMarks();
+    const segment = overlapAt(this.index, match.from);
+    const choices = segment?.members ?? [match];
+    this.options.onInspect(Object.freeze({ action: "pointer", active: match, choices }));
+    return true;
+  }
+
   inspectAt(offset: number): boolean {
     if (this.hidden || !this.currentLayer()) return false;
     const segment = overlapAt(this.index, offset);

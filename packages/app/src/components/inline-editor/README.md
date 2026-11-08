@@ -7,7 +7,9 @@ editing commands, omitting history, language extensions and basicSetup. React ow
 mount/cleanup only; the host retains draft, save, title and custom undo ownership.
 An injected evidence-validation port must establish envelope/source/quote validity;
 this leaf separately checks the exact live editor at the final application boundary.
-Do not mount this in ManuscriptEditor until independent fidelity review.
+The mount followed the coordinator's November 8 slice decision after the leaf and shared
+verifier were accepted on `main`; see “Mounted surface” below for what that mount covers
+and what stays open.
 
 Evidence: official https://codemirror.net/docs/ref/ (state lineSeparator, UTF-16 Text,
 transactions, decorations, composition and view teardown) and
@@ -152,12 +154,44 @@ Inspect controls remain independent of this current-evidence-only toolbar.
    fixtures on the integrated candidate. This leaf does not authorize those writes
    or constitute their evidence.
 
+## Mounted surface — November 8, 2026 (039 T012 partial)
+
+`ManuscriptEditor` now mounts `InlineTextSurface` in place of its textarea. The wrapper still owns
+the title, save queue, 700/300 ms timers, retry/conflict/flush, hold/rebase, voice and the custom
+undo history; the leaf owns no save, file or network access. The mounted content element carries
+`data-testid="manuscript-text"` and `aria-label="Chapter text"`.
+
+Small additive leaf APIs made the mount honest:
+
+- `typeText(text, expectedRevision, selection?)` is a compare-and-set **user-origin** commit for an
+  input method or the mount's automation contract. It keeps one isolated history unit and is
+  allowed during a hold exactly as native typing is; `replaceText`, dictation and evidence stay
+  refused during a hold.
+- `getLayer()` returns the current validated layer (or null once it is not exact-current) so the
+  host can build its own accessible finding list without certifying anything.
+- `testId` and `placeholder` options let the host keep its existing smoke hook and empty-chapter
+  prompt without a second editor.
+
+The mount keeps a textarea-shaped automation contract on the content element: reading `value`
+returns the exact editor text, assigning it applies that text through `typeText`, and
+`selectionStart`/`selectionEnd` map to the leaf selection. It is not a second editor, save path or
+undo stack; native typing never uses it. The hidden smoke and the existing DOM suites drive the
+same mounted surface through it.
+
+A minimal aside appears only when the host supplies an untrusted `reviewRequest`: the shared
+verifier (`createSharedEvidencePort`, or an injected port in tests) validates it against the live
+source facts, marks are painted only after `applied`, and the list offers named Previous/Next/
+Inspect/Return controls, focus return, a category filter and filtered/total counts. Editing hides
+current marks and removes the list. No provider call, persistence, disposition or full sidebar is
+implemented; 039 T011–T013 stay partial, and the native-IME, screen-reader, connected-provider,
+saved-review and 120-chapter/250k-word performance gates remain open.
+
 ## Reproducible focused checks
 
 From repository root (Bun dependencies installed):
 
 ```sh
-bun test packages/core/tests/inline-overlap.test.ts apps/desktop/tests/inline-editor.test.tsx
+bun test packages/core/tests/inline-overlap.test.ts apps/desktop/tests/inline-editor.test.tsx apps/desktop/tests/editor-mount.test.tsx
 node packages/app/src/components/inline-editor/probes/native.mjs
 node packages/app/src/components/inline-editor/probes/bundle.mjs
 bun run typecheck

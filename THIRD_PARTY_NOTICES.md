@@ -166,14 +166,21 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 ## Web app
 
 <!-- licenses:web:start -->
-49 packages.
+58 packages.
 
 | Package | Version | License |
 | --- | --- | --- |
+| `@codemirror/commands` | 6.11.1 | MIT |
+| `@codemirror/language` | 6.13.1 | MIT |
+| `@codemirror/state` | 6.7.6 | MIT |
+| `@codemirror/view` | 6.43.15 | MIT |
 | `@floating-ui/core` | 1.8.0 | MIT |
 | `@floating-ui/dom` | 1.8.0 | MIT |
 | `@floating-ui/react-dom` | 2.1.9 | MIT |
 | `@floating-ui/utils` | 0.2.12 | MIT |
+| `@lezer/common` | 1.5.5 | MIT |
+| `@lezer/highlight` | 1.2.5 | MIT |
+| `@marijn/find-cluster-break` | 1.0.4 | MIT |
 | `@radix-ui/primitive` | 1.2.0 | MIT |
 | `@radix-ui/react-collapsible` | 1.2.1 | MIT |
 | `@radix-ui/react-compose-refs` | 1.1.5 | MIT |
@@ -211,12 +218,14 @@ credits ship with the desktop app in `LICENSES.chromium.html`.
 | `react-style-singleton` | 2.2.3 | MIT |
 | `rolldown` | 1.2.15 | MIT |
 | `scheduler` | 0.28.0 | MIT |
+| `style-mod` | 4.1.4 | MIT |
 | `tailwind-merge` | 3.7.0 | MIT |
 | `tailwindcss` | 4.3.3 | MIT |
 | `tslib` | 2.8.1 | 0BSD |
 | `use-callback-ref` | 1.3.3 | MIT |
 | `use-sidecar` | 1.1.3 | MIT |
 | `vite` | 8.3.5 | MIT |
+| `w3c-keyname` | 2.2.8 | MIT |
 | `yaml` | 2.9.1 | ISC |
 | `zod` | 4.6.7 | MIT |
 <!-- licenses:web:end -->

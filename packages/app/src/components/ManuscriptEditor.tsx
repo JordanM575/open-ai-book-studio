@@ -2,11 +2,21 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import { plainSaveReason } from "@ai-book-studio/core/library/errors";
+import { createSharedEvidencePort } from "@ai-book-studio/core/review/shared-verifier";
+import { type InlineSpan, inlineSpanKey } from "@ai-book-studio/core/review/inline/overlap";
 import { pushHistory, redoHistory, undoHistory } from "../lib/editor-history";
 import { countWords, formatCount, formatWords, pluralize, savedTime } from "../lib/utils";
-import { insertTranscript as insertAtSelection } from "../lib/voice-text";
-import { normalizePasteText } from "@ai-book-studio/core/paste";
 import { VoiceButton } from "./VoiceButton";
+import { InlineReviewControls, InlineTextSurface } from "./inline-editor/InlineTextSurface";
+import type { InlineEditor } from "./inline-editor/editor";
+import type {
+  InlineChange,
+  InlineEditorOptions,
+  InlineInspection,
+  InlineSource,
+  ValidatedEvidencePort,
+  ValidatedInlineLayer
+} from "./inline-editor/contracts";
 
 export type SaveStatus =
   /** `afterRetry` marks the save that ended a run of failed ones, so the status can say so. */
@@ -64,6 +74,19 @@ interface Props {
   retryDelaysMs?: readonly number[];
   /** Changes when a voice selection or connection is saved in Settings. */
   voiceStatusRevision?: number;
+  /** Opaque library identity for the review source facts; one studio library unless a host says otherwise. */
+  libraryId?: string;
+  /** The mounted plain-text leaf, for the editor mount's parity tests. */
+  onEditorReady?: (editor: InlineEditor | null) => void;
+  /**
+   * A host-supplied, untrusted review request. This slice wires no provider and saves no report:
+   * production passes nothing, so no request, mark or finding exists until a later host owns one.
+   */
+  reviewRequest?: unknown;
+  /** Heading for the minimal findings list when a request is supplied. */
+  reviewLabel?: string;
+  /** Trusted validation port; the shared exact-source verifier unless a test supplies one. */
+  evidencePort?: ValidatedEvidencePort;
 }
 
 interface Base {
@@ -72,6 +95,12 @@ interface Base {
   content: string;
   title: string;
 }
+
+/** The shared verifier is host-neutral; one frozen port serves every mounted visit. */
+const sharedEvidencePort = createSharedEvidencePort();
+
+/** Distinct for every mounted visit, including a return to the same chapter (A → B → A). */
+let visitCounter = 0;
 
 export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function ManuscriptEditor(
   {
@@ -84,7 +113,12 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     illustrationData,
     selection,
     retryDelaysMs = SAVE_RETRY_DELAYS_MS,
-    voiceStatusRevision = 0
+    voiceStatusRevision = 0,
+    libraryId = "studio-local",
+    onEditorReady,
+    reviewRequest,
+    reviewLabel,
+    evidencePort
   },
   ref
 ) {
@@ -92,38 +126,71 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const [title, setTitle] = useState(chapter.title);
   const [status, setStatus] = useState<SaveStatus>({ kind: "saved", at: Date.now() });
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [editor, setEditor] = useState<InlineEditor | null>(null);
+  const [layer, setLayer] = useState<ValidatedInlineLayer | null>(null);
+  const [active, setActive] = useState<InlineSpan | null>(null);
+  const clearActive = useCallback(() => setActive(null), []);
+  const [announcement, setAnnouncement] = useState("");
   const statusRef = useRef(status);
 
   const base = useRef<Base>({ version: chapter.version, hash: chapter.hash, content: chapter.content, title: chapter.title });
   const latest = useRef(content);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const textarea = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<InlineEditor | null>(null);
+  const surface = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLElement>());
   /** The words the last conflicted save kept as a copy, the base it was checked against, and its status. */
   const kept = useRef<{ text: string; hash: string; status: SaveStatus } | null>(null);
+  const [viewGeneration] = useState(() => `${chapter.id}:${++visitCounter}`);
+  const sourceEpoch = useRef(1);
   /** Failed text saves since the last one that landed; it picks the next retry delay. */
   const failures = useRef(0);
+  /** Saves on their way; a source is only clean when none is, and the buffer matches the base. */
+  const savesInFlight = useRef(0);
+
+  /** Every save-state or saved-base change is a source transition, including A → B → A. */
+  const touchSource = useCallback(() => {
+    sourceEpoch.current += 1;
+  }, []);
 
   const updateStatus = useCallback((next: SaveStatus): SaveStatus => {
     statusRef.current = next;
     setStatus(next);
+    touchSource();
     return next;
-  }, []);
+  }, [touchSource]);
 
   useEffect(() => {
     onStatus(status);
   }, [status, onStatus]);
 
+  const readSource = useCallback(
+    (): InlineSource => ({
+      libraryId,
+      bookId,
+      chapterId: chapter.id,
+      viewGeneration,
+      sourceEpoch: sourceEpoch.current,
+      version: base.current.version,
+      rawHash: base.current.hash,
+      savedBody: base.current.content,
+      clean: latest.current === base.current.content && savesInFlight.current === 0,
+      pending: savesInFlight.current > 0,
+      available: true
+    }),
+    [bookId, chapter.id, libraryId, viewGeneration]
+  );
+  const readSourceRef = useRef(readSource);
+  readSourceRef.current = readSource;
+
   const selectionNonce = selection?.nonce;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: selectionNonce is the change token; selection is a prop whose identity may change without new content, and following it would steal focus on every render
+  const selectionStart = selection?.start;
+  const selectionEnd = selection?.end;
   useEffect(() => {
-    if (!selection || selectionNonce === undefined) return;
-    const element = textarea.current;
-    if (!element) return;
-    element.focus();
-    element.setSelectionRange(selection.start, selection.end);
-    element.scrollIntoView({ block: "center" });
-  }, [selectionNonce]);
+    if (!editor || selectionNonce === undefined || selectionStart === undefined || selectionEnd === undefined) return;
+    editor.setSelection({ anchor: selectionStart, head: selectionEnd }, true);
+  }, [editor, selectionNonce, selectionStart, selectionEnd]);
 
   /** Nothing is left to write: drop the pending draft copy, here and in the main process. */
   const dropDraft = useCallback(() => {
@@ -144,6 +211,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         failures.current = 0;
         return updateStatus({ kind: "saved", at: Date.now() });
       }
+
       // These words are already in a conflict copy, checked against this same base. Saving them again,
       // from a flush, a remount or a quit, would only write the same copy twice (QA C4).
       const copy = kept.current;
@@ -154,6 +222,8 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       }
 
       updateStatus({ kind: "saving" });
+      savesInFlight.current += 1;
+      touchSource();
       try {
         const result = await window.studio.chapters.save({
           bookId,
@@ -169,12 +239,12 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         }
         if (result.data.status === "conflict") {
           failures.current = 0;
-          const status = updateStatus({ kind: "conflict", conflict: result.data.conflict });
-          kept.current = { text, hash: base.current.hash, status };
+          const conflictStatus = updateStatus({ kind: "conflict", conflict: result.data.conflict });
+          kept.current = { text, hash: base.current.hash, status: conflictStatus };
           // The copy holds these words, so no draft of them may be saved again at quit. Words typed
           // while the copy was written keep their draft until they are saved too.
           if (latest.current === text) dropDraft();
-          return status;
+          return conflictStatus;
         }
 
         const saved = result.data.chapter;
@@ -187,9 +257,16 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       } catch (error) {
         failures.current += 1;
         return updateStatus({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        savesInFlight.current = Math.max(0, savesInFlight.current - 1);
+        touchSource();
+        // A save response never certifies a newer draft: the leaf re-reads live source facts and
+        // drops any marks painted against the previous saved token.
+        const current = editorRef.current;
+        if (current) void Promise.resolve().then(() => current.syncSource());
       }
     },
-    [bookId, chapter.id, dropDraft, onSaved, updateStatus]
+    [bookId, chapter.id, dropDraft, onSaved, touchSource, updateStatus]
   );
 
   // One save at a time. A save that started while another was on its way would carry the old base
@@ -211,6 +288,8 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const saveRef = useRef(save);
   saveRef.current = save;
 
+  const applyTextRef = useRef<(next: string) => void>(() => {});
+
   // The editor remounts for another chapter, so its id is fixed for the life of these handles.
   const chapterId = chapter.id;
   useImperativeHandle(
@@ -220,20 +299,25 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       getStatus: () => statusRef.current,
       getBaseHash: () => base.current.hash,
       hold: <T,>(write: () => Promise<T>): Promise<T> => {
+        const release = editorRef.current?.hold();
         const run = queue.current.then(write);
         queue.current = run.catch(() => {});
-        return run;
+        return release ? run.finally(release) : run;
       },
       rebase: (chapters: readonly Chapter[]) => {
         const file = chapters.find((item) => item.id === chapterId);
         if (!file) return false;
         if (file.hash === base.current.hash) return true;
         if (file.content !== base.current.content || file.title !== base.current.title) return false;
+        const previous = readSourceRef.current();
         base.current = { ...base.current, version: file.version, hash: file.hash };
+        touchSource();
+        // Metadata-only acknowledgement: the leaf keeps a dirty buffer and only drops stale marks.
+        editorRef.current?.rebase(previous);
         return true;
       }
     }),
-    [chapterId]
+    [chapterId, touchSource]
   );
 
   // A close or quit asks for the newest text before the main process saves its drafts: the draft
@@ -304,58 +388,164 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       });
     }, 300);
   };
+  applyTextRef.current = applyText;
 
-  const onChange = (next: string): void => {
-    pushHistory(chapter.id, content, Date.now(), Math.abs(next.length - content.length) > 1);
-    applyText(next);
+  const onEditorChange = useCallback(
+    (change: InlineChange) => {
+      // The leaf reports the pre-edit text without mapping marks through it; history is ours alone.
+      if (change.recordHistory) pushHistory(chapter.id, change.previous, Date.now(), change.isolated);
+      applyTextRef.current(change.text);
+    },
+    [chapter.id]
+  );
+  const onEditorChangeRef = useRef(onEditorChange);
+  onEditorChangeRef.current = onEditorChange;
+
+  const runCommand = (command: "undo" | "redo" | "save"): void => {
+    if (command === "save") {
+      void saveRef.current(latest.current);
+      return;
+    }
+    const current = editorRef.current;
+    if (!current) return;
+    const snapshot = current.getSnapshot();
+    // A refused replacement must not consume the undo snapshot: compose and move holds refuse it.
+    if (snapshot.composing || snapshot.held) return;
+    const next = command === "undo" ? undoHistory(chapter.id, latest.current) : redoHistory(chapter.id, latest.current);
+    if (next === null) return;
+    // Keep the caret off a surrogate pair split: undo after a one-character emoji edit otherwise
+    // proposes offset 1 in the restored text and the whole replacement is refused.
+    const selection = {
+      anchor: safeTextOffset(next, snapshot.selection.anchor),
+      head: safeTextOffset(next, snapshot.selection.head)
+    };
+    if (!current.replaceText(next, snapshot.revision, command, selection)) {
+      // The replacement was refused, so put the history transition back where it was.
+      if (command === "undo") redoHistory(chapter.id, next);
+      else undoHistory(chapter.id, next);
+    }
   };
+  const runCommandRef = useRef(runCommand);
+  runCommandRef.current = runCommand;
+
+  const handleInspection = useCallback((inspection: InlineInspection) => {
+    setActive(inspection.active);
+    const current = editorRef.current;
+    const spans = current?.getLayer()?.spans ?? [];
+    const index = spans.findIndex((span) => inlineSpanKey(span) === inlineSpanKey(inspection.active));
+    setAnnouncement(describeInspection(inspection, index, spans.length));
+    if (inspection.action === "return") {
+      const key = findingKey(inspection.active);
+      requestAnimationFrame(() => rowRefs.current.get(key)?.focus());
+    }
+  }, []);
+  const handleInspectionRef = useRef(handleInspection);
+  handleInspectionRef.current = handleInspection;
+
+  const handleReviewStatus = useCallback((next: "hidden" | "filtered" | "stale" | "ready") => {
+    if (next === "stale") {
+      setLayer(null);
+      setActive(null);
+      setAnnouncement("The review marks are hidden because the text changed. The findings are no longer current.");
+      return;
+    }
+    if (next === "filtered") {
+      // The row must not stay current once the filter hides the finding it names.
+      setActive(null);
+      setAnnouncement("The active finding is hidden by the filter.");
+    }
+  }, []);
+  const handleReviewStatusRef = useRef(handleReviewStatus);
+  handleReviewStatusRef.current = handleReviewStatus;
+
+  const optionsRef = useRef<InlineEditorOptions | null>(null);
+  if (!optionsRef.current) {
+    optionsRef.current = {
+      initialText: latest.current,
+      readSource: () => readSourceRef.current(),
+      evidence: evidencePort ?? (sharedEvidencePort as ValidatedEvidencePort),
+      onChange: (change) => onEditorChangeRef.current(change),
+      onCommand: (command) => runCommandRef.current(command),
+      onInspect: (inspection) => handleInspectionRef.current(inspection),
+      onReviewStatus: (next) => handleReviewStatusRef.current(next),
+      onComposition: () => {},
+      onBlur: () => void saveRef.current(latest.current),
+      label: "Chapter text",
+      testId: "manuscript-text",
+      placeholder: "Begin wherever you like. Nothing here is read by anyone else."
+    };
+  }
+  const options = optionsRef.current;
+
+  // Stable for the visit: a rerender must never recreate the view or its undo-adjacent state.
+  const onEditorReadyRef = useRef(onEditorReady);
+  onEditorReadyRef.current = onEditorReady;
+  const onReady = useCallback((next: InlineEditor | null) => {
+    editorRef.current = next;
+    setEditor(next);
+    onEditorReadyRef.current?.(next);
+  }, []);
+
+  useEffect(() => {
+    if (!editor) return;
+    const element = surface.current?.querySelector<HTMLElement>('[data-testid="manuscript-text"]');
+    if (!element) return;
+    return installTextareaContract(element, editor);
+  }, [editor]);
+
+  // Host-supplied synthetic request: the trusted port verifies it; nothing is sent or saved here.
+  useEffect(() => {
+    if (!editor) return;
+    if (reviewRequest === undefined || reviewRequest === null) {
+      // The host withdrew its request: no marks, no list, and no late proof may paint one.
+      editor.discardEvidence();
+      setLayer(null);
+      setActive(null);
+      setAnnouncement("");
+      return;
+    }
+    let live = true;
+    setLayer(null);
+    setActive(null);
+    void editor.showEvidence(reviewRequest).then((result) => {
+      if (!live) return;
+      if (result !== "applied") {
+        setAnnouncement(
+          result === "unavailable"
+            ? "The review layer could not be verified for this saved text."
+            : "The review layer was replaced or is no longer current."
+        );
+        return;
+      }
+      const next = editor.getLayer();
+      setLayer(next);
+      setAnnouncement(
+        next ? `${formatCount(next.spans.length)} ${pluralize(next.spans.length, "finding")} verified for this saved text.` : ""
+      );
+    });
+    return () => {
+      live = false;
+    };
+  }, [editor, reviewRequest]);
 
   /**
    * Insert a transcript where the author left the caret. Spacing is added only when the surrounding
-   * text needs it; the insert then takes the normal applyText -> draft -> save path.
+   * text needs it; the insert then takes the normal applyText -> draft -> save path. A busy editor
+   * (composition or hold) refuses and leaves the transcript with the host for retry.
    */
   const insertTranscript = (text: string): void => {
-    const element = textarea.current;
-    const start = element?.selectionStart ?? latest.current.length;
-    const end = element?.selectionEnd ?? start;
-    const current = latest.current;
-    const insertion = insertAtSelection(current, text, start, end);
-    if (!insertion) return;
+    const current = editorRef.current;
+    if (!current) {
+      setVoiceError("The editor is not ready yet. Dictate again in a moment.");
+      return;
+    }
+    const snapshot = current.getSnapshot();
+    if (!current.insertDictation(text, snapshot.revision)) {
+      setVoiceError("The transcript could not be inserted while the editor is busy. Dictate again when it is ready.");
+      return;
+    }
     setVoiceError(null);
-    pushHistory(chapter.id, current, Date.now(), true);
-    applyText(insertion.text);
-    requestAnimationFrame(() => {
-      const next = textarea.current;
-      if (!next) return;
-      next.focus();
-      next.setSelectionRange(insertion.caret, insertion.caret);
-    });
-  };
-
-  /**
-   * Paste through the studio normaliser: line endings, spacing and quotation marks are unified
-   * before the text lands, while single breaks, stanza breaks and hard breaks pass through so
-   * verse survives. The insert takes the normal applyText -> draft -> save path, and the caret
-   * lands after the inserted text.
-   */
-  const onPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>): void => {
-    const pasted = event.clipboardData?.getData("text");
-    if (!pasted) return;
-    event.preventDefault();
-    const element = textarea.current;
-    const start = element?.selectionStart ?? latest.current.length;
-    const end = element?.selectionEnd ?? start;
-    const current = latest.current;
-    const inserted = normalizePasteText(pasted);
-    pushHistory(chapter.id, current, Date.now(), true);
-    applyText(`${current.slice(0, start)}${inserted}${current.slice(end)}`);
-    requestAnimationFrame(() => {
-      const next = textarea.current;
-      if (!next) return;
-      next.focus();
-      const caret = start + inserted.length;
-      next.setSelectionRange(caret, caret);
-    });
+    current.focus();
   };
 
   const commitTitle = async (): Promise<void> => {
@@ -380,7 +570,10 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         return;
       }
       const saved = result.data.chapter;
+      const previous = readSourceRef.current();
       base.current = { version: saved.version, hash: saved.hash, content: saved.content, title: saved.title };
+      touchSource();
+      editorRef.current?.rebase(previous);
       onSaved(saved);
       updateStatus({ kind: "saved", at: Date.now() });
     } catch (error) {
@@ -391,8 +584,11 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const words = countWords(content);
   const lines = content.split("\n").filter((line) => line.trim().length > 0).length;
 
-  return (
-    <div className="mx-auto w-full max-w-[760px]" data-testid="manuscript-editor">
+  const sheet = (
+    <div
+      className={layer ? "min-w-0 flex-1" : "w-full"}
+      data-testid="manuscript-editor"
+    >
       <div className="rounded-[var(--corner-xl)] bg-[var(--manuscript-bg)] px-5 pt-8 pb-16 shadow-[var(--elevation-2)] min-[700px]:px-10 min-[700px]:pt-12 min-[700px]:pb-24 lg:px-14">
         <div className="tabular mb-4 flex flex-wrap items-center gap-2 whitespace-nowrap text-(length:--text-caption-size) text-muted-foreground">
           <span>{chapter.isPrologue ? "Prologue" : `Chapter ${ordinal}`}</span>
@@ -433,44 +629,9 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
           className="chapter-title w-full bg-transparent tracking-[-0.2px] outline-none placeholder:text-muted-foreground/60"
         />
 
-        <textarea
-          ref={textarea}
-          value={content}
-          data-testid="manuscript-text"
-          onChange={(event) => onChange(event.target.value)}
-          onPaste={onPaste}
-          onBlur={() => void saveRef.current(latest.current)}
-          onKeyDown={(event) => {
-            const key = event.key.toLowerCase();
-            if ((event.metaKey || event.ctrlKey) && key === "s") {
-              event.preventDefault();
-              void saveRef.current(latest.current);
-              return;
-            }
-            if ((event.metaKey || event.ctrlKey) && key === "z" && !event.shiftKey) {
-              const previous = undoHistory(chapter.id, latest.current);
-              if (previous !== null) {
-                event.preventDefault();
-                applyText(previous);
-              }
-              return;
-            }
-            if (
-              ((event.metaKey || event.ctrlKey) && key === "z" && event.shiftKey) ||
-              (event.ctrlKey && key === "y")
-            ) {
-              const next = redoHistory(chapter.id, latest.current);
-              if (next !== null) {
-                event.preventDefault();
-                applyText(next);
-              }
-            }
-          }}
-          spellCheck
-          aria-label="Chapter text"
-          placeholder="Begin wherever you like. Nothing here is read by anyone else."
-          className="manuscript thin-scroll mt-8 block min-h-[52vh] w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-muted-foreground/60"
-        />
+        <div ref={surface} className="manuscript thin-scroll mt-8">
+          <InlineTextSurface options={options} onReady={onReady} />
+        </div>
 
         {illustration && illustrationData ? (
           <figure className="mt-10 border-t border-[var(--border)] pt-6" data-testid="chapter-illustration">
@@ -487,7 +648,237 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       </div>
     </div>
   );
+
+  if (!layer) {
+    return <div className="mx-auto w-full max-w-[760px]">{sheet}</div>;
+  }
+
+  // The outer element type never changes with the layer, so painting findings never remounts the
+  // editor: one view, one undo owner, one save path for the whole visit.
+  return (
+    <div className="mx-auto flex w-full max-w-[1120px] items-start gap-6">
+      {sheet}
+      <ReviewFindingsAside
+        editor={editor}
+        layer={layer}
+        label={reviewLabel}
+        active={active}
+        onClearActive={clearActive}
+        announcement={announcement}
+        onRow={(key, element) => {
+          if (element) rowRefs.current.set(key, element);
+          else rowRefs.current.delete(key);
+        }}
+      />
+    </div>
+  );
 });
+
+/** The heading the findings list uses when a host gives none. */
+const DEFAULT_REVIEW_LABEL = "Review findings";
+
+/** One row per finding, in source order; each row has an equivalent control in the text toolbar. */
+function ReviewFindingsAside({
+  editor,
+  layer,
+  label,
+  active,
+  announcement,
+  onRow,
+  onClearActive
+}: {
+  editor: InlineEditor | null;
+  layer: ValidatedInlineLayer;
+  label: string | undefined;
+  active: InlineSpan | null;
+  announcement: string;
+  onRow: (key: string, element: HTMLElement | null) => void;
+  onClearActive: () => void;
+}) {
+  const [category, setCategory] = useState("all");
+  const lastCategory = useRef(category);
+  const categories = [...new Set(layer.spans.map((span) => span.category))].sort();
+  const visible = category === "all" ? layer.spans : layer.spans.filter((span) => span.category === category);
+
+  useEffect(() => {
+    if (!editor) return;
+    // Filtering only changes what is painted; no request, write or finding is removed. A real
+    // filter change clears the transient "current" finding, so a row cannot stay current while its
+    // mark is hidden; re-renders for other reasons keep it.
+    if (lastCategory.current !== category) {
+      lastCategory.current = category;
+      onClearActive();
+    }
+    editor.setVisibility(
+      category === "all" ? null : new Set(layer.spans.filter((span) => span.category === category).map(inlineSpanKey)),
+      false
+    );
+  }, [category, editor, layer, onClearActive]);
+
+  const activeKey = active ? findingKey(active) : null;
+
+  return (
+    <aside
+      aria-label="Review findings"
+      className="glass mt-8 w-[300px] shrink-0 rounded-[var(--corner-lg)] p-4 text-(length:--text-caption-size) min-[1000px]:sticky min-[1000px]:top-4"
+    >
+      <h2 className="text-(length:--text-subheadline-size) font-semibold">{label || DEFAULT_REVIEW_LABEL}</h2>
+      <p className="mt-1 text-muted-foreground" data-testid="review-count">
+        {formatCount(groupFindings(visible).length)} of {formatCount(groupFindings(layer.spans).length)}{" "}
+        {pluralize(groupFindings(layer.spans).length, "finding")} shown
+      </p>
+
+      {categories.length > 1 ? (
+        <label className="mt-3 block">
+          <span className="text-muted-foreground">Show</span>
+          <select
+            aria-label="Filter findings by category"
+            className="mt-1 w-full rounded-[var(--corner-sm)] border border-[var(--border)] bg-transparent px-2 py-1"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          >
+            <option value="all">All categories</option>
+            {categories.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      <div className="mt-3">
+        <InlineReviewControls editor={editor} />
+      </div>
+
+      <ol className="mt-3 space-y-2">
+        {groupFindings(visible).map((row, index) => (
+          <li key={row.key}>
+            <button
+              type="button"
+              ref={(element) => onRow(row.key, element)}
+              {...(row.key === activeKey ? { "aria-current": true as const } : {})}
+              aria-label={`Show ${row.category} finding ${index + 1} in the text`}
+              onClick={() => {
+                if (!editor) return;
+                if (!editor.inspectSpan(row.span)) editor.inspectAt(row.span.from);
+              }}
+              disabled={!editor}
+              className="w-full rounded-[var(--corner-sm)] border border-[var(--border)] px-2 py-1 text-left focus-visible:outline-2 focus-visible:outline-[var(--primary)] aria-[current=true]:border-[var(--primary)]"
+            >
+              <span className="font-medium">{row.category}</span>
+              {row.count > 1 ? <span className="text-muted-foreground"> · {row.count} passages</span> : null}
+              <span className="mt-1 block line-clamp-3 text-muted-foreground">“{row.quote}”</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+
+      <p role="status" aria-live="polite" className="mt-3 min-h-4 text-muted-foreground">
+        {announcement}
+      </p>
+    </aside>
+  );
+}
+
+interface FindingRow {
+  key: string;
+  category: string;
+  quote: string;
+  count: number;
+  span: InlineSpan;
+}
+
+function findingKey(span: InlineSpan): string {
+  return JSON.stringify([span.runId, span.findingId]);
+}
+
+/** Clamp a text offset, moving left one unit when it would split a surrogate pair. */
+function safeTextOffset(text: string, offset: number): number {
+  let at = Math.max(0, Math.min(offset, text.length));
+  if (at > 0 && at < text.length) {
+    const before = text.charCodeAt(at - 1);
+    const after = text.charCodeAt(at);
+    if (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) at -= 1;
+  }
+  return at;
+}
+
+function groupFindings(spans: readonly InlineSpan[]): FindingRow[] {
+  const rows = new Map<string, FindingRow>();
+  for (const span of spans) {
+    const key = findingKey(span);
+    const existing = rows.get(key);
+    if (existing) {
+      rows.set(key, { ...existing, count: existing.count + 1 });
+      continue;
+    }
+    rows.set(key, {
+      key,
+      category: span.category,
+      quote: span.quote.replace(/\s+/g, " ").trim().slice(0, 120),
+      count: 1,
+      span
+    });
+  }
+  return [...rows.values()];
+}
+
+function describeInspection(inspection: InlineInspection, index: number, total: number): string {
+  const overlap = inspection.choices.length > 1 ? ` ${inspection.choices.length} findings overlap this passage.` : "";
+  const where = index >= 0 ? `Finding ${index + 1} of ${total}: ${inspection.active.category}.` : inspection.active.category;
+  return `${inspection.action === "return" ? "Returned to the finding. " : ""}${where}${overlap}`;
+}
+
+/**
+ * The mount keeps the automation contract the old textarea had: reading `value` returns the exact
+ * editor text, and assigning it applies that text through the editor's ordinary compare-and-set
+ * change path (never through a second save, undo or persistence owner). Native typing never touches
+ * this shim; the hidden smoke and the existing DOM tests drive the same mounted surface through it.
+ */
+function installTextareaContract(element: HTMLElement, editor: InlineEditor): () => void {
+  let pending: string | null = null;
+
+  const apply = (): void => {
+    if (pending === null) return;
+    const text = pending;
+    pending = null;
+    const snapshot = editor.getSnapshot();
+    if (!snapshot.destroyed && !snapshot.composing) editor.typeText(text, snapshot.revision);
+  };
+
+  Object.defineProperty(element, "value", {
+    configurable: true,
+    get: () => editor.getSnapshot().body,
+    set: (next: string) => {
+      pending = String(next);
+    }
+  });
+  Object.defineProperty(element, "selectionStart", {
+    configurable: true,
+    get: () => editor.getSnapshot().selection.anchor,
+    set: (offset: number) => {
+      const snapshot = editor.getSnapshot();
+      editor.setSelection({ anchor: offset, head: snapshot.selection.head });
+    }
+  });
+  Object.defineProperty(element, "selectionEnd", {
+    configurable: true,
+    get: () => editor.getSnapshot().selection.head,
+    set: (offset: number) => {
+      const snapshot = editor.getSnapshot();
+      editor.setSelection({ anchor: snapshot.selection.anchor, head: offset });
+    }
+  });
+
+  element.addEventListener("change", apply);
+  element.addEventListener("input", apply);
+  return () => {
+    element.removeEventListener("change", apply);
+    element.removeEventListener("input", apply);
+    for (const key of ["value", "selectionStart", "selectionEnd"]) delete (element as unknown as Record<string, unknown>)[key];
+  };
+}
 
 /** The save status as one plain sentence, with the reason when a save failed. */
 export function statusLabel(status: SaveStatus): string {
