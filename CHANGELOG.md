@@ -9,9 +9,14 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 - Compose the accepted pure authoring, hands-free voice, scoped reader-review and exact-current
-  inline-editor leaves with the checked planning/Stop/history composition. Each leaf keeps its
-  own retained host/storage/permission/mount gates; this commit adds no new runtime authority,
+  inline-editor leaves with the checked planning/Stop/history composition. Each leaf keeps its own
+  retained host/storage/permission/mount gates; this commit adds no new runtime authority,
   provider call, microphone use or mounted review surface.
+- Let a planning draft refuse the unload before anything is torn down: a granted quit now only
+  records intent, the agent backend stops after every window has actually gone, and a refused
+  unload clears both the close permission and the quit intent so the next attempt asks again.
+  Previously Keep editing could leave the studio open with its control plane stopped and later
+  closes bypassing the draft flush.
 
 - Compose the accepted planning vertical with bounded-authoring policy, terminal Stop delivery and
   merged chapter-history restore work. Preserve each exact candidate's bounded evidence; broad
