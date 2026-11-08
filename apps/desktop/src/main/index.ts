@@ -10,6 +10,7 @@ import {
 import type { DriftReport } from "@ai-book-studio/core/sync/types";
 import { DEFAULT_VOICE_PREFERENCES } from "@ai-book-studio/core/providers/voice-preferences";
 import { DraftBuffer } from "./drafts";
+import { ExitCoordinator } from "./exit-coordinator";
 import { ExitGuard, type ExitQuestion } from "./exit-guard";
 import { RecoveryStore } from "./recovery";
 import { SyncService } from "./sync";
@@ -73,9 +74,8 @@ let agentRuntime: AgentRuntime;
 let notifier: BackgroundNotifier;
 let backend: LocalBackend | null = null;
 let exitGuard: ExitGuard | undefined;
-/** Set once a quit has saved or kept every draft and the author did not choose to stay. */
-let quitting = false;
-let quitCheck: Promise<void> | null = null;
+/** Orders quit so a renderer that refuses to unload cannot leave teardown behind. */
+const exitCoordinator = new ExitCoordinator();
 
 /*
  * One writer per profile (spec 002 FR-069), and the first thing a run does once its userData folder
@@ -192,7 +192,7 @@ function createWindow(): BrowserWindow {
   let allowClose = false;
   let closeCheck: Promise<void> | null = null;
   window.on("close", (event) => {
-    if (allowClose || quitting || !exitGuard) return;
+    if (allowClose || exitCoordinator.quitting || !exitGuard) return;
     event.preventDefault();
     if (closeCheck) return;
     closeCheck = exitGuard
@@ -209,6 +209,15 @@ function createWindow(): BrowserWindow {
       .finally(() => {
         closeCheck = null;
       });
+  });
+
+  /*
+   * The renderer refused the unload — the planning editor asked to keep editing. Nothing has been
+   * torn down yet, so clear the close permission and the quit intent; the next attempt asks again.
+   */
+  window.webContents.on("will-prevent-unload", () => {
+    allowClose = false;
+    exitCoordinator.unloadPrevented();
   });
 
   window.on("closed", () => {
@@ -587,27 +596,33 @@ async function askBeforeExit(question: ExitQuestion): Promise<number> {
 /*
  * The quit decides before it stops anything: an author who keeps the studio open keeps the control
  * plane too. A second quit while the question is open waits for the first, and a quit during the
- * close question shares its answer (`ExitGuard.check`).
+ * close question shares its answer (`ExitGuard.check`). A granted quit still only records intent —
+ * a window may veto its unload (an unsaved planning draft), and `will-quit` is the first point at
+ * which every window has actually gone.
  */
 app.on("before-quit", (event) => {
-  if (quitting || !studio || !exitGuard) return;
-  event.preventDefault();
-  if (quitCheck) return;
+  if (!studio || !exitGuard) return;
   const guard = exitGuard;
-  quitCheck = (async () => {
-    const choice = await guard.check(mainWindow?.webContents ?? null, "quit").catch((error: unknown) => {
-      console.warn("[studio] Flush before quit failed:", error);
-      return "leave" as const;
-    });
-    if (choice === "stay") return;
-    await (backend?.stop() ?? Promise.resolve()).catch((error: unknown) =>
-      console.warn("[backend] Could not stop the agent toolkit service:", error)
-    );
-    quitting = true;
-    app.quit();
-  })().finally(() => {
-    quitCheck = null;
-  });
+  const allow = exitCoordinator.begin(
+    () =>
+      guard.check(mainWindow?.webContents ?? null, "quit").catch((error: unknown) => {
+        console.warn("[studio] Flush before quit failed:", error);
+        return "leave" as const;
+      }),
+    () => app.quit()
+  );
+  if (!allow) event.preventDefault();
+});
+
+app.on("will-quit", (event) => {
+  const allow = exitCoordinator.finish(
+    () =>
+      (backend?.stop() ?? Promise.resolve()).catch((error: unknown) => {
+        console.warn("[backend] Could not stop the agent toolkit service:", error);
+      }),
+    () => app.quit()
+  );
+  if (!allow) event.preventDefault();
 });
 
 app.on("window-all-closed", () => {
