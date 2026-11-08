@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Integration
 
+- Compose the accepted planning vertical with bounded-authoring policy, terminal Stop delivery and
+  merged chapter-history restore work. Preserve each exact candidate's bounded evidence; broad
+  planning/organization scope and integrated product acceptance remain separate follow-through.
 - Compose the accepted planning and bounded-authoring policy, terminal Stop delivery and merged
   chapter-history restore work in one integration candidate. Preserve each exact candidate's
   bounded evidence; connected mounting and product acceptance remain separate follow-through.
@@ -20,6 +23,12 @@ Update the `Unreleased` section before every commit.
 - Keep history restore/undo success results complete for partial saved front matter without adding
   runtime defaults to the file. Require a post-failure history refresh to unlock uncertain capture,
   and make close notifications idempotent even when the host callback fails.
+- Connect checked worldbuilding and saved-word goals to the open Library, validated desktop/browser
+  transport and workspace controls. Share the existing book queue and journal boundary; verify
+  complete saved chapter enumeration, block unresolved planning navigation, retain uncertain drafts,
+  and expose verified recovery-copy inspection. Distinguish browser postpublication readback drift
+  from a prepublication conflict without retrying. Focused synthetic integration and native guard/focus
+  checks accompany this bounded slice; full planning/organization and integrated acceptance remain open.
 - Accept individually researched full-book authoring, inline editorial-review and hands-free
   contracts (D-194–D-200 / ADRs 0019–0021), with the bounded workflow/session authority amendment,
   checked conversation policy, explicit cost modes and recoverable saved-review ownership.
@@ -218,6 +227,10 @@ Update the `Unreleased` section before every commit.
 
 ### Fixed
 
+- Gate the workspace More sheet's Back to library control with the same planning navigation guard as
+  the header Back. A dirty, pending or uncertain planning draft now blocks that exit without queueing
+  navigation; the sheet closes, the discard confirmation stays reachable, and Back works after explicit
+  discard. A mounted workspace regression covers the dirty-goal path.
 - W05 export safety: Word, Markdown, PDF and EPUB reject destinations that resolve inside the
   open library, including parent-directory aliases. They recheck destination identity and content
   immediately before atomic publication, preserve the supplied saved snapshot, and name any

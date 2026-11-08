@@ -65,6 +65,10 @@ export class Library {
     return this.service.deviceId;
   }
 
+  get planning() { return this.service.planning; }
+  get goals() { return this.service.goals; }
+  get planningRecovery() { return this.service.planningRecovery; }
+
   get deviceName(): string {
     return this.service.deviceName;
   }

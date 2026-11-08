@@ -90,6 +90,9 @@ import { detectDrift } from "../sync/detector";
 import type { DriftReport } from "../sync/types";
 import { ChapterHistoryStore } from "./history-store";
 import { ChapterHistoryRestore, type HistoryChapterWrite, type HistoryMutationResult, type HistoryRecovery } from "./history-restore";
+import { PlanningService } from "../planning/service";
+import { PlanningRecovery } from "./planning-recovery";
+import { GoalService, type GoalHost } from "../organization/goals";
 import {
   HistoryError,
   historyDirectory,
@@ -135,11 +138,31 @@ export type KeepConflictCopyResult = { status: "kept"; savedAs: string } | { sta
 
 export class LibraryService {
   private readonly writes = new Map<string, Promise<unknown>>();
+  readonly planning: PlanningService;
+  readonly goals: GoalService;
+  readonly planningRecovery: PlanningRecovery;
 
   private constructor(
     private readonly env: LibraryEnvironment,
     private readonly device: LibraryDeviceInfo
-  ) {}
+  ) {
+    const host: GoalHost = {
+      storage: env.storage, runtime: env.runtime, deviceId: device.id,
+      withBook: (bookId, work) => this.serializeWrite(bookId, work),
+      commitFile: (path, bytes, expected) => this.commitBytes(path, bytes, expected),
+      // Already inside the shared queue: never acquire it again here.
+      readSavedBook: async (bookId) => {
+        const { book } = await this.readBookFile(bookId);
+        const { chapters, chapterReadIssues, copies } = await this.readChaptersWithIssues(bookId, true);
+        return { book, chapters, chapterReadIssues: [...chapterReadIssues, ...copies.map((copy) => ({
+          fileName: copy.path, order: copy.order, reason: "invalid-format" as const
+        }))] };
+      }
+    };
+    this.planning = new PlanningService(host);
+    this.goals = new GoalService(host);
+    this.planningRecovery = new PlanningRecovery(host, env.storage);
+  }
 
   static async open(env: LibraryEnvironment): Promise<LibraryService> {
     await ensureLayout(env.storage);
@@ -1247,7 +1270,10 @@ export class LibraryService {
     text: string,
     expected: FileExpectation
   ): Promise<CommitFileResult> {
-    const bytes = textEncoder.encode(text);
+    return this.commitBytes(path, textEncoder.encode(text), expected);
+  }
+
+  private async commitBytes(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
     await notePlannedWrite({
       storage: this.env.storage,
       deviceId: this.device.id,
@@ -1326,9 +1352,23 @@ export class LibraryService {
    * The book's chapter file names, ranked so that the first readable file with an id is that
    * chapter's file. A name a sync tool gives its copies is never a candidate.
    */
-  private async chapterFileNames(bookId: string): Promise<string[]> {
+  private async chapterFileNames(bookId: string, complete = false): Promise<string[]> {
     const names: string[] = [];
-    for (const entry of await this.env.storage.listDirectory(chaptersPath(bookId))) {
+    const entries = await this.env.storage.listDirectory(chaptersPath(bookId));
+    if (complete && this.env.storage.inspectDirectory) {
+      const inspected = await this.env.storage.inspectDirectory(chaptersPath(bookId));
+      for (const entry of inspected) {
+        if ((entry.name.endsWith(".md") && !isConflictCopyName(entry.name)) || /^\..+\.md\.icloud$/.test(entry.name)) {
+          if (entry.kind !== "file" || !entries.some((listed) => listed.name === entry.name && listed.kind === "file") || entry.name.endsWith(".icloud")) {
+            throw new LibraryError("io", "The complete saved chapter set is unavailable.");
+          }
+        }
+      }
+    }
+    for (const entry of entries) {
+      if (complete && ((entry.name.endsWith(".md") && entry.kind !== "file") || /^\..+\.md\.icloud$/.test(entry.name))) {
+        throw new LibraryError("io", "The complete saved chapter set is unavailable.");
+      }
       if (entry.kind === "file" && entry.name.endsWith(".md") && !isConflictCopyName(entry.name)) names.push(entry.name);
     }
     return names.sort(compareChapterFileNames);
@@ -1390,14 +1430,14 @@ export class LibraryService {
   }
 
   private async readChaptersWithIssues(
-    bookId: string
+    bookId: string, complete = false
   ): Promise<{ chapters: Chapter[]; chapterReadIssues: ChapterReadIssue[]; copies: Chapter[] }> {
     const chapters: Chapter[] = [];
     const chapterReadIssues: ChapterReadIssue[] = [];
     // Files whose id a higher-ranked file already holds: copies, listed as conflicts and never written.
     const copies: Chapter[] = [];
     const claimed = new Set<string>();
-    for (const fileName of await this.chapterFileNames(bookId)) {
+    for (const fileName of await this.chapterFileNames(bookId, complete)) {
       let chapter: Chapter;
       try {
         chapter = await this.readChapterFile(bookId, fileName);

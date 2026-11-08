@@ -69,8 +69,9 @@ is current format evidence, not a claim that checked-write migration is complete
 ## Checked planning and goal sidecars
 
 D-163–D-168 / [ADR 0017](adr/0017-planning-and-organization.md) define these optional
-book-owned files. The first core slice supplies worldbuilding create/read/edit and goal set/clear;
-host Library integration and author-facing controls are separate delivery work.
+book-owned files. Worldbuilding create/read/edit and goal set/clear are connected to the current
+Library's shared queue, desktop/browser transport and workspace controls. Timeline/beat/story-note
+mutation, record archive/restore and the remaining organization journeys are separate delivery work.
 
 ### `books/<bookId>/planning.json` (schema 1)
 
@@ -146,6 +147,15 @@ ordinary chapter view. Valid headerless saved text remains countable. Empty book
 zero. The host owns complete enumeration. This is point-in-time verification, not a filesystem
 transaction or draft count.
 
+The integrated reader uses fresh directory enumeration, retains duplicate-ID files as read issues
+instead of silently counting only the preferred copy, and compares the filesystem adapter's inspected
+entries to the readable listing. Unsupported chapter entries, omitted inspected files and iCloud
+placeholders cannot confirm a total. A recorded chapter `bookId`, when present, must match the owner.
+Valid headerless and partial-metadata chapters retain the existing deterministic fallback identity.
+Observed external changes, saved chapter hashes/enumeration/read issues, explicit refresh, window
+focus and planning write outcomes invalidate displayed progress. Dirty/pending/failed/conflicting
+editor state is separately labelled and never supplies the saved count.
+
 ### Sidecar mutation and recovery
 
 Both files have an exact **2,500,000 UTF-8 byte** budget, including unknown fields, two-space
@@ -194,6 +204,23 @@ fresh reviewed edit. Both the active write and copy publication can be uncertain
 error or mismatching readback: report `uncertain`, keep the editor draft and reread storage; never
 replay automatically or remove a possibly published file. Copy failure never claims a durable copy.
 Owner/schema checks run again before copy creation and each publication attempt.
+
+Transport preserves exact raw baselines, validates strict request/result envelopes and verifies reply
+owner, raw hash, revision and submitted fields. Only known request-admission failures return
+`outcome: "refused"`; unknown exceptions remain uncertain. Write errors retain `phase: "active" |
+"recovery"` and `outcome: "uncertain" | "not-kept"`. The browser adapter marks a `changed` result
+after publication with `publication: "uncertain"`; planning treats that as an uncertain outcome,
+never as a prepublication conflict or a collision to retry. This adds no cross-process CAS guarantee.
+
+Workspace recovery lists planning/goal copy names in pages of 25 (a display window, not a retention
+limit). Inspection verifies bounded raw bytes, hash, schema, owner and copy-only metadata; a named
+copy that cannot be verified stays unavailable. Recovery is explicit manual review: inspect the
+read-only document, reopen the appropriate current editor, enter the chosen fields and submit a new
+checked edit. There is no whole-document restore endpoint or automatic loading of copy metadata as
+active state. Newer active unknown fields remain owned by the current baseline. Native close and
+shell book/library navigation are blocked until the matching dialog resolves pending/dirty/uncertain
+state; after closing an editor, retry the navigation action. Abrupt process termination cannot retain
+an in-memory draft or cancel a publication already sent.
 
 Book-side files and their conflict copies travel in folder copies, portable archives and whole-book
 trash/restore. Collection and annotation file writers, recents and annotation navigation are not

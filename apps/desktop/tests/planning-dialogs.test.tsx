@@ -1,6 +1,12 @@
 /// <reference types="bun" />
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { StrictMode } from "react";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createPlanningApi, planningChannels, planningValue } from "@ai-book-studio/core/library/planning-api";
+import { PlanningNavigation } from "../../../packages/app/src/components/planning/navigation";
+import { mockElectron } from "./support/mock-electron";
 import type { SidecarRead, SidecarSave } from "@ai-book-studio/core/planning/checked-sidecar";
 import type { Planning } from "@ai-book-studio/core/planning/schema";
 import type { PlanningSaveRequest } from "@ai-book-studio/core/planning/service";
@@ -12,15 +18,28 @@ let testing!: typeof import("@testing-library/react/pure");
 let WorldbuildingDialog!: typeof import("@ai-book-studio/app/components/planning/WorldbuildingDialog").WorldbuildingDialog;
 let GoalDialog!: typeof import("@ai-book-studio/app/components/planning/GoalDialog").GoalDialog;
 let SavedGoalProgress!: typeof import("@ai-book-studio/app/components/planning/SavedGoalProgress").SavedGoalProgress;
+let WorkspaceView!: typeof import("@ai-book-studio/app/views/WorkspaceView").WorkspaceView;
+let Library!: typeof import("../src/main/library/store").Library;
+let registerIpc!: typeof import("../src/main/ipc").registerIpc;
+const roots: string[] = [];
+const ipcHandlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>();
 
 beforeAll(async () => {
   testing = await mountDom();
   ({ WorldbuildingDialog } = await import("@ai-book-studio/app/components/planning/WorldbuildingDialog"));
   ({ GoalDialog } = await import("@ai-book-studio/app/components/planning/GoalDialog"));
   ({ SavedGoalProgress } = await import("@ai-book-studio/app/components/planning/SavedGoalProgress"));
+  ({ WorkspaceView } = await import("@ai-book-studio/app/views/WorkspaceView"));
+  mockElectron(tmpdir(), { handle: (channel, handler) => { ipcHandlers.set(channel, handler); } });
+  ({ Library } = await import("../src/main/library/store"));
+  ({ registerIpc } = await import("../src/main/ipc"));
 });
 afterEach(() => testing.cleanup());
 afterAll(unmountDom);
+afterAll(async () => {
+  mockElectron(tmpdir());
+  await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+});
 
 const bookId = "book_synthetic01";
 const view = { bookId, viewGeneration: 1 };
@@ -61,6 +80,136 @@ async function ready() { await page().findByText(/Ready · changes save/); }
 function conflict(): SidecarSave<Planning> & { status: "conflict" } {
   return { status: "conflict", bookId, reason: "external-edit", savedAs: "conflicts/planning-synthetic.json", observed: { kind: "sha256", revision: 4, value: "c".repeat(64) } };
 }
+
+async function realPlanningWorkspace() {
+  const root = await mkdtemp(join(tmpdir(), "w08-planning-ui-"));
+  roots.push(root);
+  const library = await Library.open(root);
+  const book = await library.createBook({ title: "Synthetic integrated coast" });
+  await library.createChapter(book.id, { title: "Synthetic source", content: "one two three" });
+  registerIpc({ requireLibrary: () => library } as never, () => null, {} as never, {} as never,
+    {} as never, {} as never, {} as never, { get: () => ({}) } as never, {} as never);
+  const api = createPlanningApi((operation, payload) => required(ipcHandlers.get(planningChannels[operation]))({}, payload));
+  let changed: (() => void) | undefined;
+  Object.assign(window, { studio: {
+    planning: api, platform: "darwin",
+    books: { open: async (id: string) => ({ ok: true, data: await library.readBook(id) }) },
+    conflicts: { list: async (id: string) => ({ ok: true, data: await library.listConflicts(id) }) },
+    drafts: { set: async () => ({ ok: true, data: null }), clear: async () => ({ ok: true, data: null }), onFlushRequest: () => () => {} },
+    recovery: { list: async () => ({ ok: true, data: [] }) },
+    images: { list: async () => ({ ok: true, data: { manifest: { images: [] } } }) },
+    library: { onChange: (callback: (value: unknown) => void) => { changed = () => callback({ paths: [`books/${book.id}/chapters`], at: new Date().toISOString() }); return () => {}; } },
+    agent: { onEvent: () => () => {} },
+    voice: { connections: async () => ({ ok: true, data: [] }), speakers: async () => ({ ok: true, data: { available: false, connectionLabel: null, model: null, voices: [] } }) }
+  } });
+  const back = mock(() => {});
+  const notice = mock((_error: unknown) => {});
+  const navigation = new PlanningNavigation();
+  const mounted = testing.render(<WorkspaceView bookId={book.id} libraryRoot={root} planningNavigation={navigation}
+    theme={{ choice: "light", set: () => {}, cycle: () => {} }} onBack={back} onNotice={notice} onSchemaRefusal={() => {}} />);
+  await page().findByText("Saved: 3 words · no saved goal");
+  return { root, library, book, api, back, notice, navigation, mounted, changed: () => changed?.() };
+}
+
+describe("mounted Workspace through real checked filesystem and registered IPC", () => {
+  test("unknown save failure holds the exact draft and close guard until explicit discard and fresh reopen", async () => {
+    const { api, book, back } = await realPlanningWorkspace();
+    const save = api.saveGoal;
+    let calls = 0;
+    api.saveGoal = async (request) => { calls++; await save(request); throw new Error("Synthetic lost transport reply"); };
+    click("Set saved-word goal"); await ready(); change("Total saved-word target", "00100"); click("Save changes");
+    await page().findByText(/The save outcome is uncertain/);
+    expect(calls).toBe(1);
+    expect(input("Total saved-word target").value).toBe("00100");
+    testing.fireEvent.click(page().getByRole("button", { name: "Back to library", hidden: true }));
+    expect(back).not.toHaveBeenCalled();
+    testing.fireEvent.click(testing.within(page().getByRole("group", { name: "Confirm draft discard" })).getByRole("button", { name: "Keep editing" }));
+    expect(input("Total saved-word target").value).toBe("00100");
+    click("Close editor"); click("Discard draft and close");
+    click("Set saved-word goal"); await ready();
+    expect(input("Total saved-word target").value).toBe("100");
+    expect((await planningValue(api.readGoal(book.id))).data?.targetWords).toBe(100);
+    expect(calls).toBe(1);
+  });
+  test("goal set, reopen, clear and world create, edit, reopen", async () => {
+    const { api, book } = await realPlanningWorkspace();
+    click("Set saved-word goal"); await ready();
+    change("Total saved-word target", "100"); click("Save changes");
+    await page().findByText("Saved."); click("Close editor");
+    await page().findByText("Saved: 3 words · target 100 · 97 remaining");
+    click("Set saved-word goal"); await ready();
+    expect(input("Total saved-word target").value).toBe("100");
+    click("Clear goal"); click("Save changes"); await page().findByText("Saved."); click("Close editor");
+    expect((await planningValue(api.readGoal(book.id))).data?.targetWords).toBeNull();
+    click("World details"); testing.fireEvent.click(await page().findByRole("button", { name: "New world detail" })); await ready();
+    change("Name", "Synthetic harbor"); change("Description", "Exact text  "); click("Save changes");
+    await page().findByText("Saved."); click("Close editor");
+    testing.fireEvent.click(await page().findByRole("button", { name: "Synthetic harbor" })); await ready();
+    expect(input("Description").value).toBe("Exact text  ");
+    change("Notes", "Recovered tide notes"); click("Save changes"); await page().findByText("Saved."); click("Close editor");
+    testing.fireEvent.click(await page().findByRole("button", { name: "Synthetic harbor" })); await ready();
+    expect(input("Notes").value).toBe("Recovered tide notes");
+  });
+
+  test("real stale IPC save retains newer target, exact dirty intent and discoverable inspected copy", async () => {
+    const { api, library, book } = await realPlanningWorkspace();
+    click("Set saved-word goal"); await ready(); change("Total saved-word target", "00100");
+    const external = await library.goals.read(book.id);
+    await library.goals.save({ bookId: book.id, source: external.source, baselineJson: external.baselineJson, draft: { kind: "set-goal", targetWords: 200 } });
+    click("Save changes"); await page().findByText(/Your submitted draft was kept in conflict copy/);
+    expect(input("Total saved-word target").value).toBe("00100");
+    expect((await planningValue(api.readGoal(book.id))).data?.targetWords).toBe(200);
+    click("Close editor");
+    testing.fireEvent.click(testing.within(page().getByRole("group", { name: "Confirm draft discard" })).getByRole("button", { name: "Keep editing" }));
+    expect(input("Total saved-word target").value).toBe("00100");
+    click("Close editor"); click("Discard draft and close");
+    const list = await planningValue(api.listCopies(book.id, 0));
+    testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    const button = await page().findByRole("button", { name: `Inspect ${list.names[0]}` });
+    testing.fireEvent.click(button);
+    await page().findByText("Copy target: 100");
+  });
+
+  test("More-sheet Back respects the planning guard and leaves the dirty draft usable", async () => {
+    const { back, navigation } = await realPlanningWorkspace();
+    click("Set saved-word goal"); await ready(); change("Total saved-word target", "777");
+    testing.fireEvent.click(page().getByTestId("mobile-more"));
+    testing.fireEvent.click(await page().findByTestId("more-back"));
+    expect(back).not.toHaveBeenCalled();
+    expect(input("Total saved-word target").value).toBe("777");
+    testing.fireEvent.click(testing.within(page().getByRole("group", { name: "Confirm draft discard" })).getByRole("button", { name: "Keep editing" }));
+    expect(input("Total saved-word target").value).toBe("777");
+    expect(back).not.toHaveBeenCalled();
+    click("Close editor"); click("Discard draft and close");
+    testing.fireEvent.click(page().getByTestId("mobile-more"));
+    testing.fireEvent.click(await page().findByTestId("more-back"));
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(navigation.begin({ bookId: "book_fresh01", viewGeneration: 99 })).toBe(true);
+  });
+
+  test("dirty host navigation, unregistered/foreign guards, pending save and observed unreadable sources", async () => {
+    const { api, book, root, back, navigation, changed } = await realPlanningWorkspace();
+    const foreign = { bookId: book.id, viewGeneration: "foreign" };
+    expect(navigation.begin(foreign)).toBe(true);
+    expect(navigation.allow()).toBe(false);
+    expect(() => navigation.register({ ...foreign, viewGeneration: "old" }, { dirty: false, pending: false, needsReload: false, requestClose: () => {} })).toThrow();
+    expect(navigation.close(foreign)).toBe(true);
+    click("Set saved-word goal"); await ready(); change("Total saved-word target", "100");
+    testing.fireEvent.click(page().getByRole("button", { name: "Back to library", hidden: true }));
+    expect(back).not.toHaveBeenCalled(); click("Keep editing");
+    expect(input("Total saved-word target").value).toBe("100");
+    const release = deferred<void>(); const entered = deferred<void>();
+    const save = api.saveGoal;
+    api.saveGoal = async (request) => { entered.resolve(); await release.promise; return save(request); };
+    click("Save changes"); await entered.promise;
+    testing.fireEvent.click(page().getByRole("button", { name: "Back to library", hidden: true })); expect(back).not.toHaveBeenCalled();
+    release.resolve(); await page().findByText("Saved."); click("Close editor");
+    await writeFile(join(root, "books", book.id, "chapters", "0002-unreadable.md"), "---\nid: [\n---\nbad");
+    testing.act(() => changed());
+    await page().findByText(/Saved progress is incomplete/);
+    click("Back to library"); expect(back).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("worldbuilding leaf", () => {
   test("a throwing state observer retains the dirty editor and exact baseline", async () => {
