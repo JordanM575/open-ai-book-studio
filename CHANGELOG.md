@@ -22,6 +22,10 @@ Update the `Unreleased` section before every commit.
   public-boundary fixes and integrated host/accessibility verification remain separately owned.
 
 ### Shared exact-source verifier
+- Require the saved chapter file to declare its own `id` and `version`: the parser fallback no
+  longer supplies the host's expected identity, so a headerless file or omitted key is refused.
+  Also reject request status facts that are not clean/pending-false/available and an envelope
+  `bodyLength` that disagrees with the proven saved body.
 
 - Add one host-neutral core verifier that can back the inline editor's trusted evidence
   port: raw byte/text SHA-256 and fatal UTF-8, canonical saved-body and file id/version

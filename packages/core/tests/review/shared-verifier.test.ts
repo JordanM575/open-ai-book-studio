@@ -453,3 +453,44 @@ async function longBodyFixture(longBody: string): Promise<Fixture> {
   })]);
   return base;
 }
+
+describe("saved chapter identity must be declared by the file", () => {
+  test("a headerless chapter is refused instead of inheriting the host's expected identity", async () => {
+    const base = await fixture({ rawText: body });
+    const result = await verifySharedReview(base.request, base.target, new AbortController().signal);
+    expect(result.status).toBe("refused");
+    if (result.status !== "refused") return;
+    expect(["invalid-raw-format", "identity-mismatch"]).toContain(result.reasons[0]?.code);
+  });
+
+  test("front matter that omits id or version is refused", async () => {
+    for (const front of ["---\ntitle: Synthetic chapter\n---\n", "---\nid: ch_123456\n---\n",
+      "---\ntitle: Synthetic chapter\nversion: 3\n---\n"]) {
+      const base = await fixture({ rawText: `${front}${body}` });
+      const result = await verifySharedReview(base.request, base.target, new AbortController().signal);
+      expect(result.status).toBe("refused");
+      if (result.status !== "refused") continue;
+      expect(["invalid-raw-format", "identity-mismatch", "version-mismatch"]).toContain(result.reasons[0]?.code);
+    }
+  });
+
+  test("declared matching identity still verifies", async () => {
+    const base = await fixture();
+    const result = await verifySharedReview(base.request, base.target, new AbortController().signal);
+    expect(result.status).toBe("verified");
+  });
+});
+
+describe("request status facts and body length", () => {
+  test("an expected dirty, pending or unavailable flag refuses before verification", async () => {
+    for (const [field, value, code] of [
+      ["clean", false, "target-dirty"], ["pending", true, "target-pending"], ["available", false, "target-unavailable"]
+    ] as const) {
+      const base = await fixture();
+      const request = { ...base.request, expected: { ...base.facts, [field]: value } };
+      const result = await verifySharedReview(request, base.target, new AbortController().signal);
+      expect(result.status).toBe("refused");
+      if (result.status === "refused") expect(result.reasons[0]?.code).toBe(code);
+    }
+  });
+});

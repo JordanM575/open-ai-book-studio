@@ -183,11 +183,15 @@ function endpointIsScalarSafe(text: string, offset: number): boolean {
   return !(before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff);
 }
 
-function chapterFallback(facts: SharedReviewSourceFacts): ChapterMeta {
-  // Only a parser fallback: file metadata still has to agree with the host's saved facts.
+function chapterFallback(_facts: SharedReviewSourceFacts): ChapterMeta {
+  /*
+   * Only non-identity presentation defaults. `id` and `version` are deliberately impossible values:
+   * a chapter file that omits either key must fail schema parsing rather than inherit the host's
+   * expected identity. A declared key replaces the sentinel and is compared with the host facts.
+   */
   return {
-    id: facts.chapterId, title: "", order: 1, arc: "middle", purpose: "", synopsis: "", notes: "",
-    isPrologue: false, color: null, version: facts.version,
+    id: "", title: "", order: 1, arc: "middle", purpose: "", synopsis: "", notes: "",
+    isPrologue: false, color: null, version: -1,
     createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z"
   };
 }
@@ -202,7 +206,7 @@ export async function verifySharedReview(
   target: SharedReviewTarget,
   signal: AbortSignal
 ): Promise<SharedVerification> {
-  if (signal.aborted) return refusal("aborted");
+  if (!signal || signal.aborted) return refusal("aborted");
 
   const record = plainRecord(input, requestKeys);
   if (!record) return refusal("invalid-request");
@@ -226,6 +230,9 @@ export async function verifySharedReview(
   const live = parsedTarget.data;
 
   if (!sameSourceFacts(parsedRequest.expected, live)) return refusal("stale-target");
+  if (parsedRequest.expected.clean !== true) return refusal("target-dirty");
+  if (parsedRequest.expected.pending !== false) return refusal("target-pending");
+  if (parsedRequest.expected.available !== true) return refusal("target-unavailable");
   if (live.clean !== true) return refusal("target-dirty");
   if (live.pending !== false) return refusal("target-pending");
   if (live.available !== true) return refusal("target-unavailable");
@@ -293,6 +300,7 @@ export async function verifySharedReview(
     return refusal("identity-mismatch", "source-identity");
   }
   if (source.bookTitle !== book.title) return refusal("identity-mismatch", "book-title");
+  if (source.bodyLength !== parsedRequest.expected.savedBody.length) return refusal("body-mismatch", "source-body-length");
   const scope = source.segments.map(({ start, end }) => ({ start, end }));
   if (canonicalJson(scope) !== canonicalJson(parsedRequest.scope)) return refusal("scope-mismatch");
   for (const segment of source.segments) {
