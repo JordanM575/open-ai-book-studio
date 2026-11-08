@@ -1,8 +1,10 @@
 # Pure authoring contracts
 
-Internal, platform-independent leaves for 037 T021 and the pure portions of T022/T025, selected by
-D-194–D-196/D-116 and ADR 0019. Import the local `index.ts`; no global package export is exposed.
-These are in-memory domain contracts, **not a writable FORMAT schema, scheduler or execution grant**.
+Internal, platform-independent leaves for 037 T021/T022/T025 and the T018 workflow wire codec,
+selected by D-194–D-196/D-116 and ADR 0019. Import the local `index.ts`; no global package export is
+exposed. The in-memory contracts are **not a scheduler, execution grant or wholesale persisted
+`run.json`**. `wire.ts` reads and writes the schema-1 workflow records specified in `docs/FORMAT.md`;
+the remaining thread/host-permission schemas, writers and independent review stay separate.
 No dependency imports, provider, filesystem, credential, clock reader, timer, callback or host writer
 exists in the implementation. All IDs, digests, clocks, receipts and host facts are supplied explicitly.
 
@@ -16,6 +18,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `admission.ts` | `createLedger`, `reserve`, `observeReservation`, `accountingSummary` | Finite reservations, actual receipts, pinned routes, per-attempt continuations/read limits, revision/no-progress checks and known/unknown/partial accounting. |
 | `admission.ts` | `advanceAdmissionGeneration`, `parkConnection`, `continueConnection` | Preserve budgets across pause/recovery generations. Old reservations cannot dispatch. Auth/quota parks; 429 records eligibility only. Explicit Continue removes a park, never creates a request. |
 | `value.ts` | `copyValue`, `AuthoringError` | Plain acyclic value admission without getters/toJSON, exact escaped JSON-size accounting, well-formed Unicode, depth 64, and checked arithmetic. This is not a wire encoder/parser. |
+| `wire.ts` | `decodeWorkflowRecord`, `encodeWorkflowRecord`, `canonicalWorkflowJson`, `WORKFLOW_LIMITS` | Raw schema-1 UTF-8 JSON admission and deterministic canonical encoding for the FORMAT workflow records. Refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy numeric lexemes, unsupported versions, foreign owner/kind/prefix, stale bases/links, depth and per-kind size/count overflow before returning a semantic record. Preserves supported unknown plain fields; no I/O, crypto, clock or host action. |
 
 Factories and reducers defensively copy before returning recursively frozen snapshots. They never
 freeze or mutate caller objects, prior snapshots, commands or receipts. Inputs and supported unknown
@@ -38,9 +41,11 @@ Plain values allow finite fractional numbers within the safe-number magnitude; a
 generations, bounds, times and micro-USD are separately required to be nonnegative safe integers.
 Negative zero, nonfinite/unsafe numbers, lone surrogates, classes, functions, symbols, getters,
 nonenumerable fields, extended/sparse arrays and cycles refuse. Shared acyclic subobjects are copied
-independently. The future raw reader must detect duplicate JSON keys, lossy numeric **lexemes**, invalid
-UTF-8 and unsupported wire versions *before* constructing values; those facts cannot be recovered
-from an already parsed object. There is no claim to sandbox executable JavaScript/proxies.
+independently. The raw reader in `wire.ts` detects duplicate JSON keys, lossy numeric **lexemes**,
+invalid UTF-8 and unsupported wire versions *before* constructing values; those facts cannot be
+recovered from an already parsed object. It also refuses a BOM, a lone surrogate escape, depth/size
+overflow, foreign owner/kind/prefix and stale base/direction links. There is no claim to sandbox
+executable JavaScript/proxies.
 
 ## Direction, completion and settlement
 
@@ -112,15 +117,19 @@ accounting-reconciliation contract is required to attach later definitive billin
 
 ## Integration prerequisites and evidence boundaries
 
-T018 owns raw codecs, field-level formats, receipt and command journal pagination/retention, and
-cross-file recovery. A snapshot here aggregates multiple records and command history; do **not** write
-it wholesale as `run.json` or infer that it fits the 2.5 MB run-file limit. New graph inputs enforce
-2.5 MB/1,024 tasks and individual task/command/request values enforce 262,144 bytes. Persisted commands,
-snapshots and immutable artifacts still need the precise FORMAT layout and streaming limits.
+T018 now supplies the schema-1 workflow records and this raw codec: field-level FORMAT definitions,
+exact reference/hash rules, command/receipt pagination, per-kind bounds and conflict/recovery rules.
+Shared thread migration and host-permission schemas, checked workflow writers, real streaming and
+independent review remain open. A snapshot here aggregates multiple records and command history; do
+**not** write it wholesale as `run.json` or infer that it fits the 2.5 MB run-file limit. New graph
+inputs enforce 2.5 MB/1,024 tasks and individual task/command/request values enforce 262,144 bytes.
+The codec validates hash shape but cannot compute a SHA-256, read a related file or verify currency;
+the host owns exact-byte hashing, storage and cross-file reconciliation.
 
 T019/T020/T022–T025/T029/T032–T035 own checked conversation/storage, pinned host permission, durable
 reservation/effect receipts, lifecycle, real transport, quiescence and publication. No package global
-export, SDK/runtime, Library/API/IPC/preload/Workspace, ThreadStore or FORMAT file is changed here.
+export, SDK/runtime, Library/API/IPC/preload/Workspace or ThreadStore is changed here; the FORMAT change
+is limited to the T018 workflow-record section.
 Host integration must prevent copied descriptors and worker text from entering privileged command/
 receipt/fact inputs, retain observations before projection errors, reconcile uncertain work explicitly,
 and never recreate a ledger on restart to erase charges. Source/exact-citation/context construction,

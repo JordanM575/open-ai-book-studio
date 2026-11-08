@@ -68,8 +68,10 @@ D-194–D-196 / ADR 0019 and the constitution/AGENTS amendment select the distin
 `packages/core/src/authoring/` owns pure graph/state/permission-descriptor/admission/context contracts;
 it has no SDK/filesystem imports or ambient credentials. The desktop coordinator pins the current
 Library and consumes IDs/events. The existing runtime remains the SDK boundary. Workflow storage
-and publication compose into the existing book queue and checked writer. New field-level schemas
-must precede their writers. Host-local permission is outside portable book files.
+and publication compose into the existing book queue and checked writer. Workflow record schema 1
+and its pure raw codec now precede workflow writers; shared thread/host-permission schemas, checked
+storage, real streaming and independent review remain. Host-local permission is outside portable book
+files.
 
 Order: checked threads/settlement → pure graph/admission/artifacts → scoped attempt driver and real
 async scheduler → small onboarding/goal/outline/cast → incremental scene pipeline/checked adoption →

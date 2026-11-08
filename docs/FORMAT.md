@@ -51,11 +51,14 @@ schema from these directory names or from an unchecked TypeScript object.
 
 | Reserved location | Accepted ownership / prerequisite |
 | --- | --- |
-| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/plans/directions/tasks/attempts/effects/questions/artifacts; field-level schema, exact identity/hash references, bounded streaming, intent/receipt and related-file recovery matrix before writers |
+| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records; full/segmented continuation and related-report trash/restore rules before writers |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration, checked whole-document revisions/raw hashes, lossless supported unknown fields and future/unknown-semantic read-only behavior before new semantic parts |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
+
+The workflow row is now specified in [Workflow records (schema 1)](#workflow-records-schema-1);
+its checked writers and independent storage review remain open. The other rows remain reservations.
 
 Each detailed format must name every field and optional/default rule; schema/kind/owner/host-issued ID;
 safe revisions/generations; raw-byte and semantic limits (including unknown fields); supported JSON/
@@ -225,6 +228,424 @@ an in-memory draft or cancel a publication already sent.
 Book-side files and their conflict copies travel in folder copies, portable archives and whole-book
 trash/restore. Collection and annotation file writers, recents and annotation navigation are not
 part of this first slice; their accepted contracts remain in ADR 0017.
+
+## Workflow records (schema 1)
+
+D-194–D-196 / [ADR 0019](adr/0019-bounded-autonomous-authoring.md) define the only full-book workflow
+authority. This section specifies the durable schema-1 records under
+`books/<bookId>/workflows/<runId>/` that the pure graph, lifecycle and admission contracts need. It
+does **not** authorize a writer, scheduler, provider call, publication or host permission. T019,
+T022–T025, T029 and independent storage review remain prerequisites. The pure host-neutral raw codec
+is `packages/core/src/authoring/wire.ts`; it performs no I/O.
+
+### Layout
+
+| Path under `workflows/<runId>/` | Record kind | Mutability |
+| --- | --- | --- |
+| `run.json` | `run` | Checked control header. |
+| `brief.json` | `brief` | Immutable exact onboarding brief and 033 goal link. |
+| `policies/<policyId>.json` | `policy` | Immutable agreement/routing/limits snapshot. |
+| `plans/<planId>.json` | `phase-plan` | Immutable linked phase task graph. |
+| `directions/<directionId>.json` | `direction` | Immutable direction epoch. |
+| `tasks/<taskId>.json` | `task` | Checked task definition and status-projection inputs. |
+| `commands/<commandId>.json` | `command` | Append-only command journal entry. |
+| `commands/pages/<first>-<last>.json` | `journal-page` | Immutable command pagination page. |
+| `attempts/<attemptId>.json` | `attempt` | Checked dispatch, output and accounting record. |
+| `effects/<effectId>.json` | `effect` | Checked publication intent and receipt. |
+| `effects/receipts/pages/<first>-<last>.json` | `journal-page` | Immutable receipt pagination page. |
+| `questions/<questionId>.json` | `question` | Checked question and answer. |
+| `artifacts/<artifactId>.meta.json` | `artifact` | Immutable artifact attribution metadata. |
+| `artifacts/<artifactId>.md` or `.json` | (body) | Immutable artifact bytes, at most 1 MiB. |
+| `contexts/<contextId>.json` | `context` | Immutable captured-source manifest. |
+| `admission/reservations/<reservationId>.json` | `reservation` | Checked reservation and settlement. |
+| `admission/observations/<sequence>-<observationId>.json` | `observation` | Append-only host observation. |
+| `admission/accounting.json` | `accounting` | Checked accounting summary input. |
+| `conflicts/` | (copy) | Recoverable conflict copies; never active records. |
+
+### Common encoding and identity
+
+- **Exact bytes.** A saved record is UTF-8 with no byte-order mark. New checked writes use the codec's
+  canonical form: compact JSON, object keys sorted by UTF-16 code-unit order, no insignificant
+  whitespace and no trailing newline. The codec accepts any valid JSON spelling for inspection, but a
+  checked writer must hash and commit the exact canonical bytes it intends to publish. A record's raw
+  SHA-256 is over those exact file bytes.
+- **Plain JSON only.** No comments, trailing commas, `NaN`, `Infinity`, `-0`, duplicate member names,
+  lone surrogates or non-data JavaScript values. Strings are not trimmed or Unicode-normalized.
+  Supported unknown plain fields survive at every depth. Strict control objects (`limits`, `routes`,
+  `destination`, `cost`, `maximum`, `target`, `intent`, `receipt`, `facts`, `clock`, `accounting`,
+  `summary` and journal entries) reject extra keys rather than silently ignoring a control.
+- **Numbers.** A numeric token must parse to a finite value whose exact decimal value round-trips
+  through the canonical Number spelling; the absolute value is at most `2^53-1`. `9007199254740993`,
+  `1e400`, `1e-400`, `1.0000000000000001`, `-0` and equivalent lexemes are refused. Every revision,
+  generation, sequence, version, count, timestamp-in-milliseconds and micro-USD amount is a
+  nonnegative safe integer except where a positive minimum is stated.
+- **Depth and size.** The raw reader admits at most 64 nested value wrappers. Record byte limits
+  are in the bounds table below. Reads check the exact byte count before parsing; writes check the
+  exact canonical byte count before commit.
+- **Schema and identity.** Every record has `schemaVersion: 1`, `kind`, `owner`
+  (`{libraryRegistration, bookId, runId}`), a host-issued `id`, and `revision`. `owner` must equal the
+  record's actual owning registration/book/run. `id` must use the kind's prefix and a safe
+  `[A-Za-z0-9][A-Za-z0-9_-]{0,127}` suffix. A missing, future or foreign record is unavailable; it is
+  never rewritten or migrated on read.
+- **Checked vs immutable.** Checked records carry `base` and a positive `revision`. At revision 1 the
+  base is exactly `{kind:"absent", revision:0}`. At revision `n > 1` the base is exactly
+  `{kind:"sha256", value:<lowercase SHA-256>, revision:n-1}` for the previous raw file. A missing,
+  mismatched or stale base refuses the write. Immutable records have no `base`; their `revision` is
+  exactly 1 unless the kind states otherwise. No read inserts defaults or unknown fields.
+- **References.** A reference is exactly `{kind, owner, id, revision, hash}`. `kind` must match the
+  named field, `owner` must equal the containing record's owner, `id` must use that kind's prefix,
+  `revision` is a positive safe integer, and `hash` is the lowercase SHA-256 of the referenced exact
+  raw file (for an artifact reference, the artifact body bytes, not its metadata). No supplied path,
+  URL, filename or worker text is a reference.
+- **Timestamps.** `createdAt`, `updatedAt`, `recordedAt`, `at`, `intentAt` and `answeredAt` are UTC ISO
+  8601 with exactly millisecond precision, for example `2026-11-07T00:00:00.000Z`.
+- **Default rule.** Writers emit every required field. Required nullable fields are emitted as `null`;
+  the codec never invents a value. Truly optional fields are omitted when absent and keep their
+  in-memory default without being written back. Unknown supported extensions are retained literally.
+- **Unknown fields.** The fields listed for a record are its known fields; any other plain JSON field
+  is a supported extension and survives at every depth, including `__proto__` as ordinary data.
+  Strict control objects named above reject extras instead. No record silently drops an unknown field.
+
+### `run.json` — checked run header
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base` | yes | Common envelope; `kind:"run"`, `id:"run_…"`. |
+| `generation` | yes | Positive safe integer; the current control/admission generation. |
+| `mode` | yes | `running`, `pausing`, `paused`, `cancelling`, `cancelled`, `revoking`, `revoked`, `finishing` or `finished`. Pause/cancel/revoke settle separately from their request. |
+| `phasePlan` | yes | Reference to the current immutable `phase-plan`. |
+| `policy` | yes | Reference to the current immutable `policy`. |
+| `direction` | yes | Reference to the current immutable `direction`. |
+| `queue` | yes | Array of up to 64 unique `task` references; empty when nothing is queued. |
+| `materialized` | yes | Array of up to 4 unique `reservation` references; empty when none are admitted. |
+| `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
+
+`run.json` is control only. It never embeds attempts, effects, questions, commands, artifacts or the
+in-memory snapshot aggregate. `mode` stores the control request/settling label; the pure reducer's
+`RunSnapshot.mode` uses the five stable modes and derives `pausing`/`cancelling`/`revoking` from
+unsettled attempts/effects. A host maps between them; a settling label is never permission to
+continue or retry. The 2,500,000-byte run bound is a file bound, not a claim that an aggregate
+snapshot fits.
+
+### `brief.json` — immutable exact brief
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision` | yes | `kind:"brief"`, `id:"brief_…"`, `revision:1`; no `base` or `generation`. |
+| `text` | yes | Exact brief, at most 20,000 UTF-16 code units **and** 65,536 UTF-8 bytes. No trimming or normalization. |
+| `goalId` | yes | Existing 033 goal identity; this record never counts words. |
+| `targetWords` | yes | Positive safe integer. About 100 words is guidance, not a cap. |
+| `genre`, `audience`, `perspective`, `tone` | no | Optional authored strings, each at most 2,000 UTF-16 units and 8,192 UTF-8 bytes. |
+| `constraints` | no | Optional array of at most 64 strings, each with the same 2,000-unit/8,192-byte bound. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+The file is immutable. A corrected brief requires an explicit new run or an independently reviewed
+migration; it is never rewritten in place.
+
+### `policies/<policyId>.json` — immutable agreement snapshot
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `generation` | yes | `kind:"policy"`, `id:"policy_…"`, `revision:1`; no `base`. |
+| `policyDigest` | yes | Lowercase SHA-256 of the exact agreed policy content. |
+| `startedAtMs` | yes | Nonnegative safe epoch milliseconds. |
+| `limits` | yes | Strict object with exactly the nine keys below. |
+| `routes` | yes | 1–7 objects with unique `role` and a strict `destination`; every role is pinned, never ranked or replaced. |
+| `cost` | yes | Strict `{mode:"bounded-operations"}` or `{mode:"strict-money", capMicroUsd:<positive safe integer>}`. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+`limits` requires exactly: `concurrency` 1–4; `calls` 1–600; `activeMs` 1–43,200,000;
+`lifetimeMs` 1–604,800,000; `localRevisions` 0–2; `globalRevisions` 0–1; `callsPerAttempt` 1–4;
+`readsPerAttempt` 1–8; `outputBytes` 1–262,144. A `destination` is exactly
+`{connectionId, providerId, modelId, accountKey}`; the first, second and fourth are safe IDs, and
+`modelId` is a nonblank string of at most 512 UTF-16 units and 2,048 UTF-8 bytes. A changed agreement
+is a new immutable policy record with a new ID/generation, referenced by a checked `run.json` update.
+Bounded operations permit unknown actual cost; strict money requires qualified provider-enforceable
+all-charge maxima. No zero-cost inference or automatic renewal is part of this format.
+
+### `plans/<planId>.json` — immutable phase plan and link
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `generation` | yes | `kind:"phase-plan"`, `id:"plan_…"`, `revision:1`; no `base`. |
+| `phase` | yes | Positive safe integer; phase 1 has `previous:null`. |
+| `previous` | yes | `null` for phase 1, otherwise a `phase-plan` reference. The host verifies the linked phase is exactly one lower before accepting the plan. |
+| `graph` | yes | Schema-1 graph described below. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+The graph is the existing pure `Graph`: `version:1`, the same `owner`, `policyDigest`, `generation`
+equal to the record's `generation`, a `direction` reference and 1–1,024 task definitions. Each task
+definition has a `task` reference, a role from the accepted seven, `completion` of `candidate` or
+`adoption`, unique `dependsOn` task references and complete host-validated `impact`
+`{complete, keys}` with unique safe-ID keys. Every dependency must resolve to the same owner with the
+same ID/revision/hash; cycles, duplicate tasks and missing/stale dependencies are refused. Supported
+unknown graph/definition fields survive. A worker cannot assert independence or supply paths.
+Linked phase plans allow longer work without truncation; no whole-book task limit is inferred from
+the 1,024-per-plan bound.
+
+### `directions/<directionId>.json` — immutable direction epoch
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision` | yes | `kind:"direction"`, `id:"direction_…"`; `revision` is the direction epoch (at least 1); no `base` or `generation`. |
+| `exactText` | yes | Exact author/direction text, at most 262,144 UTF-16 units and 262,144 UTF-8 bytes. |
+| `origin` | yes | `onboarding`, `outline`, `cast`, `answer` or `author`. |
+| `previous` | yes | `null` only at revision 1; otherwise a `direction` reference whose revision is exactly one lower and whose ID differs. |
+| `question` | yes | Non-null `question` reference exactly when `origin` is `answer`; otherwise `null`. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+A confirmed answer creates immutable versioned direction, closes affected publication gates and
+invalidates dependent attempts. Old directions and old-epoch outputs remain historical. No base or
+direction token is silently refreshed, and a live attempt's prompt never changes.
+
+### `tasks/<taskId>.json` — checked task and projection inputs
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base`, `generation` | yes | `kind:"task"`, `id:"task_…"`. |
+| `plan`, `phase` | yes | `phase-plan` reference and positive phase number. |
+| `definition` | yes | `{role, completion, dependsOn, impact}` as in the phase plan. Supported unknown definition fields survive; `impact` is strict. |
+| `direction` | yes | The `direction` reference captured for this task. |
+| `currentAttempt` | yes | `null` or an `attempt` reference. |
+| `retryAllowed`, `needsDirection` | yes | Booleans; an explicit retry is a new host command, never automatic. |
+| `status` | no | Optional cached projection: `blocked`, `ready`, `preparing`, `executing`, `validating`, `ready-to-publish`, `completed`, `failed`, `stale`, `uncertain` or `needs-direction`. Absent means recompute from inputs. |
+| `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
+
+Task status is a projection, not an authority. The host validates dependencies, direction currency,
+draft safety, grant and exact target before any dispatch or publication. `failed`, `stale` and
+`uncertain` never imply free retry or no charge.
+
+### `commands/<commandId>.json` — append-only command journal entry
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `generation` | yes | `kind:"command"`, `id:"command_…"`, `revision:1`; no `base`. |
+| `sequence` | yes | Positive safe integer, unique and contiguous from 1 in the run's command journal. |
+| `expectedRevision` | yes | Nonnegative safe integer expected run revision. |
+| `payloadDigest` | yes | Lowercase SHA-256 of the complete command payload. |
+| `action` | yes | Plain object with `type` one of `pause`, `cancel`, `revoke`, `resume`, `recover`, `finish`, `question`, `close-question`, `answer`, `direction`, `retry`, `prepare`, `attempt`, `prepare-effect` or `effect`; semantic fields are validated by the pure reducers. Supported unknown action fields survive. |
+| `recordedAt` | yes | UTC ISO timestamp. |
+
+Command IDs deduplicate only equal payloads: equal ID with the same digest/payload replays the
+current snapshot; equal ID with a different payload refuses. A replay never renews execution
+authority. Commands are never rewritten or reordered.
+
+### Journal pages — command and receipt pagination
+
+`commands/pages/<first>-<last>.json` and `effects/receipts/pages/<first>-<last>.json` use the same
+strict `journal-page` record:
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision` | yes | `kind:"journal-page"`, `id:"journal_…"`, `revision:1`; no `base` or `generation`. |
+| `journal` | yes | `command` or `receipt`. |
+| `pageSize` | yes | 1–256. |
+| `firstSequence`, `lastSequence`, `nextSequence`, `total` | yes | Positive safe integers; `nextSequence` is exactly `lastSequence + 1`; `total` is at least `lastSequence`. |
+| `entries` | yes | 1–`pageSize` `{sequence, ref}` objects. Sequences are contiguous from `firstSequence` through `lastSequence`. A command page references `command`; a receipt page references `effect`. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+Pages are immutable, ordered by `firstSequence`, and never leave sequence gaps or overlap. A reader
+pages by `firstSequence`/`nextSequence`; `total` reports durable entries. Receipt pages index the
+`effect` records whose checked receipt is the publication result; the effect remains the authoritative
+receipt holder. No page or receipt is automatically pruned or compacted.
+
+### `attempts/<attemptId>.json` — checked attempt, dispatch and accounting
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base`, `generation` | yes | `kind:"attempt"`, `id:"attempt_…"`. |
+| `task`, `direction`, `context` | yes | Same-owner `task`, `direction` and `context` references. |
+| `inputDigest` | yes | Lowercase SHA-256 of the immutable attempt input. |
+| `revisionOf` | yes | `null`, or the exact base `artifact` reference for a revision-writer attempt. |
+| `phase` | yes | `prepared`, `dispatch-intent`, `receiving`, `output-kept`, `completed`, `failed`, `stopped` or `uncertain`. |
+| `historical`, `noProgress` | yes | Booleans. Historical attempts keep original inputs/outputs; a no-progress output cannot publish or retry. |
+| `outputs` | yes | Up to 64 unique `artifact` references. |
+| `dispatch` | yes | `null`, or strict `{destination, requestDigest, intentAt}`. The destination is the pinned route; `requestDigest` is a SHA-256; `intentAt` is UTC ISO. |
+| `accounting` | yes | Strict `{calls, localReads, knownSubtotalMicroUsd, unknownCalls, partialCalls}`: calls 0–4, reads 0–8, amounts nonnegative safe integers, and `unknownCalls + partialCalls <= calls`. |
+| `providerReceipts` | yes | Up to `calls` unique receipts, each strict `{id, reservationId, outcome, accounting}`; outcome is `succeeded`, `failed` or `stopped`; accounting is `{kind:"reported"|"partial", microUsd}` or `{kind:"unknown"}`. |
+| `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
+
+Dispatch intent and actual accounting are distinct. A persisted intent without a conclusive receipt
+is uncertain, never known-unsent. Failed, stopped and uncertain never imply no charge. There is no
+automatic provider retry or model/route substitution.
+
+### `effects/<effectId>.json` — checked publication intent and receipt
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base`, `generation` | yes | `kind:"effect"`, `id:"effect_…"`. |
+| `attempt`, `candidate` | yes | Same-owner `attempt` and exact `artifact` references. |
+| `phase` | yes | `prepared`, `publish-intent`, `confirmed`, `conflict`, `not-published` or `uncertain`. |
+| `target` | yes | Strict `{kind, chapterId, path}`; kind is `new-chapter` or `replace-chapter`, `chapterId` is safe, and `path` is a relative library path with no leading slash, backslash or `..` segment. A new chapter preallocates an absent ID/path. |
+| `intent` | yes | `null`, or strict `{at, baseVersion, baseHash, intendedHash, intendedBytes, safety}`. `intendedBytes` is 0–1,048,576. New chapters require baseVersion 0, baseHash null and safety null; replacements require baseVersion at least 1, a baseHash and a safety `artifact` reference. |
+| `receipt` | yes | `null`, or strict `{outcome, at, resultVersion?, resultHash?, savedAs?}`. Confirmed requires resultVersion/resultHash; conflict requires `savedAs`; resultVersion/resultHash travel together; `savedAs` is a bounded relative path. |
+| `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
+
+`prepared` has neither intent nor receipt; `publish-intent` has an intent and no receipt; terminal
+phases require a receipt whose outcome equals the phase. Exact intended serialized bytes and the
+publish intent are durable before one checked commit. A receipt records the actual observation,
+separately from catalog/thread/accounting projection. An uncertain intent is never replayed; finding
+the exact intended bytes means the intended result was observed, not that writer identity is proven.
+
+### `questions/<questionId>.json` — checked question and answer
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base`, `generation` | yes | `kind:"question"`, `id:"question_…"`. |
+| `keys` | yes | 1–256 unique safe-ID impact keys. |
+| `affected` | yes | Up to 1,024 unique safe task IDs; unknown dependency impact is conservative. |
+| `characterId` | yes | `null` or a safe character ID. |
+| `evidence` | yes | Up to 64 `artifact`/`context` references; source chapter evidence lives in the context manifest. |
+| `options` | yes | Up to 16 strict `{id, label, consequence}` objects; label at most 200 units/800 bytes, consequence at most 2,000 units/8,192 bytes; IDs unique. |
+| `state` | yes | `open`, `answered`, `superseded` or `withdrawn`. |
+| `answer` | yes | `null`, or strict `{exactText, confirmedText, direction, answeredAt}`. Exact and confirmed text are each at most 262,144 units/bytes; direction is a same-owner reference; answeredAt is UTC ISO. Non-null exactly when `state` is `answered`. |
+| `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
+
+Silence or dismissal never answers. A stale question revision refuses. A confirmed answer creates a
+new immutable direction; affected publication gates close synchronously and dependent attempts are
+invalidated. Provably independent work may keep its captured direction.
+
+### Artifacts — immutable body plus metadata
+
+`artifacts/<artifactId>.meta.json` is a strict `artifact` record:
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision` | yes | `kind:"artifact"`, `id:"artifact_…"`, `revision:1`; no `base` or `generation`. |
+| `mediaType` | yes | `text/markdown` or `application/json`. |
+| `bytes` | yes | 0–1,048,576; exact body byte count. |
+| `hash` | yes | Lowercase SHA-256 of the exact body bytes. |
+| `role` | yes | The accepted role that produced the candidate. |
+| `producedBy` | yes | Same-owner `attempt` reference. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+The body is `artifacts/<artifactId>.md` for Markdown or `artifacts/<artifactId>.json` for JSON. A JSON
+body is an ordinary candidate document, not a workflow record and not an envelope. Artifact references
+hash the body bytes, not the metadata file. Both files are immutable. Missing, unreadable or
+metadata/body hash-mismatched artifacts are unavailable; they are never rewritten or guessed.
+
+### `contexts/<contextId>.json` — immutable captured-source manifest
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision` | yes | `kind:"context"`, `id:"context_…"`, `revision:1`; no `base` or `generation`. |
+| `sources` | yes | 0–64 same-owner `brief`, `phase-plan`, `direction` or `artifact` references. |
+| `chapters` | yes | 0–64 strict `{chapterId, version, hash}` entries; version is positive, hash is the saved chapter's raw SHA-256. |
+| `envelopeDigest` | yes | Lowercase SHA-256 of the exact canonical context envelope. |
+| `bytes` | yes | 0–2,500,000; exact serialized envelope bytes. |
+| `createdAt` | yes | UTC ISO timestamp. |
+
+At least one source or chapter is required. The manifest embeds no source body and accepts no
+unselected content. The host builds the attempt's captured prompt only from these exact references;
+a changed, missing or foreign source makes the attempt stale or unavailable rather than widening the
+scope.
+
+### `admission/reservations/<reservationId>.json` — checked reservation
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base`, `generation` | yes | `kind:"reservation"`, `id:"reservation_…"`. |
+| `request` | yes | Strict request object described below. |
+| `phase` | yes | `reserved`, `dispatched`, `uncertain`, `settled` or `released`. |
+| `receipt` | yes | `null`, or strict `{id, outcome, accounting}` with outcome `succeeded`/`failed`/`stopped` and the accounting union above. `released` has no receipt; `settled` requires one. |
+| `createdAt`, `updatedAt` | yes | UTC ISO timestamps. |
+
+The request is exactly `{policyDigest, attempt, role, destination, requestDigest, inputDigest,
+directionDigest, reviewDigest, scopeId, localRevision, globalRevision, callIndex, localReads,
+outputTokens, outputBytes, maximum}`. Digests are lowercase SHA-256; the attempt is same-owner; role
+is one of the accepted seven; destination is strict; scopeId is safe; localRevision is 0–2,
+globalRevision 0–1, callIndex 1–4, localReads 0–8, outputTokens 1 through the role ceiling, and
+outputBytes 1–262,144. `maximum` is `null` or exactly `{qualificationId, enforcement:
+"provider-all-charge", hostQualified:true, tariffKnown:true, connectionId, requestDigest, policyDigest,
+microUsd}`; its request/connection/policy digests and IDs must bind the request, and microUsd is a
+positive safe integer. The raw codec validates that internal binding; the immutable policy and
+admission ledger enforce the mode: bounded operations require `maximum:null`, and strict money
+requires the qualified maximum.
+
+A reservation ID deduplicates its entire request, including after release; the same ID with a
+different request refuses. Reservations are created and settled under the single host admission lock
+and persisted before transport. Only a reservation known not to have crossed dispatch intent may be
+released. Timeout, cancellation or uncertainty never releases a possible charge.
+
+### `admission/observations/<sequence>-<observationId>.json` — append-only host observation
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `generation` | yes | `kind:"observation"`, `id:"observation_…"`, `revision:1`; no `base`. |
+| `sequence` | yes | Positive safe integer, unique and contiguous from 1 across the run's observations. |
+| `reservation` | yes | Same-owner `reservation` reference. |
+| `type` | yes | `dispatch`, `known-unsent`, `uncertain` or `receipt`. |
+| `at` | yes | UTC ISO timestamp. |
+| `facts` | yes | `null`, or strict `{clock:{nowMs,activeMs}, gate:"open"|"closed", accountingDurable, otherHostActive, otherAccountActive, accountLimit}`; counts are nonnegative safe integers and accountLimit is 1–4. `dispatch` requires facts; the other types require null. |
+| `receipt` | yes | `null`, or the strict reservation receipt. `receipt` requires it; other types require null. |
+
+Observations are append-only host facts, never worker claims. They are ordered by `sequence` and
+never rewritten. A receipt observation does not prove exactly-once provider execution or charging.
+
+### `admission/accounting.json` — checked accounting summary input
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base`, `generation` | yes | `kind:"accounting"`, `id:"accounting_…"`. |
+| `summary` | yes | Strict `{knownSubtotalMicroUsd, unknownCalls, partialCalls, pendingCalls, reservedMicroUsd, consumedCalls}`; all nonnegative safe integers, pending calls 0–4, consumed calls 0–600, and `unknownCalls + partialCalls <= consumedCalls`. |
+| `clock` | yes | Strict `{nowMs, activeMs}` nonnegative safe integers. |
+| `enforcementViolated` | yes | Boolean; true closes future admission after a receipt exceeds its qualified maximum. |
+| `updatedAt` | yes | UTC ISO timestamp. |
+
+Known subtotal, unknown/partial calls, pending calls and reserved maxima remain distinct. Unknown cost
+is never reported as zero. The summary is derived from reservations/observations but is a checked
+durable input; a failed accounting persistence closes dependent admission and never relabels saved
+prose.
+
+### Size, count and depth bounds
+
+| Bound | Value |
+| --- | --- |
+| Raw JSON nesting | 64 value wrappers |
+| `run.json` | 2,500,000 UTF-8 bytes |
+| `plans/<planId>.json` | 2,500,000 UTF-8 bytes |
+| Every other record | 262,144 UTF-8 bytes |
+| Artifact body | 1,048,576 bytes |
+| Context envelope | 2,500,000 bytes |
+| Tasks per phase plan | 1,024 |
+| Queued task references in `run.json` | 64 |
+| Materialized reservation references in `run.json` | 4 |
+| Impact keys per task/question | 256 |
+| Attempt outputs | 64 |
+| Attempt calls / local reads | 4 / 8 |
+| Context sources / chapters | 64 / 64 |
+| Question options | 16 |
+| Journal page size | 256 |
+
+All intersecting limits apply. Reads and streams are bounded before allocating the whole value.
+Overflow preserves existing durable data; it never truncates or deletes a record.
+
+### Ordering, retention and related-file recovery
+
+- Commands and observations are ordered by their positive `sequence`; journal pages are ordered by
+  `firstSequence` and never overlap or gap. Tasks, attempts, effects, questions, directions and
+  artifacts are listed by their host-issued IDs and `createdAt`/revision metadata, never by filename
+  identity or a worker-supplied path.
+- There is no automatic pruning, expiry, compaction or count quota. Archive and whole-book trash carry
+  the entire `workflows/<runId>/` folder, including unavailable records and conflict copies. Host
+  permission is outside the library/archive and is not carried by a book copy.
+- A checked write validates the actual owning book/run, the complete intended bytes, the exact
+  absence/base hash **and** revision, then commits one file. Only a current semantic no-op writes
+  nothing. A stale, missing or racing base preserves the complete intended record under
+  `books/<bookId>/workflows/<runId>/conflicts/<relative-name>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
+  The copy adds a reserved `conflictMetadata` object (`reason`, baseline token, observed token) and is
+  bounded to 5,000,000 bytes. Colliding names use absent-only suffix attempts. A recovery copy cannot
+  be loaded as an active record; explicit recovery must remove its copy-only context and create a
+  fresh reviewed edit. A copy or active write can be uncertain after an adapter error or mismatching
+  readback: report `uncertain`, keep the draft, reread storage and never replay automatically.
+- Cross-file changes are recoverable sequences, not transactions. A missing, foreign, stale or
+  unavailable related plan/task/attempt/effect/question/artifact/context/permission makes the
+  dependent record unavailable; it never silently drops, rewrites, prunes or replays it. Persist
+  dispatch/publish intent before crossing the boundary; persist the actual observation before any
+  projection. A failed projection never invites another write. Default restart performs local
+  recovery and requires Continue; an uncertain attempt or publication is never blindly replayed.
+- In-memory run/admission snapshots are aggregates across these records. **They are never written as a
+  wholesale `run.json`**, never used as a wire record and never assumed to fit a per-file bound.
 
 ## `book.json`
 

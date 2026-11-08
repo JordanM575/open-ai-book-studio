@@ -7,6 +7,19 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Pure authoring foundation
+- Tighten the workflow codec after independent review: a `maxBytes` override may only lower the
+  record-kind bound, receipt `savedAs` uses the same bounded library-relative path rule as a target,
+  phase-plan graph tasks enforce the 256-key strict impact rule, and phase 1 has no predecessor while
+  every later phase names one.
+- Specify schema-1 workflow records in FORMAT for the durable run/brief/policy/phase-plan/direction/
+  task/command-journal/attempt/effect/question/artifact/context/admission surfaces, with exact
+  identity/hash/reference, base, bounds, ordering/pagination and related-file recovery rules. Add a
+  pure host-neutral raw codec that refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy
+  numeric lexemes, unsupported versions, foreign owner/kind and depth/size overflow before
+  constructing values, preserves supported unknown fields and encodes deterministically. No writer,
+  scheduler, provider, host permission, runtime journey or independent review is claimed.
+
 ### Shared exact-source verifier
 - Require the saved chapter file to declare its own `id` and `version`: the parser fallback no longer
   supplies the host's expected identity, so a headerless file or omitted key is refused. Also reject
