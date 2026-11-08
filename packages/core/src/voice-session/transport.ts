@@ -110,7 +110,7 @@ export type TransportEvent =
       readonly type: "settle";
       readonly operationId: number;
       readonly chunkId: number;
-      readonly outcome: "success" | "failure" | "cancellation";
+      readonly outcome: "success" | "refusal" | "failure" | "cancellation";
       readonly costUsd?: number | null;
       readonly failure?: string;
     }

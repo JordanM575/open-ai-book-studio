@@ -43,11 +43,20 @@ function abortCause(error: unknown): boolean {
  * Refusal means the host/local policy stopped it before a provider request; failure means a
  * request may have been sent or attempted. Neither outcome implies a charge or a refund.
  */
-export function settlementForFailure(error: unknown): FailureSettlement {
+/**
+ * Map a thrown provider/service error. `refusal` means the request was stopped before anything was
+ * sent, so a caller that has already dispatched a chunk must pass `dispatched: true`: a provider 400
+ * after sending is a failure (with an unknown charge), never a pre-send refusal.
+ */
+export function settlementForFailure(
+  error: unknown,
+  options: { dispatched?: boolean } = {}
+): FailureSettlement {
   if (abortCause(error)) return { outcome: "cancellation", failure: CANCELLED };
   const code = error instanceof ProviderError ? error.code : null;
-  const outcome = code === "invalid-request" || code === "not-found" || code === "unsupported"
-    ? "refusal" : "failure";
+  const localRefusal = options.dispatched !== true &&
+    (code === "invalid-request" || code === "not-found" || code === "unsupported");
+  const outcome = localRefusal ? "refusal" : "failure";
   const message = error instanceof Error ? error.message.trim() : "";
   return {
     outcome,

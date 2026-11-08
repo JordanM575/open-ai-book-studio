@@ -8,6 +8,12 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 ### Voice transport
+
+- Allow `refusal` in the transport settle event (the four-way settlement the README and the
+  desktop adapter already use), and require callers that have dispatched a chunk to settle a
+  provider 400/404 as `failure`, not as a pre-send refusal.
+
+### Voice transport
 - Add a pure host-neutral STT/TTS transport ledger: monotonic operation and chunk IDs, one
   outstanding operation per kind, exact session/route/permission rechecks immediately before every
   dispatch, best-effort abort descriptions, owned-slot retention until an exact settlement,

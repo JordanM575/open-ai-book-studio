@@ -3,6 +3,7 @@ import { MemoryVault } from "@ai-book-studio/core/providers/credentials";
 import { META_SPEECH_MODEL, type VoiceTranscript } from "@ai-book-studio/core/providers/speech";
 import type { ConnectionSummary, StoredCredential } from "@ai-book-studio/core/providers/types";
 import { ProviderError } from "@ai-book-studio/core/providers/types";
+import type { TransportEvent } from "../../../packages/core/src/voice-session/transport";
 import { DEFAULT_VOICE_PREFERENCES, type VoicePreferences } from "@ai-book-studio/core/providers/voice-preferences";
 import { ProviderService } from "../src/main/providers";
 import { SpeechService, type SpeakResult } from "../src/main/speech";
@@ -110,6 +111,20 @@ describe("voice transport failure settlement", () => {
     expect(settlementForFailure(new ProviderError("unknown", "Cancelled.", {
       cause: new DOMException("Aborted", "AbortError"),
     })).outcome).toBe("cancellation");
+  });
+
+  test("a dispatched request is never labelled a pre-send refusal", () => {
+    expect(settlementForFailure(new ProviderError("invalid-request", "Provider said 400."),
+      { dispatched: true })).toEqual({ outcome: "failure", failure: "Provider said 400." });
+    expect(settlementForFailure(new ProviderError("not-found", "404."), { dispatched: true }).outcome)
+      .toBe("failure");
+    // The settlement type composes with the ledger's settle event without a cast.
+    const local: TransportEvent = {
+      type: "settle", operationId: 1, chunkId: 1,
+      outcome: settlementForFailure(new ProviderError("invalid-request", "Local check.")).outcome,
+      failure: "Local check."
+    };
+    expect(local.outcome).toBe("refusal");
   });
 
   test("keeps the message bounded and never substitutes a zero charge", () => {
