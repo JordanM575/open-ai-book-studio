@@ -2,7 +2,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import React from "react";
 import { mountDom, unmountDom } from "./support/dom";
-import type { AgentEvent } from "@ai-book-studio/core/agent";
+import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
 import { validRoute } from "../../../packages/core/src/voice-session";
 import type {
   HandsFreePort,
@@ -1024,6 +1024,96 @@ describe("R6 real ChatPanel post-flush voice admission", () => {
         expect(start.mock.calls[1]?.[0]).toMatchObject({ threadId: "thread_other" });
       }
     });
+});
+
+describe("real ChatPanel voice history eligibility", () => {
+  for (const next of ["typed", "voice"] as const) {
+    test.each(["stop", "host-refusal", "flush-failure", "dispatched-success", "dispatched-failure", "dispatched-rejection"] as const)(
+      `%s keeps only admitted words in the next ${next} request`, async (outcome) => {
+        const firstWords = "Private synthetic voice words.";
+        const nextWords = "A separate deliberately submitted turn.";
+        const fake = makePort({ text: firstWords });
+        const guard = fake.port.admit;
+        if (outcome === "host-refusal") fake.port.admit = (input, start) => input.kind === "agent"
+          ? { admitted: false } : guard(input, start);
+        const flush = deferred<void>();
+        let flushes = 0;
+        const before = async () => {
+          if (++flushes !== 1) return;
+          await flush.promise;
+          if (outcome === "flush-failure") throw new Error("Synthetic flush failure.");
+        };
+        const dispatched = outcome.startsWith("dispatched-");
+        const start = mock(async (request: AgentTurnInput) => {
+          if (request.prompt === firstWords) {
+            if (outcome === "dispatched-rejection") throw new Error("Synthetic rejected start.");
+            if (outcome === "dispatched-failure") return { ok: false, error: { code: "offline", message: "Synthetic failed start." } };
+          }
+          return { ok: true, data: { turnId: "history_turn", threadId: THREAD } };
+        });
+        let emit: ((event: AgentEvent) => void) | undefined;
+        const legitimate: NonNullable<AgentTurnInput["history"]> = [
+          { role: "user", text: "Earlier submitted words." },
+          { role: "assistant", text: "Earlier answer." },
+        ];
+        (window as unknown as { studio: unknown }).studio = { platform: "darwin", agent: {
+          threads: { list: async () => ({ ok: true, data: [{ id: THREAD }] }),
+            read: async () => ({ ok: true, data: { schemaVersion: 1, id: THREAD, bookId: BOOK, title: "Synthetic",
+              createdAt: AT, updatedAt: AT, checkpointTurns: [], messages: legitimate.map((entry, index) => ({
+                id: `earlier_${index}`, role: entry.role, parts: [{ type: "text", text: entry.text }], createdAt: AT,
+              })) } }) },
+          start, onEvent: (handler: (event: AgentEvent) => void) => { emit = handler; return () => { emit = undefined; }; },
+          stop: async () => ({ ok: true, data: null }),
+        } };
+        testing.render(React.createElement(ChatPanel, { bookId: BOOK, chapterId: CHAPTER, handsFreePort: fake.port,
+          onBeforeSend: before, onClose: () => {}, onChanged: () => {}, onReconnect: () => {},
+          onChooseModel: () => {}, onChooseTurnModel: () => {}, onTurnModelUsed: () => {}, onNotice: () => {} }));
+        const view = testing.within(document.body);
+        await beginSession(view);
+        await speak(view, fake, firstWords);
+        await testing.act(async () => testing.fireEvent.click(view.getByTestId("hands-free-confirm")));
+        expect(flushes).toBe(1);
+        expect(start).not.toHaveBeenCalled();
+        if (outcome === "stop") await testing.act(async () => testing.fireEvent.click(view.getByTestId("hands-free-stop")));
+        await testing.act(async () => flush.resolve());
+        if (outcome === "dispatched-success") {
+          await testing.waitFor(() => expect(view.getByTestId("hands-free-note").textContent).toBe("Sent to this conversation."));
+          await testing.act(async () => emit?.({ type: "stopped", turnId: "history_turn", changed: 0 }));
+        }
+        await testing.waitFor(() => expect(view.getByTestId("chat-send")).toBeDefined());
+        expect(start).toHaveBeenCalledTimes(dispatched ? 1 : 0);
+        // The local displayed words survive both refusals and dispatched errors.
+        expect(view.getAllByText(firstWords).length).toBeGreaterThan(0);
+        if (!dispatched) expect(view.queryByTestId("agent-retry-request")).toBeNull();
+        if (outcome === "stop" || outcome === "host-refusal") expect(view.getAllByText(/Nothing was sent\./).length).toBeGreaterThan(0);
+        if (next === "voice") {
+          await testing.act(async () => {
+            const stop = view.queryByTestId("hands-free-stop");
+            if (stop) testing.fireEvent.click(stop);
+          });
+          await testing.waitFor(() => expect(status(view)).toBe("Stopped."));
+          await testing.act(async () => {
+            const acknowledge = view.queryByTestId("hands-free-acknowledge");
+            if (acknowledge) testing.fireEvent.click(acknowledge);
+          });
+          fake.port.admit = guard;
+          await testing.act(async () => fake.change({ grant: { ...GRANT, sessionId: "session_history_next", generation: 2 } }));
+          fake.transcribeSegment.mockImplementation(async () => ({ ok: true, text: nextWords }));
+          await beginSession(view);
+          await speak(view, fake, nextWords);
+          await testing.act(async () => testing.fireEvent.click(view.getByTestId("hands-free-confirm")));
+        } else {
+          await testing.act(async () => {
+            testing.fireEvent.change(view.getByTestId("chat-input"), { target: { value: nextWords } });
+            testing.fireEvent.keyDown(view.getByTestId("chat-input"), { key: "Enter", shiftKey: false });
+          });
+        }
+        await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(dispatched ? 2 : 1));
+        const request = start.mock.calls.at(-1)?.[0];
+        expect(request?.prompt).toBe(nextWords);
+        expect(request?.history).toEqual(dispatched ? [...legitimate, { role: "user", text: firstWords }] : legitimate);
+      });
+  }
 });
 
 const FACT_LOSSES: [string, Partial<HandsFreeSnapshot>][] = [

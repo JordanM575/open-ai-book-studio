@@ -123,6 +123,11 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   cannot qualify a native IPC host: trusted-process atomic admission, independent lifecycle closure,
   provider and device evidence are still required. This is synthetic source/test evidence, not native
   capture, provider or connected-host acceptance.
+  Later-request history correction: pending voice words are display-only until actual host dispatch.
+  Mounted tests inspect subsequent typed and newly confirmed voice requests after Stop, host refusal
+  and flush failure, preserving nonempty legitimate history and local words; already-dispatched
+  success/failure/rejection remains eligible. This is request-boundary evidence, not provider
+  disclosure/receipt or native-host qualification. Fresh exact-head review and broad gates remain.
   T018–T024 and 038 T022 remain unchecked.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
   uses checked editor mutation/undo and exact-source confirmation.

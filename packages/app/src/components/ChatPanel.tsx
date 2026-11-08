@@ -100,6 +100,9 @@ interface SendOptions {
   readonly voiceAdmission?: HandsFreeAdmission;
 }
 
+/** Local display includes voice words awaiting admission; those are not conversation history. */
+type PanelMessage = Message & { historyEligible?: boolean };
+
 const APPROVAL_STATUS: Record<Approval["status"], string> = {
   pending: "Waiting",
   approved: "Allowed",
@@ -152,7 +155,7 @@ export function ChatPanel({
   handsFreePort,
   className
 }: Props) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<PanelMessage[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<AgentMode>("discuss");
   const [guidance, setGuidance] = useState("");
@@ -337,7 +340,7 @@ export function ChatPanel({
   const startAttempt = async (
     assistantId: string,
     request: AgentTurnInput,
-    voiceAdmission?: HandsFreeAdmission
+    voice?: { admission: HandsFreeAdmission; userMessageId: string }
   ): Promise<{ ok: true; threadId: string } | { ok: false; reason: string }> => {
     const voiceViewEpoch = voiceView.current.epoch;
     assistantRef.current = assistantId;
@@ -359,9 +362,15 @@ export function ChatPanel({
         dispatched = true;
         return window.studio.agent.start(request);
       };
-      const started = voiceAdmission
-        ? await voiceAdmission.dispatch(request, () => voiceView.current.mounted && voiceView.current.epoch === voiceViewEpoch,
-          () => { dispatched = true; })
+      const started = voice
+        ? await voice.admission.dispatch(request, () => voiceView.current.mounted && voiceView.current.epoch === voiceViewEpoch,
+          () => {
+            dispatched = true;
+            // Only the actual admitted start makes these displayed words eligible for later
+            // history. Refusal/flush failure leaves them local; a later start failure does not.
+            setMessages((current) => current.map((item) => item.id === voice.userMessageId
+              ? { ...item, historyEligible: true } : item));
+          })
         : await dispatch();
       if (!started) {
         // Revoked before dispatch: keep the words visible, without a retry that could bypass a
@@ -377,7 +386,7 @@ export function ChatPanel({
       if (!started.ok) {
         throw Object.assign(new Error(started.error.message), { code: started.error.code });
       }
-      if (voiceAdmission && voiceView.current.epoch !== voiceViewEpoch) {
+      if (voice && voiceView.current.epoch !== voiceViewEpoch) {
         // Dispatch already happened: return its real receipt, without rebinding a changed panel
         // to the old book/thread. Stop listening alone does not change this view identity.
         if (voiceView.current.mounted) { setRunning(false); setWaiting(false); }
@@ -390,7 +399,7 @@ export function ChatPanel({
       setWaiting(false);
       return { ok: true, threadId: started.data.threadId };
     } catch (error) {
-      const retryable = !voiceAdmission || dispatched;
+      const retryable = !voice || dispatched;
       if (!retryable) retryRequestsRef.current.delete(assistantId);
       const message = error instanceof Error ? error.message : String(error);
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : undefined;
@@ -556,17 +565,18 @@ export function ChatPanel({
     if (!prompt) return { ok: false, reason: "There are no words to send." };
     if (running) return { ok: false, reason: "The conversation is already answering. Wait for it to finish." };
     if (guidanceTooLong) return { ok: false, reason: "Shorten the guidance before sending." };
-    const user: Message = {
+    const user: PanelMessage = {
       id: nextId(),
       role: "user",
       text: prompt,
       tools: [],
+      historyEligible: !options.voiceAdmission,
       mode: options.mode,
       ...(options.guidance ? { guidance: options.guidance } : {})
     };
     const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [], mode: options.mode };
     const history = messages
-      .filter((message) => message.text.trim() && !(message.role === "assistant" && message.failed))
+      .filter((message) => message.historyEligible !== false && message.text.trim() && !(message.role === "assistant" && message.failed))
       .slice(-20)
       .map((message) => ({ role: message.role, text: message.text }));
     const request: AgentTurnInput = {
@@ -588,7 +598,8 @@ export function ChatPanel({
     loadToken.current += 1;
     retryRequestsRef.current.set(assistant.id, request);
     setMessages((current) => [...current, user, assistant]);
-    const outcome = await startAttempt(assistant.id, request, options.voiceAdmission);
+    const outcome = await startAttempt(assistant.id, request, options.voiceAdmission
+      ? { admission: options.voiceAdmission, userMessageId: user.id } : undefined);
     return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
   };
 

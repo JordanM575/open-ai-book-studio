@@ -63,9 +63,13 @@ Update the `Unreleased` section before every commit.
   Synthetic 70k/250k and oversized-chapter checks accompany the pure leaves. Continuation formats,
   lossless record mapping, scheduler/host integration and fresh independent review remain gated.
 
-HEAD
 ### Hands-free Discuss controls
 
+- Keep confirmed voice words display-only until the actual admitted agent start. Stop, host refusal
+  and draft-flush failures cannot carry those unsubmitted words into a later typed or voice request;
+  legitimate stored history, dispatched outcomes and ordinary typed/retry behavior remain intact.
+  Add real-panel subsequent-request regressions with nonempty history and retained local words.
+  Remove an inherited stray merge-label line from this changelog section.
 - Restrict mounted hands-free activation to the documented `synthetic-in-process-v1` host contract:
   monotonic fact revisions, prompt lifecycle notifications, independent host closure and synchronous
   admission at the actual capture/STT/agent boundary. Stale snapshots and unsupported subscriptions

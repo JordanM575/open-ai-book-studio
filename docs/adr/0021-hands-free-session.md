@@ -77,6 +77,13 @@ An already-dispatched turn keeps its actual result visible even if the host beco
 Capture closure has its own status and remains unconfirmed on a failed close, regardless of whether
 the turn or closure receipt arrives first.
 
+Confirmed voice words displayed while draft flush/admission is pending are local-only until the
+actual admitted agent-start callback. Pre-dispatch Stop, refusal and flush errors preserve those
+displayed words without making them eligible for any later typed or voice request's history. Only
+a fresh deliberate submission can send them. Already-dispatched words remain legitimate history
+even when the start result fails; this does not assert provider receipt or cancellation. Ordinary
+typed sending/retry and independently stored conversation history retain their existing behavior.
+
 The qualification marker and runtime checks can reject an incomplete adapter; they cannot prove that
 an adapter which claims the contract actually honors atomicity, notifications or independent closure.
 No production adapter currently qualifies. A future native host needs a separate trusted-process
