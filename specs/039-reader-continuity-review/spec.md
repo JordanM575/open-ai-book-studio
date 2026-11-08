@@ -7,6 +7,9 @@
 011/022 provider consent and capability contracts; 030 for optional series records.
 **Completion lane:** L09. These are contract dependencies, not a requirement to finish every task
 in the referenced specs. Advisory routing in 036 is optional; automatic dispatch is not required.
+The 037 dependency is shared envelope/citation/execution contracts, not conversation persistence:
+039 snapshots, profiles and results stay volatile with zero ThreadStore writes. Volatile 039 does
+not wait for 037's conversation-retention/thread-safety work.
 
 ## Why
 

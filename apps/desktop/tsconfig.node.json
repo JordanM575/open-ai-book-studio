@@ -35,10 +35,13 @@
     "tests/**/*.ts"
   ],
   "exclude": [
+    "tests/inline-editor.test.tsx",
+    "tests/inline-editor-native-fixture.tsx",
     "tests/planning-dialogs.test.tsx",
     "tests/manuscript-editor.test.ts",
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",
+    "tests/reader-review.test.tsx",
     "tests/story-bible-dialog.test.tsx",
     "tests/settings-status.test.tsx",
     "tests/voice-settings.test.tsx",

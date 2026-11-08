@@ -68,9 +68,21 @@ A task blocked on an open decision must not start until it is accepted.
 Existing checked rows describe their original slice. T012a used generated known audio, not a person
 using a microphone. New work does not close 038 T022 or the remaining manual/device gates.
 
-- [ ] T013 Add pure explicit-session, bound-target, command/confirmation and interruption reducers.
-- [ ] T014 Add bounded injected PCM/VAD segmentation, preroll/end-silence and one-STT backpressure tests.
+- [x] T013 Add pure explicit-session, bound-target, command/confirmation and interruption reducers.
+  `packages/core/src/voice-session/` contains the unmounted immutable reducer, pinned route/scope
+  generations, exact named readbacks, correction/stop/settlement gates and 037 answer-intent projection.
+  Its local README specifies trusted host ownership and integration requirements; no runtime authority
+  or actual track/transport stop is claimed by an effect description.
+  Independent-review correction adds permission/stop ordering, bounded attributable failed receipts
+  with exact explicit acknowledgement, and playback completion independent from display status.
+ 144 pure tests pass; fresh exact-head correction review remains required before integration.
+- [x] T014 Add bounded injected PCM/VAD segmentation, preroll/end-silence and one-STT backpressure tests.
+  Synthetic tests cover the 1.2s/250ms/60s defaults, bounded reads/PCM, explicit held state, exact
+  unconsumed suffix, noise/silence, stale results and never-settling slots. The injected classifier
+  is not a certified acoustic detector; actual host intake/echo/local-engine qualification remains.
 - [ ] T015 Add pure trusted-main-frame/audio-grant predicates; wire both permission handlers under one owner.
+  Pure `permission.ts` and synthetic sender/frame/origin/audio-only/expiry tests are implemented.
+  Both real Electron handlers, actual OS grants and owned-track lifecycle still need host integration.
 - [ ] T016 Add host-owned cancellable STT/TTS request IDs, per-chunk route checks and honest unknown-charge state.
 - [ ] T017 Mount session/transcript/correct/confirm/stop controls with actual Discuss/book/chapter/thread binding.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement

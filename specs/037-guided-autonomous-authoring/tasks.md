@@ -6,6 +6,9 @@ Tasks are ordered by their actual prerequisites. D-193 and D-194–D-196 accept 
 full-book contracts; reviewed shared storage/host integration remains required before execution.
 Decision completion does not check implementation tasks.
 
+W10 (2026-11-07) implements the pure envelope/citation/read-facade portions in new core leaf modules;
+see the plan's implementation slice. No whole runtime/UI task below is completed by those modules.
+
 ## Phase 0 — settle the Phase 1 contracts
 
 - [x] T001 Resolve U-037-01: agree and record the exact source payload, pre-send disclosure and local
@@ -79,10 +82,25 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
 - [ ] T019 Implement checked/lossless shared threads, explicit migration, recoverable deletion and all callers.
 - [ ] T020 Integrate truthful stop settlement, consumer/persistence warnings and pinned-Library quiescence.
 - [ ] T021 Implement pure versioned graph, dependency/direction invalidation, command identity and reducers.
+  - Partial implementation evidence (November 7): isolated `packages/core/src/authoring/` provides
+    validated immutable DAG/reference contracts, exact command replay checks, question/direction
+    invalidation, historical late outcomes and distinct attempt/effect settlement. Focused adversarial
+    tests live in `packages/core/tests/authoring/`; no wire writer or host execution is exposed.
+  - Independent F1/F2 follow-up preserves depth64 records through aggregate wrappers and validates
+    Continue clocks before property access. Cross-transition regressions accompany the correction;
+    fresh exact-head independent review remains required and this broad task stays unchecked.
+    Local correction gates:83 focused tests, strict source/test and platform-independent checks,
+    workspace typechecks and warning-free scoped lint; no writer/host/full-book evidence inferred.
 - [ ] T022 Implement host permission and durable finite admission/reservations, including unknown charges.
+  - Pure portion only: finite reservation/accounting decisions, injected clock/account facts, strict
+    qualified-maximum versus bounded-operation cost modes, and generation changes preserving budget
+    history. Host permission, durable storage and adapter qualification remain required.
 - [ ] T023 Implement immutable artifact/context and checked run/task/attempt/effect/question storage.
 - [ ] T024 Add scoped attempt execution at the existing runtime seam; no ordinary full-book prompt/plugins.
 - [ ] T025 Add event-driven asynchronous scheduling, account limiter, zero automatic retries and no spin.
+  - Pure portion only: ready/blocked/settling projections, pinned-route capacity decisions, no-progress/
+    revision ceilings and rate-limit eligibility without resend. Actual asynchronous scheduling,
+    host serialization, held-transport overlap and runtime integration remain unimplemented here.
 - [ ] T026 Mount small optional New book onboarding, exact brief/choices/agreement and real 033 goal.
 - [ ] T027 Run independent outline/cast proposals, reconcile them and record initial author direction.
 - [ ] T028 Execute incremental scene/chapter assembly, bounded completion and causal dependencies.
