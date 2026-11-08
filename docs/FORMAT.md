@@ -951,7 +951,7 @@ untouched rather than guessing. A newer `schemaVersion` is likewise read-only. T
 or automatic migration in this slice; a future v2 that adds semantic parts must ship an explicit
 migration with an original-byte backup.
 
-Thread writes are checked. A save names the exact raw SHA-256 of the bytes it read; the commit refuses
+Thread writes are checked. A save must name the exact raw SHA-256 of the bytes it read (`readSnapshot`); a save without that base is refused rather than silently rebased on the current file, and a caller holding an older copy keeps a conflict copy. The commit refuses
 to overwrite a file that changed, and keeps the caller's whole intended document as
 `conflicts/<threadId>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json` with its
 bytes verified before it reports `savedAs`. A written document is read back and compared with the

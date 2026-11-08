@@ -664,10 +664,10 @@ describe("D178 definitive stop boundary", () => {
       };
       const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace" });
       if (failure === "reference") {
-        const saveThread = library.threads.save.bind(library.threads);
-        library.threads.save = async (thread) => {
-          if (thread.checkpointTurns.includes(started.turnId)) throw new Error("Synthetic checkpoint reference failure");
-          return saveThread(thread);
+        const addCheckpoint = library.threads.addCheckpointTurn.bind(library.threads);
+        library.threads.addCheckpointTurn = async (bookId, threadId, turnId) => {
+          if (turnId === started.turnId) throw new Error("Synthetic checkpoint reference failure");
+          return addCheckpoint(bookId, threadId, turnId);
         };
       }
       try {

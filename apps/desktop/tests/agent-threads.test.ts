@@ -7,7 +7,8 @@ import {
   agentThreadSchema,
   messageText,
   serializeAgentThread,
-  type AgentMessage
+  type AgentMessage,
+  type AgentThread
 } from "@ai-book-studio/core/agent/messages";
 import { ThreadStore, ThreadStoreError } from "@ai-book-studio/core/agent/threads";
 import { libraryPathFromArchivePath, toLibraryFilePath } from "@ai-book-studio/core/library/path";
@@ -58,11 +59,19 @@ function message(id: string, createdAt: string): AgentMessage {
   });
 }
 
+
+/** Save the object as built, using the exact base hash currently on disk. */
+async function saveWith(store: ThreadStore, thread: AgentThread): Promise<AgentThread> {
+  const snapshot = await store.readSnapshot(thread.bookId, thread.id);
+  if (!snapshot) throw new Error("missing thread snapshot");
+  return store.save(thread, { baseHash: snapshot.baseHash });
+}
+
 describe("agent message schema", () => {
   test("round-trips every part through the thread file format", async () => {
     const thread = await store.create(BOOK, "Opening scene");
     const createdAt = new Date().toISOString();
-    const saved = await store.save({ ...thread, messages: [message("msg_test0001", createdAt)] });
+    const saved = await saveWith(store, { ...thread, messages: [message("msg_test0001", createdAt)] });
     const read = await store.read(BOOK, thread.id);
 
     expect(read).not.toBeNull();
@@ -182,7 +191,7 @@ describe("thread store", () => {
     });
     const second = { ...message("msg_00000004", now), turnId: "turn_00000002" };
     const source = await store.create(BOOK, "Source conversation", [user, first, secondUser, second]);
-    await store.save({ ...source, checkpointTurns: ["turn_00000001", "turn_00000002"] });
+    await saveWith(store, { ...source, checkpointTurns: ["turn_00000001", "turn_00000002"] });
 
     const branch = await store.fork(BOOK, source.id, "turn_00000001");
     expect(branch.id).not.toBe(source.id);
@@ -203,15 +212,12 @@ describe("thread store", () => {
       ...env.runtime,
       now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString()
     });
-    const source = await clock.save({
-      ...(await clock.create(BOOK, "Source")),
-      checkpointTurns: ["turn_00000001", "turn_00000002"]
-    });
-    const branch = await clock.save({
-      ...(await clock.create(BOOK, "Source (branch)")),
-      checkpointTurns: ["turn_00000001", "turn_00000002"]
-    });
-    const other = await clock.save({ ...(await clock.create(BOOK, "Other")), checkpointTurns: ["turn_00000003"] });
+    const sourceBase = await clock.create(BOOK, "Source");
+    const source = await saveWith(clock, { ...sourceBase, checkpointTurns: ["turn_00000001", "turn_00000002"] });
+    const branchBase = await clock.create(BOOK, "Source (branch)");
+    const branch = await saveWith(clock, { ...branchBase, checkpointTurns: ["turn_00000001", "turn_00000002"] });
+    const otherBase = await clock.create(BOOK, "Other");
+    const other = await saveWith(clock, { ...otherBase, checkpointTurns: ["turn_00000003"] });
 
     await clock.forgetCheckpointTurn(BOOK, "turn_00000002");
 
@@ -284,12 +290,12 @@ describe("checked conversation writes", () => {
     const thread = await store.create(BOOK, "Base");
     const first = new ThreadStore(env.storage, env.runtime, service.writeHost);
     const second = new ThreadStore(env.storage, env.runtime, service.writeHost);
-    const readFirst = await first.read(BOOK, thread.id);
-    const readSecond = await second.read(BOOK, thread.id);
+    const readFirst = await first.readSnapshot(BOOK, thread.id);
+    const readSecond = await second.readSnapshot(BOOK, thread.id);
 
     const results = await Promise.allSettled([
-      first.save({ ...readFirst!, title: "First writer" }),
-      second.save({ ...readSecond!, title: "Second writer" })
+      first.save({ ...readFirst!.thread, title: "First writer" }, { baseHash: readFirst!.baseHash }),
+      second.save({ ...readSecond!.thread, title: "Second writer" }, { baseHash: readSecond!.baseHash })
     ]);
 
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
@@ -305,7 +311,7 @@ describe("checked conversation writes", () => {
     const thread = await store.create(BOOK, "Unchanged");
     const path = pathOf(thread.id);
     const before = await readFile(path, "utf8");
-    const saved = await store.save(thread);
+    const saved = await saveWith(store, thread);
     expect(saved.updatedAt).toBe(thread.updatedAt);
     expect(await readFile(path, "utf8")).toBe(before);
   });
@@ -397,7 +403,7 @@ describe("checked conversation writes", () => {
     await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
     const futureBytes = await readFile(path, "utf8");
     await expect(store.read(BOOK, thread.id)).rejects.toMatchObject({ code: "newer" });
-    await expect(store.save({ ...thread, title: "No" })).rejects.toMatchObject({ code: "newer" });
+    await expect(saveWith(store, { ...thread, title: "No" })).rejects.toMatchObject({ code: "newer" });
     expect(await readFile(path, "utf8")).toBe(futureBytes);
 
     const normal = await store.create(BOOK, "A normal conversation with enough bytes to exceed a small test limit.");
@@ -470,5 +476,68 @@ describe("prepareThread", () => {
     await expect(prepareThread(store, { bookId: BOOK, prompt: "   " })).rejects.toMatchObject({
       code: "invalid-request"
     });
+  });
+});
+
+describe("base-bound saves (review F1/F2)", () => {
+  test("an older copy cannot overwrite a newer save", async () => {
+    const thread = await store.create(BOOK, "Title A");
+    const first = await store.readSnapshot(BOOK, thread.id);
+    const second = await store.readSnapshot(BOOK, thread.id);
+    if (!first || !second) throw new Error("missing snapshots");
+
+    await store.save({ ...first.thread, title: "Title B" }, { baseHash: first.baseHash });
+    await expect(store.save({ ...second.thread, title: "Title C" }, { baseHash: second.baseHash }))
+      .rejects.toMatchObject({ code: "conflict" });
+
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Title B");
+    const copies = await readdir(join(root, ...conflictsPath(BOOK)));
+    expect(copies.some((name) => name.includes(thread.id))).toBe(true);
+  });
+
+  test("a store that never read the conversation cannot save it", async () => {
+    const thread = await store.create(BOOK, "Unread");
+    const service = await LibraryService.open(env);
+    const other = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    await expect(other.save(thread, {} as never)).rejects.toMatchObject({ code: "missing-base" });
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Unread");
+  });
+
+  test("a file deleted after the queue read keeps a missing-file copy", async () => {
+    const service = await LibraryService.open(env);
+    const thread = await store.create(BOOK, "Vanishing");
+    const snapshot = await store.readSnapshot(BOOK, thread.id);
+    if (!snapshot) throw new Error("missing snapshot");
+    const base = service.writeHost;
+    const racing = {
+      ...base,
+      commitFile: async (path: Parameters<typeof base.commitFile>[0], bytes: Uint8Array,
+        expected: Parameters<typeof base.commitFile>[2]) => {
+        await rm(join(root, ...path), { force: true });
+        return base.commitFile(path, bytes, expected);
+      }
+    };
+    const racingStore = new ThreadStore(env.storage, env.runtime, racing);
+    const error = await racingStore.save({ ...snapshot.thread, title: "Gone" }, { baseHash: snapshot.baseHash })
+      .catch((reason: unknown) => reason as { code?: string; savedAs?: string });
+    expect(error.code).toBe("conflict");
+    expect(error.savedAs).toContain("missing-file");
+  });
+
+  test("a create collision at commit reports exists, not a conflict copy", async () => {
+    const service = await LibraryService.open(env);
+    const seed = await store.create(BOOK, "Seed bytes");
+    const seedBytes = await readFile(join(root, ...threadsPath(BOOK), `${seed.id}.json`));
+    const base = service.writeHost;
+    const racing = {
+      ...base,
+      commitFile: async (path: Parameters<typeof base.commitFile>[0], bytes: Uint8Array,
+        expected: Parameters<typeof base.commitFile>[2]) => {
+        await writeFile(join(root, ...path), seedBytes);
+        return base.commitFile(path, bytes, expected);
+      }
+    };
+    const racingStore = new ThreadStore(env.storage, env.runtime, racing);
+    await expect(racingStore.create(BOOK, "Collision")).rejects.toMatchObject({ code: "exists" });
   });
 });

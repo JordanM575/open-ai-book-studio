@@ -88,6 +88,8 @@ describe("interaction contract", () => {
     const port = new InMemoryLibraryPort();
     const store = new ThreadStore(port, port);
     const thread = await store.create("book_test0001", "Modes");
+    const snapshot = await store.readSnapshot("book_test0001", thread.id);
+    if (!snapshot) throw new Error("missing thread snapshot");
     const saved = await store.save({
       ...thread,
       messages: [
@@ -109,7 +111,7 @@ describe("interaction contract", () => {
           createdAt: thread.createdAt
         }
       ]
-    });
+    }, { baseHash: snapshot.baseHash });
     expect(saved.messages).toHaveLength(2);
     const read = await store.read("book_test0001", thread.id);
     expect(read?.messages[0]?.parts[0]).toMatchObject({ type: "guidance", text: "Keep it terse." });

@@ -7,6 +7,14 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Conversation storage
+
+- Bind every conversation save to the exact base hash its caller read: a save without that base is
+  refused instead of rebasing on the current file, and an older copy keeps a verified conflict
+  copy. Internal fork/checkpoint updates go through the checked mutate path, so no production
+  caller needs a blind whole-document save. Report the conflict reason from the bytes actually on
+  disk, and report a create collision as `exists` without a misleading copy.
+
 ### Checked conversation storage
 - Route every v1 conversation write through the Library's per-book queue and journal-aware checked
   raw-hash commit, with exact readback verification and a verified `conflicts/` copy when the file

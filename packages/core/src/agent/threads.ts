@@ -35,6 +35,7 @@ export type ThreadStoreErrorCode =
   | "invalid-id"
   | "not-found"
   | "exists"
+  | "missing-base"
   | "corrupt"
   | "conflict"
   | "uncertain"
@@ -114,24 +115,33 @@ export class ThreadStore {
   }
 
   /**
-   * Save a conversation this store read or created. `baseHash` overrides the remembered read hash;
-   * either way the commit is checked against the exact raw bytes it started from, not a version number.
+   * Save a conversation from an exact copy this caller read. The `baseHash` must come from that
+   * read (`readSnapshot`), so a store that never read the file — or a caller holding an older copy —
+   * cannot quietly overwrite a newer or externally edited conversation. The commit is checked against
+   * the exact raw bytes, not a version number.
    */
-  async save(thread: AgentThread, options: { baseHash?: string } = {}): Promise<AgentThread> {
+  async save(thread: AgentThread, options: { baseHash: string }): Promise<AgentThread> {
     const parsed = agentThreadSchema.parse(thread);
-    const key = threadKey(parsed.bookId, parsed.id);
-    // Capture the base before the queue: the read below records the current hash and must not
-    // become the base the caller is checked against.
-    const known = options.baseHash ?? this.hashes.get(key);
+    const baseHash = options?.baseHash;
+    if (typeof baseHash !== "string" || !/^[0-9a-f]{64}$/.test(baseHash)) {
+      throw new ThreadStoreError("missing-base",
+        "Save a conversation from the copy you read, so another edit is noticed instead of overwritten.");
+    }
     return this.withBook(parsed.bookId, async () => {
       const current = await this.readDocument(parsed.bookId, parsed.id);
-      return this.writeDocument(parsed, "save", known, current);
+      return this.writeDocument(parsed, "save", baseHash, current);
     });
   }
 
   async read(bookId: string, threadId: string): Promise<AgentThread | null> {
     const document = await this.readDocument(bookId, threadId);
     return document?.thread ?? null;
+  }
+
+  /** The conversation and the exact raw hash a later `save` must present as its base. */
+  async readSnapshot(bookId: string, threadId: string): Promise<{ thread: AgentThread; baseHash: string } | null> {
+    const document = await this.readDocument(bookId, threadId);
+    return document ? { thread: document.thread, baseHash: document.sha256 } : null;
   }
 
   /** Newest first. A corrupt, newer or unsupported file is skipped here; `read` reports it when opened. */
@@ -157,6 +167,13 @@ export class ThreadStore {
       }
     }
     return summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  /** Add a checkpoint turn through the checked mutate path, never a blind whole-document save. */
+  async addCheckpointTurn(bookId: string, threadId: string, turnId: string): Promise<AgentThread> {
+    return this.mutate(bookId, threadId, (thread) => thread.checkpointTurns.includes(turnId)
+      ? thread
+      : { ...thread, checkpointTurns: [...thread.checkpointTurns, turnId] });
   }
 
   async appendMessage(bookId: string, threadId: string, message: AgentMessage): Promise<AgentThread> {
@@ -239,10 +256,10 @@ export class ThreadStore {
     // Undo takes the newest checkpoint first. A branch that leaves the newest turn out could only
     // offer an older turn's undo while undoing the newer one, so it keeps none.
     const newest = source.checkpointTurns.at(-1);
-    return this.save({
-      ...branch,
+    return this.mutate(bookId, branch.id, (thread) => ({
+      ...thread,
       checkpointTurns: newest !== undefined && keptTurns.has(newest) ? source.checkpointTurns : []
-    });
+    }));
   }
 
   /**
@@ -254,7 +271,10 @@ export class ThreadStore {
     for (const summary of (await this.list(bookId)).reverse()) {
       const thread = await this.read(bookId, summary.id);
       if (!thread?.checkpointTurns.includes(turnId)) continue;
-      await this.save({ ...thread, checkpointTurns: thread.checkpointTurns.filter((turn) => turn !== turnId) });
+      await this.mutate(bookId, thread.id, (current) => ({
+        ...current,
+        checkpointTurns: current.checkpointTurns.filter((turn) => turn !== turnId)
+      }));
     }
   }
 
@@ -393,7 +413,11 @@ export class ThreadStore {
       if (result.publication === "uncertain") {
         return this.uncertain(parsed, built.bytes, "publication");
       }
-      return this.keepConflict(parsed, current ? "external-edit" : "missing-file");
+      if (mode === "create" && result.current) {
+        throw new ThreadStoreError("exists", "That conversation already exists. Nothing was replaced.");
+      }
+      // The reason comes from what is actually on disk now, not from what the pre-commit read saw.
+      return this.keepConflict(parsed, result.current ? "external-edit" : "missing-file");
     }
 
     const verified = await this.verify(result, built.bytes);
