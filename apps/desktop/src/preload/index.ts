@@ -24,6 +24,7 @@ import type { AgentAnswerLength } from "@ai-book-studio/core/agent/settings";
 import { createFlushRequests } from "./flush-requests";
 import { createHeldSignal } from "./held-signal";
 import { createPlanningApi, planningChannels } from "@ai-book-studio/core/library/planning-api";
+import { createReviewRecordApi, reviewRecordChannel } from "@ai-book-studio/core/library/review-record-api";
 
 function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   return ipcRenderer.invoke(channel, ...args) as Promise<T>;
@@ -47,6 +48,7 @@ ipcRenderer.on(DRAFT_FLUSH_CHANNEL, (_event, request: DraftFlushRequest) => {
 
 const api: StudioApi = {
   planning: createPlanningApi((operation, payload) => invoke(planningChannels[operation], payload)),
+  reviewRecords: createReviewRecordApi((payload) => invoke(reviewRecordChannel, payload)),
   app: {
     info: () => invoke(IPC.app.info),
     licenses: () => invoke(IPC.app.licenses),

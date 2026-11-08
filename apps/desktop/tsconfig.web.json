@@ -34,6 +34,7 @@
     "tests/review-worker.test.ts",
     "tests/support/review-normalization.worker.ts",
     "tests/reader-review.test.tsx",
+    "tests/saved-review-ui.test.tsx",
     "tests/story-bible-dialog.test.tsx",
     "tests/planning-dialogs.test.tsx",
     "tests/settings-status.test.tsx",

@@ -52,6 +52,7 @@ import { editBook, formatCount, formatWords, keptCopyText, must, pluralize } fro
 import type { ThemeChoice } from "../hooks/use-theme";
 import { PlanningPanel } from "../components/planning/PlanningPanel";
 import { PlanningNavigation } from "../components/planning/navigation";
+import { SavedReviewsPanel } from "../components/saved-review/SavedReviewsPanel";
 
 export interface ChapterRequest {
   bookId: string;
@@ -1231,6 +1232,7 @@ export function WorkspaceView({
         ) : null}
 
         <section className="thin-scroll min-w-0 flex-1 overflow-y-auto">
+          <SavedReviewsPanel bookId={bookId} libraryKey={libraryRoot} api={window.studio.reviewRecords} />
           {detail?.book.id === bookId && <PlanningPanel bookId={bookId} bookTitle={detail.book.title}
             api={window.studio.planning} navigation={navigation}
             sourceGeneration={JSON.stringify([detail.chapters.map((chapter) => [chapter.id, chapter.path, chapter.version, chapter.hash]), detail.chapterReadIssues, externalChange])}
