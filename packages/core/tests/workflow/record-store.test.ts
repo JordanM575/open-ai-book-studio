@@ -209,6 +209,55 @@ describe("checked workflow record store", () => {
     expect((await port.readFile(path))?.sha256).toBe(before.sha256);
   });
 
+  test.each(["future-kind", "grant", null, 42, false, [], {}, undefined])(
+    "every workflow reader distinguishes malformed envelope kind %j without writing", async (kind) => {
+      const { library, book, port } = await makeBook();
+      const records = library.workflowRecords;
+      const body = encoder.encode("Synthetic artifact.");
+      const cases = [
+        { value: runRecord(book.id), path: runHeaderPath(book.id, runId),
+          read: () => records.readRun(book.id, runId),
+          write: (value: unknown) => records.saveRun(book.id, runId, value) },
+        { value: taskRecord(book.id), path: taskPath(book.id, runId, "task_00000001"),
+          read: () => records.readTask(book.id, runId, "task_00000001"),
+          write: (value: unknown) => records.saveTask(book.id, runId, value) },
+        { value: attemptRecord(book.id), path: attemptPath(book.id, runId, "attempt_00000001"),
+          read: () => records.readAttempt(book.id, runId, "attempt_00000001"),
+          write: (value: unknown) => records.saveAttempt(book.id, runId, value) },
+        { value: effectRecord(book.id), path: effectPath(book.id, runId, "effect_00000001"),
+          read: () => records.readEffect(book.id, runId, "effect_00000001"),
+          write: (value: unknown) => records.saveEffect(book.id, runId, value) },
+        { value: questionRecord(book.id), path: questionPath(book.id, runId, "question_00000001"),
+          read: () => records.readQuestion(book.id, runId, "question_00000001"),
+          write: (value: unknown) => records.saveQuestion(book.id, runId, value) },
+        { value: contextRecord(book.id), path: contextPath(book.id, runId, "context_00000001"),
+          read: () => records.readContext(book.id, runId, "context_00000001"),
+          write: (value: unknown) => records.createContext(book.id, runId, value) },
+        { value: artifactMetadata(book.id, body), path: artifactMetaPath(book.id, runId, "artifact_00000001"),
+          read: () => records.readArtifact(book.id, runId, "artifact_00000001"),
+          write: (value: unknown) => records.createArtifact(book.id, runId, value, body) }
+      ];
+      let commits = 0;
+      const original = port.commitFile.bind(port);
+      port.commitFile = async (path, bytes, expected) => {
+        commits += 1;
+        return original(path, bytes, expected);
+      };
+      for (const item of cases) {
+        const value: Record<string, unknown> = { ...item.value, kind };
+        if (kind === undefined) delete value.kind;
+        const before = await seed(port, item.path, JSON.stringify(value));
+        const afterSeed = commits;
+        expect((await refusal(item.read())).code).toBe(typeof kind === "string" ? "unavailable" : "corrupt");
+        expect((await refusal(item.write(value))).code).toBe("invalid");
+        expect(commits).toBe(afterSeed);
+        expect((await port.readFile(item.path))?.bytes).toEqual(before.bytes);
+        expect((await port.readFile(item.path))?.sha256).toBe(before.sha256);
+        expect(await conflictNames(port, book.id)).toHaveLength(0);
+      }
+    }
+  );
+
   test("saves and reads every T023 record kind through the Library queue and journal", async () => {
     const { library, book, port }: TestLibrary = await makeBook();
     const records = library.workflowRecords;

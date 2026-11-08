@@ -1106,6 +1106,7 @@ function checkRecord(record: Record<string, unknown>, spec: RecordSpec, expected
   const version = record.schemaVersion;
   requireValue(typeof version === 'number' && Number.isSafeInteger(version), 'invalid-record');
   requireValue(version === WORKFLOW_SCHEMA_VERSION, 'unsupported-schema');
+  requireValue(typeof record.kind === 'string', 'invalid-kind');
   requireValue(record.kind === expectedKind, 'foreign-kind');
   validateOwner(expectedOwner);
   validateOwner(record.owner as Owner);
@@ -1143,7 +1144,8 @@ export function decodeWorkflowRecord<K extends WorkflowKind>(bytes: Uint8Array,
 export function encodeWorkflowRecord(record: WorkflowRecord, maxBytes?: number): Uint8Array {
   const copy = copyValue(record, Number.MAX_SAFE_INTEGER) as unknown as Record<string, unknown>;
   const kind = copy.kind;
-  requireValue(typeof kind === 'string' && Object.hasOwn(RECORDS, kind), 'unknown-record-kind');
+  requireValue(typeof kind === 'string', 'invalid-kind');
+  requireValue(Object.hasOwn(RECORDS, kind), 'unknown-record-kind');
   const spec = RECORDS[kind as WorkflowKind];
   requireValue(spec, 'unknown-record-kind');
   checkRecord(copy, spec, kind as WorkflowKind, copy.owner as Owner);

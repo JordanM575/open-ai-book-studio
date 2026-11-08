@@ -9,6 +9,8 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 HEAD
 ### Workflow records
+- Classify missing or non-string workflow envelope kinds as corrupt on read and invalid on write;
+  future/foreign string kinds remain unavailable, with exact file bytes retained and no write.
 - Bind final artifact readback to the exact intended metadata/body on both creation and no-op;
   changed, missing, corrupt or unreadable final pairs report uncertainty without replay. Distinguish
   future string semantics from malformed known states in workflow record reads.
