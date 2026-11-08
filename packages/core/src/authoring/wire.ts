@@ -428,7 +428,7 @@ function validateAccounting(value: unknown): void {
     integer(accounting.microUsd, 0);
   } else if (accounting.kind === 'unknown') {
     exactKeys(accounting, ['kind'], 'invalid-accounting');
-  } else fail('invalid-accounting');
+  } else fail(typeof accounting.kind === 'string' ? 'unknown-accounting-kind' : 'invalid-accounting');
 }
 
 const RECEIPT_OUTCOMES = new Set(['succeeded', 'failed', 'stopped']);
@@ -476,6 +476,9 @@ const LIMIT_MINIMUMS: Readonly<Record<typeof LIMIT_KEYS[number], number>> = Obje
 });
 
 function validateRun(record: Record<string, unknown>, owner: Owner): void {
+  for (const key of ['attempts', 'effects', 'questions', 'commands', 'artifacts', 'snapshot']) {
+    requireValue(!Object.hasOwn(record, key), 'embedded-run-aggregate');
+  }
   requireValue(typeof record.mode === 'string' && RUN_MODES.has(record.mode), 'invalid-mode');
   referenceValue(record.phasePlan, 'phase-plan', owner);
   referenceValue(record.policy, 'policy', owner);
@@ -694,6 +697,10 @@ function validateAttempt(record: Record<string, unknown>, owner: Owner): void {
     isoValue(dispatch.intentAt);
   }
   const accounting = objectValue(record.accounting, 'invalid-accounting');
+  for (const key of Object.keys(accounting)) {
+    requireValue(['calls', 'localReads', 'knownSubtotalMicroUsd', 'unknownCalls', 'partialCalls'].includes(key),
+      'unsupported-accounting');
+  }
   exactKeys(accounting, ['calls', 'localReads', 'knownSubtotalMicroUsd', 'unknownCalls',
     'partialCalls'], 'invalid-accounting');
   const calls = integer(accounting.calls, 0, WORKFLOW_LIMITS.attemptCalls);
@@ -755,7 +762,7 @@ function validateEffect(record: Record<string, unknown>, owner: Owner): void {
   const target = objectValue(record.target, 'invalid-target');
   exactKeys(target, ['kind', 'chapterId', 'path'], 'invalid-target');
   requireValue(target.kind === 'new-chapter' || target.kind === 'replace-chapter',
-    'invalid-target');
+    typeof target.kind === 'string' ? 'unknown-target-kind' : 'invalid-target');
   idValue(target.chapterId);
   relativePathValue(target.path, 'invalid-target');
   if (record.intent !== null) {
@@ -845,7 +852,7 @@ function validateQuestion(record: Record<string, unknown>, owner: Owner): void {
 
 function validateArtifact(record: Record<string, unknown>, owner: Owner): void {
   requireValue(record.mediaType === 'text/markdown' || record.mediaType === 'application/json',
-    'invalid-artifact');
+    typeof record.mediaType === 'string' ? 'unknown-artifact-media-type' : 'invalid-artifact');
   integer(record.bytes, 0, WORKFLOW_LIMITS.artifactBytes);
   digestValue(record.hash);
   requireValue(typeof record.role === 'string' && ROLES.includes(record.role as Role),

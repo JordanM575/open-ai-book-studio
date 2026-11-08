@@ -7,7 +7,9 @@ import { WorkflowRecordError } from "../../src/workflow/record-error";
 import {
   artifactBodyPath,
   artifactMetaPath,
+  attemptPath,
   contextPath,
+  effectPath,
   runHeaderPath,
   taskPath,
   workflowConflictPath,
@@ -83,6 +85,80 @@ function revisionTwo(record: Record<string, unknown>, baseHash: string, id = "ta
 }
 
 describe("checked workflow record store", () => {
+  test("copy-only metadata is refused for every active writer before any commit", async () => {
+    const { library, book, port } = await makeBook();
+    const records = library.workflowRecords;
+    const body = encoder.encode("Synthetic retained candidate.");
+    let commits = 0;
+    const original = port.commitFile.bind(port);
+    port.commitFile = async (path, bytes, expected) => {
+      commits += 1;
+      return original(path, bytes, expected);
+    };
+    for (const conflictMetadata of [null, { reason: "external-edit" }]) {
+      const extension = { conflictMetadata };
+      const writes = [
+        () => records.saveRun(book.id, runId, runRecord(book.id, extension)),
+        () => records.saveTask(book.id, runId, taskRecord(book.id, extension)),
+        () => records.saveAttempt(book.id, runId, attemptRecord(book.id, extension)),
+        () => records.saveEffect(book.id, runId, effectRecord(book.id, extension)),
+        () => records.saveQuestion(book.id, runId, questionRecord(book.id, extension)),
+        () => records.createContext(book.id, runId, contextRecord(book.id, extension)),
+        () => records.createArtifact(book.id, runId, artifactMetadata(book.id, body, extension), body)
+      ];
+      for (const write of writes) expect((await refusal(write())).code).toBe("invalid");
+    }
+    expect(commits).toBe(0);
+    expect(await records.readRun(book.id, runId)).toBeNull();
+    expect(await records.readArtifact(book.id, runId, "artifact_00000001")).toBeNull();
+
+    const first = await records.saveTask(book.id, runId, taskRecord(book.id));
+    const before = commits;
+    const error = await refusal(records.saveTask(book.id, runId, {
+      ...revisionTwo(taskRecord(book.id), first.record.hash), conflictMetadata: { reason: "external-edit" }
+    }));
+    expect(error.code).toBe("invalid");
+    expect(commits).toBe(before);
+    expect((await records.readTask(book.id, runId, "task_00000001"))?.hash).toBe(first.record.hash);
+  });
+
+  test("run control headers refuse embedded aggregate fields on both read and write", async () => {
+    const { library, book, port } = await makeBook();
+    for (const field of ["attempts", "effects", "questions", "commands", "artifacts", "snapshot"]) {
+      const error = await refusal(library.workflowRecords.saveRun(book.id, runId,
+        runRecord(book.id, { [field]: field === "snapshot" ? { mode: "running" } : [] })));
+      expect(error.code).toBe("invalid");
+      expect(await port.readFile(runHeaderPath(book.id, runId))).toBeNull();
+      expect(await conflictNames(port, book.id)).toHaveLength(0);
+    }
+    const path = runHeaderPath(book.id, runId);
+    const invalid = await seed(port, path, JSON.stringify(runRecord(book.id, { attempts: [] })));
+    expect((await refusal(library.workflowRecords.readRun(book.id, runId))).code).toBe("corrupt");
+    expect((await port.readFile(path))?.sha256).toBe(invalid.sha256);
+  });
+
+  test("future artifact, effect and accounting semantics are unavailable without rewriting", async () => {
+    const { library, book, port } = await makeBook();
+    const artifact = artifactMetaPath(book.id, runId, "artifact_00000001");
+    const effect = effectPath(book.id, runId, "effect_00000001");
+    const attempt = attemptPath(book.id, runId, "attempt_00000001");
+    const cases = [
+      { path: artifact, value: artifactMetadata(book.id, new Uint8Array(), { mediaType: "text/html" }),
+        read: () => library.workflowRecords.readArtifact(book.id, runId, "artifact_00000001") },
+      { path: effect, value: effectRecord(book.id, {
+        target: { kind: "future-kind", chapterId: "ch_00000001", path: "chapters/0001-scene.md" }
+      }), read: () => library.workflowRecords.readEffect(book.id, runId, "effect_00000001") },
+      { path: attempt, value: attemptRecord(book.id, { accounting: { kind: "future-accounting" } }),
+        read: () => library.workflowRecords.readAttempt(book.id, runId, "attempt_00000001") }
+    ];
+    for (const item of cases) {
+      const before = await seed(port, item.path, JSON.stringify(item.value));
+      expect((await refusal(item.read())).code).toBe("unavailable");
+      expect((await port.readFile(item.path))?.sha256).toBe(before.sha256);
+    }
+    expect(await conflictNames(port, book.id)).toHaveLength(0);
+  });
+
   test("saves and reads every T023 record kind through the Library queue and journal", async () => {
     const { library, book, port }: TestLibrary = await makeBook();
     const records = library.workflowRecords;
@@ -134,6 +210,7 @@ describe("checked workflow record store", () => {
 
     const names = await conflictNames(port, book.id);
     expect(names).toHaveLength(1);
+    expect(names[0]).toMatch(/^task\.task_00000001\.conflict-external-edit\./);
     const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, names[0] as string)));
     expect(copy).toMatchObject({
       id: "task_00000001",
@@ -434,7 +511,31 @@ describe("checked workflow record store", () => {
     expect(await readText(port, artifactBodyPath(book.id, runId, "artifact_00000001", "md"))).toBe(
       "Synthetic candidate text."
     );
-    expect((await conflictNames(port, book.id)).length).toBe(2);
+    const names = await conflictNames(port, book.id);
+    expect(names).toHaveLength(2);
+    const metadataName = conflict.savedAs?.split("/").pop();
+    if (!metadataName) throw new Error("Expected the conflict metadata path");
+    const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, metadataName)));
+    const bodyName = copy.conflictMetadata.bodyCopy.split("/").pop();
+    expect(bodyName).toMatch(/^artifact\.artifact_00000001\.body\.conflict-external-edit\./);
+    expect(copy.conflictMetadata.bodyCopy).toBe(key(workflowConflictPath(book.id, runId, bodyName)));
+    const bodyCopy = await port.readFile(workflowConflictPath(book.id, runId, bodyName));
+    expect(bodyCopy?.bytes).toEqual(different);
+    expect(bodyCopy?.sha256).toBe(copy.hash);
+    expect(bodyCopy?.bytes.byteLength).toBe(copy.bytes);
+
+    const another = encoder.encode("Another retained candidate at the same timestamp.");
+    const collided = await refusal(library.workflowRecords.createArtifact(
+      book.id, runId, artifactMetadata(book.id, another), another
+    ));
+    const nextName = collided.savedAs?.split("/").pop();
+    if (!nextName) throw new Error("Expected the second conflict metadata path");
+    const nextCopy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, nextName)));
+    expect(nextCopy.conflictMetadata.bodyCopy).not.toBe(copy.conflictMetadata.bodyCopy);
+    const nextBody = await port.readFile(workflowConflictPath(book.id, runId,
+      nextCopy.conflictMetadata.bodyCopy.split("/").pop()));
+    expect(nextBody?.bytes).toEqual(another);
+    expect(nextBody?.sha256).toBe(nextCopy.hash);
   });
 
   test("a partial or mismatched artifact pair refuses without rewriting either file", async () => {

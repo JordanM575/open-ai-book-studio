@@ -122,7 +122,8 @@ const UNSUPPORTED_CODES = new Set([
   "foreign-kind", "foreign-owner", "foreign-reference", "unknown-record-kind",
   "unsupported-version", "invalid-mode", "invalid-task-status", "invalid-attempt-phase",
   "invalid-effect-phase", "invalid-question-state", "invalid-direction-origin", "unknown-action",
-  "invalid-journal", "invalid-observation", "unknown-role", "unknown-completion", "invalid-receipt-outcome"
+  "invalid-journal", "invalid-observation", "unknown-role", "unknown-completion", "invalid-receipt-outcome",
+  "unknown-artifact-media-type", "unknown-target-kind", "unknown-accounting-kind", "unsupported-accounting"
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -262,8 +263,8 @@ export class WorkflowRecordStore {
 
   /**
    * Write an immutable artifact metadata record and its bounded body. The pair is published body
-   * first, then metadata, so the same call can finish a body this build left behind; a pair that
-   * does not agree on the exact byte count and SHA-256 is refused before anything is written.
+   * first, then metadata. A later call refuses an orphan body rather than assuming its provenance;
+   * a pair that does not agree on the exact byte count and SHA-256 is refused before publication.
    */
   async createArtifact(
     bookId: string,
@@ -587,6 +588,12 @@ export class WorkflowRecordStore {
     } catch (error) {
       throw this.fromAuthoring(error, "write");
     }
+    if (Object.hasOwn(record, "conflictMetadata")) {
+      throw new WorkflowRecordError(
+        "invalid",
+        "A conflict copy cannot be saved as an active workflow record. Prepare a fresh reviewed edit. Nothing was written."
+      );
+    }
     return { bytes, record };
   }
 
@@ -783,7 +790,8 @@ export class WorkflowRecordStore {
     runId: string,
     id: string,
     intended: Uint8Array,
-    observed: string | null
+    observed: string | null,
+    bodyCopy?: string
   ): Promise<string> {
     let copy: Record<string, unknown>;
     try {
@@ -794,7 +802,8 @@ export class WorkflowRecordStore {
       copy.conflictMetadata = {
         reason: observed === null ? "missing-file" : "external-edit",
         baseline: baseOf(copy),
-        observed: observed === null ? { kind: "absent" } : { kind: "sha256", value: observed }
+        observed: observed === null ? { kind: "absent" } : { kind: "sha256", value: observed },
+        ...(bodyCopy ? { bodyCopy } : {})
       };
     } catch {
       throw new WorkflowRecordError(
@@ -829,9 +838,8 @@ export class WorkflowRecordStore {
     extension: "md" | "json",
     observed: string | null
   ): Promise<string> {
-    const savedAs = await this.preserve("artifact", bookId, runId, id, metadata, observed);
-    await this.writeConflictCopy("artifact", bookId, runId, `${id}.body`, body, observed, extension);
-    return savedAs;
+    const bodyCopy = await this.writeConflictCopy("artifact", bookId, runId, id, body, observed, extension);
+    return this.preserve("artifact", bookId, runId, id, metadata, observed, bodyCopy);
   }
 
   private async writeConflictCopy(

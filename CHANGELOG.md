@@ -9,6 +9,10 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 HEAD
 ### Workflow records
+- Refuse copy-only metadata before any active workflow publication and enforce the run header's
+  control-only format. Document bounded conflict names and baseline tokens; artifact recovery
+  metadata points to its verified retained body. Unknown artifact/target/accounting semantics stay
+  unavailable and read-only. An orphan artifact is refused, never guessed or silently completed.
 - Add checked schema-1 workflow storage behind `LibraryService.workflowRecords` (037 T023). Checked
   `run`, `task`, `attempt`, `effect` and `question` records require the exact previous raw hash and
   revision, are parsed by the same build's codec before publication, are committed through the

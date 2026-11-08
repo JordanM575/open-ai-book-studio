@@ -640,12 +640,25 @@ Overflow preserves existing durable data; it never truncates or deletes a record
 - A checked write validates the actual owning book/run, the complete intended bytes, the exact
   absence/base hash **and** revision, then commits one file. Only a current semantic no-op writes
   nothing. A stale, missing or racing base preserves the complete intended record under
-  `books/<bookId>/workflows/<runId>/conflicts/<relative-name>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
-  The copy adds a reserved `conflictMetadata` object (`reason`, baseline token, observed token) and is
-  bounded to 5,000,000 bytes. Colliding names use absent-only suffix attempts. A recovery copy cannot
-  be loaded as an active record; explicit recovery must remove its copy-only context and create a
-  fresh reviewed edit. A copy or active write can be uncertain after an adapter error or mismatching
-  readback: report `uncertain`, keep the draft, reread storage and never replay automatically.
+  `books/<bookId>/workflows/<runId>/conflicts/<kind>.<id>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
+  This kind/identity convention replaces the earlier unspecified relative-name flattening. Full
+  owner and record identity remain inside the copy. ASCII filenames are at most 200 bytes, reserving
+  room for the atomic writer's temporary suffix; a longer name becomes
+  `<kind>.conflict-<reason>.<first-12-hex-SHA256-of-id>[-N].json`. Up to 100 absent-only names are tried
+  (no suffix, then `-2` through `-100`), never replacing an existing copy.
+  The copy adds reserved `conflictMetadata`: `reason` is `external-edit` or `missing-file`;
+  `baseline` is the original `{kind:"sha256",value,revision}` or `{kind:"absent",revision:0}`;
+  `observed` is `{kind:"sha256",value}` or `{kind:"absent"}`. The whole copy is bounded to
+  5,000,000 bytes. An active write or read refuses any own `conflictMetadata` field; explicit recovery
+  must remove its copy-only context and create a fresh reviewed edit.
+  Artifact conflicts retain an exact body first under `artifact.<id>.body.conflict-<reason>.<deviceId>.<timestamp>[-N].md|json`
+  (or `artifact.body.conflict-<reason>.<id-digest>[-N].md|json` under the same name limit), then metadata.
+  Metadata `conflictMetadata.bodyCopy` names that body's library-relative conflict path; its original
+  artifact `bytes`, `hash` and `mediaType` verify the body independently of either filename. The
+  reported `savedAs` is the metadata copy. If metadata fails, the body copy remains for recovery;
+  partial copies are never automatically completed or deleted. A copy or active write can be
+  uncertain after an adapter error or mismatching readback: report `uncertain`, keep the draft,
+  reread storage and never replay automatically.
 - Cross-file changes are recoverable sequences, not transactions. A missing, foreign, stale or
   unavailable related plan/task/attempt/effect/question/artifact/context/permission makes the
   dependent record unavailable; it never silently drops, rewrites, prunes or replays it. Persist
