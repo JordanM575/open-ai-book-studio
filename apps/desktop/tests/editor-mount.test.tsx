@@ -525,3 +525,40 @@ describe("review aside corrections", () => {
     expect(aside.querySelectorAll("li").length).toBe(2);
   });
 });
+
+describe("editor review corrections P2", () => {
+  test("undo restores text after a one-character emoji edit leaves the caret at offset 1", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    type("a");
+    await testing.act(async () => {});
+    expect(editorText()).toBe("a");
+    expect(editor.setSelection({ anchor: 1, head: 1 })).toBe(true);
+
+    testing.fireEvent.keyDown(mounted.surface(), { key: "z", metaKey: true });
+    await testing.act(async () => {});
+    // The caret offset would split an emoji in the restored text; the undo must still land.
+    expect(editorText()).toBe(CHAPTER.content);
+  });
+
+  test("clicking a row selects that finding by identity when two share a passage", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    const request = await reviewRequest(editor.getSnapshot());
+    const parsed = JSON.parse(request.output) as { findings: Array<{ evidence: unknown[] }> };
+    const shared = parsed.findings[0]?.evidence[0];
+    if (!shared) throw new Error("missing fixture evidence");
+    parsed.findings[1]?.evidence.splice(0, 1, shared);
+
+    mounted.rerender({ reviewRequest: { ...request, output: JSON.stringify(parsed) } });
+    await testing.waitFor(() => expect(document.querySelectorAll(".inline-review-mark").length).toBe(1));
+    const body = testing.within(document.body);
+    expect(body.getAllByRole("button", { name: /^Show .* finding \d in the text$/ })).toHaveLength(2);
+    const motivation = () => body.getByRole("button", { name: /Show character-motivation finding/ });
+    const clarity = () => body.getByRole("button", { name: /Show clarity finding/ });
+
+    testing.fireEvent.click(motivation());
+    await testing.waitFor(() => expect(motivation().getAttribute("aria-current")).toBe("true"));
+    expect(clarity().getAttribute("aria-current")).toBeNull();
+  });
+});

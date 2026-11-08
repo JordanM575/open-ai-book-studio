@@ -413,7 +413,17 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
     if (snapshot.composing || snapshot.held) return;
     const next = command === "undo" ? undoHistory(chapter.id, latest.current) : redoHistory(chapter.id, latest.current);
     if (next === null) return;
-    current.replaceText(next, snapshot.revision, command);
+    // Keep the caret off a surrogate pair split: undo after a one-character emoji edit otherwise
+    // proposes offset 1 in the restored text and the whole replacement is refused.
+    const selection = {
+      anchor: safeTextOffset(next, snapshot.selection.anchor),
+      head: safeTextOffset(next, snapshot.selection.head)
+    };
+    if (!current.replaceText(next, snapshot.revision, command, selection)) {
+      // The replacement was refused, so put the history transition back where it was.
+      if (command === "undo") redoHistory(chapter.id, next);
+      else undoHistory(chapter.id, next);
+    }
   };
   const runCommandRef = useRef(runCommand);
   runCommandRef.current = runCommand;
@@ -678,14 +688,19 @@ function ReviewFindingsAside({
   onClearActive: () => void;
 }) {
   const [category, setCategory] = useState("all");
+  const lastCategory = useRef(category);
   const categories = [...new Set(layer.spans.map((span) => span.category))].sort();
   const visible = category === "all" ? layer.spans : layer.spans.filter((span) => span.category === category);
 
   useEffect(() => {
     if (!editor) return;
-    // Filtering only changes what is painted; no request, write or finding is removed. The
-    // transient "current" finding is cleared so a row cannot stay current while its mark is hidden.
-    onClearActive();
+    // Filtering only changes what is painted; no request, write or finding is removed. A real
+    // filter change clears the transient "current" finding, so a row cannot stay current while its
+    // mark is hidden; re-renders for other reasons keep it.
+    if (lastCategory.current !== category) {
+      lastCategory.current = category;
+      onClearActive();
+    }
     editor.setVisibility(
       category === "all" ? null : new Set(layer.spans.filter((span) => span.category === category).map(inlineSpanKey)),
       false
@@ -736,7 +751,10 @@ function ReviewFindingsAside({
               ref={(element) => onRow(row.key, element)}
               {...(row.key === activeKey ? { "aria-current": true as const } : {})}
               aria-label={`Show ${row.category} finding ${index + 1} in the text`}
-              onClick={() => editor?.inspectAt(row.span.from)}
+              onClick={() => {
+                if (!editor) return;
+                if (!editor.inspectSpan(row.span)) editor.inspectAt(row.span.from);
+              }}
               disabled={!editor}
               className="w-full rounded-[var(--corner-sm)] border border-[var(--border)] px-2 py-1 text-left focus-visible:outline-2 focus-visible:outline-[var(--primary)] aria-[current=true]:border-[var(--primary)]"
             >
@@ -765,6 +783,17 @@ interface FindingRow {
 
 function findingKey(span: InlineSpan): string {
   return JSON.stringify([span.runId, span.findingId]);
+}
+
+/** Clamp a text offset, moving left one unit when it would split a surrogate pair. */
+function safeTextOffset(text: string, offset: number): number {
+  let at = Math.max(0, Math.min(offset, text.length));
+  if (at > 0 && at < text.length) {
+    const before = text.charCodeAt(at - 1);
+    const after = text.charCodeAt(at);
+    if (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) at -= 1;
+  }
+  return at;
 }
 
 function groupFindings(spans: readonly InlineSpan[]): FindingRow[] {

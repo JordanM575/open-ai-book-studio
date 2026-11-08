@@ -352,6 +352,26 @@ export class InlineEditor {
   }
 
   /** Pointer inspection does not replace selection or move focus away from the text. */
+  /**
+   * Select one finding by identity, for a list row that names it. Resolving by offset alone picks
+   * whichever overlapping member happens to be first, so two findings on one passage could not be
+   * chosen separately from the list.
+   */
+  inspectSpan(span: InlineSpan): boolean {
+    if (this.hidden || !this.currentLayer()) return false;
+    // Match the finding the row names, not one evidence span: a finding can cite several passages
+    // and two findings can share a passage, so evidence-level keys are not a stable row identity.
+    const match = this.index.spans.find((candidate) =>
+      candidate.runId === span.runId && candidate.findingId === span.findingId);
+    if (!match) return false;
+    this.active = match;
+    this.renderMarks();
+    const segment = overlapAt(this.index, match.from);
+    const choices = segment?.members ?? [match];
+    this.options.onInspect(Object.freeze({ action: "pointer", active: match, choices }));
+    return true;
+  }
+
   inspectAt(offset: number): boolean {
     if (this.hidden || !this.currentLayer()) return false;
     const segment = overlapAt(this.index, offset);

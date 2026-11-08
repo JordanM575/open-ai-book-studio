@@ -15,6 +15,10 @@ Update the `Unreleased` section before every commit.
   them with keyboard navigation. Edits clear marks; no provider or persistence is added.
 - Clear the aside's current finding when a category filter hides it, and count findings rather
   than evidence spans so a finding with two citations is not reported as two findings.
+- Keep undo history intact when a restored selection would split a surrogate pair: clamp the
+  caret to a code-point boundary and put the history transition back if the replacement is still
+  refused. Select a list row's finding by identity, so two findings on one passage can each be
+  chosen from the list.
 
 ### Mounted exact-current manuscript editor
 - Mount the accepted CodeMirror plain-text surface in `ManuscriptEditor` in place of the textarea.
