@@ -10,7 +10,7 @@ import {
   type VoiceTranscript
 } from "@ai-book-studio/core/providers/speech";
 import { DEFAULT_VOICE_PREFERENCES, type TranscriptionSelection, type VoicePreferences } from "@ai-book-studio/core/providers/voice-preferences";
-import { ProviderError, type ConnectionSummary } from "@ai-book-studio/core/providers/types";
+import { ProviderError, type ConnectionSummary, type ProviderId } from "@ai-book-studio/core/providers/types";
 import type { ProviderService } from "./providers";
 import { requestSignal } from "./voice-transport";
 
@@ -29,6 +29,14 @@ export interface TranscribeInput {
  * The only place audio leaves the studio. It reads the explicitly selected secret in the main
  * process, validates WAV before spending a request, and keeps audio in memory only.
  */
+/** A host stop stays a cancellation even when it lands while the response body is read. */
+function cancelledTranscription(provider: ProviderId): ProviderError {
+  return new ProviderError("unknown", "The transcription request was cancelled.", {
+    provider,
+    cause: new DOMException("Aborted", "AbortError")
+  });
+}
+
 export class VoiceService {
   constructor(
     private readonly providers: ProviderService,
@@ -86,11 +94,7 @@ export class VoiceService {
       });
     } catch (error) {
       if (input.signal?.aborted) {
-        throw new ProviderError("unknown", "The transcription request was cancelled.", {
-          provider: credential.provider,
-          // An explicit cancellation marker: the host reason may be a plain string or Error.
-          cause: new DOMException("Aborted", "AbortError")
-        });
+        throw cancelledTranscription(credential.provider);
       }
       throw new ProviderError("offline", "Could not reach the transcription service. Check your connection.", {
         provider: credential.provider,
@@ -100,10 +104,18 @@ export class VoiceService {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
+      if (input.signal?.aborted) throw cancelledTranscription(credential.provider);
       throw normalizeProviderError({ provider: credential.provider, status: response.status, body: errorBody });
     }
 
-    const payload = await response.json().catch(() => null);
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      // fetch resolved at the headers; a stop during the body read still has to settle as one.
+      if (input.signal?.aborted) throw cancelledTranscription(credential.provider);
+      payload = null;
+    }
     const transcript = isMeta
       ? (() => {
           const parsed = parseSpeechResponse(payload);

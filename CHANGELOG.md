@@ -13,7 +13,8 @@ Update the `Unreleased` section before every commit.
   desktop adapter already use), and require callers that have dispatched a chunk to settle a
   provider 400/404 as `failure`, not as a pre-send refusal. Reserve receipt capacity for an
   operation already in flight, and mark service-side cancellation with an explicit AbortError so a
-  custom host reason still settles as cancellation.
+  custom host reason still settles as cancellation. A stop that lands while the response body is
+  read is converted to the same cancellation instead of a provider failure.
 
 ### Voice transport
 - Add a pure host-neutral STT/TTS transport ledger: monotonic operation and chunk IDs, one

@@ -9,7 +9,7 @@ import {
   type SpokenAudio,
 } from "@ai-book-studio/core/providers/tts";
 import { DEFAULT_VOICE_PREFERENCES, type VoicePreferences } from "@ai-book-studio/core/providers/voice-preferences";
-import { ProviderError, type ConnectionSummary } from "@ai-book-studio/core/providers/types";
+import { ProviderError, type ConnectionSummary, type ProviderId } from "@ai-book-studio/core/providers/types";
 import type { ProviderService } from "./providers";
 import { requestSignal } from "./voice-transport";
 
@@ -65,6 +65,14 @@ export interface SpeakResult extends SpokenAudio {
  * The text is split at sentence boundaries before it is sent, because one request carries a few
  * thousand characters and a chapter is far longer, and the audio is joined back into one sound.
  */
+/** A host stop stays a cancellation even when it lands while the response body is read. */
+function cancelledSpeech(provider: ProviderId): ProviderError {
+  return new ProviderError("unknown", "The speaking request was cancelled.", {
+    provider,
+    cause: new DOMException("Aborted", "AbortError")
+  });
+}
+
 export class SpeechService {
   constructor(
     private readonly providers: ProviderService,
@@ -146,6 +154,7 @@ export class SpeechService {
       }
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
+        if (input.signal?.aborted) throw cancelledSpeech(credential.provider);
         throw normalizeProviderError({
           provider: credential.provider,
           status: response.status,
@@ -155,7 +164,13 @@ export class SpeechService {
 
       const contentType = response.headers.get("content-type") ?? "";
       const type = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await response.arrayBuffer());
+      } catch (error) {
+        if (input.signal?.aborted) throw cancelledSpeech(credential.provider);
+        throw error;
+      }
       if (bytes.byteLength === 0) {
         throw new ProviderError("unknown", "The voice service returned no audio.");
       }

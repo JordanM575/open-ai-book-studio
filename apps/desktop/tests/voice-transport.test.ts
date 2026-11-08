@@ -200,3 +200,54 @@ test("a custom abort reason still settles as cancellation", () => {
   });
   expect(settlementForFailure(wrapped).outcome).toBe("cancellation");
 });
+
+describe("aborts that land while the body is read", () => {
+  test("VoiceService treats a stop after headers as a cancellation", async () => {
+    const controller = new AbortController();
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: async () => "",
+      json: async () => {
+        controller.abort("Author stopped.");
+        throw new DOMException("Aborted", "AbortError");
+      }
+    })) as unknown as typeof fetch;
+
+    let failure: unknown = null;
+    try {
+      await voiceService(fetchImpl).transcribe({
+        audio: wav(), expectedSelection: { connectionId: metaCredential.id, model: META_SPEECH_MODEL },
+        signal: controller.signal
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: "unknown", message: "The transcription request was cancelled." });
+    expect(settlementForFailure(failure)).toMatchObject({ outcome: "cancellation" });
+  });
+
+  test("SpeechService treats a stop after headers as a cancellation", async () => {
+    const controller = new AbortController();
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "audio/mpeg" }),
+      text: async () => "",
+      arrayBuffer: async () => {
+        controller.abort("Author stopped.");
+        throw new DOMException("Aborted", "AbortError");
+      }
+    })) as unknown as typeof fetch;
+
+    let failure: unknown = null;
+    try {
+      await speechService(fetchImpl).speak({ text: "One sentence.", signal: controller.signal });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: "unknown", message: "The speaking request was cancelled." });
+    expect(settlementForFailure(failure)).toMatchObject({ outcome: "cancellation" });
+  });
+});
