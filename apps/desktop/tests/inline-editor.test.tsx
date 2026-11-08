@@ -204,6 +204,38 @@ describe("isolated exact-current editor", () => {
     expect(f.commands).toEqual(["undo", "redo", "save"]);
   });
 
+  test("user paste during hold inserts normalized text like typing; controlled changes stay refused", async () => {
+    const f = fixture();
+    expect(await f.editor.showEvidence({})).toBe("applied");
+    const content = f.parent.querySelector(".cm-content");
+    if (!content) throw new Error("Missing editor");
+    const release = f.editor.hold();
+    expect(f.editor.getSnapshot().held).toBe(true);
+    expect(f.editor.replaceText("controlled", f.editor.getSnapshot().revision)).toBe(false);
+    expect(f.editor.insertDictation("dictated", f.editor.getSnapshot().revision)).toBe(false);
+    expect(await f.editor.showEvidence({})).toBe("stale");
+    expect(f.editor.getSnapshot().body).toBe(body);
+    expect(f.changes).toHaveLength(0);
+    f.editor.setSelection({ anchor: 0, head: 0 });
+    testing.fireEvent.paste(content, {
+      clipboardData: { getData: () => "“Held”\r\nline  \r\n\r\n\r\nend" }
+    });
+    const inserted = '"Held"\nline  \n\nend';
+    expect(f.editor.getSnapshot().body).toBe(inserted + body);
+    expect(f.editor.getSnapshot().selection).toEqual({ anchor: inserted.length, head: inserted.length });
+    expect(f.changes.at(-1)).toMatchObject({ origin: "paste", isolated: true, recordHistory: true });
+    release();
+    expect(f.editor.getSnapshot().held).toBe(false);
+    testing.fireEvent.compositionStart(content);
+    expect(f.editor.getSnapshot().composing).toBe(true);
+    expect(f.editor.paste("must not insert")).toBe(false);
+    expect(f.editor.getSnapshot().body).toBe(inserted + body);
+    testing.fireEvent.compositionEnd(content, { data: "" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(f.editor.getSnapshot().composing).toBe(false);
+    expect(f.editor.getSnapshot().body).toBe(inserted + body);
+  });
+
   test("composition start/cancel suspends external changes and even unchanged saved marks", async () => {
     const f = fixture();
     await f.editor.showEvidence({});

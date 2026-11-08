@@ -227,8 +227,12 @@ export class InlineEditor {
 
   /** Compare-and-set prevents a delayed React echo/history/dictation result overwriting newer input. */
   replaceText(text: string, expectedRevision: number, origin: EditOrigin = "controlled", selection?: TextSelection): boolean {
+    return this.applyReplace(text, expectedRevision, origin, selection, false);
+  }
+
+  private applyReplace(text: string, expectedRevision: number, origin: EditOrigin, selection: TextSelection | undefined, allowDuringHold: boolean): boolean {
     const current = this.getSnapshot();
-    if (current.destroyed || !this.sameVisit(current) || current.composing || current.held || current.revision !== expectedRevision) return false;
+    if (current.destroyed || !this.sameVisit(current) || current.composing || (!allowDuringHold && current.held) || current.revision !== expectedRevision) return false;
     const nextSelection = selection ?? { anchor: Math.min(current.selection.anchor, text.length), head: Math.min(current.selection.head, text.length) };
     if (!validSelection(nextSelection, text)) return false;
     this.view.dispatch({
@@ -244,7 +248,9 @@ export class InlineEditor {
     const to = Math.max(current.selection.anchor, current.selection.head);
     const inserted = normalizePasteText(text);
     const caret = from + inserted.length;
-    return this.replaceText(current.body.slice(0, from) + inserted + current.body.slice(to), current.revision, "paste", { anchor: caret, head: caret });
+    // User-origin paste is typing, not a controlled replacement: a hold suspends
+    // programmatic replacement, so paste inserts through the normal change path.
+    return this.applyReplace(current.body.slice(0, from) + inserted + current.body.slice(to), current.revision, "paste", { anchor: caret, head: caret }, true);
   }
 
   insertDictation(text: string, expectedRevision: number): boolean {

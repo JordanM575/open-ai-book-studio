@@ -75,6 +75,10 @@ text change. Programmatic selections reject fractional/out-of-range offsets and
 surrogate splits. Scalar-safe partial grapheme selections are not expanded.
 
 `paste(text)` reuses `normalizePasteText`; the clipboard path handles plain text.
+User-origin paste is typing, not a controlled replacement: during a hold it
+inserts the normalized text through the normal change path with the same
+isolated history unit as paste outside a hold. Controlled `replaceText`,
+dictation and evidence installation remain refused during a hold.
 `insertDictation(text, expectedRevision)` reuses the existing transcript-spacing
 helper at the current selection. Both report isolated history units. Dictation
 refusal leaves ownership of the uninserted transcript with the host for retry.
