@@ -14,7 +14,12 @@ export type ReviewRunView =
   | { kind: "running" }
   | { kind: "stopped" }
   | { kind: "failed"; message: string }
-  | { kind: "report"; report: ReviewReportResult; freshness: ReviewReportFreshness };
+  | { kind: "report"; report: ReviewReportResult; freshness: ReviewDisplayFreshness };
+
+/** Source identity and individual worker excerpts are distinct checks. */
+export type ReviewDisplayFreshness = ReviewReportFreshness
+  | { status: "checking"; cancellableRun: boolean }
+  | { status: "unavailable"; reason: "read" | "evidence" };
 
 interface Props {
   open: boolean;
@@ -27,6 +32,8 @@ interface Props {
   onClose: () => void;
   /** Open a finding's evidence span in the manuscript after revalidation. */
   onNavigate: (findingId: string, evidenceIndex: number) => void;
+  /** Retry a failed saved-source comparison without rerunning analysis. */
+  onRetryFreshness?: () => void;
   /** A malformed visible worker occurrence must fail the report, not crash rendering. */
   onMalformedEvidence?: () => void;
   onOpenChange?: (open: boolean) => void;
@@ -43,8 +50,8 @@ function coverageRowTitle(entry: ReviewCoverageEntry): string {
   return `${entry.title} · ${entry.order === null ? "un-ordered" : `Chapter ${entry.order}`}`;
 }
 
-function staleChapterLabels(report: ReviewReportResult, freshness: ReviewReportFreshness): string[] {
-  if (freshness.status === "current") return [];
+function staleChapterLabels(report: ReviewReportResult, freshness: ReviewDisplayFreshness): string[] {
+  if (freshness.status !== "stale") return [];
   const titles = new Map<string, string>();
   for (const chapter of report.source.chapters) {
     if (chapter.status === "saved") titles.set(chapter.chapterId, chapter.title);
@@ -84,7 +91,7 @@ function StatusCopy({ view }: { view: Extract<ReviewRunView, { kind: "report" }>
  * report is held in memory, never written anywhere, and a new run replaces it. Evidence
  * navigation rechecks the saved version and hash before opening a span (T012).
  */
-export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAgain, onClose, onNavigate, onMalformedEvidence, onOpenChange }: Props) {
+export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAgain, onClose, onNavigate, onMalformedEvidence, onRetryFreshness, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -146,6 +153,8 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
             freshness={view.freshness}
             onNavigate={onNavigate}
             onMalformedEvidence={onMalformedEvidence}
+            onRetryFreshness={onRetryFreshness}
+            onCancelRun={onCancelRun}
             onRunAgain={onRunAgain}
             onClose={onClose}
           />
@@ -161,18 +170,23 @@ function ReportBody({
   freshness,
   onNavigate,
   onMalformedEvidence,
+  onRetryFreshness,
+  onCancelRun,
   onRunAgain,
   onClose
 }: {
   bookTitle: string;
   report: ReviewReportResult;
-  freshness: ReviewReportFreshness;
+  freshness: ReviewDisplayFreshness;
   onNavigate: (findingId: string, evidenceIndex: number) => void;
   onMalformedEvidence: Props["onMalformedEvidence"];
+  onRetryFreshness: Props["onRetryFreshness"];
+  onCancelRun: Props["onCancelRun"];
   onRunAgain: () => void;
   onClose: () => void;
 }) {
   const stale = freshness.status === "stale";
+  const navigationDisabled = freshness.status !== "current";
   const staleLabels = staleChapterLabels(report, freshness);
   return (
     <>
@@ -191,6 +205,29 @@ function ReportBody({
           <Button variant="ghost" size="sm" className="mt-2" onClick={onRunAgain} data-testid="review-run-again">
             Run again
           </Button>
+        </div>
+      ) : null}
+
+      {freshness.status === "checking" ? (
+        <div data-testid="review-checking" role="status" className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-subheadline-size)">
+          Checking the saved chapters. Evidence cannot be opened until this check finishes.
+          {freshness.cancellableRun ? (
+            <Button variant="ghost" size="sm" className="mt-2" onClick={onCancelRun} data-testid="review-cancel-run">Cancel run</Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {freshness.status === "unavailable" ? (
+        <div data-testid="review-unavailable" role="status" className="mt-3 rounded-[var(--corner-md)] bg-[var(--secondary)] px-3 py-2 text-(length:--text-subheadline-size)">
+          <p className="font-medium">This report cannot be verified</p>
+          <p className="mt-0.5 text-muted-foreground">
+            {freshness.reason === "read"
+              ? "The saved chapters could not be checked. Evidence navigation is unavailable."
+              : "A passage could not be verified against the saved chapters. Run the review again for current results."}
+          </p>
+          {freshness.reason === "read" && onRetryFreshness ? (
+            <Button variant="ghost" size="sm" className="mt-2" onClick={onRetryFreshness} data-testid="review-retry-freshness">Retry check</Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -238,7 +275,7 @@ function ReportBody({
                 : "No repeated three-token sequences in the saved chapters."}
           </p>
         ) : (
-          <PagedFindings findings={report.findings} sources={report.source.chapters} stale={stale} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
+          <PagedFindings findings={report.findings} sources={report.source.chapters} navigationDisabled={navigationDisabled} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
         )}
       </section>
 
@@ -258,10 +295,10 @@ const FINDINGS_PER_PAGE = 5;
 const OCCURRENCES_PER_PAGE = 10;
 
 /** View-only slices: every finding and occurrence remains in the completed volatile report. */
-function PagedFindings({ findings, sources, stale, onNavigate, onMalformedEvidence }: {
+function PagedFindings({ findings, sources, navigationDisabled, onNavigate, onMalformedEvidence }: {
   findings: readonly ReviewFinding[];
   sources: ReviewReportResult["source"]["chapters"];
-  stale: boolean;
+  navigationDisabled: boolean;
   onNavigate: Props["onNavigate"];
   onMalformedEvidence: Props["onMalformedEvidence"];
 }) {
@@ -273,20 +310,23 @@ function PagedFindings({ findings, sources, stale, onNavigate, onMalformedEviden
       <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
         {findings.length} {pluralize(findings.length, "sequence")} · {totalOccurrences} occurrences, including overlaps. All results are retained; paging changes only this view.
       </p>
+      <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
+        Excerpts are unverified until checked against the saved text when opened.
+      </p>
       <ReviewPages label="Sequences" page={page} size={FINDINGS_PER_PAGE} total={findings.length} onPage={setPage} />
       <ul className="mt-2 space-y-3">
         {findings.slice(page * FINDINGS_PER_PAGE, (page + 1) * FINDINGS_PER_PAGE).map((finding) => (
-          <FindingOccurrences key={finding.id} finding={finding} sources={savedSources} stale={stale} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
+          <FindingOccurrences key={finding.id} finding={finding} sources={savedSources} navigationDisabled={navigationDisabled} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
         ))}
       </ul>
     </>
   );
 }
 
-function FindingOccurrences({ finding, sources, stale, onNavigate, onMalformedEvidence }: {
+function FindingOccurrences({ finding, sources, navigationDisabled, onNavigate, onMalformedEvidence }: {
   finding: ReviewFinding;
   sources: ReadonlyMap<string, Extract<ReviewReportResult["source"]["chapters"][number], { status: "saved" }>>;
-  stale: boolean;
+  navigationDisabled: boolean;
   onNavigate: Props["onNavigate"];
   onMalformedEvidence: Props["onMalformedEvidence"];
 }) {
@@ -314,9 +354,9 @@ function FindingOccurrences({ finding, sources, stale, onNavigate, onMalformedEv
         {visible.map((span, index) => (
           <li key={`${span.chapterId}:${span.startOffset}:${span.endOffset}`} className="flex flex-wrap items-center justify-between gap-3">
             <span className="min-w-0 break-words text-(length:--text-caption-size) text-muted-foreground">
-              Chapter {span.order} · {span.title} · “{span.excerpt}”
+              Unverified excerpt · Chapter {span.order} · {span.title} · “{span.excerpt}”
             </span>
-            <Button variant="ghost" size="sm" disabled={stale}
+            <Button variant="ghost" size="sm" disabled={navigationDisabled}
               onClick={() => onNavigate(finding.id, start + index)} data-testid="review-evidence">
               Show in chapter
             </Button>

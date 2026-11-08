@@ -7,6 +7,18 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Review evidence and display freshness
+
+- Label each displayed occurrence excerpt unverified until its exact saved passage is checked when
+  opened. Invalid evidence makes the report unavailable for navigation until a new run; all
+  findings and occurrences remain available in the paged result.
+- Check saved-source freshness on first display and reopen before enabling evidence, with disabled
+  navigation while checking, a retry on read failure, stale-source feedback and cancellation during
+  the initial check. These reads do not replace the live editor buffer.
+- Bind malformed-page failures to the report lifetime independently of individual navigation reads,
+  so current failures cancel pending navigation without affecting a replacement run. Synthetic
+  regressions cover these boundaries; independent review and native/host acceptance remain open.
+
 ### Saved-review receipt and draft recovery corrections
 
 - Verify complete intended report-conflict copies at the store, handler and receiver, including a

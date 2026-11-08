@@ -213,12 +213,15 @@ export function WorkspaceView({
   } | null>(null);
   const runController = useRef<AbortController | null>(null);
   const reviewGeneration = useRef(0);
+  // A navigation supersedes another read, but does not replace the report that owns its pages.
+  const reportLifetime = useRef(0);
   const identity = JSON.stringify([libraryRoot, bookId]);
   const renderedIdentity = useRef(identity);
   // Invalidate even before effect cleanup, including an A → B → A prop transition.
   if (renderedIdentity.current !== identity) {
     renderedIdentity.current = identity;
     reviewGeneration.current++;
+    reportLifetime.current++;
     loadGeneration.current++;
   }
   const detailIdentity = useRef<string | null>(null);
@@ -250,6 +253,7 @@ export function WorkspaceView({
   useLayoutEffect(() => {
     // Terminate owned work on book/library change and unmount (including Strict Mode cleanup).
     reviewGeneration.current++;
+    reportLifetime.current++;
     runController.current?.abort();
     runController.current = null;
     setReviewOpen(false);
@@ -258,14 +262,22 @@ export function WorkspaceView({
     setPendingEvidenceSwitch(null);
     return () => {
       reviewGeneration.current++;
+      reportLifetime.current++;
       runController.current?.abort();
       runController.current = null;
     };
   }, [bookId, libraryRoot]);
 
-  const invalidateReview = useCallback(() => {
+  const invalidateReview = useCallback((keepReportLifetime = false) => {
     reviewGeneration.current++;
-    if (runController.current) setReviewView((current) => current.kind === "running" ? { kind: "stopped" } : current);
+    if (!keepReportLifetime) reportLifetime.current++;
+    const hadRun = runController.current !== null;
+    setReviewView((current) => {
+      if (current.kind === "report" && current.freshness.status === "checking") {
+        return { ...current, freshness: { status: "unavailable", reason: "read" } };
+      }
+      return hadRun && current.kind === "running" ? { kind: "stopped" } : current;
+    });
     runController.current?.abort();
     runController.current = null;
     approvedEvidenceSwitch.current = null;
@@ -821,12 +833,29 @@ export function WorkspaceView({
         buildReviewReport(snapshot, analysis, { requestedAt, completedAt: new Date().toISOString() })
       );
       if (!current()) return;
-      runController.current = null;
       if (outcome.status === "complete") {
-        setReviewView({ kind: "report", report: outcome.value, freshness: { status: "current" } });
+        const report = outcome.value;
+        // The analysis used an earlier snapshot. Do not claim current until a new saved read
+        // has completed; keep the run cancellable and never replace the live editor from it.
+        setReviewView({ kind: "report", report, freshness: { status: "checking", cancellableRun: true } });
+        try {
+          const fresh = await must(window.studio.books.open(bookId));
+          if (!current()) return;
+          const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+          const freshness = reviewReportFreshness(report, snapshot);
+          runController.current = null;
+          setReviewView({ kind: "report", report, freshness });
+        } catch (error) {
+          if (!current()) return;
+          runController.current = null;
+          onNotice(error);
+          setReviewView({ kind: "report", report, freshness: { status: "unavailable", reason: "read" } });
+        }
       } else if (outcome.status === "cancelled") {
+        runController.current = null;
         setReviewView({ kind: "stopped" });
       } else {
+        runController.current = null;
         setReviewView({ kind: "failed", message: outcome.message });
       }
     },
@@ -876,10 +905,14 @@ export function WorkspaceView({
     // Read the live buffer status: the mirrored state can lag a fast keystroke by an effect.
     const live = editorRef.current?.getStatus() ?? status;
     if (reviewView.kind === "report") {
+      // A source read cannot repair a worker's invalid occurrence. Keep the result unavailable
+      // until a new run, including across close/reopen.
+      if (reviewView.freshness.status === "unavailable" && reviewView.freshness.reason === "evidence") return;
       const generation = reviewGeneration.current;
       const current = () => generation === reviewGeneration.current &&
         shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       // The report is run-local; re-check it against the current saved chapters on every open.
+      setReviewView({ kind: "report", report: reviewView.report, freshness: { status: "checking", cancellableRun: false } });
       void (async () => {
         try {
           const fresh = await must(window.studio.books.open(bookId));
@@ -889,7 +922,10 @@ export function WorkspaceView({
           setReviewView((view) => current() && view.kind === "report" && view.report === reviewView.report
             ? { kind: "report", report: view.report, freshness } : view);
         } catch (error) {
-          if (current()) onNotice(error);
+          if (!current()) return;
+          onNotice(error);
+          setReviewView((view) => current() && view.kind === "report" && view.report === reviewView.report
+            ? { kind: "report", report: view.report, freshness: { status: "unavailable", reason: "read" } } : view);
         }
       })();
       return;
@@ -912,9 +948,9 @@ export function WorkspaceView({
     setReviewView({ kind: "stopped" });
   }, [invalidateReview]);
 
-  const malformedEvidence = useCallback((generation: number) => {
+  const malformedEvidence = useCallback((lifetime: number) => {
     // A deferred effect from an old report must not hide a newer run's Cancel control.
-    if (generation !== reviewGeneration.current) return;
+    if (lifetime !== reportLifetime.current) return;
     invalidateReview();
     setReviewView({ kind: "failed", message: "The local review worker returned an invalid result. Your saved manuscript was not changed." });
   }, [invalidateReview]);
@@ -925,8 +961,8 @@ export function WorkspaceView({
    */
   const navigateToEvidence = useCallback(
     async (findingId: string, evidenceIndex: number) => {
-      if (reviewView.kind !== "report") return;
-      invalidateReview();
+      if (reviewView.kind !== "report" || reviewView.freshness.status !== "current") return;
+      invalidateReview(true);
       const generation = reviewGeneration.current;
       const isCurrent = () => generation === reviewGeneration.current &&
         shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
@@ -955,7 +991,7 @@ export function WorkspaceView({
             onResult: (applied) => {
               if (!isCurrent()) return;
               setEvidenceSelection(null);
-              if (applied) { setReviewOpen(false); reviewGeneration.current++; }
+              if (applied) { setReviewOpen(false); reviewGeneration.current++; reportLifetime.current++; }
               else unavailable();
             }
           };
@@ -968,6 +1004,8 @@ export function WorkspaceView({
             ? { kind: "report", report, freshness: navigation } : view);
           return;
         }
+        setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+          ? { kind: "report", report, freshness: { status: "unavailable", reason: "evidence" } } : view);
         onNotice(new Error("That passage is no longer available. Run the review again for current results."));
       } catch (error) {
         if (isCurrent()) onNotice(error);
@@ -989,7 +1027,7 @@ export function WorkspaceView({
     );
   }, []);
 
-  const displayedReviewGeneration = reviewGeneration.current;
+  const displayedReportLifetime = reportLifetime.current;
   const wordTotal = detail?.chapters.reduce((total, chapter) => total + chapter.wordCount, 0) ?? 0;
   const conflict = status.kind === "conflict" ? status.conflict : null;
 
@@ -1661,7 +1699,8 @@ export function WorkspaceView({
           onRunAgain={runAgain}
           onClose={closeReview}
           onNavigate={(findingId, evidenceIndex) => void navigateToEvidence(findingId, evidenceIndex)}
-          onMalformedEvidence={() => malformedEvidence(displayedReviewGeneration)}
+          onMalformedEvidence={() => malformedEvidence(displayedReportLifetime)}
+          onRetryFreshness={openReview}
           onOpenChange={(open) => {
             if (!open) closeReview();
           }}

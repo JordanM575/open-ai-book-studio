@@ -8,6 +8,7 @@ import {
   buildReviewReport,
   analyzeReviewCoverage,
   analyzeReviewCoverageAsync,
+  type ReviewCoverageAnalysis,
   type ReviewReportResult,
   type ReviewSourceSnapshot
 } from "@ai-book-studio/core/review";
@@ -484,9 +485,9 @@ const ambientStatus: AmbientStatus = {
 };
 
 /** Synthetic read-only bridge for worker lifetime tests; any accidental writer/provider call fails. */
-function workerWorkspaceFixture() {
+function workerWorkspaceFixture(detail = firstDetail) {
   const forbidden = mock(() => { throw new Error("No write/provider in local review"); });
-  const open = mock((bookId: string) => Promise.resolve({ ok: true as const, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : firstDetail }));
+  const open = mock((bookId: string) => Promise.resolve({ ok: true as const, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : detail }));
   (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
     platform: "darwin", library: { onChange: () => () => {} }, books: { open },
     conflicts: { list: () => Promise.resolve({ ok: true, data: [] }) },
@@ -521,9 +522,10 @@ function controlledReviewWorkers() {
     }
     postMessage(request: ReviewWorkerRequest) { this.request = request; }
     reply(reply: ReviewWorkerReply) { this.dispatchEvent(new MessageEvent("message", { data: reply })); }
-    complete() {
+    complete(change?: (analysis: ReviewCoverageAnalysis) => ReviewCoverageAnalysis) {
       if (!this.request) throw new Error("Worker has no saved snapshot");
-      this.reply({ kind: "complete", analysis: analyzeReviewCoverage(this.request.source) });
+      const analysis = analyzeReviewCoverage(this.request.source);
+      this.reply({ kind: "complete", analysis: change ? change(analysis) : analysis });
     }
   }
   globalThis.Worker = ControlledWorker as unknown as typeof Worker;
@@ -537,18 +539,278 @@ function deferredRead() {
   return { promise, resolve, reject };
 }
 
-async function startControlledReport(fixture: ReturnType<typeof workerWorkspaceFixture>, control: ReturnType<typeof controlledReviewWorkers>) {
+async function startControlledReport(
+  fixture: ReturnType<typeof workerWorkspaceFixture>, control: ReturnType<typeof controlledReviewWorkers>,
+  change?: (analysis: ReviewCoverageAnalysis) => ReviewCoverageAnalysis, expectedLabel = "salt and stone"
+) {
   const rendered = testing.render(React.createElement(WorkspaceView, fixture.props));
   const queries = testing.within(document.body);
   await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
   testing.fireEvent.click(queries.getByTestId("review-manuscript"));
   await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
-  await testing.act(async () => { control.workers[0]?.complete(); });
-  expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+  await testing.act(async () => { control.workers[0]?.complete(change); });
+  expect(queries.getByTestId("review-findings").textContent).toContain(expectedLabel);
   return { rendered, queries };
 }
 
+const repeatedBody = `😀 ${Array(25).fill("agate birch cloud").join(" ")}`;
+const repeatedDetail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [
+  integrationChapter("ch_int000001", "The Light", 1, repeatedBody)
+]);
+
+function changeLaterOccurrence(
+  analysis: ReviewCoverageAnalysis,
+  change: (evidence: Array<ReviewCoverageAnalysis["findings"][number]["evidence"][number]>) => void
+): ReviewCoverageAnalysis {
+  const finding = at(analysis.findings, 0);
+  const evidence = [...finding.evidence];
+  change(evidence);
+  return { ...analysis, findings: [{ ...finding, evidence }, ...analysis.findings.slice(1)] };
+}
+
 describe("workspace review entry to report", () => {
+  test.each(["literal", "bounds", "gap", "surrogate"] as const)(
+    "a later %s occurrence is explicitly unverified and an exact open makes the report unavailable", async (defect) => {
+      const fixture = workerWorkspaceFixture(repeatedDetail);
+      const control = controlledReviewWorkers();
+      try {
+        const change = (analysis: ReviewCoverageAnalysis) => changeLaterOccurrence(analysis, (evidence) => {
+          const span = at(evidence, 12);
+          if (defect === "literal") evidence[12] = { ...span, excerpt: "Q".repeat(span.excerpt.length) };
+          else if (defect === "bounds") evidence[12] = { ...span, startOffset: 10_000, endOffset: 10_000 + span.excerpt.length };
+          else if (defect === "gap") evidence[12] = { ...span, excerpt: span.excerpt.replace(" ", "-") };
+          else evidence[12] = { ...span, startOffset: 1, endOffset: 2, excerpt: repeatedBody.slice(1, 2) };
+        });
+        const { queries } = await startControlledReport(fixture, control, change, "agate birch cloud");
+        const finding = at(queries.getAllByTestId("review-finding"), 0);
+        const page = testing.within(finding);
+        testing.fireEvent.click(page.getByRole("button", { name: "Next occurrences" }));
+        expect(queries.getByTestId("review-findings").textContent).toContain("Excerpts are unverified until checked");
+        expect(finding.textContent).toContain("Unverified excerpt");
+        expect(page.getAllByTestId("review-evidence")).toHaveLength(10);
+        testing.fireEvent.click(at(page.getAllByTestId("review-evidence"), 2));
+        await testing.waitFor(() => expect(queries.getByTestId("review-unavailable").textContent).toContain("passage could not be verified"));
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        expect(queries.getByTestId("review-findings").textContent).toContain("25 occurrences");
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value).toBe(repeatedBody);
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+        testing.fireEvent.click(queries.getByTestId("review-close"));
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test("a valid later-page excerpt remains useful and selects its exact saved span", async () => {
+    const fixture = workerWorkspaceFixture(repeatedDetail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, undefined, "agate birch cloud");
+      const finding = testing.within(at(queries.getAllByTestId("review-finding"), 0));
+      testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
+      expect(finding.getAllByText(/Unverified excerpt/)).toHaveLength(10);
+      testing.fireEvent.click(at(finding.getAllByTestId("review-evidence"), 2));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      const expectedStart = 3 + 12 * "agate birch cloud ".length;
+      expect(editor.selectionStart).toBe(expectedStart);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("agate birch cloud");
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["resolve", "reject"] as const)(
+    "a current malformed page invalidates a pending navigation on late %s", async (outcome) => {
+      const fixture = workerWorkspaceFixture(repeatedDetail);
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control, (analysis) =>
+          changeLaterOccurrence(analysis, (evidence) => { delete evidence[12]; }), "agate birch cloud");
+        const pending = deferredRead();
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        const finding = testing.within(at(queries.getAllByTestId("review-finding"), 0));
+        const before = fixture.open.mock.calls.length;
+        testing.fireEvent.click(at(finding.getAllByTestId("review-evidence"), 0));
+        expect(fixture.open.mock.calls.length).toBe(before + 1);
+        testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
+        expect(queries.getByTestId("review-status").textContent).toContain("invalid result");
+        await testing.act(async () => {
+          if (outcome === "resolve") pending.resolve({ ok: true, data: repeatedDetail });
+          else pending.reject(new Error("obsolete synthetic navigation"));
+        });
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        expect(queries.getByTestId("review-status").textContent).toContain("invalid result");
+        expect(fixture.props.onNotice).not.toHaveBeenCalled();
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test("a superseded malformed page does not cancel the replacement worker", async () => {
+    const fixture = workerWorkspaceFixture(repeatedDetail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) =>
+        changeLaterOccurrence(analysis, (evidence) => { delete evidence[12]; }), "agate birch cloud");
+      await testing.act(async () => {
+        const finding = testing.within(at(queries.getAllByTestId("review-finding"), 0));
+        testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
+        testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      });
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+      expect(control.workers[1]?.terminate).not.toHaveBeenCalled();
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("agate birch cloud");
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["changed", "reject"] as const)(
+    "reopen stays checking and disabled until its saved read %s", async (outcome) => {
+      const fixture = workerWorkspaceFixture();
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control);
+        testing.fireEvent.click(queries.getByTestId("review-close"));
+        const pending = deferredRead();
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        expect(queries.getByTestId("review-checking").textContent).toContain("Checking the saved chapters");
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        testing.fireEvent.change(editor, { target: { value: "Unsaved live words remain here." } });
+        const changed = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "f".repeat(64), content: "Changed saved words." })) };
+        await testing.act(async () => {
+          if (outcome === "changed") pending.resolve({ ok: true, data: changed });
+          else pending.reject(new Error("synthetic saved read failed"));
+        });
+        expect(editor.value).toBe("Unsaved live words remain here.");
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        if (outcome === "changed") {
+          expect(queries.getByTestId("review-stale").textContent).toContain("The Light");
+          expect(queries.getByTestId("review-stale").textContent).toContain("The Road");
+          expect(fixture.props.onNotice).not.toHaveBeenCalled();
+        } else {
+          expect(queries.getByTestId("review-unavailable").textContent).toContain("saved chapters could not be checked");
+          expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+          const retry = deferredRead();
+          fixture.open.mockImplementationOnce(() => retry.promise);
+          testing.fireEvent.click(queries.getByTestId("review-retry-freshness"));
+          expect(queries.getByTestId("review-checking")).toBeTruthy();
+          expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+          await testing.act(async () => { retry.resolve({ ok: true, data: firstDetail }); });
+          expect(queries.queryByTestId("review-checking")).toBeNull();
+          expect(queries.queryByTestId("review-unavailable")).toBeNull();
+          expect(queries.getAllByTestId("review-evidence").every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+          expect(editor.value).toBe("Unsaved live words remain here.");
+        }
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  for (const action of ["cancel", "close", "rerun", "unmount", "chapter", "book ABA", "library ABA"] as const) {
+    for (const outcome of ["resolve", "reject"] as const) {
+      test(`an obsolete first-display ${outcome} cannot affect ${action}`, async () => {
+        const fixture = workerWorkspaceFixture();
+        const control = controlledReviewWorkers();
+        try {
+          const rendered = testing.render(React.createElement(WorkspaceView, fixture.props));
+          const queries = testing.within(document.body);
+          await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+          testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+          await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+          const pending = deferredRead();
+          fixture.open.mockImplementationOnce(() => pending.promise);
+          await testing.act(async () => { control.workers[0]?.complete(); });
+          expect(queries.getByTestId("review-checking")).toBeTruthy();
+
+          if (action === "cancel") testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+          else if (action === "close") testing.fireEvent.click(queries.getByTestId("review-close"));
+          else if (action === "rerun") {
+            testing.fireEvent.click(queries.getByTestId("review-run-again"));
+            await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+          } else if (action === "unmount") rendered.unmount();
+          else if (action === "chapter") {
+            rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props,
+              chapterRequest: { bookId: INTEGRATION_BOOK, chapterId: "ch_int000002", nonce: 1, revert: false } }));
+            await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road"));
+          } else {
+            const other = action === "book ABA" ? { bookId: INTEGRATION_BOOK_TWO } : { libraryRoot: "/synthetic/other-library" };
+            const oldEditor = queries.getByTestId("manuscript-text");
+            rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, ...other }));
+            await testing.waitFor(() => expect(queries.getByTestId("manuscript-text")).not.toBe(oldEditor));
+            rendered.rerender(React.createElement(WorkspaceView, fixture.props));
+            await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light"));
+            testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+            await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+          }
+
+          const changed = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "e".repeat(64) })) };
+          await testing.act(async () => {
+            if (outcome === "resolve") pending.resolve({ ok: true, data: changed });
+            else pending.reject(new Error("obsolete first-display read"));
+          });
+          if (action === "cancel") expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+          if (action === "close" || action === "unmount") expect(queries.queryByTestId("review-report")).toBeNull();
+          if (action === "chapter") {
+            expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+            expect(queries.queryByTestId("review-stale")).toBeNull();
+            expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road");
+          }
+          if (action === "rerun" || action === "book ABA" || action === "library ABA") {
+            expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+            expect(control.workers[1]?.terminate).not.toHaveBeenCalled();
+          }
+          expect(fixture.props.onNotice).not.toHaveBeenCalled();
+          expect(fixture.forbidden).not.toHaveBeenCalled();
+        } finally { testing.cleanup(); control.restore(); }
+      });
+    }
+  }
+
+  test.each(["changed", "reject"] as const)(
+    "the first display is unverified while the post-analysis read %s", async (outcome) => {
+      const fixture = workerWorkspaceFixture();
+      const control = controlledReviewWorkers();
+      try {
+        testing.render(React.createElement(WorkspaceView, fixture.props));
+        const queries = testing.within(document.body);
+        await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+        const pending = deferredRead();
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        await testing.act(async () => { control.workers[0]?.complete(); });
+        expect(queries.getByTestId("review-checking")).toBeTruthy();
+        expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        testing.fireEvent.change(editor, { target: { value: "Live editing during analysis." } });
+        const changed = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "e".repeat(64) })) };
+        await testing.act(async () => {
+          if (outcome === "changed") pending.resolve({ ok: true, data: changed });
+          else pending.reject(new Error("synthetic first-display read failed"));
+        });
+        expect(editor.value).toBe("Live editing during analysis.");
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        if (outcome === "changed") expect(queries.getByTestId("review-stale").textContent).toContain("The Light");
+        else {
+          expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+          expect(queries.getByTestId("review-retry-freshness")).toBeTruthy();
+        }
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
   test.each(["same", "different"] as const)("a current %s-chapter occurrence selects its exact saved text", async (target) => {
     const fixture = workerWorkspaceFixture();
     const control = controlledReviewWorkers();

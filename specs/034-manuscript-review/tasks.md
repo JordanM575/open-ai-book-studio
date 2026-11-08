@@ -198,3 +198,23 @@ T016/T018/T019 remain unchecked: inline-layer mounting, retained review/continua
 navigation and accessibility, browser/desktop worker URL/CSP/packaging, other hosts and release gates
 still need their owners. 038 T022 remains unchecked. A fresh independent review must inspect the
 corrected exact head; earlier broad gates applied to the previous head only.
+
+### Wave 24 visible evidence and display freshness boundary
+
+Each displayed excerpt is explicitly unverified until opening it checks its exact saved literal,
+bounds, UTF-16 surrogate boundaries and source identity. A span that cannot be verified leaves the
+report unavailable for evidence navigation until rerun. Bounded visible-page shape/metadata checks
+and two-level paging retain the complete result; they do not synchronously inspect every span or
+retain a second manuscript body in the report. Current-report malformed-page effects invalidate
+pending navigation independently of navigation generation; superseded reports cannot fail newer runs.
+
+The initial report and reopened reports check source freshness before enabling navigation; a report
+already invalidated by bad evidence stays unavailable across reopen until rerun. Checking and
+read-failure states are explicit; an author can cancel the initial check, retry a failed read or run
+again. Changed sources are labeled stale with affected chapters. Guarded reads do not replace the
+live editor. Synthetic tests cover malformed later pages, valid later-page selection, first-display
+and reopen success/failure races, cancellation, view and identity changes, and unchanged buffers.
+
+These are focused Bun/happy-dom observations, not independent exact-head, native, remaining-host,
+provider or release acceptance. T016/T018/T019 and 038 T022 remain unchecked; retained-review
+continuation, inline mounting, native accessibility and worker packaging/CSP remain separately gated.

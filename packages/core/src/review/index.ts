@@ -279,6 +279,8 @@ export function revalidateReviewEvidence(
   );
   if (
     source?.status !== "saved" ||
+    source.title !== evidence.title ||
+    source.order !== evidence.order ||
     source.version !== evidence.sourceVersion ||
     source.hash !== evidence.sourceHash
   ) {
