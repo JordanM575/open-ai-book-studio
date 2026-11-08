@@ -3,4 +3,5 @@ export * from './admission';
 export * from './contracts';
 export * from './graph';
 export * from './lifecycle';
+export * from './wire';
 export { AuthoringError, copyValue, type Immutable } from './value';

@@ -7,6 +7,63 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Pure authoring foundation
+- Tighten the workflow codec after independent review: a `maxBytes` override may only lower the
+  record-kind bound, receipt `savedAs` uses the same bounded library-relative path rule as a target,
+  phase-plan graph tasks enforce the 256-key strict impact rule, and phase 1 has no predecessor while
+  every later phase names one.
+- Specify schema-1 workflow records in FORMAT for the durable run/brief/policy/phase-plan/direction/
+  task/command-journal/attempt/effect/question/artifact/context/admission surfaces, with exact
+  identity/hash/reference, base, bounds, ordering/pagination and related-file recovery rules. Add a
+  pure host-neutral raw codec that refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy
+  numeric lexemes, unsupported versions, foreign owner/kind and depth/size overflow before
+  constructing values, preserves supported unknown fields and encodes deterministically. No writer,
+  scheduler, provider, host permission, runtime journey or independent review is claimed.
+
+### Shared exact-source verifier
+- Require the saved chapter file to declare its own `id` and `version`: the parser fallback no longer
+  supplies the host's expected identity, so a headerless file or omitted key is refused. Also reject
+  request status facts that are not clean/pending-false/available and an envelope `bodyLength` that
+  disagrees with the proven saved body.
+- Add one host-neutral core verifier backing the inline editor's trusted evidence port: raw byte/text
+  SHA-256 and fatal UTF-8, canonical saved-body and file id/version equality, exact envelope/scope
+  attribution, literal UTF-16 citations reusing the accepted review contracts, complete-overlap
+  identity, frozen spans/findings or a bounded refusal, invalid-evidence withholding and abort racing.
+  It imports no app, Library, filesystem, provider or IPC module. Host mounting/export,
+  disposition/rerun relations and independent review remain open; 039 T011 stays partial and unchecked.
+
+### Voice permission host owner
+
+- Put both desktop default-session permission handlers under one deny-by-default owner. The real
+  callback sender window, trusted top-level frame, renderer origin (packaged `file://` or the dev
+  server's exact origin) and audio-only media list decide the result; foreign windows, subframes,
+  foreign/missing origins, camera, display capture, mixed media and missing details deny. Trusted
+  push-to-talk audio keeps its existing explicit-press path and creates no grant. Add an in-memory
+  exact hands-free grant with an injected clock, explicit register/replace/revoke/clear and
+  window-close/quit revocation, checked through the core permission predicates. 34 synthetic host
+  tests cover the decisions; OS grants, microphone, mounted hands-free capture and 038 T022 remain
+  unclaimed.
+- Correct the permission owner after independent review: a present-but-unrecognised origin field now
+  denies instead of deferring to its sibling, a same-id re-registration can no longer rebind or
+  extend a live grant, and an observed expiry is latched so a clock that moves backwards cannot
+  revive it. Rename the decision to `captureAllowed` and state in the README that it is a capture
+  gate, not hands-free authority, with the adapter's exact-grant obligation.
+
+### Hands-free pure core
+
+- Keep Pause/Stop work inhibition through late permission success. Retain exact bounded failed
+  receipts across stop/reactivation until explicit acknowledgement, without reviving old content.
+  Separate admitted playback from display status so genuine completion releases its exact TTS slot
+  after work settlement, pause or correction. Add cross-transition pure regression tests.
+- Add an unmounted, platform-independent voice-session reducer with explicit activation, pinned
+  scope/routes, exact named confirmations, correction/interruption, distinct stop controls and
+  request/chunk gates that retain uncertain external settlement. Add trusted-frame audio-grant
+  predicates, bound 037 answer intents and literal selection-preserving dictation insertion.
+- Add memory-bounded injected PCM/VAD segmentation with the accepted 1.2s silence, 250ms preroll
+  and 60s utterance defaults, explicit one-STT holds and unconsumed-suffix reporting. Synthetic
+  tests and a local integration contract cover the pure slice; microphone, permission-handler,
+  transport, UI and acoustic/device integration remain open, including 038 T022.
+
 ### Integration
 - Compose the accepted pure authoring, hands-free voice, scoped reader-review and exact-current
   inline-editor leaves with the checked planning/Stop/history composition. Each leaf keeps its own

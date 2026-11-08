@@ -8,6 +8,10 @@ U-037-01/02 were accepted November 7 as D-193 / [ADR 0018](../../docs/adr/0018-s
 Pure source-envelope/citation work can proceed; runtime/UI and the prerequisite shared thread-safety
 implementation remain open. D-194–D-196 / [ADR 0019](../../docs/adr/0019-bounded-autonomous-authoring.md)
 now resolve the separate full-book authority, ownership, recovery, admission and evidence contracts.
+On November 7 the bounded workflow-record portion of T018 specified schema 1 for the durable run,
+brief, policy, plan, direction, task, command/receipt journal, attempt, effect, question, artifact,
+context and admission records, with a pure raw codec. Shared thread migration and host-permission
+schemas, checked writers, real streaming and independent review remain open.
 
 **Expanded author direction, November 7:** REQ-AUTO-001/002 explicitly retain short-brief onboarding
 toward a full ~70,000-word book, asynchronous multi-agent background work, revision cycles and human
@@ -210,7 +214,7 @@ No decision alone proves runtime implementation.
 | U-037-01 | Accepted D-193 / ADR 0018: one immutable, exactly disclosed source envelope; captured-source facade only, explicit start/rerun, no implicit history/SKILLS. Selected request text is retained in the existing conversation after its shared safety prerequisite. A user study is not claimed. | Policy resolved; T004–T005/T010 implementation and conversation-safety integration remain |
 | U-037-02 | Accepted D-193 / ADR 0018: exact identity/version/raw hash plus in-scope UTF-16 span and literal quote; derived author-facing line labels, strict stale/clean-editor checks before selection. | Policy resolved; T006–T007/T010 implementation remains |
 | U-037-03 | Accepted D-194: explicit bounded host-local grant, selected sources/roles/destinations, revocation and candidate-only workers; constitution/AGENTS amended. | T019–T025 implementation/integration |
-| U-037-04 | Accepted D-195: ordinary immutable candidates, checked state/effects, safety and narrowly opted-in run-created target adoption; no blind replay. | T018/T023/T029 formats and publisher evidence |
+| U-037-04 | Accepted D-195: ordinary immutable candidates, checked state/effects, safety and narrowly opted-in run-created target adoption; no blind replay. Workflow record schema 1 and the pure raw codec are specified; thread/host-permission schemas, checked writers, real streaming and independent review remain. | T018/T023/T029 formats and publisher evidence |
 | U-037-05 | Accepted D-195: deterministic pinned host, branch blocking/inbox, truthful settlement, no after-quit work, default explicit restart Continue. | T020/T025/T032–T035 |
 | U-037-06 | Accepted D-196: separately scoped protocol, actual synthetic full-length, live quality, usability, host/device and release gates. | T039–T042; quality rubric before evaluation |
 | U-037-07 | Accepted D-196/D-116: finite request/time/output/revision admission, bounded-operation versus qualified strict-money mode. D-129 remote delivery remains deferred. | T022/T024/T025; no live strict-cap adapter certified |

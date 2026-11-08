@@ -17,6 +17,7 @@ owner adds package exports.
 | `profiles.ts` | `builtinReaderProfile`, `editReaderProfile`, `validateReaderProfile`; immutable fictional lenses and checked author lineage. |
 | `wire-schema.ts` | Closed tool arguments and requested findings/citation schemas. The tolerant evidence-list parser withholds malformed individual citations. |
 | `findings.ts` | `verifyReviewCitation`, `buildReaderRun`, `reviewCitationNavigation`, `compareReaderRuns`. |
+| `shared-verifier.ts` | `verifySharedReview`, `createSharedEvidencePort`; one saved-chapter snapshot and reader run with raw byte/text proof, exact spans/findings, bounded refusals and abort. |
 
 Builders detach and freeze nested values. Rehydration verifies schema and content digests before
 registration; synchronous serializers and citation/navigation checks refuse unchecked copies. Digests are integrity/binding
@@ -99,6 +100,38 @@ saved identity. Stale/unavailable results retain historical evidence but are nev
 Bible evidence supports a captured-text label; no current Bible editor navigation is claimed.
 Run comparison separates source/profile/destination/prompt-feedback changes from changed
 interpretation text. Unchanged input plus changed interpretation is model variation, not improvement.
+
+## Shared inline verifier
+
+`shared-verifier.ts` is the host-neutral seam behind the inline editor's trusted
+`ValidatedEvidencePort`. It imports no app/editor, Library, filesystem, provider or IPC module and
+performs no read/write, clock or network call.
+
+Input is a `SharedReviewRequest` (validated reader envelope, exact raw chapter file bytes/text,
+host-selected scope, saved facts captured at request time and untrusted output JSON) plus the live
+`SharedReviewTarget`. Output is either a frozen `SharedVerifiedLayer` with detached saved-source
+facts, verified `InlineSpan[]`, retained `ReaderFinding[]`, run/scope digests and whether raw proof
+came from bytes or text, or one bounded refusal.
+
+It requires one reader-review envelope with exactly one book and one chapter source matching the
+target. Raw bytes are hashed with SHA-256 and decoded fatally; the canonical body is parsed through
+the existing saved-file reader and must equal the supplied saved body. File `id`/`version` must agree
+with the saved facts; book identity is host-supplied because a chapter file does not carry it. The
+scope must equal the envelope's merged segments exactly, and every segment must slice the canonical
+body. It then reuses `validateReviewEnvelope`, `buildReaderRun`/`verifyReviewCitation` and
+`buildOverlapIndex`; it adds no second quote matcher and no normalization or substring search.
+
+Invalid individual citations stay in the finding's `invalidEvidence` with their bounded reason and
+never become spans. A contradiction with fewer than two distinct references, or any zero-evidence
+finding, is `insufficient-evidence` and contributes no current mark; a run with findings but no
+verified span refuses rather than claiming an applied layer. Duplicate finding/evidence identity,
+foreign run/reader attribution, malformed top-level output, quote/finding/byte limits and overlapping
+span identity refuse without repair. Abort is checked before and raced against every asynchronous
+hash/validation step; an aborted request returns no layer.
+
+The module is structurally compatible with `ValidatedInlineLayer`. Mounting it, adding package
+exports/IPC and resolving host sources remain integration work with their own review. Its tests are
+synthetic; an import-boundary test proves no provider/Library/filesystem/app dependency.
 
 ## Integration prerequisites
 
