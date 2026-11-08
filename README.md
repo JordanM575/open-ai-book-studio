@@ -78,7 +78,7 @@ there is a working slice with remaining work; **planned** means it is not availa
 | CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
 | Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
 | Inline editorial critique | Contracts accepted; implementation pending | Exact-current underlines, accessible feedback, explicit suggestion application and saved reviews selected in ADR 0020 |
-| Hands-free authoring | Contracts accepted beyond current voice controls | Bound sessions, interruption, confirmation and spoken check-ins selected in ADR 0021; integrated and acoustic acceptance remain |
+| Hands-free authoring | Session controls mounted; capture and acoustic acceptance pending | Bound sessions, interruption, confirmation and spoken check-ins selected in ADR 0021. The Discuss panel mounts explicit start/transcript/correct/confirm/stop controls bound to the open book, chapter and conversation, but this build has no capture adapter or audio grant, so the bar says so instead of recording; integrated and acoustic acceptance remain |
 | Guided/autonomous authoring and task-aware routing | Contracts accepted; runtime pending | ADR 0019 selects short-brief onboarding, bounded asynchronous drafting toward ~70,000 saved words, revision and character check-ins; no full-book delivery claimed |
 | Named chapter history and library organization | In progress | Core merged in PR #33; restore/UI correction accepted and merged in PR #34; planning/goal leaves accepted, host/API integration and remaining organization open |
 | Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
@@ -162,6 +162,16 @@ Meta or OpenRouter handles the selected dictation path; OpenRouter/OpenAI suppli
 When no speaking provider is selected, a disclosed device voice may be used. A failed or unavailable
 saved provider choice is reported rather than replaced. Persistent choices are available in Settings.
 See [docs/VOICE.md](docs/VOICE.md) for the exact supported flow.
+
+### Hands-free controls in Discuss
+
+The Discuss panel mounts the explicit session controls: start, the words as heard, correction
+before sending, one explicit confirm, and stop. A confirmed turn uses the same checked turn start as
+a typed message and is bound to the book, chapter and conversation that were on screen; changing
+any of them ends the session and keeps the unsent words visible. Stop is reported as stopping until
+the host confirms, and a late transcript can never send. This build ships no capture adapter and no
+audio grant for that bar, so it says hands-free audio is not connected and records nothing. Nothing
+is sent without the author pressing Confirm and send.
 
 ### Trust
 

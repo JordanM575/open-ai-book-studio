@@ -98,6 +98,37 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   abort signal (TTS rechecks before every chunk). No mounted host registry, IPC/preload cancel
   surface, proof of provider-side cancellation, live call or device evidence exists yet.
 - [ ] T017 Mount session/transcript/correct/confirm/stop controls with actual Discuss/book/chapter/thread binding.
+  Partial: the Discuss panel mounts an explicit hands-free bar and a host-neutral controller
+  (`packages/app/src/lib/hands-free.ts`, `components/HandsFreeBar.tsx`,
+  `hooks/use-hands-free-session.ts`). It composes the T013 session reducer, the T015 grant predicates
+  and the T016 transport ledger; a session starts only from an active audio-only grant and the
+  grant's own session identity, a transcript becomes an editable draft, confirm reuses the existing
+  checked Discuss turn start exactly once, and Stop reports stopping until the host settles. A
+  book/chapter/thread change ends the session, keeps the unsent words visible and cannot send them to
+  the new target; a transcript after Stop is ignored. Synthetic controller and component tests pass.
+  No capture adapter, OS prompt, live provider, playback arbitration or device evidence is mounted:
+  without a host adapter the bar states that hands-free audio is not connected and records nothing.
+  Lifetime correction: capture admission rechecks after every await; original-port ownership joins
+  pending acquisition and closure across Stop/disposal, with exact shutdown-attempt receipts and
+  visible failed cleanup. Committed scope/port epochs revoke A–B–A intents. Attributable transcript
+  receipts release matching core requests even when revoked words are discarded. ChatPanel carries
+  revocable admission through its existing draft flush to the actual agent-start boundary; Stop stays
+  usable during send-start and dispatched outcomes remain attributable. Positive synthetic race
+  tests cover these contracts, unique status descriptions, retained correction focus and StrictMode.
+  The mounted seam now accepts only the documented single-realm `synthetic-in-process-v1` contract:
+  monotonic host-fact revisions and prompt notifications, independent host closure on loss/expiry,
+  and synchronous admission at the actual capture/STT/agent boundary. Per-port synthetic ownership
+  retains outstanding STT and exact unknown-charge/late receipts across remounts; failed partial
+  acquisition is compensated and failed cleanup remains unconfirmed. A marker or renderer revision
+  cannot qualify a native IPC host: trusted-process atomic admission, independent lifecycle closure,
+  provider and device evidence are still required. This is synthetic source/test evidence, not native
+  capture, provider or connected-host acceptance.
+  Later-request history correction: pending voice words are display-only until actual host dispatch.
+  Mounted tests inspect subsequent typed and newly confirmed voice requests after Stop, host refusal
+  and flush failure, preserving nonempty legitimate history and local words; already-dispatched
+  success/failure/rejection remains eligible. This is request-boundary evidence, not provider
+  disclosure/receipt or native-host qualification. Fresh exact-head review and broad gates remain.
+  T018–T024 and 038 T022 remain unchecked.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
   uses checked editor mutation/undo and exact-source confirmation.
 - [ ] T019 Integrate qualified interruption/playback arbitration with real settlement; no premature Stopped

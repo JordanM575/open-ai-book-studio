@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { Cpu, GitBranch, History, Monitor, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { AgentEvent, AgentTurnInput } from "@ai-book-studio/core/agent";
@@ -45,6 +45,8 @@ import {
 import { Suggestion, Suggestions } from "@ai-book-studio/ui/ai-elements/suggestion";
 import { Tool, ToolContent, ToolHeader, ToolLine, ToolOutput, Tools } from "@ai-book-studio/ui/ai-elements/tool";
 import { cn, must } from "../lib/utils";
+import type { HandsFreeAdmission, HandsFreePort, HandsFreeTurn } from "../lib/hands-free";
+import { HandsFreeBar } from "./HandsFreeBar";
 import {
   approvalLabel,
   keptNote,
@@ -75,12 +77,31 @@ interface Props {
   /** A tool kept a conflict copy, so the workspace can count it. */
   onConflictCopy?: () => void;
   onNotice: (error: unknown) => void;
+  /**
+   * A trusted hands-free host adapter. This build ships none: without one the Discuss bar says so
+   * and records nothing. A synthetic test adapter proves the mounted controls and binding.
+   */
+  handsFreePort?: HandsFreePort | undefined;
   className?: string;
 }
 
 function nextId(): string {
   return `m_${Math.random().toString(36).slice(2, 10)}`;
 }
+
+/** What a typed or hands-free turn carries into the one checked start path. */
+interface SendOptions {
+  readonly mode: AgentMode;
+  readonly threadId: string | undefined;
+  readonly guidance: string | undefined;
+  readonly model: { connectionId: string; modelId: string } | undefined;
+  readonly background: boolean;
+  readonly resetComposer: boolean;
+  readonly voiceAdmission?: HandsFreeAdmission;
+}
+
+/** Local display includes voice words awaiting admission; those are not conversation history. */
+type PanelMessage = Message & { historyEligible?: boolean };
 
 const APPROVAL_STATUS: Record<Approval["status"], string> = {
   pending: "Waiting",
@@ -131,9 +152,10 @@ export function ChatPanel({
   onTurnModelUsed,
   onConflictCopy,
   onNotice,
+  handsFreePort,
   className
 }: Props) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<PanelMessage[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<AgentMode>("discuss");
   const [guidance, setGuidance] = useState("");
@@ -160,10 +182,21 @@ export function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const loadToken = useRef(0);
   const noticeRef = useRef(onNotice);
+  const threadIdRef = useRef<string | null>(threadId);
+  const voiceView = useRef({ epoch: 0, mounted: false, bookId, chapterId, threadId, openThreadId });
+
+  useLayoutEffect(() => {
+    voiceView.current = { epoch: voiceView.current.epoch + 1, mounted: true, bookId, chapterId, threadId, openThreadId };
+    return () => { voiceView.current.mounted = false; voiceView.current.epoch += 1; };
+  }, [bookId, chapterId, threadId, openThreadId]);
 
   useEffect(() => {
     noticeRef.current = onNotice;
   }, [onNotice]);
+
+  useEffect(() => {
+    threadIdRef.current = threadId;
+  }, [threadId]);
 
   // The refs are read now, not inside the update: the callers clear them right after
   // patching, and an update that runs later must still land on this turn's message.
@@ -304,7 +337,12 @@ export function ChatPanel({
     }
   };
 
-  const startAttempt = async (assistantId: string, request: AgentTurnInput): Promise<void> => {
+  const startAttempt = async (
+    assistantId: string,
+    request: AgentTurnInput,
+    voice?: { admission: HandsFreeAdmission; userMessageId: string }
+  ): Promise<{ ok: true; threadId: string } | { ok: false; reason: string }> => {
+    const voiceViewEpoch = voiceView.current.epoch;
     assistantRef.current = assistantId;
     turnRef.current = null;
     setRunning(true);
@@ -317,31 +355,66 @@ export function ChatPanel({
       )
     );
 
+    let dispatched = false;
     try {
       await onBeforeSend();
-      const started = await window.studio.agent.start(request);
+      const dispatch = () => {
+        dispatched = true;
+        return window.studio.agent.start(request);
+      };
+      const started = voice
+        ? await voice.admission.dispatch(request, () => voiceView.current.mounted && voiceView.current.epoch === voiceViewEpoch,
+          () => {
+            dispatched = true;
+            // Only the actual admitted start makes these displayed words eligible for later
+            // history. Refusal/flush failure leaves them local; a later start failure does not.
+            setMessages((current) => current.map((item) => item.id === voice.userMessageId
+              ? { ...item, historyEligible: true } : item));
+          })
+        : await dispatch();
+      if (!started) {
+        // Revoked before dispatch: keep the words visible, without a retry that could bypass a
+        // new voice session's admission. Typed messages continue through this same flush/start path.
+        const reason = "The voice session ended before dispatch. Nothing was sent.";
+        retryRequestsRef.current.delete(assistantId);
+        setMessages((current) => current.map((item) => item.id === assistantId
+          ? { ...item, failed: true, retryable: false, note: reason } : item));
+        setRunning(false);
+        setWaiting(false);
+        return { ok: false, reason };
+      }
       if (!started.ok) {
         throw Object.assign(new Error(started.error.message), { code: started.error.code });
+      }
+      if (voice && voiceView.current.epoch !== voiceViewEpoch) {
+        // Dispatch already happened: return its real receipt, without rebinding a changed panel
+        // to the old book/thread. Stop listening alone does not change this view identity.
+        if (voiceView.current.mounted) { setRunning(false); setWaiting(false); }
+        return { ok: true, threadId: started.data.threadId };
       }
       turnRef.current = started.data.turnId;
       setThreadId(started.data.threadId);
       retryRequestsRef.current.set(assistantId, { ...request, threadId: started.data.threadId });
       if (request.model) onTurnModelUsed();
       setWaiting(false);
+      return { ok: true, threadId: started.data.threadId };
     } catch (error) {
+      const retryable = !voice || dispatched;
+      if (!retryable) retryRequestsRef.current.delete(assistantId);
       const message = error instanceof Error ? error.message : String(error);
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : undefined;
       turnRef.current = null;
       setMessages((current) =>
         current.map((item) =>
           item.id === assistantId
-            ? { ...item, failed: true, retryable: true, note: message, errorCode: code, changed: 0, undoAvailable: true }
+            ? { ...item, failed: true, retryable, note: message, errorCode: code, changed: 0, undoAvailable: true }
             : item
         )
       );
       setRunning(false);
       setWaiting(false);
       onNotice(error);
+      return { ok: false, reason: message };
     }
   };
 
@@ -483,35 +556,84 @@ export function ChatPanel({
     return unsubscribe;
   }, [onChanged, onConflictCopy, patchAssistant]);
 
-  const send = async (event?: FormEvent): Promise<void> => {
-    event?.preventDefault();
-    const prompt = input.trim();
-    if (!prompt || running || guidanceTooLong) return;
-    setInput("");
-    const user: Message = { id: nextId(), role: "user", text: prompt, tools: [], mode, guidance: guidance || undefined };
-    const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [], mode };
+  /**
+   * The one checked turn-start path. A typed message and a confirmed hands-free turn both come
+   * through here, so there is no second send path and no second provider call.
+   */
+  const sendPrompt = async (raw: string, options: SendOptions): Promise<{ ok: boolean; reason?: string }> => {
+    const prompt = raw.trim();
+    if (!prompt) return { ok: false, reason: "There are no words to send." };
+    if (running) return { ok: false, reason: "The conversation is already answering. Wait for it to finish." };
+    if (guidanceTooLong) return { ok: false, reason: "Shorten the guidance before sending." };
+    const user: PanelMessage = {
+      id: nextId(),
+      role: "user",
+      text: prompt,
+      tools: [],
+      historyEligible: !options.voiceAdmission,
+      mode: options.mode,
+      ...(options.guidance ? { guidance: options.guidance } : {})
+    };
+    const assistant: Message = { id: nextId(), role: "assistant", text: "", tools: [], mode: options.mode };
     const history = messages
-      .filter((message) => message.text.trim() && !(message.role === "assistant" && message.failed))
+      .filter((message) => message.historyEligible !== false && message.text.trim() && !(message.role === "assistant" && message.failed))
       .slice(-20)
       .map((message) => ({ role: message.role, text: message.text }));
     const request: AgentTurnInput = {
       bookId,
       chapterId,
       prompt,
-      mode,
-      ...(guidance ? { guidance } : {}),
-      threadId: threadId ?? undefined,
+      mode: options.mode,
+      ...(options.guidance ? { guidance: options.guidance } : {}),
+      ...(options.threadId ? { threadId: options.threadId } : {}),
       history,
-      ...(background ? { background: true } : {}),
-      ...(turnModel ? { model: turnModel } : {})
+      ...(options.background ? { background: true } : {}),
+      ...(options.model ? { model: options.model } : {})
     };
-    setBackground(false);
-    setMode("discuss");
-    setGuidance("");
+    if (options.resetComposer) {
+      setBackground(false);
+      setMode("discuss");
+      setGuidance("");
+    }
     loadToken.current += 1;
     retryRequestsRef.current.set(assistant.id, request);
     setMessages((current) => [...current, user, assistant]);
-    await startAttempt(assistant.id, request);
+    const outcome = await startAttempt(assistant.id, request, options.voiceAdmission
+      ? { admission: options.voiceAdmission, userMessageId: user.id } : undefined);
+    return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
+  };
+
+  const send = async (event?: FormEvent): Promise<void> => {
+    event?.preventDefault();
+    const prompt = input.trim();
+    if (!prompt || running || guidanceTooLong) return;
+    setInput("");
+    await sendPrompt(prompt, {
+      mode,
+      threadId: threadId ?? undefined,
+      guidance: guidance || undefined,
+      model: turnModel ?? undefined,
+      background,
+      resetComposer: true
+    });
+  };
+
+  const sendVoiceTurn = async (turn: HandsFreeTurn, admission: HandsFreeAdmission): Promise<{ ok: boolean; reason?: string }> => {
+    if (turn.bookId !== bookId || turn.chapterId !== chapterId || turn.mode !== "discuss") {
+      return { ok: false, reason: "The book or chapter changed. Nothing was sent." };
+    }
+    if (turn.threadId !== threadIdRef.current) {
+      return { ok: false, reason: "The conversation changed. Nothing was sent." };
+    }
+    return sendPrompt(turn.text, {
+      mode: "discuss",
+      threadId: turn.threadId,
+      guidance: undefined,
+      model: undefined,
+      background: false,
+      resetComposer: false,
+      voiceAdmission: admission
+    });
   };
 
   const approve = async (message: Message, approval: Approval, approved: boolean, pressed: HTMLElement): Promise<void> => {
@@ -1020,6 +1142,17 @@ export function ChatPanel({
           </details>
           {guidanceTooLong ? <p role="alert">Shorten guidance to 2,000 characters before sending. Your text is kept.</p> : null}
         </div>
+        {mode === "discuss" ? (
+          <HandsFreeBar
+            bookId={bookId}
+            chapterId={chapterId}
+            threadId={threadId}
+            {...(handsFreePort ? { port: handsFreePort } : {})}
+            onSendTurn={sendVoiceTurn}
+            onNotice={onNotice}
+            disabled={running}
+          />
+        ) : null}
         <PromptInput onSubmit={(event) => void send(event)} groupClassName="rounded-[var(--corner-lg)]">
           <PromptInputTextarea
             ref={inputRef}
