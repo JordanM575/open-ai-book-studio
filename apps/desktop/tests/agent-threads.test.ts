@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,11 +7,13 @@ import {
   agentThreadSchema,
   messageText,
   serializeAgentThread,
-  type AgentMessage
+  type AgentMessage,
+  type AgentThread
 } from "@ai-book-studio/core/agent/messages";
 import { ThreadStore, ThreadStoreError } from "@ai-book-studio/core/agent/threads";
-import { toLibraryFilePath } from "@ai-book-studio/core/library/path";
-import { threadsPath } from "@ai-book-studio/core/library/paths";
+import { libraryPathFromArchivePath, toLibraryFilePath } from "@ai-book-studio/core/library/path";
+import { conflictsPath, threadsPath } from "@ai-book-studio/core/library/paths";
+import { LibraryService } from "@ai-book-studio/core/library/service";
 import type { LibraryEnvironment } from "@ai-book-studio/core/library/port";
 import { createFileSystemEnvironment } from "../src/main/library/fs-port";
 import { prepareThread } from "../src/main/agent/runtime";
@@ -57,11 +59,19 @@ function message(id: string, createdAt: string): AgentMessage {
   });
 }
 
+
+/** Save the object as built, using the exact base hash currently on disk. */
+async function saveWith(store: ThreadStore, thread: AgentThread): Promise<AgentThread> {
+  const snapshot = await store.readSnapshot(thread.bookId, thread.id);
+  if (!snapshot) throw new Error("missing thread snapshot");
+  return store.save(thread, { baseHash: snapshot.baseHash });
+}
+
 describe("agent message schema", () => {
   test("round-trips every part through the thread file format", async () => {
     const thread = await store.create(BOOK, "Opening scene");
     const createdAt = new Date().toISOString();
-    const saved = await store.save({ ...thread, messages: [message("msg_test0001", createdAt)] });
+    const saved = await saveWith(store, { ...thread, messages: [message("msg_test0001", createdAt)] });
     const read = await store.read(BOOK, thread.id);
 
     expect(read).not.toBeNull();
@@ -181,7 +191,7 @@ describe("thread store", () => {
     });
     const second = { ...message("msg_00000004", now), turnId: "turn_00000002" };
     const source = await store.create(BOOK, "Source conversation", [user, first, secondUser, second]);
-    await store.save({ ...source, checkpointTurns: ["turn_00000001", "turn_00000002"] });
+    await saveWith(store, { ...source, checkpointTurns: ["turn_00000001", "turn_00000002"] });
 
     const branch = await store.fork(BOOK, source.id, "turn_00000001");
     expect(branch.id).not.toBe(source.id);
@@ -202,15 +212,12 @@ describe("thread store", () => {
       ...env.runtime,
       now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString()
     });
-    const source = await clock.save({
-      ...(await clock.create(BOOK, "Source")),
-      checkpointTurns: ["turn_00000001", "turn_00000002"]
-    });
-    const branch = await clock.save({
-      ...(await clock.create(BOOK, "Source (branch)")),
-      checkpointTurns: ["turn_00000001", "turn_00000002"]
-    });
-    const other = await clock.save({ ...(await clock.create(BOOK, "Other")), checkpointTurns: ["turn_00000003"] });
+    const sourceBase = await clock.create(BOOK, "Source");
+    const source = await saveWith(clock, { ...sourceBase, checkpointTurns: ["turn_00000001", "turn_00000002"] });
+    const branchBase = await clock.create(BOOK, "Source (branch)");
+    const branch = await saveWith(clock, { ...branchBase, checkpointTurns: ["turn_00000001", "turn_00000002"] });
+    const otherBase = await clock.create(BOOK, "Other");
+    const other = await saveWith(clock, { ...otherBase, checkpointTurns: ["turn_00000003"] });
 
     await clock.forgetCheckpointTurn(BOOK, "turn_00000002");
 
@@ -243,10 +250,189 @@ describe("thread store", () => {
   });
 
   test("removing a missing conversation is idempotent", async () => {
-    await store.remove(BOOK, "thread_missing01");
+    expect(await store.remove(BOOK, "thread_missing01")).toEqual({ status: "missing" });
     const thread = await store.create(BOOK, "Gone");
     await store.remove(BOOK, thread.id);
     expect(await store.read(BOOK, thread.id)).toBeNull();
+  });
+});
+
+describe("checked conversation writes", () => {
+  function pathOf(threadId: string): string {
+    return join(root, ...toLibraryFilePath([...threadsPath(BOOK), `${threadId}.json`]));
+  }
+
+  function trashPathOf(trashedAt: string): string {
+    return join(root, ...libraryPathFromArchivePath(trashedAt));
+  }
+
+  test("a stale base hash keeps the intended conversation and never overwrites", async () => {
+    const thread = await store.create(BOOK, "First");
+    const path = pathOf(thread.id);
+    const baseHash = (await env.storage.readFile(toLibraryFilePath([...threadsPath(BOOK), `${thread.id}.json`])))!
+      .sha256;
+
+    await store.rename(BOOK, thread.id, "Second");
+    await expect(store.save({ ...thread, title: "Mine" }, { baseHash })).rejects.toMatchObject({
+      code: "conflict"
+    });
+
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Second");
+    const copies = await readdir(join(root, ...conflictsPath(BOOK)));
+    expect(copies.some((name) => name.includes(thread.id) && name.endsWith(".json"))).toBe(true);
+    const copy = JSON.parse(await readFile(join(root, ...conflictsPath(BOOK), copies[0]!), "utf8"));
+    expect(copy.title).toBe("Mine");
+    expect(await readFile(path, "utf8")).toContain('"title": "Second"');
+  });
+
+  test("two writers from the same base produce one result and one kept copy", async () => {
+    const service = await LibraryService.open(env);
+    const thread = await store.create(BOOK, "Base");
+    const first = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    const second = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    const readFirst = await first.readSnapshot(BOOK, thread.id);
+    const readSecond = await second.readSnapshot(BOOK, thread.id);
+
+    const results = await Promise.allSettled([
+      first.save({ ...readFirst!.thread, title: "First writer" }, { baseHash: readFirst!.baseHash }),
+      second.save({ ...readSecond!.thread, title: "Second writer" }, { baseHash: readSecond!.baseHash })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: "conflict" });
+    const stored = await store.read(BOOK, thread.id);
+    expect(["First writer", "Second writer"]).toContain(stored?.title ?? "");
+    const copies = await readdir(join(root, ...conflictsPath(BOOK)));
+    expect(copies.some((name) => name.includes(thread.id))).toBe(true);
+  });
+
+  test("saving an unchanged conversation writes nothing and keeps the timestamp", async () => {
+    const thread = await store.create(BOOK, "Unchanged");
+    const path = pathOf(thread.id);
+    const before = await readFile(path, "utf8");
+    const saved = await saveWith(store, thread);
+    expect(saved.updatedAt).toBe(thread.updatedAt);
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  test("unknown plain fields survive an ordinary rename", async () => {
+    const thread = await store.create(BOOK, "Extras");
+    const path = pathOf(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.futureTop = { keep: [1, 2, 3] };
+    raw.messages = [
+      {
+        id: "msg_test0001",
+        role: "user",
+        parts: [{ type: "text", text: "Hello.", futurePart: "kept" }],
+        futureMessage: "kept",
+        createdAt: thread.createdAt
+      }
+    ];
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    await store.rename(BOOK, thread.id, "Renamed");
+    const after = JSON.parse(await readFile(path, "utf8"));
+    expect(after.title).toBe("Renamed");
+    expect(after.futureTop).toEqual({ keep: [1, 2, 3] });
+    expect(after.messages[0].futureMessage).toBe("kept");
+    expect(after.messages[0].parts[0].futurePart).toBe("kept");
+  });
+
+  test("replacing a message keeps unknown fields attached to it", async () => {
+    const thread = await store.create(BOOK, "Upsert");
+    const path = pathOf(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.messages = [
+      {
+        id: "msg_test0002",
+        role: "assistant",
+        parts: [{ type: "text", text: "First", futurePart: "part extra" }],
+        futureMessage: "message extra",
+        createdAt: thread.createdAt
+      }
+    ];
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    await store.upsertMessage(
+      BOOK,
+      thread.id,
+      agentMessageSchema.parse({
+        id: "msg_test0002",
+        role: "assistant",
+        parts: [{ type: "text", text: "Second" }],
+        createdAt: thread.createdAt
+      })
+    );
+
+    const after = JSON.parse(await readFile(path, "utf8"));
+    expect(after.messages[0].futureMessage).toBe("message extra");
+    expect(after.messages[0].parts[0].futurePart).toBe("part extra");
+    expect(after.messages[0].parts[0].text).toBe("Second");
+  });
+
+  test("deletion moves the file to recoverable trash and restore brings it back", async () => {
+    const thread = await store.create(BOOK, "Delete me");
+    const removed = await store.remove(BOOK, thread.id);
+    expect(removed.status).toBe("trashed");
+    if (removed.status !== "trashed") throw new Error("expected a trashed conversation");
+    expect(await store.read(BOOK, thread.id)).toBeNull();
+    expect(removed.trashedAt).toContain(".studio/trash/");
+    expect((await env.storage.readFile(libraryPathFromArchivePath(removed.trashedAt)))).not.toBeNull();
+    expect(await readFile(trashPathOf(removed.trashedAt), "utf8")).toContain('"title": "Delete me"');
+
+    const restored = await store.restore(BOOK, thread.id, removed.trashedAt);
+    expect(restored.title).toBe("Delete me");
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Delete me");
+
+    await expect(store.restore(BOOK, thread.id, removed.trashedAt)).rejects.toMatchObject({ code: "exists" });
+    await expect(store.restore(BOOK, thread.id, "books/book_test0001/threads/x.json")).rejects.toMatchObject({
+      code: "invalid-id"
+    });
+    await expect(store.restore(BOOK, "thread_other01", removed.trashedAt.replace(thread.id, "thread_other01"))).rejects.toMatchObject({
+      code: "not-found"
+    });
+  });
+
+  test("a future schema and an oversized record are refused without rewriting the file", async () => {
+    const thread = await store.create(BOOK, "Future");
+    const path = pathOf(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.schemaVersion = 2;
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    const futureBytes = await readFile(path, "utf8");
+    await expect(store.read(BOOK, thread.id)).rejects.toMatchObject({ code: "newer" });
+    await expect(saveWith(store, { ...thread, title: "No" })).rejects.toMatchObject({ code: "newer" });
+    expect(await readFile(path, "utf8")).toBe(futureBytes);
+
+    const normal = await store.create(BOOK, "A normal conversation with enough bytes to exceed a small test limit.");
+    const limited = new ThreadStore(env.storage, env.runtime, undefined, { maxBytes: 64 });
+    const normalBytes = await readFile(pathOf(normal.id), "utf8");
+    await expect(limited.read(BOOK, normal.id)).rejects.toMatchObject({ code: "too-large" });
+    expect(await readFile(pathOf(normal.id), "utf8")).toBe(normalBytes);
+  });
+
+  test("the desktop Library writes conversations through the shared write host and does not migrate on open", async () => {
+    const service = await LibraryService.open(env);
+    const hosted = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    const thread = await hosted.create(BOOK, "Hosted conversation");
+    const path = pathOf(thread.id);
+    const before = await readFile(path, "utf8");
+
+    // Reopening the library rebuilds the catalog; it must not migrate or rewrite a v1 conversation.
+    await LibraryService.open(env);
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect((await hosted.read(BOOK, thread.id))?.title).toBe("Hosted conversation");
+  });
+
+  test("no unchecked conversation writer remains", async () => {
+    const threads = await readFile(new URL("../../../packages/core/src/agent/threads.ts", import.meta.url), "utf8");
+    expect(threads).not.toMatch(/kind:\s*"any"/);
+    expect(threads).not.toMatch(/removeFile\s*\(/);
+    expect(threads).not.toMatch(/\bunlink\b/);
+    const facade = await readFile(new URL("../src/main/library/store.ts", import.meta.url), "utf8");
+    expect(facade).toMatch(/new ThreadStore\([^)]*writeHost/s);
   });
 });
 
@@ -290,5 +476,163 @@ describe("prepareThread", () => {
     await expect(prepareThread(store, { bookId: BOOK, prompt: "   " })).rejects.toMatchObject({
       code: "invalid-request"
     });
+  });
+});
+
+describe("base-bound saves (review F1/F2)", () => {
+  test("an older copy cannot overwrite a newer save", async () => {
+    const thread = await store.create(BOOK, "Title A");
+    const first = await store.readSnapshot(BOOK, thread.id);
+    const second = await store.readSnapshot(BOOK, thread.id);
+    if (!first || !second) throw new Error("missing snapshots");
+
+    await store.save({ ...first.thread, title: "Title B" }, { baseHash: first.baseHash });
+    await expect(store.save({ ...second.thread, title: "Title C" }, { baseHash: second.baseHash }))
+      .rejects.toMatchObject({ code: "conflict" });
+
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Title B");
+    const copies = await readdir(join(root, ...conflictsPath(BOOK)));
+    expect(copies.some((name) => name.includes(thread.id))).toBe(true);
+  });
+
+  test("a store that never read the conversation cannot save it", async () => {
+    const thread = await store.create(BOOK, "Unread");
+    const service = await LibraryService.open(env);
+    const other = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    await expect(other.save(thread, {} as never)).rejects.toMatchObject({ code: "missing-base" });
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Unread");
+  });
+
+  test("a file deleted after the queue read keeps a missing-file copy", async () => {
+    const service = await LibraryService.open(env);
+    const thread = await store.create(BOOK, "Vanishing");
+    const snapshot = await store.readSnapshot(BOOK, thread.id);
+    if (!snapshot) throw new Error("missing snapshot");
+    const base = service.writeHost;
+    const racing = {
+      ...base,
+      commitFile: async (path: Parameters<typeof base.commitFile>[0], bytes: Uint8Array,
+        expected: Parameters<typeof base.commitFile>[2]) => {
+        await rm(join(root, ...path), { force: true });
+        return base.commitFile(path, bytes, expected);
+      }
+    };
+    const racingStore = new ThreadStore(env.storage, env.runtime, racing);
+    const error = await racingStore.save({ ...snapshot.thread, title: "Gone" }, { baseHash: snapshot.baseHash })
+      .catch((reason: unknown) => reason as { code?: string; savedAs?: string });
+    expect(error.code).toBe("conflict");
+    expect(error.savedAs).toContain("missing-file");
+  });
+
+  test("a create collision at commit reports exists, not a conflict copy", async () => {
+    const service = await LibraryService.open(env);
+    const seed = await store.create(BOOK, "Seed bytes");
+    const seedBytes = await readFile(join(root, ...threadsPath(BOOK), `${seed.id}.json`));
+    const base = service.writeHost;
+    const racing = {
+      ...base,
+      commitFile: async (path: Parameters<typeof base.commitFile>[0], bytes: Uint8Array,
+        expected: Parameters<typeof base.commitFile>[2]) => {
+        await writeFile(join(root, ...path), seedBytes);
+        return base.commitFile(path, bytes, expected);
+      }
+    };
+    const racingStore = new ThreadStore(env.storage, env.runtime, racing);
+    await expect(racingStore.create(BOOK, "Collision")).rejects.toMatchObject({ code: "exists" });
+  });
+});
+
+describe("generated titles at a Unicode boundary (review P2)", () => {
+  test("a prompt that ends a 60-unit title in an emoji keeps a readable conversation", async () => {
+    const service = await LibraryService.open(env);
+    const boundary = `${"a".repeat(59)}😀 tail`;
+    const prepared = await prepareThread(store, { bookId: BOOK, prompt: boundary });
+    expect(prepared.thread.title.endsWith("…")).toBe(true);
+    expect(prepared.thread.title).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+
+    const reopened = await store.read(BOOK, prepared.thread.id);
+    expect(reopened?.title).toBe(prepared.thread.title);
+    const listed = await store.list(BOOK);
+    expect(listed.some((summary) => summary.id === prepared.thread.id)).toBe(true);
+    expect(service).toBeTruthy();
+  });
+});
+
+function threadPath(threadId: string): string {
+  return join(root, ...threadsPath(BOOK), `${threadId}.json`);
+}
+
+describe("generated content cannot corrupt a conversation (review P2)", () => {
+  test("a lone surrogate anywhere in the document is refused before publishing", async () => {
+    const thread = await store.create(BOOK, "Unsafe");
+    const path = threadPath(thread.id);
+    const before = await readFile(path, "utf8");
+    await expect(store.upsertMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_bad00001",
+      role: "assistant",
+      parts: [{ type: "text", text: "cut \ud800" }],
+      createdAt: thread.createdAt
+    }))).rejects.toBeTruthy();
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect((await store.read(BOOK, thread.id))?.messages).toHaveLength(0);
+  });
+
+  test("unknown fields nested in a replaced message survive", async () => {
+    const thread = await store.create(BOOK, "Nested extras");
+    const path = threadPath(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.messages = [{
+      id: "msg_keep0001",
+      role: "assistant",
+      parts: [{ type: "text", text: "Before.", futurePart: 7 }],
+      model: { provider: "openrouter", modelId: "openai/gpt-5-mini", connectionLabel: "OpenRouter", futureModel: 11 },
+      usage: { inputTokens: 1, outputTokens: 2, cachedInputTokens: 0, costUsd: 0, costBasis: "reported", futureUsage: 13 },
+      createdAt: thread.createdAt
+    }];
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    await store.upsertMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_keep0001",
+      role: "assistant",
+      parts: [{ type: "text", text: "After." }],
+      model: { provider: "openrouter", modelId: "openai/gpt-5-mini", connectionLabel: "OpenRouter" },
+      usage: { inputTokens: 2, outputTokens: 3, cachedInputTokens: 0, costUsd: 0, costBasis: "reported" },
+      createdAt: thread.createdAt
+    }));
+    const after = JSON.parse(await readFile(path, "utf8"));
+    expect(after.messages[0].parts[0]).toMatchObject({ text: "After.", futurePart: 7 });
+    expect(after.messages[0].model).toMatchObject({ modelId: "openai/gpt-5-mini", futureModel: 11 });
+    expect(after.messages[0].usage).toMatchObject({ inputTokens: 2, futureUsage: 13 });
+  });
+});
+
+describe("unsupported numbers cannot corrupt a conversation (review P2)", () => {
+  test("an unsafe number in a tool result is refused before publishing", async () => {
+    const thread = await store.create(BOOK, "Unsafe number");
+    const path = threadPath(thread.id);
+    const before = await readFile(path, "utf8");
+    await expect(store.appendMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_bignum001",
+      role: "user",
+      parts: [{ type: "text", text: "Search result.", futureNumber: 1e20 }],
+      createdAt: thread.createdAt
+    }))).rejects.toBeTruthy();
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect((await store.read(BOOK, thread.id))?.messages).toHaveLength(0);
+  });
+
+  test("an unknown field past the reader's depth limit is refused", async () => {
+    const thread = await store.create(BOOK, "Deep field");
+    const path = threadPath(thread.id);
+    const before = await readFile(path, "utf8");
+    let deep: unknown = "bottom";
+    for (let index = 0; index < 70; index += 1) deep = { nested: deep };
+    await expect(store.appendMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_deep0001",
+      role: "user",
+      parts: [{ type: "text", text: "Deep.", futureDeep: deep }],
+      createdAt: thread.createdAt
+    }))).rejects.toBeTruthy();
+    expect(await readFile(path, "utf8")).toBe(before);
   });
 });

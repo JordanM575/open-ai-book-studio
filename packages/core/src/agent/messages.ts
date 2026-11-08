@@ -29,46 +29,58 @@ export const agentConversationRefSchema = z
   .object({ bookId: agentBookIdSchema, threadId: agentThreadIdSchema, chapterId: agentChapterIdSchema.optional() })
   .strict();
 
-export const agentTextPartSchema = z.object({
-  type: z.literal("text"),
-  text: z.string().min(1).max(200_000)
-});
+export const agentTextPartSchema = z
+  .object({
+    type: z.literal("text"),
+    text: z.string().min(1).max(200_000)
+  })
+  .loose();
 
-export const agentReasoningPartSchema = z.object({
-  type: z.literal("reasoning"),
-  text: z.string().min(1).max(200_000),
-  /** Providers that redact or omit reasoning still get a part, so the UI can say so. */
-  redacted: z.boolean().optional()
-});
+export const agentReasoningPartSchema = z
+  .object({
+    type: z.literal("reasoning"),
+    text: z.string().min(1).max(200_000),
+    /** Providers that redact or omit reasoning still get a part, so the UI can say so. */
+    redacted: z.boolean().optional()
+  })
+  .loose();
 
-export const agentToolCallPartSchema = z.object({
-  type: z.literal("tool-call"),
-  id: z.string().min(1).max(200),
-  name: z.string().min(1).max(120),
-  input: z.unknown()
-});
+export const agentToolCallPartSchema = z
+  .object({
+    type: z.literal("tool-call"),
+    id: z.string().min(1).max(200),
+    name: z.string().min(1).max(120),
+    input: z.unknown()
+  })
+  .loose();
 
-export const agentToolResultPartSchema = z.object({
-  type: z.literal("tool-result"),
-  id: z.string().min(1).max(200),
-  name: z.string().min(1).max(120),
-  output: z.unknown(),
-  isError: z.boolean().optional()
-});
+export const agentToolResultPartSchema = z
+  .object({
+    type: z.literal("tool-result"),
+    id: z.string().min(1).max(200),
+    name: z.string().min(1).max(120),
+    output: z.unknown(),
+    isError: z.boolean().optional()
+  })
+  .loose();
 
-export const agentSourcePartSchema = z.object({
-  type: z.literal("source"),
-  url: z.string().url().max(2_000),
-  title: z.string().max(300).optional()
-});
+export const agentSourcePartSchema = z
+  .object({
+    type: z.literal("source"),
+    url: z.string().url().max(2_000),
+    title: z.string().max(300).optional()
+  })
+  .loose();
 
-export const agentFilePartSchema = z.object({
-  type: z.literal("file"),
-  mediaType: z.string().min(1).max(200),
-  name: z.string().max(300).optional(),
-  /** Base64 data, kept as a string so the format survives JSON and structured clone. */
-  data: z.string().min(1).max(20_000_000)
-});
+export const agentFilePartSchema = z
+  .object({
+    type: z.literal("file"),
+    mediaType: z.string().min(1).max(200),
+    name: z.string().max(300).optional(),
+    /** Base64 data, kept as a string so the format survives JSON and structured clone. */
+    data: z.string().min(1).max(20_000_000)
+  })
+  .loose();
 
 export const AGENT_APPROVAL_STATUSES = ["pending", "approved", "denied", "expired"] as const;
 export type AgentApprovalStatus = (typeof AGENT_APPROVAL_STATUSES)[number];
@@ -95,35 +107,54 @@ export type AgentMode = z.infer<typeof agentModeSchema>;
  */
 export const agentGuidanceTextSchema = z.string().min(1).max(2_000);
 
-export const agentGuidancePartSchema = z.object({
-  type: z.literal("guidance"),
-  text: agentGuidanceTextSchema
-});
+export const agentGuidancePartSchema = z
+  .object({
+    type: z.literal("guidance"),
+    text: agentGuidanceTextSchema
+  })
+  .loose();
 
 /**
  * A destructive tool call waiting for the author. It is stored with the turn so a reload can show
  * the same card; the runtime updates the status when the author answers or the turn stops.
  */
-export const agentApprovalPartSchema = z.object({
-  type: z.literal("approval"),
-  approvalId: z.string().min(1).max(200),
-  turnId: z.string().min(1).max(80),
-  name: z.string().min(1).max(120),
-  input: z.unknown(),
-  status: z.enum(AGENT_APPROVAL_STATUSES),
-  requestedAt: isoDate,
-  resolvedAt: isoDate.optional()
-});
+export const agentApprovalPartSchema = z
+  .object({
+    type: z.literal("approval"),
+    approvalId: z.string().min(1).max(200),
+    turnId: z.string().min(1).max(80),
+    name: z.string().min(1).max(120),
+    input: z.unknown(),
+    status: z.enum(AGENT_APPROVAL_STATUSES),
+    requestedAt: isoDate,
+    resolvedAt: isoDate.optional()
+  })
+  .loose();
 
 export const AGENT_ERROR_LIMITS = { message: 2_000, retryAfterSeconds: 86_400 } as const;
 
-export const agentErrorPartSchema = z.object({
-  type: z.literal("error"),
-  code: z.string().min(1).max(80),
-  message: z.string().min(1).max(AGENT_ERROR_LIMITS.message),
-  /** Seconds the provider asked the studio to wait before asking again, when it named one. */
-  retryAfterSeconds: z.number().int().nonnegative().max(AGENT_ERROR_LIMITS.retryAfterSeconds).optional()
-});
+export const agentErrorPartSchema = z
+  .object({
+    type: z.literal("error"),
+    code: z.string().min(1).max(80),
+    message: z.string().min(1).max(AGENT_ERROR_LIMITS.message),
+    /** Seconds the provider asked the studio to wait before asking again, when it named one. */
+    retryAfterSeconds: z.number().int().nonnegative().max(AGENT_ERROR_LIMITS.retryAfterSeconds).optional()
+  })
+  .loose();
+
+/** Every part this build can read and write. An unknown type is read-only, never guessed at. */
+export const AGENT_PART_TYPES = [
+  "text",
+  "reasoning",
+  "tool-call",
+  "tool-result",
+  "source",
+  "file",
+  "approval",
+  "error",
+  "guidance"
+] as const;
 
 export const agentPartSchema = z.discriminatedUnion("type", [
   agentTextPartSchema,
@@ -137,40 +168,46 @@ export const agentPartSchema = z.discriminatedUnion("type", [
   agentGuidancePartSchema
 ]);
 
-export const agentModelSchema = z.object({
-  provider: providerIdSchema,
-  modelId: z.string().min(1).max(200),
-  connectionLabel: z.string().max(200),
-  /** The catalogue's display name, so the conversation can name the model in plain words. */
-  name: z.string().min(1).max(200).optional()
-});
+export const agentModelSchema = z
+  .object({
+    provider: providerIdSchema,
+    modelId: z.string().min(1).max(200),
+    connectionLabel: z.string().max(200),
+    /** The catalogue's display name, so the conversation can name the model in plain words. */
+    name: z.string().min(1).max(200).optional()
+  })
+  .loose();
 
-export const agentUsageSchema = z.object({
-  inputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  cachedInputTokens: z.number().int().nonnegative().default(0),
-  /** Whether the provider reported its cache at all. A measured zero is not the same thing. */
-  cacheReported: z.boolean().optional(),
-  costUsd: z.number().nonnegative().nullable(),
-  costBasis: z.enum(COST_BASES),
-  /** The selected model's context window when the catalogue reported one. */
-  contextLength: z.number().int().positive().nullable().optional()
-});
+export const agentUsageSchema = z
+  .object({
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    cachedInputTokens: z.number().int().nonnegative().default(0),
+    /** Whether the provider reported its cache at all. A measured zero is not the same thing. */
+    cacheReported: z.boolean().optional(),
+    costUsd: z.number().nonnegative().nullable(),
+    costBasis: z.enum(COST_BASES),
+    /** The selected model's context window when the catalogue reported one. */
+    contextLength: z.number().int().positive().nullable().optional()
+  })
+  .loose();
 
-export const agentMessageSchema = z.object({
-  id: agentMessageIdSchema,
-  role: z.enum(["user", "assistant"]),
-  parts: z.array(agentPartSchema).min(1).max(1_000),
-  model: agentModelSchema.optional(),
-  /** The permission level of the turn that produced this message, when recorded. */
-  mode: agentModeSchema.optional(),
-  usage: agentUsageSchema.optional(),
-  /** Where the request's estimated context went, stored with the turn. */
-  context: contextBreakdownSchema.optional(),
-  /** The run that produced this message, when there was one. Used to find its checkpoint. */
-  turnId: z.string().min(1).max(80).optional(),
-  createdAt: isoDate
-});
+export const agentMessageSchema = z
+  .object({
+    id: agentMessageIdSchema,
+    role: z.enum(["user", "assistant"]),
+    parts: z.array(agentPartSchema).min(1).max(1_000),
+    model: agentModelSchema.optional(),
+    /** The permission level of the turn that produced this message, when recorded. */
+    mode: agentModeSchema.optional(),
+    usage: agentUsageSchema.optional(),
+    /** Where the request's estimated context went, stored with the turn. */
+    context: contextBreakdownSchema.optional(),
+    /** The run that produced this message, when there was one. Used to find its checkpoint. */
+    turnId: z.string().min(1).max(80).optional(),
+    createdAt: isoDate
+  })
+  .loose();
 
 export const agentThreadSchema = z
   .object({
@@ -184,6 +221,7 @@ export const agentThreadSchema = z
     /** Turn ids whose checkpoints belong to this conversation, newest last. */
     checkpointTurns: z.array(z.string().min(1).max(200)).max(200).default([])
   })
+  .loose()
   .superRefine((thread, context) => {
     const seen = new Set<string>();
     for (const [index, message] of thread.messages.entries()) {

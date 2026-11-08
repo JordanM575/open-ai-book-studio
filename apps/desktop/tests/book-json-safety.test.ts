@@ -277,7 +277,11 @@ describe("a book upgraded to a newer schema by another device", () => {
     ["attaching a character image", ({ library, bookId, image }) => library.attachCharacterImage(bookId, image.id, "char_mara000001")],
     ["removing an image", ({ library, bookId, image }) => library.removeImage(bookId, image.id)],
     ["a new conversation", ({ library, bookId }) => library.threads.create(bookId, "After the upgrade")],
-    ["a conversation save", ({ library, thread }) => library.threads.save({ ...thread, title: "Renamed" })],
+    ["a conversation save", async ({ library, thread }) => {
+      const snapshot = await library.threads.readSnapshot(thread.bookId, thread.id);
+      if (!snapshot) throw new Error("missing thread snapshot");
+      return library.threads.save({ ...thread, title: "Renamed" }, { baseHash: snapshot.baseHash });
+    }],
     ["the agent's split_chapter", ({ library, bookId, two }) => run(createChapterTools(library, bookId), "split_chapter", { chapterId: two.id, line: 3, title: "Then" })],
     ["the agent's merge_chapters", ({ library, bookId, one, two }) => run(createChapterTools(library, bookId), "merge_chapters", { firstChapterId: one.id, secondChapterId: two.id })],
     ["the agent's append_to_chapter", ({ library, bookId, one }) => run(createChapterTools(library, bookId), "append_to_chapter", { chapterId: one.id, text: "More." })],

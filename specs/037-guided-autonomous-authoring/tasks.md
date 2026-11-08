@@ -85,6 +85,14 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
   tests. Shared thread migration, host-permission schemas, checked writers, real streaming and
   independent review remain; T018 stays open.
 - [ ] T019 Implement checked/lossless shared threads, explicit migration, recoverable deletion and all callers.
+  **Partial (2026-11-08):** v1 conversation storage now writes through the Library's per-book queue and
+  journal-aware checked raw-hash commit, verifies readback, keeps stale intended documents as
+  verified conflict copies, preserves supported unknown plain fields, treats unknown roles/parts and
+  a newer `schemaVersion` as read-only, refuses malformed/lossy/oversized files without rewriting them,
+  makes an equal body a no-op, and moves deletion to recoverable conversation trash with checked
+  restore. Every v1 caller is migrated and a guard test fails if an unchecked writer returns. Explicit
+  backed-up v2 semantic migration, restore UI/IPC, independent review and the T020+ settlement/execution
+  journey remain; T019 stays open.
 - [ ] T020 Integrate truthful stop settlement, consumer/persistence warnings and pinned-Library quiescence.
 - [ ] T021 Implement pure versioned graph, dependency/direction invalidation, command identity and reducers.
   - Partial implementation evidence (November 7): isolated `packages/core/src/authoring/` provides
