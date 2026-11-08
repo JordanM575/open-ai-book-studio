@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, session, shell, type WebContents } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -31,6 +31,7 @@ import { ImageService } from "./images";
 import { VoiceService } from "./voice";
 import { SpeechService } from "./speech";
 import { SettingsStore } from "./settings";
+import { AudioGrantRegistry, trustedRendererOrigin, VoicePermissionOwner } from "./voice-permissions";
 import { claimsSingleInstanceLock, sendWhenLoaded } from "./instance";
 import { StudioWindows } from "./windows";
 import { Studio } from "./studio";
@@ -72,6 +73,7 @@ let providers: ProviderService;
 let settingsStore: SettingsStore | null = null;
 let agentRuntime: AgentRuntime;
 let notifier: BackgroundNotifier;
+let voicePermissions: VoicePermissionOwner | null = null;
 let backend: LocalBackend | null = null;
 let exitGuard: ExitGuard | undefined;
 /** Orders quit so a renderer that refuses to unload cannot leave teardown behind. */
@@ -129,6 +131,10 @@ function createWindow(): BrowserWindow {
       spellcheck: true
     }
   });
+
+  // The permission owner binds an ephemeral grant to this exact window id; keep it readable even
+  // after Electron has destroyed the window object.
+  const permissionWindowId = String(window.id);
 
   // The capture harness can exercise responsive touch targets without a device.
   // This is test-only and does not change normal Electron pointer behavior.
@@ -221,9 +227,16 @@ function createWindow(): BrowserWindow {
   });
 
   window.on("closed", () => {
+    // An ephemeral hands-free grant belongs to this window alone; closing or destroying it ends
+    // that authority. The grant is never persisted, so a new process starts with none.
+    voicePermissions?.windowClosed(permissionWindowId);
     mainWindow = null;
     // A background turn outlives its window: remember where it was, so the next window opens there.
     noteStudioWindowClosed();
+  });
+  window.webContents.on("destroyed", () => {
+    // Renderer loss ends the same authority even when the window object outlives its contents.
+    voicePermissions?.windowClosed(permissionWindowId);
   });
 
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -523,18 +536,30 @@ const started = app.whenReady().then(async () => {
     metrics
   );
 
-  // The studio only needs the microphone. Camera, geolocation, notifications and every other
-  // permission stay denied; there is no remote content that could ask for them.
-  session.defaultSession.setPermissionCheckHandler((_contents, permission, _origin, details) => {
-    return permission === "media" && details.mediaType === "audio";
+  /*
+   * One owner answers both Electron permission handlers. Every fact comes from the callback and
+   * the studio's own window, never from renderer text: the actual main window, its trusted
+   * top-level frame, the renderer's real origin and an audio-only media list. Push-to-talk keeps
+   * its existing audio path and creates no grant. A hands-free grant is a separate in-memory
+   * authority for a future host adapter; nothing persists it or exposes it over IPC/preload.
+   */
+  const permissionRegistry = new AudioGrantRegistry(() => Date.now());
+  voicePermissions = new VoicePermissionOwner({
+    hostId: "open-book-studio",
+    trustedOrigin: trustedRendererOrigin({
+      devServerUrl: isDev ? process.env.ELECTRON_RENDERER_URL : undefined,
+      rendererFile: join(__dirname, "../renderer/index.html")
+    }),
+    currentWindow: () => mainWindow,
+    windowForContents: (contents) => BrowserWindow.fromWebContents(contents as WebContents),
+    registry: permissionRegistry
   });
-  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    if (permission !== "media" || !("mediaTypes" in details)) {
-      callback(false);
-      return;
-    }
-    const types = details.mediaTypes ?? [];
-    callback(types.length > 0 && types.every((type) => type === "audio"));
+  const permissions = voicePermissions;
+  session.defaultSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
+    permissions.check(contents, permission, requestingOrigin, details)
+  );
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(permissions.request(contents, permission, details));
   });
   app.on("browser-window-focus", () => {
     notifier.clearBadge();
@@ -623,6 +648,11 @@ app.on("will-quit", (event) => {
     () => app.quit()
   );
   if (!allow) event.preventDefault();
+});
+
+// A quit ends every ephemeral capture authority even if the window is already gone.
+app.on("will-quit", () => {
+  voicePermissions?.clearHandsFreeGrants();
 });
 
 app.on("window-all-closed", () => {

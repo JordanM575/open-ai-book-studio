@@ -1,8 +1,11 @@
 # Pure voice-session core — D-200 / ADR 0021
 
 This is an **unmounted, platform-independent leaf**, implementing 017 T013/T014 and the pure part
-of T015. Import its local `index.ts` directly in leaf tests. No shared package export, existing
-PTT hook, profile preference, provider transport, permission handler or editor is changed.
+of T015. Import its local `index.ts` directly in leaf tests. The leaf itself changes no shared
+package export, existing PTT hook, profile preference, provider transport, permission handler or
+editor. The separately owned desktop host now imports these predicates for both real permission
+handlers (see below); that wiring does not upgrade the leaf's evidence to OS, microphone or device
+qualification.
 
 ## Selected basis and bounded implementation decisions
 
@@ -80,7 +83,12 @@ not a new file format or durable question store. The host still owns durable ide
   from the previous immutable state before replacing it with a new activation; no transcript log
   or persistence is created here. Reopening/hiding/locking/permission loss cannot implicitly Start.
 
-## Required host adapter (not implemented)
+## Required host adapter
+
+Items 1–2 and 4–8 remain for the future host adapter. The Electron sender/fact extraction, both
+handler decisions and the ephemeral grant registry from item 3 are now implemented in
+`apps/desktop/src/main/voice-permissions.ts`; the hands-free adapter that issues and consumes a
+grant is still not mounted.
 
 1. Keep reducer state and `HostFacts` in the trusted host. Authenticate author controls separately from
    provider text and renderer claims. Validate external wire payloads before this typed internal API.
@@ -90,10 +98,24 @@ not a new file format or durable question store. The host still owns durable ide
    `available`, frame ID, origin, digest, grant, route revision or full-duplex flag is not authority.
    Observe all hide/close/lock/sleep/source/route/grant transitions immediately; process loss destroys
    capture ownership. A new process uses fresh session IDs. Do not persist live grants.
-3. Issue an audio-only grant for the exact permission attempt/session. Both Electron permission
-   handlers must extract the real intended studio sender, trusted top-level frame/origin and requested
-   media type and call `permitsAudio`. Missing or ambiguous callback facts deny. This predicate is not
-   a claim the current Electron handlers have been wired or OS permission has been obtained.
+3. Issue an audio-only grant for the exact permission attempt/session. The desktop host now owns
+   both Electron handlers in `apps/desktop/src/main/voice-permissions.ts`: it extracts the real
+   sender `WebContents`, window identity, trusted top-level frame, renderer origin and media list,
+   and denies missing or ambiguous facts. The origin comes from the real load path — the packaged
+   `file://` renderer or the electron-vite dev server's exact `http(s)` origin — never a wildcard.
+   Trusted audio-only push-to-talk keeps its existing explicit-press path and creates no grant;
+   hands-free audio additionally needs the exact in-memory grant through `permitsAudio` /
+   `activeAudioGrant`, and window close or quit revokes it. This is source and synthetic-test
+   evidence, not an OS grant, microphone, mounted hands-free adapter or owned-track qualification.
+   Missing or ambiguous callback facts always deny. A field that is present but empty,
+malformed or of an unsupported scheme denies rather than deferring to the other origin field.
+An unset or empty development server URL follows the real `loadFile` fallback to `file://`; a
+present but unparseable or non-`http(s)` URL denies.
+
+`VoicePermissionDecision.captureAllowed` is a **capture gate only**, not hands-free authority. The
+future adapter must still require the exact active grant (`activeAudioGrant`/`permits` with the
+expected token) immediately before PCM intake; the permission callback cannot distinguish
+push-to-talk from hands-free `getUserMedia`.
 4. Call `mayCapture` before PCM intake; `maySend` immediately before **every** external request or
    checked intent dispatch and after every await; `mayPlay` before decoded audio playback;
    `mayDeliverAnswer` immediately before the authoritative 037 checked-answer operation. Recheck the
@@ -166,6 +188,7 @@ qualification. Synthetic events certify none of those.
 bun test ./packages/core/tests/voice-session/
 bunx --no-install tsc -p packages/core/tests/voice-session/tsconfig.strict.json
 bunx --no-install biome lint packages/core/src/voice-session packages/core/tests/voice-session
+bun test ./apps/desktop/tests/voice-permissions.test.ts
 bun run typecheck
 ```
 
