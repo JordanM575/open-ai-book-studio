@@ -44,6 +44,7 @@
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",
     "tests/reader-review.test.tsx",
+    "tests/saved-review-ui.test.tsx",
     "tests/story-bible-dialog.test.tsx",
     "tests/settings-status.test.tsx",
     "tests/voice-settings.test.tsx",

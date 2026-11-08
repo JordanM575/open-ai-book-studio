@@ -2,6 +2,7 @@ import { assertReviewData, freeze, REVIEW_LIMITS } from "@ai-book-studio/core/re
 import { reviewDisclosure, type CurrentSource, type ReviewEnvelope } from "@ai-book-studio/core/review/envelope";
 import { buildReaderRun, type Citation, type ReaderRun } from "@ai-book-studio/core/review/findings";
 import type { SavedIdentity } from "@ai-book-studio/core/review/sources";
+import type { ReviewPersistence } from "./SaveReviewControl";
 
 export type ReviewRefusal = "unavailable" | "scope-too-large" | "consent" | "terms" | "changed";
 export type ReviewFailure = "provider" | "overflow" | "malformed" | "refused";
@@ -21,6 +22,7 @@ export type PreparationOutcome = { kind: "ready"; prepared: PreparedReaderReview
 export type StartOutcome = { kind: "completed"; run: ReaderRun } |
   { kind: "blocked"; reason: ReviewRefusal } | { kind: "failed"; reason: ReviewFailure };
 export interface ReaderReviewProps {
+  persistence?: ReviewPersistence;
   open: boolean;
   bookId: string;
   /** Changes for every host view lifetime, including returning to the same book. */
