@@ -1,5 +1,6 @@
 import type { ReviewCoverageAnalysis, ReviewSourceSnapshot, ReviewWorkResult } from "@ai-book-studio/core/review";
 import type { ReviewWorkerReply, ReviewWorkerRequest } from "./review-worker-protocol";
+import { asReviewAnalysis, validReviewAnalysis } from "./review-worker-validation";
 
 export type ReviewWorker = Pick<Worker, "addEventListener" | "removeEventListener" | "terminate"> & {
   postMessage: (message: ReviewWorkerRequest) => void;
@@ -26,6 +27,7 @@ export function analyzeReviewInWorker(
     let worker: ReviewWorker | undefined;
     let settled = false;
     let started = false;
+    let validating = false;
     let startupTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (result: ReviewWorkResult<ReviewCoverageAnalysis>) => {
       if (settled) return;
@@ -51,8 +53,15 @@ export function analyzeReviewInWorker(
         started = true;
         clearTimeout(startupTimer);
         try { worker?.postMessage({ kind: "analyze", source }); } catch { fail(); }
-      } else if (reply?.kind === "complete" && started && reply.analysis) {
-        finish({ status: "complete", value: reply.analysis });
+      } else if (reply?.kind === "complete" && started && !validating) {
+        validating = true;
+        // Traverse required metadata in bounded slices, never the potentially huge evidence arrays.
+        void validReviewAnalysis(reply.analysis, source, signal).then((valid) => {
+          if (settled) return;
+          if (signal.aborted) onAbort();
+          else if (valid) finish({ status: "complete", value: asReviewAnalysis(reply.analysis) });
+          else fail();
+        }).catch(fail);
       } else {
         fail();
       }

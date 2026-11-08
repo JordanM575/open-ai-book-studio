@@ -8,6 +8,18 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 HEAD
+### Review navigation and worker reply safety
+
+- Guard report reopen, run and evidence-navigation continuations against superseding actions,
+  chapter/view visits, book/library changes, dismissal and unmount, including late read failures.
+  A delayed chapter switch also invalidates work when the switch actually commits.
+- Select evidence only after checking the mounted editor's current source and live buffer against
+  the exact saved passage. Refuse dirty, saving, failed, composing or held editors instead of
+  refreshing over their text; recheck both sides of a cross-chapter switch.
+- Fail invalid worker envelopes and required metadata safely, validating metadata incrementally
+  and occurrence spans as their pages become visible rather than scanning every span on the UI
+  thread. Focused synthetic regressions cover these guards; native and retained-review gates remain.
+
 ### Cancellable deterministic review runtime
 
 - Move interactive repetition analysis into a dedicated, run-owned module worker. Native NFC on
@@ -16,7 +28,8 @@ HEAD
   valid-source coverage, counts or original evidence spans. Worker startup/error/unavailable paths
   fail visibly with no main-thread analysis fallback.
 - Clean up deterministic review work on cancellation, dialog dismissal, book/library change and
-  Workspace unmount. Obsolete snapshot reads and worker replies cannot overwrite a fresh run.
+  Workspace unmount. The run-acquisition reads and worker replies are isolated from a fresh run;
+  the separate reopen and navigation reads required the subsequent correction above.
 - Add synthetic Bun-worker and Workspace regressions reaching adversarial native normalization,
   exact adversarial completion, retry, late replies, failure and lifetime cleanup, alongside complete
   120-chapter/250k-word occurrence transport. Native browser/Electron performance, packaging and

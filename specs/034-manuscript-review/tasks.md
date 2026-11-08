@@ -132,8 +132,9 @@ no real manuscript, credential, live provider, paid service or device is in scop
   DOM tests traverse all occurrence/sequence pages and verify retained keyboard focus. The existing
   Workspace callback selects an actual finding's exact saved span and refuses a changed revision;
   synthetic spies observe no chapter/draft/metadata writes or provider sends. The local analyzer
-  also runs with immutable input and a refusing network spy. Inline-layer mounting, final dirty/view
-  race suppression, native accessibility and remaining-host acceptance remain coordinator-owned.
+  also runs with immutable input and a refusing network spy. Wave 21 below adds final dirty/view
+  checks for this dialog navigation seam; inline-layer mounting, native accessibility and
+  remaining-host acceptance remain coordinator-owned.
 - [ ] T019 Complete 034 T016's real-finding navigation and retained-report adapter using 039's shared
   explicit-save/export contracts; keep analyzer/source version and actual coverage in every output.
 
@@ -158,9 +159,9 @@ Interactive Workspace analysis now uses one owned module worker per explicit run
 that worker, removes listeners and discards queued replies; a rerun gets a new worker. Startup,
 load/runtime/deserialization/send failures and missing startup acknowledgement fail honestly with
 no heavy inline fallback. The startup deadline does not cap analysis or omit valid text. Book/library
-changes, dialog dismissal and unmount abort owned work; old reads and replies cannot update a newer
-run. Saved-source acquisition, save gating, currency/navigation checks and volatile results keep their
-existing contracts. No saved-review API, path, mount or writer is added by this correction.
+changes, dialog dismissal and unmount abort owned work; old run-acquisition reads and worker replies
+cannot update a newer run. Independent wave 21 review found that separate reopen and navigation reads
+were not covered by that claim. No saved-review API, path, mount or writer is added by this correction.
 
 Focused synthetic evidence covers real native-NFC entry in an in-process Bun worker at the reproduced
 131,083-unit size, main-loop heartbeats, cancellation before NFC completion, actual Workspace Cancel
@@ -172,6 +173,28 @@ evidence. Existing core large-book/cancellation and report paging/navigation/sav
 T016/T018/T019 stay open. Build/CSP paths were inspected, but coordinator-owned integrated builds,
 actual browser/Electron startup/cancel/performance and remaining-host/native accessibility checks
 were not executed here. Full occurrence transport still has structured-clone and memory costs; there
-is no arbitrary-input latency or memory ceiling. Explicit retention/continuation, inline mounting and
-the final dirty/current-editor-after-await navigation gate remain separately owned. 038 T022 remains
-unchecked. A fresh independent review must inspect the corrected exact head.
+is no arbitrary-input latency or memory ceiling. Explicit retention/continuation and inline mounting
+remain separately owned. Wave 21 below corrects the dialog's final editor navigation boundary; its
+native and remaining-host acceptance is still open. 038 T022 remains unchecked.
+
+### Wave 21 navigation lifetime correction and evidence boundary
+
+The report reopen, new-run and evidence-navigation paths now invalidate or reject obsolete reads,
+late failures and selections on supersession, dialog close, book/library or committed chapter/view
+change and unmount. Commit-time invalidation also covers an earlier chapter switch whose save finishes
+after a newer reopen. Cancel remains available during a newer worker run. Navigation revalidates the
+saved evidence and the mounted editor's visit, source epoch, version/hash/body and live clean state;
+dirty, saving, failed, composing or held buffers are refused without replacing them. Cross-chapter
+navigation checks the old visit at the switch and the new editor at selection. No fuzzy fallback is
+introduced.
+
+Malformed worker envelopes and required coverage/finding metadata fail closed, with incremental host
+validation and lazy checks of displayed occurrence pages rather than a full UI-thread span traversal.
+Focused synthetic tests and unchanged independent probes cover the reproduced races, both late read
+outcomes, editor state, malformed replies, Unicode, paging and all 249,760 transported spans. These
+are Bun/happy-dom observations, not native acceptance or an arbitrary latency/memory ceiling.
+
+T016/T018/T019 remain unchecked: inline-layer mounting, retained review/continuation, real native
+navigation and accessibility, browser/desktop worker URL/CSP/packaging, other hosts and release gates
+still need their owners. 038 T022 remains unchecked. A fresh independent review must inspect the
+corrected exact head; earlier broad gates applied to the previous head only.

@@ -36,6 +36,12 @@ afterEach(() => testing.cleanup());
 
 const NOW = "2026-11-03T12:00:00.000Z";
 
+function at<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`Missing synthetic fixture at index ${index}`);
+  return item;
+}
+
 const dialogSource: ReviewSourceSnapshot = {
   scope: { kind: "book", bookId: "book_dialog0001" },
   capturedAt: NOW,
@@ -351,6 +357,37 @@ describe("ReviewReportDialog", () => {
     }));
     expect(queries.getByRole("group", { name: "Sequences pages" }).textContent).toContain("Sequences 1–5 of 12");
   });
+
+  test.each(["hole", "invalid shape", "wrong source"] as const)(
+    "a %s on a later occurrence page fails safely when it becomes visible", (defect) => {
+      const source: ReviewSourceSnapshot = { ...dialogSource, chapters: [{
+        status: "saved", chapterId: "ch_paged", title: "Repeated fixture", order: 1,
+        body: Array(27).fill("word").join(" "), version: 1, hash: "a".repeat(64)
+      }] };
+      const report = buildReviewReport(source, analyzeReviewCoverage(source), { requestedAt: NOW, completedAt: NOW });
+      const finding = report.findings[0];
+      if (!finding) throw new Error("Expected a repetition finding");
+      const evidence = [...finding.evidence];
+      if (defect === "hole") delete evidence[12];
+      else if (defect === "invalid shape") evidence[12] = null as unknown as typeof evidence[number];
+      else evidence[12] = { ...at(evidence, 12), sourceHash: "wrong" };
+      const malformed = { ...report, findings: [{ ...finding, evidence }] };
+      const onMalformedEvidence = mock(() => {});
+      const onNavigate = mock(() => {});
+      testing.render(React.createElement(ReviewReportDialog, {
+        open: true, bookTitle: "Synthetic", view: { kind: "report", report: malformed, freshness: { status: "current" } },
+        onNavigate, onMalformedEvidence, onCancelRun: () => {}, onRunAgain: () => {}, onClose: () => {}
+      }));
+      const queries = testing.within(document.body);
+      expect(queries.getAllByTestId("review-evidence")).toHaveLength(10);
+      expect(onMalformedEvidence).not.toHaveBeenCalled();
+      testing.fireEvent.click(queries.getByRole("button", { name: "Next occurrences" }));
+      expect(queries.getByText(/worker returned an invalid result/)).toBeTruthy();
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      expect(onMalformedEvidence).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("ManuscriptEditor evidence selection", () => {
@@ -389,7 +426,9 @@ describe("ManuscriptEditor evidence selection", () => {
         ordinal: 2,
         onSaved: () => {},
         onStatus: () => {},
-        selection: { start: 0, end: 3, nonce: 1 }
+        selection: { start: 0, end: 3, source: { libraryId: "studio-local", bookId: "book_dialog0001",
+          chapterId: chapter.id, version: chapter.version, rawHash: chapter.hash, savedBody: chapter.content },
+          isCurrent: () => true, onResult: () => {} }
       })
     );
 
@@ -491,7 +530,204 @@ function controlledReviewWorkers() {
   return { workers, restore: () => { globalThis.Worker = original; } };
 }
 
+function deferredRead() {
+  let resolve!: (result: { ok: true; data: BookDetail }) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<{ ok: true; data: BookDetail }>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+async function startControlledReport(fixture: ReturnType<typeof workerWorkspaceFixture>, control: ReturnType<typeof controlledReviewWorkers>) {
+  const rendered = testing.render(React.createElement(WorkspaceView, fixture.props));
+  const queries = testing.within(document.body);
+  await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+  testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+  await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+  await testing.act(async () => { control.workers[0]?.complete(); });
+  expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+  return { rendered, queries };
+}
+
 describe("workspace review entry to report", () => {
+  test.each(["same", "different"] as const)("a current %s-chapter occurrence selects its exact saved text", async (target) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), target === "same" ? 0 : 1));
+      await testing.waitFor(() => {
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("Salt and stone");
+        expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe(target === "same" ? "The Light" : "The Road");
+        expect(queries.queryByTestId("review-report")).toBeNull();
+      });
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["resolve", "reject"] as const)("a late reopen %s cannot replace or hide a newer run", async (outcome) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(queries.getByTestId("review-close"));
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      const revised = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", firstDetail.chapters.map((chapter) => ({
+        ...chapter, content: "Fresh bright stars.\n", version: chapter.version + 1, hash: "f".repeat(64)
+      })));
+      fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: revised }));
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => {
+        if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });
+        else pending.reject(new Error("obsolete synthetic reopen failure"));
+      });
+      expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+      expect(control.workers[1]?.terminate).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("fresh bright stars");
+      expect(queries.getByTestId("review-findings").textContent).not.toContain("salt and stone");
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([
+    ["reopen", "close"], ["reopen", "book"], ["reopen", "library"], ["reopen", "book ABA"],
+    ["reopen", "chapter"], ["reopen", "unmount"],
+    ["navigation", "close"], ["navigation", "book"], ["navigation", "library"], ["navigation", "book ABA"],
+    ["navigation", "chapter"], ["navigation", "unmount"]
+  ] as const)("obsolete %s reads cannot affect a %s change, even on late failure", async (operation, change) => {
+    for (const outcome of ["resolve", "reject"] as const) {
+      const fixture = workerWorkspaceFixture();
+      const control = controlledReviewWorkers();
+      try {
+        const { rendered, queries } = await startControlledReport(fixture, control);
+        const pending = deferredRead();
+        if (operation === "reopen") testing.fireEvent.click(queries.getByTestId("review-close"));
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        if (operation === "reopen") testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        else testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+        const oldEditor = queries.getByTestId("manuscript-text");
+        if (change === "unmount") rendered.unmount();
+        else if (change === "close") testing.fireEvent.click(queries.getByTestId("review-close"));
+        else if (change === "chapter") {
+          rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props,
+            chapterRequest: { bookId: INTEGRATION_BOOK, chapterId: "ch_int000002", nonce: 1, revert: false } }));
+          await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road"));
+        } else if (change === "library") {
+          rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, libraryRoot: "/synthetic/other-library" }));
+          await testing.waitFor(() => expect(queries.getByTestId("manuscript-text")).not.toBe(oldEditor));
+        } else {
+          rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, bookId: INTEGRATION_BOOK_TWO }));
+          await testing.waitFor(() => expect(document.querySelector("h1")?.textContent).toBe("Second Fixture"));
+          if (change === "book ABA") {
+            rendered.rerender(React.createElement(WorkspaceView, fixture.props));
+            await testing.waitFor(() => expect(document.querySelector("h1")?.textContent).toBe("Integration Fixture"));
+          }
+        }
+        await testing.act(async () => {
+          if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });
+          else pending.reject(new Error("obsolete synthetic read failure"));
+        });
+        if (change === "unmount" || change === "close" || change === "book" || change === "library" || change === "book ABA") {
+          expect(queries.queryByTestId("review-report")).toBeNull();
+        }
+        if (change === "book") expect(document.querySelector("h1")?.textContent).toBe("Second Fixture");
+        if (change === "chapter") expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road");
+        if (change === "library" || change === "book ABA") {
+          expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light");
+        }
+        expect(fixture.props.onNotice).not.toHaveBeenCalled();
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  });
+
+  test.each(["resolve", "reject"] as const)("a superseded navigation %s cannot undo the newer selection", async (outcome) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      const buttons = queries.getAllByTestId("review-evidence");
+      const before = fixture.open.mock.calls.length;
+      testing.fireEvent.click(at(buttons, 0));
+      expect(fixture.open.mock.calls.length).toBe(before + 1);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+      expect(fixture.open.mock.calls.length).toBe(before + 2);
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      await testing.act(async () => {
+        if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });
+        else pending.reject(new Error("obsolete synthetic navigation failure"));
+      });
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road");
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("Salt and stone");
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["resolve", "reject"] as const)("a chapter switch completing after a newer reopen invalidates its late %s", async (outcome) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    let finishSave!: (value: unknown) => void;
+    const saveResult = new Promise<unknown>((resolve) => { finishSave = resolve; });
+    const bridge = window.studio as unknown as {
+      chapters: { save: () => Promise<unknown> };
+      drafts: { set: () => Promise<unknown>; clear: () => Promise<unknown> };
+    };
+    bridge.chapters.save = mock(() => saveResult);
+    bridge.drafts.set = mock(async () => ({ ok: true, data: null }));
+    bridge.drafts.clear = mock(async () => ({ ok: true, data: null }));
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(queries.getByTestId("review-close"));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      const text = "Saved synthetic edit.";
+      testing.fireEvent.change(editor, { target: { value: text } });
+      testing.fireEvent.click(at(queries.getAllByTestId("chapter-row"), 1));
+      await testing.waitFor(() => expect(bridge.chapters.save).toHaveBeenCalledTimes(1));
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      const chapter = { ...at(firstDetail.chapters, 0), content: text, version: 2, hash: "f".repeat(64) };
+      await testing.act(async () => { finishSave({ ok: true, data: { status: "saved", chapter } }); });
+      await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road"));
+      await testing.act(async () => {
+        if (outcome === "resolve") pending.resolve({ ok: true, data: { ...firstDetail, chapters: [chapter, at(firstDetail.chapters, 1)] } });
+        else pending.reject(new Error("obsolete synthetic reopen failure"));
+      });
+      expect(queries.queryByTestId("review-stale")).toBeNull();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["same", "different"] as const)("%s-chapter navigation refuses an edit made while the saved read waits", async (target) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), target === "same" ? 0 : 1));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      testing.fireEvent.change(editor, { target: { value: "My unsaved synthetic words." } });
+      await testing.act(async () => { pending.resolve({ ok: true, data: firstDetail }); });
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe("My unsaved synthetic words.");
+      expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light");
+      expect(queries.getByTestId("review-report")).toBeTruthy();
+      expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
   test("the actual worker reaches adversarial NFC while Workspace Cancel stays usable and Run again completes", async () => {
     const { props, open, forbidden } = workerWorkspaceFixture();
     const token = `a${"\u0315".repeat(65_536)}${"\u0300".repeat(65_536)}`;

@@ -110,6 +110,64 @@ describe("owned review worker lifecycle", () => {
     expect(forbidden).not.toHaveBeenCalled();
     expect((await analyzeReviewInWorker(snapshot(["a b c a b c"]), new AbortController().signal)).status).toBe("complete");
   });
+
+  test("invalid completion envelopes, coverage and finding metadata fail closed", async () => {
+    const source = snapshot(["one two three one two three"]);
+    const analysis = analyzeReviewCoverage(source);
+    const bad: unknown[] = [
+      undefined, {}, { ...analysis, status: "unknown" },
+      { ...analysis, coverage: null },
+      { ...analysis, coverage: { ...analysis.coverage, inScope: 2 } },
+      { ...analysis, coverage: { ...analysis.coverage, included: 0 } },
+      { ...analysis, wordCounts: { ...analysis.wordCounts, totalWordCount: -1 } },
+      { ...analysis, wordCounts: { ...analysis.wordCounts, chapters: [] } },
+      { ...analysis, findings: [{ ...analysis.findings[0], id: "invented" }] },
+      { ...analysis, findings: [{ ...analysis.findings[0], metricId: "invented" }] },
+      { ...analysis, findings: [{ ...analysis.findings[0], evidence: null }] },
+      { ...analysis, findings: Array(1) }
+    ];
+    for (const value of bad) {
+      const worker = new ControlledWorker();
+      const result = analyzeReviewInWorker(source, new AbortController().signal, { createWorker: () => worker });
+      worker.message({ kind: "ready" });
+      worker.message({ kind: "complete", analysis: value } as ReviewWorkerReply);
+      expect((await result).status).toBe("failed");
+      expect(worker.terminate).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("metadata validation does not scan evidence and remains cancellable between slices", async () => {
+    const source = snapshot(Array.from({ length: 600 }, () => "one two three one two three"));
+    const analysis = analyzeReviewCoverage(source);
+    const finding = analysis.findings[0];
+    if (!finding) throw new Error("Expected a repetition fixture");
+    const originalEvidence = finding.evidence;
+    const guarded = new Proxy(originalEvidence, {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^\d+$/u.test(key)) throw new Error("Evidence scanned on host");
+        return Reflect.get(target, key, receiver);
+      }
+    });
+    const worker = new ControlledWorker();
+    const result = analyzeReviewInWorker(source, new AbortController().signal, { createWorker: () => worker });
+    worker.message({ kind: "ready" });
+    worker.message({ kind: "complete", analysis: { ...analysis, findings: [{ ...finding, evidence: guarded }] } });
+    expect((await result).status).toBe("complete");
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+
+    const cancelledWorker = new ControlledWorker();
+    const controller = new AbortController();
+    const cancelled = analyzeReviewInWorker(source, controller.signal, { createWorker: () => cancelledWorker });
+    let settled = false;
+    void cancelled.then(() => { settled = true; });
+    cancelledWorker.message({ kind: "ready" });
+    cancelledWorker.message({ kind: "complete", analysis });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    controller.abort();
+    expect((await cancelled).status).toBe("cancelled");
+    expect(cancelledWorker.terminate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("real in-process Bun workers (not browser/Electron evidence)", () => {

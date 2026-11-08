@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import type {
   ReviewCoverageEntry,
   ReviewFinding,
@@ -8,6 +8,7 @@ import type {
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { formatWords, pluralize } from "../lib/utils";
+import { validVisibleEvidence } from "../lib/review-worker-validation";
 
 export type ReviewRunView =
   | { kind: "running" }
@@ -26,6 +27,8 @@ interface Props {
   onClose: () => void;
   /** Open a finding's evidence span in the manuscript after revalidation. */
   onNavigate: (findingId: string, evidenceIndex: number) => void;
+  /** A malformed visible worker occurrence must fail the report, not crash rendering. */
+  onMalformedEvidence?: () => void;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -81,7 +84,7 @@ function StatusCopy({ view }: { view: Extract<ReviewRunView, { kind: "report" }>
  * report is held in memory, never written anywhere, and a new run replaces it. Evidence
  * navigation rechecks the saved version and hash before opening a span (T012).
  */
-export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAgain, onClose, onNavigate, onOpenChange }: Props) {
+export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAgain, onClose, onNavigate, onMalformedEvidence, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -142,6 +145,7 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
             report={view.report}
             freshness={view.freshness}
             onNavigate={onNavigate}
+            onMalformedEvidence={onMalformedEvidence}
             onRunAgain={onRunAgain}
             onClose={onClose}
           />
@@ -156,6 +160,7 @@ function ReportBody({
   report,
   freshness,
   onNavigate,
+  onMalformedEvidence,
   onRunAgain,
   onClose
 }: {
@@ -163,6 +168,7 @@ function ReportBody({
   report: ReviewReportResult;
   freshness: ReviewReportFreshness;
   onNavigate: (findingId: string, evidenceIndex: number) => void;
+  onMalformedEvidence: Props["onMalformedEvidence"];
   onRunAgain: () => void;
   onClose: () => void;
 }) {
@@ -232,7 +238,7 @@ function ReportBody({
                 : "No repeated three-token sequences in the saved chapters."}
           </p>
         ) : (
-          <PagedFindings findings={report.findings} stale={stale} onNavigate={onNavigate} />
+          <PagedFindings findings={report.findings} sources={report.source.chapters} stale={stale} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
         )}
       </section>
 
@@ -252,13 +258,16 @@ const FINDINGS_PER_PAGE = 5;
 const OCCURRENCES_PER_PAGE = 10;
 
 /** View-only slices: every finding and occurrence remains in the completed volatile report. */
-function PagedFindings({ findings, stale, onNavigate }: {
+function PagedFindings({ findings, sources, stale, onNavigate, onMalformedEvidence }: {
   findings: readonly ReviewFinding[];
+  sources: ReviewReportResult["source"]["chapters"];
   stale: boolean;
   onNavigate: Props["onNavigate"];
+  onMalformedEvidence: Props["onMalformedEvidence"];
 }) {
   const [page, setPage] = useState(0);
   const totalOccurrences = useMemo(() => findings.reduce((total, finding) => total + finding.evidence.length, 0), [findings]);
+  const savedSources = useMemo(() => new Map(sources.flatMap((source) => source.status === "saved" ? [[source.chapterId, source] as const] : [])), [sources]);
   return (
     <>
       <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
@@ -267,26 +276,42 @@ function PagedFindings({ findings, stale, onNavigate }: {
       <ReviewPages label="Sequences" page={page} size={FINDINGS_PER_PAGE} total={findings.length} onPage={setPage} />
       <ul className="mt-2 space-y-3">
         {findings.slice(page * FINDINGS_PER_PAGE, (page + 1) * FINDINGS_PER_PAGE).map((finding) => (
-          <FindingOccurrences key={finding.id} finding={finding} stale={stale} onNavigate={onNavigate} />
+          <FindingOccurrences key={finding.id} finding={finding} sources={savedSources} stale={stale} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
         ))}
       </ul>
     </>
   );
 }
 
-function FindingOccurrences({ finding, stale, onNavigate }: {
+function FindingOccurrences({ finding, sources, stale, onNavigate, onMalformedEvidence }: {
   finding: ReviewFinding;
+  sources: ReadonlyMap<string, Extract<ReviewReportResult["source"]["chapters"][number], { status: "saved" }>>;
   stale: boolean;
   onNavigate: Props["onNavigate"];
+  onMalformedEvidence: Props["onMalformedEvidence"];
 }) {
   const [page, setPage] = useState(0);
   const start = page * OCCURRENCES_PER_PAGE;
+  const visible = finding.evidence.slice(start, start + OCCURRENCES_PER_PAGE);
+  // Array methods such as some/map skip holes: inspect every index in this bounded page.
+  let malformed = false;
+  for (let index = 0; index < visible.length; index++) {
+    const span = visible[index];
+    if (!validVisibleEvidence(span)) { malformed = true; break; }
+    const source = sources.get(span.chapterId);
+    if (!source || source.title !== span.title || source.order !== span.order ||
+        source.version !== span.sourceVersion || source.hash !== span.sourceHash) { malformed = true; break; }
+  }
+  useEffect(() => {
+    if (malformed) onMalformedEvidence?.();
+  }, [malformed, onMalformedEvidence]);
+  if (malformed) return <li role="status">The local review worker returned an invalid result. Run the review again.</li>;
   return (
     <li data-testid="review-finding">
       <p className="break-words text-(length:--text-subheadline-size) font-medium">{finding.label} · {finding.evidence.length} occurrences</p>
       <ReviewPages label="Occurrences" page={page} size={OCCURRENCES_PER_PAGE} total={finding.evidence.length} onPage={setPage} />
       <ul className="mt-1 space-y-1.5">
-        {finding.evidence.slice(start, start + OCCURRENCES_PER_PAGE).map((span, index) => (
+        {visible.map((span, index) => (
           <li key={`${span.chapterId}:${span.startOffset}:${span.endOffset}`} className="flex flex-wrap items-center justify-between gap-3">
             <span className="min-w-0 break-words text-(length:--text-caption-size) text-muted-foreground">
               Chapter {span.order} · {span.title} · “{span.excerpt}”
