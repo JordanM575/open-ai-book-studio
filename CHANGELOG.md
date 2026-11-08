@@ -51,7 +51,8 @@ HEAD
   refused. Select a list row's finding by identity, so two findings on one passage can each be
   chosen from the list.
 - Clear marks, the findings list and any pending proof when the host withdraws its review request,
-  instead of leaving stale underlines visible.
+  instead of leaving stale underlines visible. Regenerate the third-party notices for the web
+  closure, which now includes the editor's CodeMirror packages.
 
 ### Mounted exact-current manuscript editor
 - Mount the accepted CodeMirror plain-text surface in `ManuscriptEditor` in place of the textarea.
