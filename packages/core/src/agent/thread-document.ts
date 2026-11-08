@@ -166,6 +166,12 @@ function assertWellFormed(value: unknown): void {
     wellFormed(value);
     return;
   }
+  if (typeof value === "number") {
+    // The reader refuses these; publishing them would make the conversation unreadable.
+    requireValue(Number.isFinite(value) && !Object.is(value, -0) &&
+      Math.abs(value) <= Number.MAX_SAFE_INTEGER);
+    return;
+  }
   if (Array.isArray(value)) {
     for (const item of value) assertWellFormed(item);
     return;

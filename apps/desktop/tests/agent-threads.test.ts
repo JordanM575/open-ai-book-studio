@@ -605,3 +605,19 @@ describe("generated content cannot corrupt a conversation (review P2)", () => {
     expect(after.messages[0].usage).toMatchObject({ inputTokens: 2, futureUsage: 13 });
   });
 });
+
+describe("unsupported numbers cannot corrupt a conversation (review P2)", () => {
+  test("an unsafe number in a tool result is refused before publishing", async () => {
+    const thread = await store.create(BOOK, "Unsafe number");
+    const path = threadPath(thread.id);
+    const before = await readFile(path, "utf8");
+    await expect(store.appendMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_bignum001",
+      role: "user",
+      parts: [{ type: "text", text: "Search result.", futureNumber: 1e20 }],
+      createdAt: thread.createdAt
+    }))).rejects.toBeTruthy();
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect((await store.read(BOOK, thread.id))?.messages).toHaveLength(0);
+  });
+});

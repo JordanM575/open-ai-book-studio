@@ -19,7 +19,8 @@ Update the `Unreleased` section before every commit.
   the checked reader rejects.
 - Refuse a non-well-formed document before publishing (any lone surrogate, not only the title), keep
   generated search snippets off a surrogate split, and carry unknown message/part fields recursively
-  through same-id replacement so a normal update cannot erase them.
+  through same-id replacement so a normal update cannot erase them, and refuse an emitted number the
+  reader would reject (non-finite, negative zero or magnitude above `Number.MAX_SAFE_INTEGER`).
 
 ### Checked conversation storage
 - Route every v1 conversation write through the Library's per-book queue and journal-aware checked
