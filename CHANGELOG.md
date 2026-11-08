@@ -7,6 +7,28 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Voice transport
+
+- Allow `refusal` in the transport settle event (the four-way settlement the README and the
+  desktop adapter already use), and require callers that have dispatched a chunk to settle a
+  provider 400/404 as `failure`, not as a pre-send refusal. Reserve receipt capacity for an
+  operation already in flight, and mark service-side cancellation with an explicit AbortError so a
+  custom host reason still settles as cancellation. A stop that lands while the response body is
+  read is converted to the same cancellation instead of a provider failure.
+
+### Voice transport
+- Add a pure host-neutral STT/TTS transport ledger: monotonic operation and chunk IDs, one
+  outstanding operation per kind, exact session/route/permission rechecks immediately before every
+  dispatch, best-effort abort descriptions, owned-slot retention until an exact settlement,
+  duplicate/late/foreign receipt rejection and bounded receipts. Settlement separates success,
+  refusal, failure and cancellation from an `unsent`, `reported` or `unknown` charge, so an
+  unreported provider amount is never read as a zero.
+- Map provider-reported speech cost and provider/abort failures at a typed desktop edge, and let
+  `VoiceService` and `SpeechService` accept a host abort signal with a per-chunk recheck and no
+  automatic retry. No request ID, cancellation surface or charge is exposed to the renderer, and
+  017 T016 remains partial: no mounted host, IPC cancel path, provider-side cancellation proof or
+  device evidence is claimed.
+
 ### Conversation storage
 
 - Bind every conversation save to the exact base hash its caller read: a save without that base is
