@@ -8,6 +8,19 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 HEAD
+### Deterministic repetition review
+
+- Implement D-198 repetition-v1: all overlapping three-token windows, Unicode letter/number/mark
+  tokens, internal apostrophes, NFC/case/apostrophe comparison keys and exact original UTF-16
+  occurrences. Malformed Unicode chapters are explicitly skipped; no source text is repaired.
+- Feed actual findings into the existing volatile Review manuscript report with visible metric
+  version/definition, complete counts and bounded sequence/occurrence paging. Existing saved-source
+  navigation now verifies literal spans as well as versions/hashes. Cancellation yields through
+  scans/grouping and across chapters; fixed-slice shared word counting handles giant unbroken tokens.
+- Add focused synthetic coverage for real report-to-editor navigation, stale refusal, complete paging,
+  cancellation and 120-chapter/250k-word inputs. Inline review layers, retained-review mounting and
+  native/release acceptance remain open.
+
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only
   reader reports with analyzer/profile/source/coverage attribution, bounded quotations and no source

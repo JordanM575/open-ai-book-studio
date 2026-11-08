@@ -7,6 +7,7 @@ import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import {
   buildReviewReport,
   analyzeReviewCoverage,
+  analyzeReviewCoverageAsync,
   type ReviewReportResult,
   type ReviewSourceSnapshot
 } from "@ai-book-studio/core/review";
@@ -127,10 +128,11 @@ describe("ReviewReportDialog", () => {
 
     const definitions = testing.within(document.body).getByTestId("review-definitions").textContent ?? "";
     expect(definitions).toContain("Studio word count");
-    expect(definitions).toContain("measures saved words and coverage only");
+    expect(definitions).toContain("repetition-v1");
+    expect(definitions).toContain("overlapping three-token");
 
     const findings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
-    expect(findings).toContain("No phrase findings to show");
+    expect(findings).toContain("No repeated three-token sequences in the saved chapters");
   });
 
   test("partial and insufficient-evidence reports use their own copy, never a false success", () => {
@@ -280,6 +282,74 @@ describe("ReviewReportDialog", () => {
     expect(testing.within(document.body).getByRole("button", { name: "Run again" })).toBeTruthy();
     expect(testing.within(document.body).getByTestId("review-status")).toBeTruthy();
   });
+
+  test("actual findings retain every overlap across occurrence pages, preserve focus and block stale navigation", async () => {
+    const source: ReviewSourceSnapshot = { ...dialogSource, chapters: [{
+      status: "saved", chapterId: "ch_paged", title: "Repeated fixture", order: 1,
+      body: Array(27).fill("word").join(" "), version: 1, hash: "a".repeat(64)
+    }] };
+    const outcome = await analyzeReviewCoverageAsync(source, new AbortController().signal);
+    if (outcome.status !== "complete") throw new Error("Synthetic scan must complete");
+    const report = buildReviewReport(source, outcome.value, { requestedAt: NOW, completedAt: NOW });
+    const onNavigate = mock((_findingId: string, _index: number) => {});
+    const props = { open: true, bookTitle: "Paging fixture", onNavigate, onCancelRun: () => {}, onRunAgain: () => {}, onClose: () => {} };
+    const rendered = testing.render(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report, freshness: { status: "current" } }
+    }));
+    const queries = testing.within(document.body);
+    expect(queries.getByTestId("review-findings").textContent).toContain("1 sequence · 25 occurrences");
+    for (const [page, count] of [[0, 10], [1, 10], [2, 5]] as const) {
+      const buttons = queries.getAllByTestId("review-evidence");
+      expect(buttons).toHaveLength(count);
+      for (const button of buttons) testing.fireEvent.click(button);
+      expect(queries.getByRole("group", { name: "Occurrences pages" }).textContent)
+        .toContain(`Occurrences ${page * 10 + 1}–${page * 10 + count} of 25`);
+      const next = queries.getByRole("button", { name: "Next occurrences" });
+      next.focus();
+      testing.fireEvent.click(next);
+      expect(document.activeElement).toBe(next);
+    }
+    const finding = report.findings[0];
+    if (!finding) throw new Error("Expected the completed repetition finding");
+    expect(onNavigate.mock.calls).toEqual(Array.from({ length: 25 }, (_, index) => [finding.id, index]));
+    expect(report.findings[0]?.evidence).toHaveLength(25);
+    rendered.rerender(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report, freshness: { status: "stale", changes: [{ kind: "changed", chapterId: "ch_paged" }] } }
+    }));
+    for (const button of queries.getAllByTestId("review-evidence")) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      testing.fireEvent.click(button);
+    }
+    expect(onNavigate).toHaveBeenCalledTimes(25);
+    testing.fireEvent.click(queries.getByRole("button", { name: "Previous occurrences" }));
+    expect(queries.getAllByTestId("review-evidence")).toHaveLength(10);
+    expect(onNavigate).toHaveBeenCalledTimes(25);
+  });
+
+  test("sequence paging is bounded, covers every generated finding and resets for a new run", () => {
+    const source: ReviewSourceSnapshot = { ...dialogSource, chapters: Array.from({ length: 12 }, (_, index) => ({
+      status: "saved", chapterId: `ch_sequence${index}`, title: `Sequence ${index}`, order: index + 1,
+      body: `word${index} repeats here. WORD${index} repeats here.`, version: 1, hash: "a".repeat(64)
+    })) };
+    const report = buildReviewReport(source, analyzeReviewCoverage(source), { requestedAt: NOW, completedAt: NOW });
+    expect(report.findings).toHaveLength(12);
+    const onNavigate = mock((_findingId: string, _index: number) => {});
+    const props = { open: true, bookTitle: "Sequence pages", onNavigate, onCancelRun: () => {}, onRunAgain: () => {}, onClose: () => {} };
+    const rendered = testing.render(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report, freshness: { status: "current" } }
+    }));
+    const queries = testing.within(document.body);
+    for (const count of [5, 5, 2]) {
+      expect(queries.getAllByTestId("review-finding")).toHaveLength(count);
+      for (const button of queries.getAllByTestId("review-evidence")) testing.fireEvent.click(button);
+      testing.fireEvent.click(queries.getByRole("button", { name: "Next sequences" }));
+    }
+    expect(onNavigate.mock.calls).toEqual(report.findings.flatMap((finding) => [[finding.id, 0], [finding.id, 1]]));
+    rendered.rerender(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report: { ...report, requestedAt: "2026-11-08T13:00:00.000Z" }, freshness: { status: "current" } }
+    }));
+    expect(queries.getByRole("group", { name: "Sequences pages" }).textContent).toContain("Sequences 1–5 of 12");
+  });
 });
 
 describe("ManuscriptEditor evidence selection", () => {
@@ -355,7 +425,7 @@ function integrationDetail(bookId: string, title: string, chapters: Chapter[]): 
 }
 
 const firstDetail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [
-  integrationChapter("ch_int000001", "The Light", 1, "one — two\n"),
+  integrationChapter("ch_int000001", "The Light", 1, "Salt and stone.\n"),
   integrationChapter("ch_int000002", "The Road", 2, "Salt and stone.\n")
 ]);
 const secondDetail = integrationDetail(INTEGRATION_BOOK_TWO, "Second Fixture", [
@@ -377,13 +447,17 @@ describe("workspace review entry to report", () => {
   test("a clean buffer runs the report with no manuscript writes, and switching books discards it", async () => {
     const saves: unknown[] = [];
     const opens: string[] = [];
+    const draftWrites = mock(() => Promise.resolve({ ok: true, data: null }));
+    const metadataWrites = mock(() => Promise.resolve({ ok: true, data: null }));
+    let currentDetail = firstDetail;
+    const providerCall = mock(() => { throw new Error("Review must not call a provider"); });
     (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
       platform: "darwin",
       library: { onChange: mock(() => () => {}) },
       books: {
         open: mock((bookId: string) => {
           opens.push(bookId);
-          return Promise.resolve({ ok: true, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : firstDetail });
+          return Promise.resolve({ ok: true, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : currentDetail });
         })
       },
       conflicts: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
@@ -393,8 +467,8 @@ describe("workspace review entry to report", () => {
         )
       },
       drafts: {
-        set: mock(() => Promise.resolve({ ok: true, data: null })),
-        clear: mock(() => Promise.resolve({ ok: true, data: null })),
+        set: draftWrites,
+        clear: draftWrites,
         onFlushRequest: mock(() => () => {})
       },
       recovery: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
@@ -403,9 +477,10 @@ describe("workspace review entry to report", () => {
           saves.push(input);
           return Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } });
         }),
-        updateMeta: mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } }))
+        updateMeta: metadataWrites
       },
       agent: {
+        send: providerCall,
         ambient: mock(() => Promise.resolve({ ok: true, data: ambientStatus })),
         onEvent: mock(() => () => {})
       },
@@ -444,6 +519,20 @@ describe("workspace review entry to report", () => {
     // The run is read-only: nothing was saved, drafted or written.
     expect(saves).toEqual([]);
 
+    // Real scanner output, through the existing Workspace re-read/navigation callback to the editor.
+    expect(testing.within(document.body).getByTestId("review-findings").textContent).toContain("salt and stone");
+    const evidenceButtons = testing.within(document.body).getAllByTestId("review-evidence");
+    const secondEvidence = evidenceButtons[1];
+    if (!secondEvidence) throw new Error("Expected the second real occurrence");
+    testing.fireEvent.click(secondEvidence);
+    await testing.waitFor(() => {
+      const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)).toBe("Salt and stone");
+      expect(testing.within(document.body).queryByTestId("review-report")).toBeNull();
+    });
+    testing.fireEvent.click(testing.within(document.body).getByTestId("review-manuscript"));
+    await testing.waitFor(() => expect(testing.within(document.body).getByTestId("review-run-meta")).toBeTruthy());
+
     // A new run over the same saved chapters replaces the report in place.
     testing.fireEvent.click(testing.within(document.body).getByTestId("review-run-again"));
     await testing.waitFor(
@@ -453,6 +542,18 @@ describe("workspace review entry to report", () => {
       },
       { timeout: 2000 }
     );
+
+    // A saved revision changes after the run: clicking a real finding must refuse navigation.
+    currentDetail = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "f".repeat(64) })) };
+    const staleEvidence = testing.within(document.body).getAllByTestId("review-evidence")[0];
+    if (!staleEvidence) throw new Error("Expected a real finding before source revalidation");
+    testing.fireEvent.click(staleEvidence);
+    await testing.waitFor(() => expect(testing.within(document.body).getByTestId("review-stale")).toBeTruthy());
+    expect(testing.within(document.body).getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(providerCall).not.toHaveBeenCalled();
+    expect(draftWrites).not.toHaveBeenCalled();
+    expect(metadataWrites).not.toHaveBeenCalled();
+    expect(onNotice).not.toHaveBeenCalled();
 
     // Switching books discards the run-local report without touching the manuscript.
     rendered.rerender(React.createElement(WorkspaceView, { ...workspaceProps, bookId: INTEGRATION_BOOK_TWO }));

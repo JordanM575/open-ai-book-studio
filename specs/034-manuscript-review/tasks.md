@@ -50,11 +50,16 @@ no real manuscript, credential, live provider, paid service or device is in scop
 
 ## Phase 3 — Deterministic findings and honest run states
 
-- [ ] T008 Implement D-198/FR-005 repetition v1, now accepted after T001's historical deferral:
+- [x] T008 Implement D-198/FR-005 repetition v1, now accepted after T001's historical deferral:
   unify curly and straight apostrophes, keep original spans and combining marks, count every
   overlapping three-token window in pure core with deterministic occurrence ordering and exact source
   spans, covering punctuation/case normalization, repeated phrases, overlapping phrases and
   chapter-boundary behavior with synthetic fixtures.
+  November 8, wave 19: `core/review/repetition.ts` scans all overlapping three-token windows,
+  folds NFC/case/apostrophes only in comparison keys, retains literal UTF-16 evidence and rejects
+  malformed chapters with explicit skipped coverage. Sync and yielding async analysis share the
+  scanner. Dedicated synthetic tests cover Unicode, exact spans, overlap/chapter boundaries,
+  deterministic ordering, cancellation, immutable inputs and 120-chapter/250k-word books.
 - [x] T009 Produce coverage for every in-scope chapter: included with prose, included but empty, or
   skipped with a safe author-visible reason. Distinguish partial coverage, insufficient evidence,
   source failure and a complete report with no phrase findings.
@@ -121,5 +126,22 @@ no real manuscript, credential, live provider, paid service or device is in scop
 
 - [ ] T018 Connect real repetition findings to D-197's exact-current inline adapter/sidebar; test
   complete overlap/occurrence paging, long books, Unicode, dirty/stale suppression and no network.
+  November 8, wave 19 partial delivery: the explicit Review manuscript journey now receives actual
+  findings from async analysis. The dialog exposes repetition-v1's definition, complete coverage and
+  counts, five sequences per page and ten occurrences per sequence page; paging never trims results.
+  DOM tests traverse all occurrence/sequence pages and verify retained keyboard focus. The existing
+  Workspace callback selects an actual finding's exact saved span and refuses a changed revision;
+  synthetic spies observe no chapter/draft/metadata writes or provider sends. The local analyzer
+  also runs with immutable input and a refusing network spy. Inline-layer mounting, final dirty/view
+  race suppression, native accessibility and remaining-host acceptance remain coordinator-owned.
 - [ ] T019 Complete 034 T016's real-finding navigation and retained-report adapter using 039's shared
   explicit-save/export contracts; keep analyzer/source version and actual coverage in every output.
+
+### Wave 19 evidence boundary
+
+T008's historical deferral in the dated T012/T015/T016 notes is now resolved by actual scanner
+output. T016, T018 and T019 remain open: this candidate's evidence is pure-core and synthetic DOM,
+not a new native/smoke, retained-review, provider-quality or release acceptance. Ordinary review
+remains volatile and read-only. Fixed-slice word counting preserves the shared whitespace counter
+even for unbroken tokens; scan/grouping and cross-chapter budgets yield for cancellation. Performance
+measurements are local Bun/macOS observations, not new cross-platform performance baselines.

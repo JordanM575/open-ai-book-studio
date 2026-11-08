@@ -1,5 +1,6 @@
 import { countWords } from "../markdown";
 import type { BookDetail, ChapterReadIssueReason } from "../schema";
+import { REPETITION_DEFINITION, scanRepetition, scanRepetitionSteps, type RepetitionAnalysis } from "./repetition";
 
 export interface ReviewScope {
   kind: "book";
@@ -102,6 +103,7 @@ export interface ReviewCoverageAnalysis {
   status: ReviewAnalysisStatus;
   wordCounts: ReviewWordCountSummary;
   coverage: ReviewCoverage;
+  findings: readonly ReviewFinding[];
 }
 
 export interface ReviewReportResult {
@@ -276,14 +278,27 @@ export function revalidateReviewEvidence(
     (chapter) => chapter.status === "saved" && chapter.chapterId === evidence.chapterId
   );
   if (
-    !source ||
-    source.status !== "saved" ||
+    source?.status !== "saved" ||
     source.version !== evidence.sourceVersion ||
     source.hash !== evidence.sourceHash
   ) {
     return { status: "unavailable" };
   }
+  const saved = current.chapters.find((chapter) => chapter.status === "saved" && chapter.chapterId === evidence.chapterId);
+  if (
+    saved?.status !== "saved" ||
+    !Number.isSafeInteger(evidence.startOffset) || !Number.isSafeInteger(evidence.endOffset) ||
+    evidence.startOffset < 0 || evidence.endOffset <= evidence.startOffset || evidence.endOffset > saved.body.length ||
+    saved.body.slice(evidence.startOffset, evidence.endOffset) !== evidence.excerpt ||
+    splitsSurrogate(saved.body, evidence.startOffset) || splitsSurrogate(saved.body, evidence.endOffset)
+  ) return { status: "unavailable" };
   return { status: "ready", evidence };
+}
+
+function splitsSurrogate(body: string, offset: number): boolean {
+  const before = body.charCodeAt(offset - 1);
+  const after = body.charCodeAt(offset);
+  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff;
 }
 
 /** Reuse the studio's whitespace-token counter and sum only bodies verified in the snapshot. */
@@ -320,7 +335,7 @@ function yieldBetweenReviewSlices(): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-/** Bodies are counted in slices so a long chapter never blocks the run thread. */
+/** Fixed slices never scan forward to whitespace, even for a giant unbroken token. */
 const REVIEW_ANALYSIS_SLICE_CHARS = 65_536;
 
 /**
@@ -330,31 +345,22 @@ const REVIEW_ANALYSIS_SLICE_CHARS = 65_536;
 const REVIEW_ANALYSIS_YIELD_EVERY_CHARS = 262_144;
 
 /**
- * Count the words in one body slice by slice. Slice boundaries always fall on whitespace, so
- * summing `countWords` per slice matches the whole-body count exactly.
+ * Reuse countWords on bounded slices, subtracting the one whitespace token straddling a boundary.
+ * Carry the yield budget across chapters so many short chapters cannot starve cancellation.
  */
-async function countBodyWordsInSlices(body: string, signal: AbortSignal): Promise<number | null> {
+async function countBodyWordsInSlices(body: string, signal: AbortSignal, budget: { units: number }): Promise<number | null> {
   let total = 0;
   let start = 0;
-  let sinceYield = 0;
   while (start < body.length) {
     if (signal.aborted) return null;
-    let end = Math.min(start + REVIEW_ANALYSIS_SLICE_CHARS, body.length);
-    if (end < body.length) {
-      let cursor = end;
-      let cursorChar = body.charAt(cursor);
-      while (cursor < body.length && cursorChar !== "" && !/\s/u.test(cursorChar)) {
-        cursor += 1;
-        cursorChar = body.charAt(cursor);
-      }
-      end = cursor;
-    }
+    const end = Math.min(start + REVIEW_ANALYSIS_SLICE_CHARS, body.length);
     const slice = body.slice(start, end);
     total += countWords(slice);
-    sinceYield += slice.length;
+    if (start > 0 && !/\s/u.test(body.charAt(start - 1)) && !/\s/u.test(body.charAt(start))) total -= 1;
+    budget.units += slice.length;
     start = end;
-    if (sinceYield >= REVIEW_ANALYSIS_YIELD_EVERY_CHARS && start < body.length) {
-      sinceYield = 0;
+    if (budget.units >= REVIEW_ANALYSIS_YIELD_EVERY_CHARS) {
+      budget.units = 0;
       await yieldBetweenReviewSlices();
     }
   }
@@ -368,13 +374,14 @@ async function countReviewWordsAsync(
 ): Promise<ReviewWordCountSummary | null> {
   let totalWordCount = 0;
   const chapters: ReviewWordCountChapter[] = [];
+  const budget = { units: 0 };
   for (const chapter of source.chapters) {
     if (chapter.status === "skipped") {
       chapters.push({ status: "skipped", fileName: chapter.fileName, order: chapter.order, wordCount: null });
       continue;
     }
     if (signal.aborted) return null;
-    const wordCount = await countBodyWordsInSlices(chapter.body, signal);
+    const wordCount = await countBodyWordsInSlices(chapter.body, signal, budget);
     if (wordCount === null) return null;
     totalWordCount += wordCount;
     const location = {
@@ -402,22 +409,42 @@ export async function analyzeReviewCoverageAsync(
     requestedAt: source.capturedAt
   });
   if (signal.aborted) return cancelled();
-  const wordCounts = await countReviewWordsAsync(source, signal);
+  const steps = scanRepetitionSteps(source);
+  let step = steps.next();
+  while (!step.done) {
+    await yieldBetweenReviewSlices();
+    if (signal.aborted) return cancelled();
+    step = steps.next();
+  }
+  const verified = repetitionVerifiedSource(source, step.value);
+  const wordCounts = await countReviewWordsAsync(verified, signal);
   if (wordCounts === null || signal.aborted) return cancelled();
-  return { status: "complete", value: summarizeReviewCoverage(source, wordCounts) };
+  return { status: "complete", value: { ...summarizeReviewCoverage(verified, wordCounts), findings: step.value.findings } };
 }
 
-/** Classify saved-source coverage without implying that an unimplemented metric found nothing. */
+/** Analyze every verified saved chapter; malformed Unicode is explicitly skipped, never repaired. */
 export function analyzeReviewCoverage(source: ReviewSourceSnapshot): ReviewCoverageAnalysis {
-  const wordCounts = countReviewWords(source);
-  return summarizeReviewCoverage(source, wordCounts);
+  const repetition = scanRepetition(source);
+  const verified = repetitionVerifiedSource(source, repetition);
+  return { ...summarizeReviewCoverage(verified, countReviewWords(verified)), findings: repetition.findings };
+}
+
+function repetitionVerifiedSource(source: ReviewSourceSnapshot, repetition: RepetitionAnalysis): ReviewSourceSnapshot {
+  const rejected = new Set(repetition.rejectedChapterIds);
+  return {
+    ...source,
+    chapters: source.chapters.map((chapter) => chapter.status === "saved" && rejected.has(chapter.chapterId)
+      ? { status: "skipped", fileName: `${chapter.title} (${chapter.chapterId})`, order: chapter.order,
+          reason: "The saved chapter contains malformed Unicode and could not be analyzed. Nothing was repaired or changed." }
+      : chapter)
+  };
 }
 
 /** Share one classification between the synchronous analysis and the cancellable slices. */
 function summarizeReviewCoverage(
   source: ReviewSourceSnapshot,
   wordCounts: ReviewWordCountSummary
-): ReviewCoverageAnalysis {
+): Omit<ReviewCoverageAnalysis, "findings"> {
   let included = 0;
   let empty = 0;
   let skipped = 0;
@@ -513,7 +540,7 @@ function reviewSourceChange(
   return source.status === "saved" ? { kind, chapterId: source.chapterId } : { kind, fileName: source.fileName };
 }
 
-/** The one measure this milestone reports: the existing public studio word count. */
+/** The existing public studio word count is independent of repetition tokenization. */
 export const STUDIO_WORD_COUNT_DEFINITION: ReviewMetricDefinition = {
   id: "studio-word-count",
   label: "Studio word count",
@@ -523,9 +550,7 @@ export const STUDIO_WORD_COUNT_DEFINITION: ReviewMetricDefinition = {
 
 /**
  * Compose a disposable run-local report from a confirmed saved snapshot and its coverage
- * analysis. Findings stay empty: the repeated-phrase signal is deferred by recorded spec 034
- * decision 1, so this milestone reports no phrase matches rather than implying the text
- * was scanned.
+ * analysis, including the completed scanner output. No synchronous rescan in the renderer.
  */
 export function buildReviewReport(
   source: ReviewSourceSnapshot,
@@ -558,8 +583,8 @@ export function buildReviewReport(
     },
     wordCounts: analysis.wordCounts,
     coverage: analysis.coverage,
-    metricDefinitions: [STUDIO_WORD_COUNT_DEFINITION],
-    findings: []
+    metricDefinitions: [STUDIO_WORD_COUNT_DEFINITION, REPETITION_DEFINITION],
+    findings: analysis.findings
   };
 }
 

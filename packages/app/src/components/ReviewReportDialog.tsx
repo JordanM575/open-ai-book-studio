@@ -1,7 +1,7 @@
-import type { ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import type {
   ReviewCoverageEntry,
-  ReviewEvidenceSpan,
+  ReviewFinding,
   ReviewReportFreshness,
   ReviewReportResult
 } from "@ai-book-studio/core/review";
@@ -137,6 +137,7 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
 
         {view.kind === "report" ? (
           <ReportBody
+            key={`${view.report.scope.bookId}:${view.report.requestedAt}:${view.report.completedAt}`}
             bookTitle={bookTitle}
             report={view.report}
             freshness={view.freshness}
@@ -191,6 +192,9 @@ function ReportBody({
 
       <section aria-label="Coverage" className="mt-4" data-testid="review-coverage">
         <h3 className="text-(length:--text-callout-size) font-semibold">Coverage</h3>
+        <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
+          {report.coverage.included} with text · {report.coverage.empty} empty · {report.coverage.skipped} skipped · {report.coverage.inScope} in scope
+        </p>
         <ul className="mt-2 space-y-1.5">
           {report.coverage.chapters.map((entry, index) => (
             <li
@@ -215,44 +219,20 @@ function ReportBody({
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
-          Repeated-phrase findings are not in this report. The first report measures saved words and
-          coverage only.
-        </p>
       </section>
 
       <section aria-label="Findings" className="mt-4" data-testid="review-findings">
         <h3 className="text-(length:--text-callout-size) font-semibold">Findings</h3>
         {report.findings.length === 0 ? (
           <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
-            No phrase findings to show.
+            {report.status === "insufficient-evidence"
+              ? "Not enough saved text for phrase findings."
+              : report.status === "partial"
+                ? "No repeated three-token sequences in the analyzed chapters. Skipped chapters were not scanned."
+                : "No repeated three-token sequences in the saved chapters."}
           </p>
         ) : (
-          <ul className="mt-2 space-y-3">
-            {report.findings.map((finding) => (
-              <li key={finding.id}>
-                <p className="text-(length:--text-subheadline-size) font-medium">{finding.label}</p>
-                <ul className="mt-1 space-y-1.5">
-                  {finding.evidence.map((span: ReviewEvidenceSpan, evidenceIndex: number) => (
-                    <li key={`${finding.id}-${span.sourceHash}-${span.startOffset}-${span.endOffset}`} className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={span.excerpt}>
-                        {span.title} · “{span.excerpt}”
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={stale}
-                        onClick={() => onNavigate(finding.id, evidenceIndex)}
-                        data-testid="review-evidence"
-                      >
-                        Show in chapter
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
+          <PagedFindings findings={report.findings} stale={stale} onNavigate={onNavigate} />
         )}
       </section>
 
@@ -265,5 +245,80 @@ function ReportBody({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+const FINDINGS_PER_PAGE = 5;
+const OCCURRENCES_PER_PAGE = 10;
+
+/** View-only slices: every finding and occurrence remains in the completed volatile report. */
+function PagedFindings({ findings, stale, onNavigate }: {
+  findings: readonly ReviewFinding[];
+  stale: boolean;
+  onNavigate: Props["onNavigate"];
+}) {
+  const [page, setPage] = useState(0);
+  const totalOccurrences = useMemo(() => findings.reduce((total, finding) => total + finding.evidence.length, 0), [findings]);
+  return (
+    <>
+      <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
+        {findings.length} {pluralize(findings.length, "sequence")} · {totalOccurrences} occurrences, including overlaps. All results are retained; paging changes only this view.
+      </p>
+      <ReviewPages label="Sequences" page={page} size={FINDINGS_PER_PAGE} total={findings.length} onPage={setPage} />
+      <ul className="mt-2 space-y-3">
+        {findings.slice(page * FINDINGS_PER_PAGE, (page + 1) * FINDINGS_PER_PAGE).map((finding) => (
+          <FindingOccurrences key={finding.id} finding={finding} stale={stale} onNavigate={onNavigate} />
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function FindingOccurrences({ finding, stale, onNavigate }: {
+  finding: ReviewFinding;
+  stale: boolean;
+  onNavigate: Props["onNavigate"];
+}) {
+  const [page, setPage] = useState(0);
+  const start = page * OCCURRENCES_PER_PAGE;
+  return (
+    <li data-testid="review-finding">
+      <p className="break-words text-(length:--text-subheadline-size) font-medium">{finding.label} · {finding.evidence.length} occurrences</p>
+      <ReviewPages label="Occurrences" page={page} size={OCCURRENCES_PER_PAGE} total={finding.evidence.length} onPage={setPage} />
+      <ul className="mt-1 space-y-1.5">
+        {finding.evidence.slice(start, start + OCCURRENCES_PER_PAGE).map((span, index) => (
+          <li key={`${span.chapterId}:${span.startOffset}:${span.endOffset}`} className="flex flex-wrap items-center justify-between gap-3">
+            <span className="min-w-0 break-words text-(length:--text-caption-size) text-muted-foreground">
+              Chapter {span.order} · {span.title} · “{span.excerpt}”
+            </span>
+            <Button variant="ghost" size="sm" disabled={stale}
+              onClick={() => onNavigate(finding.id, start + index)} data-testid="review-evidence">
+              Show in chapter
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+function ReviewPages({ label, page, size, total, onPage }: {
+  label: string; page: number; size: number; total: number; onPage: (page: number) => void;
+}) {
+  if (total <= size) return null;
+  const hasNext = (page + 1) * size < total;
+  return (
+    <fieldset aria-label={`${label} pages`} className="mt-2 flex flex-wrap items-center gap-2">
+      {/* Keep the controls mounted and focusable at boundaries; unavailable actions are inert. */}
+      <Button variant="ghost" size="sm" aria-disabled={page === 0} onClick={() => { if (page > 0) onPage(page - 1); }}>
+        Previous {label.toLowerCase()}
+      </Button>
+      <span role="status" aria-live="polite" className="text-(length:--text-caption-size) text-muted-foreground">
+        {label} {page * size + 1}–{Math.min((page + 1) * size, total)} of {total}
+      </span>
+      <Button variant="ghost" size="sm" aria-disabled={!hasNext} onClick={() => { if (hasNext) onPage(page + 1); }}>
+        Next {label.toLowerCase()}
+      </Button>
+    </fieldset>
   );
 }

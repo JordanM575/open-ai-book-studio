@@ -235,6 +235,7 @@ describe("manuscript review core contracts", () => {
     };
     const freshness = reviewReportFreshness(report, edited);
     expect(freshness).toEqual({ status: "stale", changes: [{ kind: "changed", chapterId: "chapter-prose" }] });
+    if (freshness.status !== "stale") throw new Error("Expected the changed fixture source to be stale.");
     const navigation = revalidateReviewEvidence(report, edited, "finding-fixture", 0);
     expect(navigation).toEqual(freshness);
     expect(navigation).not.toHaveProperty("evidence");
@@ -266,7 +267,7 @@ describe("manuscript review core contracts", () => {
     expect(outcome.status).toBe("complete");
     if (outcome.status !== "complete") throw new Error("The uncancelled chunked analysis must complete.");
     const expected = analyzeReviewCoverage(chunked);
-    expect(outcome.value).toEqual({ status: expected.status, wordCounts: expected.wordCounts, coverage: expected.coverage });
+    expect(outcome.value).toEqual(expected);
   });
 
   test("aborting mid-analysis discards partial counts and never completes", async () => {
@@ -373,9 +374,10 @@ describe("review report composition", () => {
         id: "studio-word-count",
         label: "Studio word count",
         definition: expect.stringContaining("whitespace-separated token")
-      }
+      },
+      expect.objectContaining({ id: "repetition-v1", definition: expect.stringContaining("overlapping three-token") })
     ]);
-    // The repeated-phrase signal is deferred by decision 1, so no phrase findings are claimed.
+    // This fixture has fewer than three repetition tokens, distinct from its studio word count.
     expect(report.findings).toEqual([]);
     expect(report.source.chapters).toHaveLength(3);
     expect(report.source.chapters[1]).toMatchObject({
