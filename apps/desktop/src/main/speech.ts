@@ -109,7 +109,7 @@ export class SpeechService {
       if (input.signal?.aborted) {
         throw new ProviderError("unknown", "The speaking request was cancelled.", {
           provider: credential.provider,
-          cause: input.signal.reason
+          cause: new DOMException("Aborted", "AbortError")
         });
       }
       const body = ttsRequestBody(chunk, {
@@ -136,7 +136,7 @@ export class SpeechService {
         if (input.signal?.aborted) {
           throw new ProviderError("unknown", "The speaking request was cancelled.", {
             provider: credential.provider,
-            cause: input.signal.reason ?? error
+            cause: new DOMException("Aborted", "AbortError")
           });
         }
         throw new ProviderError("offline", "Could not reach the voice service. Check your connection.", {

@@ -191,3 +191,12 @@ describe("cancellable service seams", () => {
     expect(settlementForFailure(failure)).toMatchObject({ outcome: "cancellation" });
   });
 });
+
+test("a custom abort reason still settles as cancellation", () => {
+  // The services wrap any host abort with an explicit AbortError marker, because the host reason
+  // may be an arbitrary string or Error.
+  const wrapped = new ProviderError("unknown", "The speaking request was cancelled.", {
+    cause: new DOMException("Aborted", "AbortError")
+  });
+  expect(settlementForFailure(wrapped).outcome).toBe("cancellation");
+});

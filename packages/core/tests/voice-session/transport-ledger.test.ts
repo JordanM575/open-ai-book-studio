@@ -221,3 +221,27 @@ test("planned counts and receipts are locally bounded", () => {
     type: "begin", kind: "stt", planned: 1, facts: facts({ permitted: false }),
   }).ledger.reason).toContain("not ready");
 });
+
+test("receipt capacity is reserved for an operation already in flight", () => {
+  const h = harness();
+  for (let index = 0; index < 255; index += 1) {
+    const operation = begin(h, "stt", 1);
+    h.send({ type: "chunk", operationId: operation.operationId });
+    h.send({ type: "dispatch", operationId: operation.operationId, chunkId: 1, facts: facts() });
+    h.send({ type: "settle", operationId: operation.operationId, chunkId: 1, outcome: "success", costUsd: 0 });
+  }
+  expect(h.ledger.receipts).toHaveLength(255);
+
+  // One slot may start; the second is refused because the first still needs room for its receipt.
+  const live = begin(h, "stt", 1);
+  const refused = h.send({ type: "begin", kind: "tts", planned: 1, facts: facts() });
+  expect(refused.ledger.slots.tts).toBeNull();
+  expect(refused.ledger.reason).toContain("Settlement history is full");
+
+  // The admitted operation can still settle and release its slot.
+  h.send({ type: "chunk", operationId: live.operationId });
+  h.send({ type: "dispatch", operationId: live.operationId, chunkId: 1, facts: facts() });
+  const settled = h.send({ type: "settle", operationId: live.operationId, chunkId: 1, outcome: "success", costUsd: 0 });
+  expect(settled.ledger.slots.stt).toBeNull();
+  expect(settled.ledger.receipts).toHaveLength(256);
+});

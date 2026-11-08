@@ -88,7 +88,8 @@ export class VoiceService {
       if (input.signal?.aborted) {
         throw new ProviderError("unknown", "The transcription request was cancelled.", {
           provider: credential.provider,
-          cause: input.signal.reason ?? error
+          // An explicit cancellation marker: the host reason may be a plain string or Error.
+          cause: new DOMException("Aborted", "AbortError")
         });
       }
       throw new ProviderError("offline", "Could not reach the transcription service. Check your connection.", {

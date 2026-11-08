@@ -196,7 +196,11 @@ export function reduceTransport(ledger: TransportLedger, event: TransportEvent):
   switch (event.type) {
     case "begin": {
       const { facts, kind, planned } = event;
-      if (state.receipts.length >= RECEIPT_LIMIT) {
+      // Every admitted operation must be able to record its receipt, including one already running
+      // of the other kind. Reserve that space now; a settlement that cannot be recorded would leave
+      // its slot occupied forever.
+      const outstanding = (state.slots.stt ? 1 : 0) + (state.slots.tts ? 1 : 0);
+      if (state.receipts.length + outstanding + 1 > RECEIPT_LIMIT) {
         update({ reason: "Settlement history is full. The host must retain its own accounting record before continuing." });
         return result();
       }
