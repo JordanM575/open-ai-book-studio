@@ -11,7 +11,9 @@ Update the `Unreleased` section before every commit.
 
 - Allow `refusal` in the transport settle event (the four-way settlement the README and the
   desktop adapter already use), and require callers that have dispatched a chunk to settle a
-  provider 400/404 as `failure`, not as a pre-send refusal.
+  provider 400/404 as `failure`, not as a pre-send refusal. Reserve receipt capacity for an
+  operation already in flight, and mark service-side cancellation with an explicit AbortError so a
+  custom host reason still settles as cancellation.
 
 ### Voice transport
 - Add a pure host-neutral STT/TTS transport ledger: monotonic operation and chunk IDs, one
