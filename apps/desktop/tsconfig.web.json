@@ -34,6 +34,7 @@
     "tests/reader-review.test.tsx",
     "tests/story-bible-dialog.test.tsx",
     "tests/planning-dialogs.test.tsx",
+    "tests/manual-planning.test.tsx",
     "tests/settings-status.test.tsx",
     "tests/voice-settings.test.tsx",
     "tests/dictation-hook.test.ts",

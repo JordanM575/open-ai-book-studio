@@ -23,17 +23,26 @@ export function WorldbuildingDialog(props: WorldbuildingDialogProps) {
 
 function definition(recordId: string | undefined): DraftDefinition<Planning, Fields, PlanningSaveRequest> {
   const find = (read: SidecarRead<Planning>) => read.data?.worldbuilding.find((record) => record.id === recordId);
+  const fromRead = (read: SidecarRead<Planning>): Fields => {
+    if (read.data && read.data.bookId !== read.bookId) throw new Error("The planning data belongs to another book.");
+    const record = find(read);
+    if (record && (record.bookId !== read.bookId || read.data?.worldbuilding.filter((entry) => entry.id === recordId).length !== 1)) {
+      throw new Error("The world detail has a foreign or duplicate identity.");
+    }
+    if (recordId && (!record || record.archived)) throw new Error("This world detail is missing or archived. Editing cannot create it.");
+    return record ? { name: record.name, category: record.category, description: record.description, notes: record.notes }
+      : { name: "", category: "", description: "", notes: "" };
+  };
   return {
     title: recordId ? "Edit world detail" : "New world detail",
-    fromRead: (read) => {
-      if (read.data && read.data.bookId !== read.bookId) throw new Error("The planning data belongs to another book.");
-      const record = find(read);
-      if (record && (record.bookId !== read.bookId || read.data?.worldbuilding.filter((entry) => entry.id === recordId).length !== 1)) {
-        throw new Error("The world detail has a foreign or duplicate identity.");
+    fromRead,
+    fromSaved: (read, _draft, baseline) => {
+      if (!recordId) {
+        const added = read.data?.worldbuilding.filter((record) => !baseline.data?.worldbuilding.some((old) => old.id === record.id));
+        if (added?.length !== 1 || !added[0]) throw new Error("The created world detail could not be identified.");
+        recordId = added[0].id;
       }
-      if (recordId && (!record || record.archived)) throw new Error("This world detail is missing or archived. Editing cannot create it.");
-      return record ? { name: record.name, category: record.category, description: record.description, notes: record.notes }
-        : { name: "", category: "", description: "", notes: "" };
+      return fromRead(read);
     },
     validate: (draft, read) => {
       if (!draft.name.trim()) return "Name is required. Your draft has not been submitted.";

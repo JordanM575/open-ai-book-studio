@@ -7,6 +7,20 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+
+### Manual planning records
+
+- Extend the existing checked planning save/API with timeline events, optional story notes, outline
+  beats, explicit author ordering and reversible worldbuilding/event/beat archive controls. Mount
+  these in the planning panel with literal fields, archive confirmation and the existing exact-draft
+  recovery/navigation guard. Confirmed creation keeps subsequent edits on the same host-assigned ID.
+- Verify full save-response correspondence and preserve unknown own `__proto__` data across reads
+  and edits. Clear notes keeps the singleton identity and unknown fields; empty optional notes and
+  current no-ops write nothing. Synthetic Library/handler and mounted filesystem journeys cover
+  ordering, retained limits, recovery, archive/restore and untouched Bible/chapter bytes.
+- Candidate acceptance remains gated by coordinator FORMAT reconciliation, three existing
+  worldbuilding-test type narrowings, independent review and integrated visual/host checks.
+
 HEAD
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only

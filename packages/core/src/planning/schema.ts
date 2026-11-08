@@ -18,19 +18,22 @@ export const recordIdSchema = (prefix: "wb" | "tl" | "sn" | "beat" | "ann" | "co
 
 const recordFields = { bookId: bookIdSchema, revision: revisionSchema, archived: z.boolean() };
 export const worldbuildingFields = { name, category: shortText, description: prose, notes: prose };
+export const timelineFields = { title: name, when: shortText, description: prose, notes: prose };
+export const beatFields = { title: name, summary: prose, notes: prose };
+export const storyNotesFields = { workingNotes: prose, styleNotes: prose, synopsis: prose };
 export const worldbuildingSchema = z.looseObject({
   ...recordFields, id: recordIdSchema("wb"), kind: z.literal("worldbuilding"), ...worldbuildingFields
 });
 export const timelineSchema = z.looseObject({
   ...recordFields, id: recordIdSchema("tl"), kind: z.literal("timeline"),
-  title: name, when: shortText, description: prose, notes: prose
+  ...timelineFields
 });
 export const beatSchema = z.looseObject({
-  ...recordFields, id: recordIdSchema("beat"), kind: z.literal("beat"), title: name, summary: prose, notes: prose
+  ...recordFields, id: recordIdSchema("beat"), kind: z.literal("beat"), ...beatFields
 });
 export const storyNotesSchema = z.looseObject({
   ...recordFields, id: recordIdSchema("sn"), kind: z.literal("story-notes"),
-  workingNotes: prose, styleNotes: prose, synopsis: prose
+  ...storyNotesFields
 });
 
 export const planningSchema = z.looseObject({

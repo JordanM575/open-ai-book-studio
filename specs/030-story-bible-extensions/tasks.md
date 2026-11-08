@@ -22,6 +22,34 @@ a renderer write path. Preserve the unchecked task states until those complete j
 
 ## Phase 1 — Resolve public format and save decisions
 
+### W08 manual planning candidate — November 8, 2026 (wave 19)
+
+The existing checked `PlanningService.save` union and `PlanningApi.save` now support timeline
+create/edit, notes set/edit/clear, beats create/edit, explicit retained-ID ordering and reversible
+worldbuilding/timeline/beat archive/restore. `PlanningPanel` mounts these controls through the same
+generic host wiring and checked editor/navigation guard. Archive requires confirmation. Confirmed
+creation keeps the open editor attached to its new identity. Notes clear blanks the known fields,
+retaining identity and unknown data; absent clear remains a no-write operation. API correspondence
+checks the complete intended document, including unknown own `__proto__` data and unrelated records.
+
+Dedicated synthetic evidence lives in `packages/core/tests/planning/manual-planning.test.ts` and
+`apps/desktop/tests/manual-planning.test.tsx`: real Library/handler/filesystem mounted journeys,
+save/reopen/reorder/archive/restore, exact fields on stale/uncertain/validation failure, retained
+limits, no-op/no-journal, corrupt/future refusal, book/view ABA, and unchanged Bible/chapter bytes.
+This is implementation and automated synthetic evidence only. Workspace typecheck remains blocked
+by three old worldbuilding-only assertions in `apps/desktop/tests/planning-dialogs.test.tsx`
+(231, 251, 322) that need discriminant narrowing after the draft union expansion. They are outside
+this brief's dedicated-new-test ownership. Web/toolkit, strict core integration and dedicated new
+mounted-test typechecks pass. The focused planning regression set passes 197 tests across nine
+files (816 assertions); touched-file lint and diff checks pass.
+
+No task checkbox is closed by this candidate: exact-head independent review, coordinator FORMAT
+reconciliation (expanded intent inventory and notes-clear semantics), desktop typecheck repair,
+native theme/viewport/keyboard acceptance and integrated host/adapter gates remain. The new mounted
+tests exercise the existing handler directly; native IPC/preload acceptance for the new intents
+remains with the coordinator. RF-01/RF-02 still retain series, relationships, templates, complete
+Bible fields and generated planning. No provider-quality, device or release evidence is claimed.
+
 ### W08 bounded vertical integration — November 7, 2026
 
 Worldbuilding create/edit/reopen is now mounted in the workspace through validated desktop IPC and
