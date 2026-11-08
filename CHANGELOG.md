@@ -7,8 +7,30 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+
+### Structured reader review
+
+- Add an isolated, single-book spec 039 reader-review leaf with injected preparation, Start, stop
+  and exact-navigation callbacks. Show the immutable selected scope, profile/version, destination,
+  known/unknown accounting and applicable terms/consent before a separate provider-named Start.
+- Keep reader results volatile, preserve historical quotation/reader attribution, and compare
+  explicit new-request rereads without improvement scores. Cancel stale disclosures and ignore late
+  callbacks across stop, close and repeated book/view changes; already-sent text is not recallable.
+- Add synthetic component tests for disclosure, missing consent/terms, refusal, malformed evidence,
+  navigation and callback races, plus narrow core review exports and documented host/runtime seams.
+  This is a leaf UI candidate, not connected runtime or full spec 039 acceptance; reviewed core
+  public-boundary fixes and integrated host/accessibility verification remain separately owned.
+
 ### Integration
 
+- Forward reader-navigation editor facts to the descriptor-first core without reading `clean` in
+  the UI. Direct transition and separately mounted Strict Mode regressions reject accessor effects
+  while preserving valid navigation; React development prop inspection is outside that guarantee.
+- Harden scoped-review input and evidence boundaries: require validated immutable envelopes for
+  citations, refuse lossy/foreign/accessor/cyclic data before schemas or digests, validate current
+  Start/editor facts, and reject oversized quotes even with malformed Unicode. Preserve complete
+  terms disclosure, bounded callback failure copy and attributable same-view stop confirmation.
+  Add regressions for review findings; host execution/storage and independent acceptance remain open.
 - Accept individually researched full-book authoring, inline editorial-review and hands-free
   contracts (D-194–D-200 / ADRs 0019–0021), with the bounded workflow/session authority amendment,
   checked conversation policy, explicit cost modes and recoverable saved-review ownership.
@@ -79,6 +101,14 @@ Update the `Unreleased` section before every commit.
   Saved goal progress distinguishes complete, incomplete and unavailable sources. Document the
   sidecar/recovery format and add synthetic boundary/failure tests; host/API/UI integration remains
   a separate delivery slice.
+- Add D-193 / ADR 0018 pure review contracts: immutable selected-text envelopes and bounded
+  provider-neutral serialization, snapshot-only read tools, exact saved-body UTF-16 quotations,
+  versioned fictional reader profiles, subjective finding validation and explicit pre-start
+  invalidation inputs. Focused synthetic tests cover scope sentinels, source/profile identity and
+  byte/scalar/count boundaries: 64 tests pass, with focused core typecheck and lint. This is pure
+  core only; runtime/UI integration remains pending. Conversation retention/thread safety applies
+  only to 037; 039 stays volatile with zero ThreadStore writes and does not wait for 037 persistence.
+  The 034 deterministic metrics are unchanged.
 
 ### Changed
 - The Linux end-to-end job is no longer allowed to fail. It had been advisory since its first Linux runs failed at

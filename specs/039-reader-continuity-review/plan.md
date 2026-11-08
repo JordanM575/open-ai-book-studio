@@ -3,12 +3,16 @@
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
 
 **Status:** In progress. D-193 / ADR 0018 and D-197–D-199 / ADR 0020 accept the initial and expanded
-contracts; source candidates, actual integration and acceptance remain separate.
+contracts. Pure envelope/citation/profile/overflow leaves are implemented; independent correction,
+actual runtime/UI integration and persistence acceptance remain separate.
 
 ## Approach
 
 Build on 037's planned foreground provider-disclosure and read-only execution boundary, 034's saved-source
 evidence concepts and 011/022's configured connections. Do not merge their user-visible report types.
+Reuse envelope/citation/execution contracts only: the 037 conversation-retention and thread-safety
+prerequisite does not gate volatile 039. Keep all 039 snapshots, profiles and results in memory with
+zero ThreadStore/report-writer calls on start, finish, stop and failure.
 Define studio-owned finding/profile/run contracts in `packages/core`; provider output is untrusted
 and validated at the runtime edge. `packages/app` owns scope selection, findings, citation navigation,
 stale/incomplete states and rerun comparison. Confirm concrete modules during implementation.
@@ -72,6 +76,33 @@ needed from implementation; D-193, not those earlier alternatives, supplies the 
    still needs a separately agreed quality evaluation; transport tests do not prove useful critique.
 
 ## Verification
+
+### W10 core evidence (2026-11-07)
+
+`packages/core/src/review/{contract,sources,envelope,facade,profiles,wire-schema,findings}.ts`
+implements the accepted pure contracts. T002's finding/profile/version/run types, validators and
+synthetic tests are delivered. T003–T006 have reusable core portions but their whole runtime/UI
+tasks stay open. The existing 034 deterministic implementation remains separate; 037 uses a guided
+envelope rather than the 039 findings type. No new store, caller authority or provider exists.
+
+The focused source, envelope and reader test files under `packages/core/tests/review/scoped-*.test.ts`
+exercise sentinel exclusion, exact spans, byte/scalar/count boundaries, immutable attribution and
+invalidation. [`SCOPED-CONTRACTS.md`](../../packages/core/src/review/SCOPED-CONTRACTS.md) records APIs,
+resource accounting and the source/consent/runtime/thread-safety/export prerequisites. Built-app,
+provider, usability and quality acceptance below remains pending.
+
+Executed W10 checks: 64 focused tests passed (286 assertions, three files); strict focused core
+TypeScript check passed; Biome lint passed for the seven source/four test-helper files; completion
+documentation validation and `git diff --check` passed. These are pure-contract results, not
+runtime/UI acceptance. The attempted wider source-plus-test TypeScript invocation lacked the
+repository's Bun test declarations; the successful typecheck is explicitly scoped to core source.
+
+Coordinator correction (November 7): the combined scoped core/leaf now passes 132 focused tests,
+741 assertions, strict source-and-test checking with the installed Bun declarations, all workspace
+typechecks and 13-file lint. Added tests cover the independent core R1–R4 and UI-R1–UI-R3 findings,
+including getter-free input, complete terms and same-view failed-stop ownership. These are local
+automated correction results; T010 still requires fresh independent exact-head review. No mounted
+runtime, storage, native/device, live-provider or semantic-quality evidence is inferred.
 
 Mock provider boundaries; use temporary synthetic multi-book fixtures. Test payload equality to
 disclosure, pre-start known/unknown price and data-use/training terms, missing-consent zero-call

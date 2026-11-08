@@ -1,10 +1,11 @@
 # Tasks: structured reader and continuity review
 
 D-193 and D-197–D-199 are accepted. Isolated implementation/review evidence does not complete the
-mounted journey; only the decision task below is checked by the policy amendment.
+mounted journey. W10 implements T002's leaf contracts and focused synthetic tests; no whole runtime/UI
+task is completed. T010 retains the independent correction gate. The policy amendment completed T007.
 
 - [ ] T001 Reconcile 034/037 contracts, existing evidence and exact owned modules; record acceptance scope.
-- [ ] T002 Apply accepted D-193 / ADR 0018 for U-039-01/02; define and test finding, profile/version and run contracts.
+- [x] T002 Apply accepted D-193 / ADR 0018 for U-039-01/02; define and test finding, profile/version and run contracts. W10: new `review/profiles.ts`, `wire-schema.ts`, `findings.ts` and `scoped-readers.test.ts`; pure, volatile contracts only.
 - [ ] T003 Apply accepted U-039-04 / D-193 bounds; build disclosed selected-source snapshots, pre-start known/unknown price and data-use/training terms, mandatory 011/022 consent gates, and provider-named start with zero-send cancel/missing-consent tests.
 - [ ] T004 Add schema and quotation validation, citation navigation and stale/unavailable states.
 - [ ] T005 Add volatile profile attribution and explicit rerun comparison without replacing prior results.
@@ -17,6 +18,10 @@ mounted journey; only the decision task below is checked by the policy amendment
 ## Inline, retained and whole-book follow-through — ADR 0020
 
 - [ ] T010 Correct and independently re-review the existing scoped core/UI boundary findings before integration.
+  - Coordinator correction covers registered-envelope evidence, plain/lossless input and canonical
+    data, strict current facts, malformed-Unicode overflow, sparse terms, malformed callback reasons
+    and same-view cancellation ownership. Focused regression files accompany the change; fresh
+    independent exact-head review and mounted/runtime gates remain required.
 - [ ] T011 Add shared exact-source/evidence identity, complete overlap index, disposition and rerun relations.
 - [ ] T012 Implement a minimal CodeMirror plain-text surface/current-source handle with the existing one
   undo owner; prove canonical roundtrip, no writes on navigation, IME/paste/voice and save fidelity.
