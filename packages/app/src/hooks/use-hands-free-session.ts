@@ -49,6 +49,7 @@ export interface HandsFreeSessionApi {
   correct(text: string): void;
   discard(): void;
   continueSession(): void;
+  acknowledge(): void;
 }
 
 type Options = UseHandsFreeSessionOptions;
@@ -63,6 +64,7 @@ interface HandsFreeStore {
   correct(text: string): Promise<void>;
   discard(): Promise<void>;
   continueSession(): Promise<void>;
+  acknowledge(): Promise<void>;
   segment(segmentId: number): Promise<void>;
   dispose(): void;
 }
@@ -75,7 +77,10 @@ function createHandsFreeStore(
   const listeners = new Set<() => void>();
   const aborts = new Map<number, AbortController>();
   let confirmPending = false;
-  let disposed = false;
+  // React StrictMode runs an effect cleanup and setup again on the same mount. A permanent
+  // `disposed` flag would leave the store dead in development, so cleanup only closes it and a
+  // later subscribe re-arms it. A real unmount has no subscribe, so the store stays closed.
+  let open = true;
 
   const emit = () => {
     for (const listener of listeners) listener();
@@ -95,23 +100,25 @@ function createHandsFreeStore(
 
   /** Every intent carries freshly rebuilt facts; nothing here is cached authority. */
   const send = async (intent: HandsFreeIntent): Promise<void> => {
-    if (disposed) return;
+    if (!open) return;
     const facts = await readFacts();
-    if (disposed) return;
+    if (!open) return;
     dispatch({ ...intent, facts, scope: getScope() });
   };
 
   const runEffects = async (effects: readonly HandsFreeEffect[]): Promise<void> => {
     // One capture close per session per batch: a Stop emits both `stop-capture` and `revoke-grant`,
     // which describe the same host action.
-    const closing = new Set<string>();    for (const effect of effects) {
-      if (disposed) return;
+    const closing = new Set<string>();
+    for (const effect of effects) {
+      if (!open) return;
       if (effect.type === "capture-open") {
         const port = getOptions().port;
         if (!port?.startCapture) {
           await send({
             type: "capture-settled",
             open: false,
+            token: effect.token,
             reason: "No capture adapter is mounted in this build, so nothing is recorded.",
           });
           continue;
@@ -121,11 +128,17 @@ function createHandsFreeStore(
           await send({
             type: "capture-settled",
             open: outcome.ok,
+            token: effect.token,
             ...(outcome.reason ? { reason: outcome.reason } : {}),
           });
         } catch (error) {
           getOptions().onNotice?.(error);
-          await send({ type: "capture-settled", open: false, reason: "Capture could not be opened." });
+          await send({
+            type: "capture-settled",
+            open: false,
+            token: effect.token,
+            reason: "Capture could not be opened.",
+          });
         }
         continue;
       }
@@ -189,6 +202,7 @@ function createHandsFreeStore(
           await send({
             type: "send-settled",
             ok: outcome.ok,
+            requestId: effect.requestId,
             ...(outcome.reason ? { reason: outcome.reason } : {}),
           });
         } catch (error) {
@@ -196,6 +210,7 @@ function createHandsFreeStore(
           await send({
             type: "send-settled",
             ok: false,
+            requestId: effect.requestId,
             reason: error instanceof Error ? error.message : "The turn could not be sent.",
           });
         } finally {
@@ -207,7 +222,7 @@ function createHandsFreeStore(
 
   /** The single writer. Kept synchronous so two rapid confirms see each other's state. */
   const dispatch = (event: HandsFreeEvent): void => {
-    if (disposed) return;
+    if (!open) return;
     const next = reduceHandsFree(state, event);
     state = next.state;
     emit();
@@ -216,7 +231,11 @@ function createHandsFreeStore(
 
   return {
     subscribe(listener) {
+      const resume = !open;
+      open = true;
       listeners.add(listener);
+      // Re-observe after a StrictMode cleanup, so availability and permission are fresh again.
+      if (resume) void send({ type: "sync" });
       return () => {
         listeners.delete(listener);
       };
@@ -231,9 +250,10 @@ function createHandsFreeStore(
     correct: (text) => send({ type: "correct", text }),
     discard: () => send({ type: "discard" }),
     continueSession: () => send({ type: "continue" }),
+    acknowledge: () => send({ type: "acknowledge" }),
     segment: (segmentId) => send({ type: "segment", segmentId }),
     dispose() {
-      disposed = true;
+      open = false;
       // Leaving the Discuss surface must not leave capture open. This is best-effort cleanup; the
       // store is gone, so no result is presented and no retry is attempted.
       const token = state.session.token;
@@ -297,6 +317,7 @@ export function useHandsFreeSession(options: UseHandsFreeSessionOptions): HandsF
   const correct = useCallback((text: string) => void store.correct(text), [store]);
   const discard = useCallback(() => void store.discard(), [store]);
   const continueSession = useCallback(() => void store.continueSession(), [store]);
+  const acknowledge = useCallback(() => void store.acknowledge(), [store]);
 
   return {
     state,
@@ -307,5 +328,6 @@ export function useHandsFreeSession(options: UseHandsFreeSessionOptions): HandsF
     correct,
     discard,
     continueSession,
+    acknowledge,
   };
 }

@@ -422,3 +422,32 @@ describe("Discuss panel binding", () => {
     expect(emit).not.toBeNull();
   });
 });
+
+describe("StrictMode mount", () => {
+  test("a development double-effect does not leave the store disposed", async () => {
+    const fake = makePort();
+    testing.render(
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(HandsFreeBar, {
+          bookId: BOOK,
+          chapterId: CHAPTER,
+          threadId: THREAD,
+          port: fake.port,
+          onSendTurn: mock(() => Promise.resolve({ ok: true })),
+          onNotice: () => {},
+          disabled: false,
+        }),
+      ),
+    );
+    const view = testing.within(document.body);
+    await testing.waitFor(() =>
+      expect((view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    await testing.act(async () => {
+      testing.fireEvent.click(view.getByTestId("hands-free-start"));
+    });
+    await testing.waitFor(() => expect(fake.startCapture).toHaveBeenCalledTimes(1));
+    await testing.waitFor(() => expect(status(view)).toContain("Listening"));
+  });
+});

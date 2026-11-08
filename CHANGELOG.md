@@ -17,7 +17,11 @@ Update the `Unreleased` section before every commit.
   sending them to the new target, and Stop reports stopping until the host settles, so a late
   transcript cannot send. No capture adapter, OS prompt, microphone, provider call, playback
   arbitration, IPC/preload change or device evidence is added: without a host adapter the bar says
-  hands-free audio is not connected and records nothing. 017 T017 remains unchecked.
+  hands-free audio is not connected and records nothing. Stop during transcription settles as a
+  cancellation instead of a permanent failure receipt; genuine failures are shown with an explicit
+  Dismiss; late capture/send settlements carry session/request identity; Continue retries a held
+  capture and is offered when interrupted; and a StrictMode remount re-arms the store. 017 T017
+  remains unchecked.
 
 ### Voice transport
 

@@ -75,24 +75,26 @@ export function HandsFreeBar({
   onNotice,
   disabled = false,
 }: Props) {
-  const { state, phase, start, stop, confirm, correct, discard, continueSession } = useHandsFreeSession({
+  const { state, phase, start, stop, confirm, correct, discard, continueSession, acknowledge } =
+    useHandsFreeSession({
     scope: { bookId, chapterId, threadId },
     ...(port ? { port } : {}),
-    onSendTurn,
-    ...(onNotice ? { onNotice } : {}),
-  });
+      onSendTurn,
+      ...(onNotice ? { onNotice } : {}),
+    });
 
   const session = state.session;
   const draft = session.draft;
+  const failure = session.failures.stt ?? session.failures.work ?? session.failures.tts;
   const showDraft = phase === "correcting" && Boolean(draft);
-  const canStart = state.availability.ready && !session.active && phase !== "stopping" && !disabled;
+  const canStart = state.availability.ready && !session.active && phase !== "stopping" && !disabled && !failure;
   const canStop = session.active && phase !== "stopping" && phase !== "confirming";
   const canConfirm = phase === "correcting" && draft.trim().length > 0 && !disabled && !session.correctionPending;
   const canContinue =
-    session.active &&
-    (session.correctionPending || (phase === "held" && !draft && state.send.status !== "sending"));
+    session.active && !failure &&
+    (session.correctionPending || (!draft && (phase === "held" || phase === "interrupted")));
   const canDiscard = session.active && Boolean(draft);
-  const failed = state.send.status === "failed" || state.stop.status === "failed";
+  const failed = Boolean(failure) || state.send.status === "failed" || state.stop.status === "failed";
 
   return (
     <section
@@ -111,6 +113,18 @@ export function HandsFreeBar({
           {statusCopy(state, phase)}
         </span>
         <div className="flex shrink-0 items-center gap-1">
+          {failure ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={acknowledge}
+              disabled={disabled}
+              data-testid="hands-free-acknowledge"
+            >
+              <X size={14} />
+              Dismiss
+            </Button>
+          ) : null}
           {canContinue ? (
             <Button
               variant="ghost"

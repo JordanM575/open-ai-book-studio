@@ -130,6 +130,7 @@ export interface HandsFreeSendState {
   readonly text: string | null;
   readonly threadId: string | null;
   readonly reason: string | null;
+  readonly requestId: number | null;
 }
 
 export type HandsFreePhase =
@@ -201,9 +202,15 @@ export type HandsFreeIntent =
   | { readonly type: "continue" }
   | { readonly type: "confirm" }
   | { readonly type: "stop" }
-  | { readonly type: "send-settled"; readonly ok: boolean; readonly reason?: string }
+  | { readonly type: "acknowledge" }
+  | { readonly type: "send-settled"; readonly ok: boolean; readonly requestId: number; readonly reason?: string }
   | { readonly type: "stop-settled"; readonly ok: boolean; readonly reason?: string }
-  | { readonly type: "capture-settled"; readonly open: boolean; readonly reason?: string };
+  | {
+      readonly type: "capture-settled";
+      readonly open: boolean;
+      readonly token: SessionToken;
+      readonly reason?: string;
+    };
 
 export type HandsFreeEvent = HandsFreeIntent & {
   readonly facts: HandsFreeFacts | null;
@@ -243,7 +250,7 @@ export function initialHandsFreeState(): HandsFreeState {
     capture: "closed" as HandsFreeCaptureState,
     captureReason: null,
     stop: { status: "idle", reason: null } as HandsFreeStopState,
-    send: { status: "idle", text: null, threadId: null, reason: null } as HandsFreeSendState,
+    send: { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
     transport: initialTransportLedger(),
     preserved: null,
     note: null,
@@ -432,17 +439,37 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     if (draft && boundedText(draft)) update({ preserved: state.session.draft });
   };
 
+  /** Release an outstanding core request as a cancellation receipt, never as a failure. */
+  const settleOutstanding = (kind: "stt" | "work") => {
+    const request = state.session.requests[kind];
+    if (request) core({ type: "settled", request });
+  };
+
   const endSession = (reason: string) => {
     const token = state.session.token;
     if (!token) return;
     preserveDraft();
+    const sending = state.send.status === "sending";
     core({ type: "end", token, reason: "scope-change" });
+    settleOutstanding("stt");
+    settleOutstanding("work");
     // The core deliberately keeps a pending draft across Stop for host recovery. This surface
     // discards it so it can never be sent to a new target; `preserved` keeps it visible instead.
     update({
       session: { ...state.session, draft: "", confirmation: null, active: false, capture: false },
       capture: "closed" as HandsFreeCaptureState,
-      note: reason,
+      send: sending
+        ? {
+            status: "failed",
+            text: state.send.text,
+            threadId: state.send.threadId,
+            reason: "The conversation changed while this turn was being sent. Its outcome is unknown.",
+            requestId: null,
+          }
+        : { status: "idle", text: null, threadId: null, reason: null, requestId: null },
+      note: sending
+        ? "The conversation changed while a turn was being sent. Its outcome is unknown; nothing was sent to the new conversation."
+        : reason,
       scope: { ...scope },
       binding: null,
     });
@@ -547,7 +574,9 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         capture: "closed" as HandsFreeCaptureState,
         captureReason: null,
         stop: { status: "idle", reason: null } as HandsFreeStopState,
-        send: { status: "idle", text: null, threadId: null, reason: null } as HandsFreeSendState,
+        send: state.send.status === "failed"
+          ? state.send
+          : { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
         preserved: null,
         note: null,
         ignoredTranscripts: 0,
@@ -659,6 +688,15 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         update({ ignoredTranscripts: state.ignoredTranscripts + 1 });
         break;
       }
+      if (!state.session.active || state.stop.status !== "idle") {
+        // A stop aborts the request; settling it as a failure would block every later session.
+        settleOutstanding("stt");
+        update({
+          ignoredTranscripts: state.ignoredTranscripts + 1,
+          note: "The transcription ended after this session stopped. Nothing was sent.",
+        });
+        break;
+      }
       const reason = failureCopy(event.reason);
       const operation = state.transport.slots.stt;
       if (operation) {
@@ -717,8 +755,10 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       if (!state.session.active || !token) break;
       // The core also emits `new-direction`, a host intent this build must not dispatch by itself:
       // the author still confirms the words through the one checked send path.
-      core({ type: "continue", token });
+      const coreEffects = core({ type: "continue", token });
+      openCaptureEffects(coreEffects);
       update({
+        captureReason: null,
         note: state.session.reason ?? "The new direction is ready. Confirm to send it explicitly.",
       });
       break;
@@ -756,7 +796,13 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         break;
       }
       update({
-        send: { status: "sending", text: submit.text, threadId: binding.threadId, reason: null },
+        send: {
+          status: "sending",
+          text: submit.text,
+          threadId: binding.threadId,
+          reason: null,
+          requestId: submit.request.id,
+        },
         note: null,
       });
       effects.push({
@@ -775,31 +821,39 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     }
 
     case "send-settled": {
-      if (state.send.status !== "sending") break;
-      const token = state.session.token;
+      // A late result from another turn or session must not speak for this one.
+      if (state.send.status !== "sending" || state.send.requestId !== event.requestId) break;
       const request = state.session.requests.work;
-      if (!request || !token) {
-        update({
-          send: {
-            ...state.send,
-            status: event.ok ? "sent" : "failed",
-            reason: event.ok ? null : failureCopy(event.reason),
-          },
-        });
-        break;
+      if (request && event.ok) {
+        core({ type: "settled", request });
+      } else if (request) {
+        core({ type: "settled", request, failure: failureCopy(event.reason) });
       }
       if (event.ok) {
-        core({ type: "settled", request });
-        update({ send: { ...state.send, status: "sent", reason: null }, note: "Sent to this conversation." });
+        update({
+          send: { ...state.send, status: "sent", reason: null, requestId: null },
+          note: "Sent to this conversation.",
+        });
       } else {
         const reason = failureCopy(event.reason);
-        core({ type: "settled", request, failure: reason });
         update({
-          send: { ...state.send, status: "failed", reason },
+          send: { ...state.send, status: "failed", reason, requestId: null },
           note: reason,
           preserved: state.send.text && boundedText(state.send.text) ? state.send.text : state.preserved,
         });
       }
+      break;
+    }
+
+    case "acknowledge": {
+      for (const kind of ["stt", "tts", "work"] as const) {
+        const failure = state.session.failures[kind];
+        if (failure) core({ type: "acknowledge-failure", request: failure.request });
+      }
+      if (state.send.status === "failed") {
+        update({ send: { status: "idle", text: null, threadId: null, reason: null, requestId: null } });
+      }
+      update({ note: null });
       break;
     }
 
@@ -820,7 +874,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         stop: { status: "stopping", reason: null } as HandsFreeStopState,
         session: { ...state.session, draft: "" },
         send: state.send.status === "sending" ? state.send
-          : { status: "idle", text: null, threadId: null, reason: null } as HandsFreeSendState,
+          : { status: "idle", text: null, threadId: null, reason: null, requestId: null } as HandsFreeSendState,
         note: "Stopping. Waiting for the host to confirm that capture closed.",
       });
       for (const effect of coreEffects) {
@@ -829,6 +883,10 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         }
       }
       cancelSttTransport("Stopped.");
+      // Stop is a cancellation, not a failure: release the core slots while the transport receipt
+      // keeps the unknown charge. A dispatched send still reports its own real outcome.
+      settleOutstanding("stt");
+      settleOutstanding("work");
       break;
     }
 
@@ -852,6 +910,12 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     }
 
     case "capture-settled": {
+      const current = state.session.token;
+      if (!current || current.sessionId !== event.token.sessionId ||
+          current.generation !== event.token.generation) {
+        // A late open/close from an earlier session must not describe this one.
+        break;
+      }
       if (event.open) {
         if (!state.session.active) {
           update({ capture: "closed" as HandsFreeCaptureState });
