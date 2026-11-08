@@ -201,8 +201,9 @@ export class ReviewRecordStore {
           });
         }
       }
+      // Timestamps keep their original offset spelling, so compare the instant they denote.
       reports.sort((left, right) =>
-        right.completedAt.localeCompare(left.completedAt) || left.id.localeCompare(right.id)
+        Date.parse(right.completedAt) - Date.parse(left.completedAt) || left.id.localeCompare(right.id)
       );
       issues.sort((left, right) => left.fileName.localeCompare(right.fileName));
       return { bookId, offset, limit, total: reports.length, reports: reports.slice(offset, offset + limit), issues };

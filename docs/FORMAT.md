@@ -837,8 +837,8 @@ retries belong to 037.
   refused restore leaves every file where it was.
 - **No pruning.** There is no automatic deletion, eviction, expiry, quota, compaction or trimming.
   Trashing is the author's explicit action; a full document refuses rather than losing history.
-- **Listing.** `reviews/*.json` is listed newest `completedAt` first, then by ID, with offset/limit
-  paging (1–200). An unreadable, newer or unsupported file is reported as a named issue and left
+- **Listing.** `reviews/*.json` is listed newest `completedAt` first (compared as instants, since the
+  original offset spelling is preserved), then by ID, with offset/limit paging (1–200). An unreadable, newer or unsupported file is reported as a named issue and left
   untouched. Nothing in a list or read writes.
 - **Continuation gap.** Segmented occurrence/disposition/campaign continuation is **not** specified
   by this build. A document over any bound or count refuses with the draft retained; no writer trims

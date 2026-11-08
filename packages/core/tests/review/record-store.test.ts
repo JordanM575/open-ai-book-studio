@@ -83,6 +83,23 @@ describe("checked review record store", () => {
     expect(copy.raw.conflictMetadata).toMatchObject({ reason: "external-edit", observed: { kind: "sha256" } });
   });
 
+  test("lists reports by completion instant, not by the preserved offset spelling", async () => {
+    const clock = clockAt("2026-11-07T14:00:00.000Z");
+    const { library, book } = await makeBook(clock);
+    const older = {
+      ...(await readerRun(book.id, "run_00000001")),
+      completedAt: "2026-11-07T14:00:00.000+02:00"
+    };
+    const newer = {
+      ...(await readerRun(book.id, "run_00000002")),
+      completedAt: "2026-11-07T13:00:00.000Z"
+    };
+    await library.reviewRecords.createReport(book.id, older);
+    await library.reviewRecords.createReport(book.id, newer);
+    const listing = await library.reviewRecords.listReports(book.id);
+    expect(listing.reports.map((report) => report.id)).toEqual(["run_00000002", "run_00000001"]);
+  });
+
   test("serialized disposition writers lose no event and preserve unknown fields", async () => {
     const clock = clockAt(afterRun);
     const { library, book, port } = await makeBook(clock);
