@@ -17,6 +17,9 @@ Update the `Unreleased` section before every commit.
   evidence and a standalone bundle measurement. Record Chromium's partial-grapheme
   native selection limitation while preserving exact model/clipboard text. Integrated
   save, accessibility, whole-app bundle/performance and independent review gates remain.
+- Fix user paste during a leaf hold being silently dropped: paste now inserts
+  normalized text through the normal change path like typing, while controlled
+  replacement, dictation and evidence remain refused during a hold or composition.
 
 ### Integration
 
