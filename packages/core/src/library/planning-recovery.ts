@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { goalSchema } from "../organization/goals";
-import { assertSidecarOwner, type SidecarHost } from "../planning/checked-sidecar";
+import { assertSidecarOwner, sidecarAttemptSchema, type SidecarHost } from "../planning/checked-sidecar";
 import { bookIdSchema, decoder, encoder, hashSchema, parseJson, planningSchema, RECOVERY_BYTES, sourceSchema, validateDocument } from "../planning/schema";
 import { conflictPath, conflictsPath } from "./paths";
 import type { LibraryPort } from "./port";
@@ -18,7 +18,7 @@ export type PlanningCopy = z.infer<typeof copySchema>;
 export function inspectPlanningCopy(copy: PlanningCopy) {
   const parsed = parseJson(encoder.encode(copy.rawJson), RECOVERY_BYTES);
   const envelope = z.object({ conflictMetadata: z.strictObject({ reason: z.enum(["external-edit", "missing-file"]), baseline: sourceSchema, observed: sourceSchema,
-    requestHash: hashSchema.optional() }) }).parse(parsed);
+    requestHash: hashSchema.optional(), attempt: sidecarAttemptSchema.optional() }) }).parse(parsed);
   if (!copy.name.includes(`.conflict-${envelope.conflictMetadata.reason}.`)) throw new Error("Copy reason mismatch.");
   // Keep the original own JSON values, including __proto__, rather than a rebuilt loose object.
   const { conflictMetadata: _metadata, ...document } = parsed as Record<string, unknown>;

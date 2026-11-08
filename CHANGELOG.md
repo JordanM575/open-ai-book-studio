@@ -10,6 +10,14 @@ Update the `Unreleased` section before every commit.
 
 ### Manual planning records
 
+- Bind every transported save to a fresh client request and independently issued host publication
+  identity. Derive created record IDs from that publication, verify the same binding in complete
+  recovery bytes, and keep handler validation snapshots separate from service submissions. Reject
+  identical stale-create receipt replay, including an old receipt returned after a later real write.
+- Prefix planning control names with kind, retained position and action before authored titles, and
+  prefix reorder names with direction and position. Action-like titles and literal generated labels
+  remain distinct while preserving visible text in the accessible name. Add pending-service,
+  four-kind replay and mounted collision regressions; native accessibility acceptance remains open.
 - Bind conflict receipts to the exact typed intent and complete byte-verified recovery document,
   recheck the named copy in the handler, and reject replayed replies for another draft. Require
   changed-save replies to match the writer's exact serialization while retaining valid compact

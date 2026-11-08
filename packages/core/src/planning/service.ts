@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LibraryError } from "../library/errors";
-import { CheckedSidecar, envelopeFields, parseRequest, type SidecarHost, type SidecarRead, type SidecarSave } from "./checked-sidecar";
+import { CheckedSidecar, envelopeFields, parseRequest, sidecarAttemptSchema, type SidecarAttempt, type SidecarHost, type SidecarRead, type SidecarSave } from "./checked-sidecar";
 import { sameValue } from "../library/book-merge";
 import { beatFields, increment, planningSchema, recordIdSchema, storyNotesFields, timelineFields, worldbuildingFields, type Planning } from "./schema";
 
@@ -26,7 +26,7 @@ export type PlanningSaveRequest = z.infer<typeof planningSaveSchema>;
 export type PlanningDraft = PlanningSaveRequest["draft"];
 
 /** Pure bounded intent projection, also used to verify complete transport correspondence.
- * Only the service generates IDs; response validation supplies the one returned new identity.
+ * Only the host generates IDs; transported saves use its independently pinned publication identity.
  */
 export function applyPlanningDraft(base: Planning | null, bookId: string, draft: PlanningDraft,
   newId: (prefix: "wb" | "tl" | "beat" | "sn") => string): { data: Planning; changed: boolean } {
@@ -87,8 +87,10 @@ export class PlanningService {
 
   read(bookId: string): Promise<SidecarRead<Planning>> { return this.sidecar.read(bookId); }
 
-  save(input: unknown): Promise<SidecarSave<Planning>> {
+  save(input: unknown, suppliedAttempt?: SidecarAttempt): Promise<SidecarSave<Planning>> {
     const request = parseRequest(planningSaveSchema, input);
-    return this.sidecar.save(request, (base) => applyPlanningDraft(base, request.bookId, request.draft, (prefix) => this.host.runtime.newId(prefix)));
+    const attempt = suppliedAttempt ? sidecarAttemptSchema.parse(suppliedAttempt) : undefined;
+    return this.sidecar.save(request, (base) => applyPlanningDraft(base, request.bookId, request.draft,
+      (prefix) => attempt ? `${prefix}_${attempt.publicationId}` : this.host.runtime.newId(prefix)), attempt);
   }
 }

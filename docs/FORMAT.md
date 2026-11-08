@@ -219,10 +219,11 @@ A stale request (even a same-content request), missing-after-read or commit race
 complete intended document under
 `books/<bookId>/conflicts/<planning|goals>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
 The copy adds a reserved `conflictMetadata` object with `reason`, original `baseline` token,
-`observed` token and `requestHash`. The latter is SHA-256 of the UTF-8 `JSON.stringify` output of
+`observed` token, `requestHash` and, for transported saves, `attempt: {requestId,publicationId}`.
+`requestHash` is SHA-256 of the UTF-8 `JSON.stringify` output of
 `{bookId,source,draft}`, in that key order with the strict schema-parsed source and typed draft;
 the source's raw hash already binds the complete original baseline bytes. Older copies without
-`requestHash` remain inspectable but cannot confirm a new save request. Recovery copies are bounded
+`requestHash` or an attempt binding remain inspectable but cannot confirm a new transported save. Recovery copies are bounded
 to 5,000,000 bytes. Colliding names use absent-only
 suffix attempts; returned bytes and their hash must verify before reporting `conflict`/`savedAs`.
 Only conflict-copy names may be retried, never the active-file commit. A copy cannot be loaded as
@@ -238,10 +239,20 @@ Data correspondence checks dense array lengths and own data properties; sparse o
 values cannot stand in for the raw document. Changed `saved` replies must contain the exact writer
 serialization (two-space indentation, original property order and final newline) and its hash.
 Valid compact reads and current `unchanged` replies keep their original bytes without canonicalizing.
+For each explicit API save, the client generates a fresh UUID request ID in the internal wire
+envelope; the handler independently generates a fresh UUID publication ID, even if the caller repeats
+its request ID. Both IDs accompany every success/no-op/conflict receipt. Host-created planning IDs
+are `<kind-prefix>_<publicationId>` for transported creates, so the handler reconstructs the expected
+identity from its private attempt snapshot rather than learning it from the response. The client
+checks its request ID and reconstructs from the returned host publication ID; the handler checks both
+against its pinned values. Request/attempt validation snapshots are separate from mutable objects
+passed to services/transports. Direct service calls may omit transport binding and retain runtime-
+generated IDs; their unbound receipts cannot confirm a transported save. No session registry or
+hidden durable authority is introduced.
 
 A `conflict` result carries `preserved: {rawJson,hash}`: the complete recovery bytes verified at
 publication, not an echoed nonce. Handler and client independently validate the intended operation,
-baseline, observed token, reason, created identity, full projected draft and exact recovery
+baseline, observed token, reason, attempt binding, created identity, full projected draft and exact recovery
 serialization against that receipt. Before returning, the handler also reads the named durable copy
 through the captured Library and requires its name/hash/raw bytes to match. A missing, changed or
 unverifiable copy is uncertain, never a claim that this draft was kept. These are snapshot and

@@ -152,10 +152,10 @@ describe("mounted Workspace through real checked filesystem and registered IPC",
     click("World details"); testing.fireEvent.click(await page().findByRole("button", { name: "New world detail" })); await ready();
     change("Name", "Synthetic harbor"); change("Description", "Exact text  "); click("Save changes");
     await page().findByText("Saved."); click("Close editor");
-    testing.fireEvent.click(await page().findByRole("button", { name: "Synthetic harbor" })); await ready();
+    testing.fireEvent.click(await page().findByRole("button", { name: "World detail 1 · Edit Synthetic harbor" })); await ready();
     expect(input("Description").value).toBe("Exact text  ");
     change("Notes", "Recovered tide notes"); click("Save changes"); await page().findByText("Saved."); click("Close editor");
-    testing.fireEvent.click(await page().findByRole("button", { name: "Synthetic harbor" })); await ready();
+    testing.fireEvent.click(await page().findByRole("button", { name: "World detail 1 · Edit Synthetic harbor" })); await ready();
     expect(input("Notes").value).toBe("Recovered tide notes");
   });
 

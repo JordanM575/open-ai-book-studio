@@ -66,13 +66,11 @@ export function PlanningPanel({ bookId, bookTitle, api, navigation, sourceGenera
     setSession(null);
     setRevision((value) => value + 1);
   };
-  const retained = [...(planning?.worldbuilding ?? []), ...(planning?.timeline ?? []), ...(planning?.beats ?? [])];
-  const label = (record: { name?: unknown; title?: unknown; kind: string; when?: unknown }, index: number) => {
+  const label = (record: { name?: unknown; title?: unknown; kind: string; when?: unknown }, index: number, action: "Edit" | "Archive" | "Restore") => {
     const title = String(record.kind === "worldbuilding" ? record.name : record.title);
-    const normalized = (value: unknown) => String(value).trim().replace(/\s+/g, " ");
-    if (retained.filter((entry) => normalized(entry.kind === "worldbuilding" ? entry.name : entry.title) === normalized(title)).length < 2) return title;
-    const kind = record.kind === "worldbuilding" ? "world detail" : record.kind === "timeline" ? "timeline event" : "outline beat";
-    return `${title} · ${kind} ${index + 1}${record.kind === "timeline" && record.when ? ` · ${String(record.when)}` : ""}`;
+    const kind = record.kind === "worldbuilding" ? "World detail" : record.kind === "timeline" ? "Timeline event" : "Outline beat";
+    // A unique structural prefix precedes ALL author text; titles may imitate any action or suffix.
+    return `${kind} ${index + 1} · ${action} ${title}${record.kind === "timeline" && record.when ? ` · ${String(record.when)}` : ""}`;
   };
   return <section aria-label="Book planning" className="glass mb-4 rounded-[var(--corner-lg)] p-3 space-y-3 [&_button]:min-h-11 [&_button]:min-w-11">
     <div className="flex flex-wrap gap-2">
@@ -89,13 +87,13 @@ export function PlanningPanel({ bookId, bookTitle, api, navigation, sourceGenera
         <h3 className="font-medium">World details</h3>
         {!planning?.worldbuilding.some((record) => !record.archived) && <p>No world details yet. Add a place, custom or other detail.</p>}
         <ul>{planning?.worldbuilding.map((record, index) => record.archived ? null : <li key={record.id}>
-          <Button variant="ghost" aria-label={label(record, index)} onClick={() => open({ kind: "world", recordId: record.id })}>{record.name}</Button>
-          <Button variant="ghost" aria-label={`Archive ${label(record, index)}`} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: true })}>Archive {record.name}</Button>
+          <Button variant="ghost" aria-label={label(record, index, "Edit")} onClick={() => open({ kind: "world", recordId: record.id })}>{record.name}</Button>
+          <Button variant="ghost" aria-label={label(record, index, "Archive")} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: true })}>Archive {record.name}</Button>
         </li>)}</ul>
         <Button variant="secondary" onClick={() => open({ kind: "world" })}>New world detail</Button>
         {planning?.worldbuilding.map((record, index) => !record.archived ? null : <div key={record.id}>
           <span>{record.name} · archived</span>
-          <Button variant="ghost" aria-label={`Restore ${label(record, index)}`} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: false })}>Restore {record.name}</Button>
+          <Button variant="ghost" aria-label={label(record, index, "Restore")} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: false })}>Restore {record.name}</Button>
         </div>)}
         {(["timeline", "beat"] as const).map((kind) => {
           const order = (kind === "timeline" ? planning?.timelineOrder : planning?.beatOrder) ?? [];
@@ -107,9 +105,9 @@ export function PlanningPanel({ bookId, bookTitle, api, navigation, sourceGenera
               const record = records.find((entry) => entry.id === id);
               if (!record) return null;
               return <li key={id} className="flex flex-wrap items-center gap-2 break-words">
-                {record.archived ? <span>{record.title} · archived</span> : <Button variant="ghost" aria-label={label(record, index)} onClick={() => open({ kind, recordId: id })}>{record.title}</Button>}
+                {record.archived ? <span>{record.title} · archived</span> : <Button variant="ghost" aria-label={label(record, index, "Edit")} onClick={() => open({ kind, recordId: id })}>{record.title}</Button>}
                 {kind === "timeline" && <span className="whitespace-pre-wrap">{String(record.when ?? "")}</span>}
-                <Button variant="ghost" aria-label={`${record.archived ? "Restore" : "Archive"} ${label(record, index)}`} onClick={() => open({ kind: kind === "timeline" ? "archive-timeline" : "archive-beat", recordId: id, archived: !record.archived })}>
+                <Button variant="ghost" aria-label={label(record, index, record.archived ? "Restore" : "Archive")} onClick={() => open({ kind: kind === "timeline" ? "archive-timeline" : "archive-beat", recordId: id, archived: !record.archived })}>
                   {record.archived ? "Restore" : "Archive"} {record.title}
                 </Button>
               </li>;

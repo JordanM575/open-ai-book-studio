@@ -45,6 +45,15 @@ output refusal with shorten-and-save recovery, dense-array response validation a
 duplicate record/control labels. The expanded planning/goal regression set passes 251 tests across
 ten files (1,187 assertions), including real Library/handler and synthetic mounted paths.
 
+The subsequent review correction binds transported saves to independent client-request and host-
+publication UUIDs, reconstructs created identities, retains complete named-copy verification and
+separates handler validation snapshots from service submissions. Identical stale creates across all
+four generated kinds reject old receipts, including after an actual later write. Structural
+kind/position/action prefixes disambiguate authored action-like and generated-label titles. The
+expanded focused set passes **260 tests / 1,502 assertions**, with workspace, strict core and strict
+desktop typechecks and touched-file lint passing. Prior original probes/reports remain historical
+evidence; this correction still requires fresh independent review and exact-head broad gates.
+
 No task checkbox is closed by this candidate: fresh exact-head independent review, integrated broad
 gates, native theme/viewport/keyboard/accessibility acceptance and integrated host/adapter gates remain. The new mounted
 tests exercise the existing handler directly; native IPC/preload acceptance for the new intents

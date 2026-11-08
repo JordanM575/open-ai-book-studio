@@ -7,7 +7,7 @@ import { readHistoryEnvelope } from "../library/history";
 import { bookIdSchema, hashSchema, revisionSchema } from "../planning/schema";
 import {
   assertSidecarOwner, CheckedSidecar, envelopeFields, parseRequest, sameSource,
-  type SidecarHost, type SidecarRead, type SidecarSave
+  type SidecarAttempt, type SidecarHost, type SidecarRead, type SidecarSave
 } from "../planning/checked-sidecar";
 
 export const goalSchema = z.looseObject({
@@ -36,12 +36,12 @@ export class GoalService {
 
   read(bookId: string): Promise<SidecarRead<Goal>> { return this.sidecar.read(bookId); }
 
-  save(input: unknown): Promise<SidecarSave<Goal>> {
+  save(input: unknown, attempt?: SidecarAttempt): Promise<SidecarSave<Goal>> {
     const request = parseRequest(goalSaveSchema, input);
     return this.sidecar.save(request, (base) => ({
       data: { ...(base ?? { schemaVersion: 1, bookId: request.bookId, revision: 1 }), targetWords: request.draft.targetWords },
       changed: (base?.targetWords ?? null) !== request.draft.targetWords
-    }));
+    }), attempt);
   }
 
   async progress(bookId: string): Promise<GoalProgress> {

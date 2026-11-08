@@ -63,10 +63,10 @@ describe("mounted manual planning through real filesystem Library and handler", 
     const event = required((await planningValue(f.api.read(f.book.id))).data?.timeline[0]);
     expect(input("Title").value).toBe("Winter");
     change("Title", "Winter revised"); click("Save changes"); await saved(); click("Close editor");
-    await open("Winter revised"); expect(input("When · literal label").value).toBe("the winter after the siege");
+    await open("Timeline event 1 · Edit Winter revised · the winter after the siege"); expect(input("When · literal label").value).toBe("the winter after the siege");
     expect(input("Notes").value).toBe("  exact event notes  "); click("Close editor");
     await open("New timeline event"); change("Title", "Before winter"); click("Save changes"); await saved(); click("Close editor");
-    await open("Order timeline"); click("Move Before winter · position 2 up"); click("Save changes"); await saved(); click("Close editor");
+    await open("Order timeline"); click("Move up · position 2 · Before winter"); click("Save changes"); await saved(); click("Close editor");
     const events = required((await planningValue(f.api.read(f.book.id))).data);
     expect(events.timeline).toHaveLength(2);
     expect(events.timeline[0]).toMatchObject({ id: event.id, revision: 2 });
@@ -75,17 +75,17 @@ describe("mounted manual planning through real filesystem Library and handler", 
     await open("New outline beat"); change("Title", "Arrival"); change("Summary", "  exact summary  "); click("Save changes"); await saved();
     change("Notes", "continued edit"); click("Save changes"); await saved(); click("Close editor");
     await open("New outline beat"); change("Title", "Departure"); click("Save changes"); await saved(); click("Close editor");
-    await open("Order beats"); click("Move Departure · position 2 up"); click("Save changes"); await saved(); click("Close editor");
+    await open("Order beats"); click("Move up · position 2 · Departure"); click("Save changes"); await saved(); click("Close editor");
     await open("New world detail"); change("Name", "Harbor"); click("Save changes"); await saved();
     change("Notes", "continued world edit"); click("Save changes"); await saved(); click("Close editor");
     const beforeArchive = required((await planningValue(f.api.read(f.book.id))).data);
-    for (const title of ["Winter revised", "Arrival", "Harbor"]) {
-      await open(`Archive ${title}`);
+    for (const [kind, title] of [["Timeline event 2", "Winter revised · the winter after the siege"], ["Outline beat 2", "Arrival"], ["World detail 1", "Harbor"]]) {
+      await open(`${kind} · Archive ${title}`);
       click("Save changes"); await page().findByText(/Confirm the archive action before saving/);
       expect((await planningValue(f.api.read(f.book.id))).data).toEqual(beforeArchive);
       testing.fireEvent.click(page().getByRole("checkbox", { name: "Confirm archive · keep all content" }));
       click("Save changes"); await saved(); click("Close editor");
-      await open(`Restore ${title}`); click("Save changes"); await saved(); click("Close editor");
+      await open(`${kind} · Restore ${title}`); click("Save changes"); await saved(); click("Close editor");
       // Other records stay unchanged while each affected record advances twice.
       const restored = required((await planningValue(f.api.read(f.book.id))).data);
       Object.assign(beforeArchive, restored);
@@ -158,7 +158,7 @@ describe("mounted manual planning through real filesystem Library and handler", 
     expect(input("Title").value).toBe("  Exact beat  ");
     click("Close editor"); click("Discard draft and close");
     f.api.save = save;
-    await open("  Exact beat  ".trim()); expect(input("Summary").value).toBe("  exact summary  ");
+    await open("Outline beat 1 · Edit Exact beat"); expect(input("Summary").value).toBe("  exact summary  ");
     expect((await planningValue(f.api.read(f.book.id))).data?.beats).toHaveLength(1); expect(calls).toBe(1);
   });
 
@@ -188,7 +188,7 @@ describe("mounted manual planning through real filesystem Library and handler", 
     const path = join(f.root, "books", f.book.id, "planning.json");
     const raw = JSON.stringify({ ...current, futurePayload: "x".repeat(2_499_000) });
     await writeFile(path, raw);
-    click("Refresh planning"); await open("Near limit");
+    click("Refresh planning"); await open("Timeline event 1 · Edit Near limit · literal");
     const oversized = "Y".repeat(2_000);
     change("Description", oversized); click("Save changes");
     await page().findByText(/Not saved.*2,500,000/);
@@ -200,7 +200,7 @@ describe("mounted manual planning through real filesystem Library and handler", 
     expect((await f.library.planning.read(f.book.id)).data?.futurePayload).toBe("x".repeat(2_499_000));
   });
 
-  test("same-book conflict replay never claims that a different submitted draft was kept", async () => {
+  test.each(["Draft A", "Draft B"])("same-book conflict replay never claims this submission of %s was kept", async (submittedTitle) => {
     const f = await setup();
     const base = await planningValue(f.api.read(f.book.id));
     const envelope = { bookId: base.bookId, source: base.source, baselineJson: base.baselineJson };
@@ -212,9 +212,9 @@ describe("mounted manual planning through real filesystem Library and handler", 
     let calls = 0;
     testing.render(<ManualPlanningDialog open bookId={f.book.id} bookTitle="Synthetic replay" viewGeneration={1} editor={{ kind: "timeline" }}
       read={async () => base} save={(request) => { calls++; return planningValue(replay.save(request)); }} onClose={() => {}} />);
-    await ready(); change("Title", "Draft B"); click("Save changes");
+    await ready(); change("Title", submittedTitle); click("Save changes");
     await page().findByText(/The save outcome is uncertain/);
-    expect(input("Title").value).toBe("Draft B");
+    expect(input("Title").value).toBe(submittedTitle);
     expect(page().queryByText(/Your submitted draft was kept/)).toBeNull();
     expect(page().queryByText(/Submitted draft copy/)).toBeNull();
     click("Save changes"); expect(calls).toBe(1);
@@ -238,23 +238,85 @@ describe("mounted manual planning through real filesystem Library and handler", 
       await planningValue(f.api.save({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft: { kind, id, archived: true } }));
     }
     click("Refresh planning");
-    for (const [kind, expected] of [["world detail", "World"], ["timeline event", "Event"], ["outline beat", "Beat"]] as const) {
-      const suffix = kind === "timeline event" ? " · same time" : "";
-      await open(`Echo · ${kind} 2${suffix}`); expect(input("Notes").value).toBe(`${expected} 1`); click("Close editor");
-      expect(await page().findByRole("button", { name: `Archive Echo · ${kind} 1${suffix}` })).toBeTruthy();
-      await open(`Restore Echo · ${kind} 3${suffix}`); click("Save changes"); await saved(); click("Close editor");
+    for (const [kind, expected] of [["World detail", "World"], ["Timeline event", "Event"], ["Outline beat", "Beat"]] as const) {
+      const suffix = kind === "Timeline event" ? " · same time" : "";
+      await open(`${kind} 2 · Edit Echo${suffix}`); expect(input("Notes").value).toBe(`${expected} 1`); click("Close editor");
+      expect(await page().findByRole("button", { name: `${kind} 1 · Archive Echo${suffix}` })).toBeTruthy();
+      await open(`${kind} 3 · Restore Echo${suffix}`); click("Save changes"); await saved(); click("Close editor");
     }
     await open("Order timeline");
     const list = page().getByRole("list", { name: "Draft planning order" });
     const second = required(list.children[1]);
-    click("Move Echo · same time · position 2 up");
+    click("Move up · position 2 · Echo · same time");
     expect(list.children[0]).toBe(second);
-    expect(testing.within(second as HTMLElement).getByRole("button", { name: "Move Echo · same time · position 1 up" }).hasAttribute("disabled")).toBe(true);
+    expect(testing.within(second as HTMLElement).getByRole("button", { name: "Move up · position 1 · Echo · same time" }).hasAttribute("disabled")).toBe(true);
     click("Save changes"); await saved(); click("Close editor");
-    await open("Echo · timeline event 1 · same time"); expect(input("Notes").value).toBe("Event 1"); click("Close editor");
+    await open("Timeline event 1 · Edit Echo · same time"); expect(input("Notes").value).toBe("Event 1"); click("Close editor");
     await open("Order beats");
-    click("Move Echo · position 2 up"); click("Save changes"); await saved(); click("Close editor");
-    await open("Echo · outline beat 1"); expect(input("Notes").value).toBe("Beat 1");
+    click("Move up · position 2 · Echo"); click("Save changes"); await saved(); click("Close editor");
+    await open("Outline beat 1 · Edit Echo"); expect(input("Notes").value).toBe("Beat 1");
+  });
+
+  test("action-like and generated-label titles cannot imitate another retained control", async () => {
+    const f = await setup();
+    const kinds = [
+      { label: "World detail", create: "create-worldbuilding", archive: "archive-worldbuilding", key: "worldbuilding" },
+      { label: "Timeline event", create: "create-timeline", archive: "archive-timeline", key: "timeline" },
+      { label: "Outline beat", create: "create-beat", archive: "archive-beat", key: "beats" }
+    ] as const;
+    for (const kind of kinds) {
+      const titles = ["Echo", "Archive Echo", "Restore Echo", "Echo · timeline event 1 · same time",
+        `${kind.label} 1 · Edit Echo`, `${kind.label} 1 · Archive Echo`, "Move up · position 2 · Echo"];
+      for (const title of titles) {
+        const read = await planningValue(f.api.read(f.book.id));
+        const draft = kind.create === "create-worldbuilding" ? { kind: kind.create, fields: { name: title, category: "", description: "", notes: title } }
+          : kind.create === "create-timeline" ? { kind: kind.create, fields: { title, when: "same time", description: "", notes: title } }
+          : { kind: kind.create, fields: { title, summary: "", notes: title } };
+        await planningValue(f.api.save({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft }));
+      }
+      for (const index of [2, 5]) {
+        const read = await planningValue(f.api.read(f.book.id));
+        const id = required(read.data?.[kind.key][index]).id;
+        await planningValue(f.api.save({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson,
+          draft: { kind: kind.archive, id, archived: true } }));
+      }
+    }
+    const data = required((await planningValue(f.api.read(f.book.id))).data);
+    const names = () => page().getAllByRole("button").map((button) => {
+      const name = (button.getAttribute("aria-label") ?? button.textContent ?? "").trim().replace(/\s+/g, " ");
+      expect(name).toContain((button.textContent ?? "").trim().replace(/\s+/g, " "));
+      return name;
+    });
+    click("Refresh planning");
+    await page().findByRole("button", { name: "World detail 1 · Edit Echo" });
+    expect(new Set(names()).size).toBe(names().length);
+    for (const kind of kinds) {
+      const suffix = kind.key === "timeline" ? " · same time" : "";
+      for (const [index, record] of data[kind.key].entries()) {
+        const title = String(record.kind === "worldbuilding" ? record.name : record.title);
+        const prefix = `${kind.label} ${index + 1}`;
+        await open(`${prefix} · ${record.archived ? "Restore" : "Edit"} ${title}${suffix}`);
+        if (record.archived) {
+          const raw = required(page().getByRole("dialog").querySelector("pre")?.textContent);
+          expect(JSON.parse(raw).id).toBe(record.id);
+        } else expect(input("Notes").value).toBe(title);
+        click("Close editor");
+        if (!record.archived) {
+          await open(`${prefix} · Archive ${title}${suffix}`);
+          expect(page().getByRole("checkbox", { name: "Confirm archive · keep all content" })).toBeTruthy();
+          const raw = required(page().getByRole("dialog").querySelector("pre")?.textContent);
+          expect(JSON.parse(raw).id).toBe(record.id);
+          click("Close editor");
+        }
+      }
+    }
+    await open("Order timeline");
+    expect(new Set(names()).size).toBe(names().length);
+    click("Move up · position 7 · Move up · position 2 · Echo · same time");
+    expect(new Set(names()).size).toBe(names().length);
+    testing.act(() => expect(f.navigation.allow()).toBe(false));
+    click("Keep editing");
+    expect(page().getByRole("button", { name: "Move down · position 6 · Move up · position 2 · Echo · same time" })).toBeTruthy();
   });
 });
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { copyListInput, copyListSchema, copyReadInput, copySchema, inspectPlanningCopy, type PlanningCopy, type PlanningCopyList, type PlanningRecovery } from "./planning-recovery";
 import type { Result } from "../ipc";
-import { envelopeFields, sameSource, sidecarIntentBytes, SidecarRefusalError, SidecarWriteError, type SidecarRead, type SidecarSave } from "../planning/checked-sidecar";
+import { envelopeFields, newSidecarAttempt, sameSource, sidecarAttemptIdSchema, sidecarAttemptSchema, sidecarIntentBytes, SidecarRefusalError, SidecarWriteError, type SidecarAttempt, type SidecarRead, type SidecarSave } from "../planning/checked-sidecar";
 import { bookIdSchema, decoder, encoder, hashSchema, increment, parseJson, planningSchema, RECOVERY_BYTES, serializeDocument, sourceSchema, validateDocument, type Planning, type SidecarDocument } from "../planning/schema";
 import { applyPlanningDraft, planningSaveSchema, type PlanningSaveRequest, type PlanningService } from "../planning/service";
 import { goalSchema, goalSaveSchema, type Goal, type GoalProgress, type GoalSaveRequest, type GoalService } from "../organization/goals";
@@ -21,6 +21,8 @@ export const planningChannels = {
   saveGoal: "planning:saveGoal", progress: "planning:progress", listCopies: "planning:listCopies", readCopy: "planning:readCopy"
 } as const;
 const scopeSchema = z.strictObject({ bookId: bookIdSchema.max(200) });
+const planningWireSchema = planningSaveSchema.extend({ attemptId: sidecarAttemptIdSchema.optional() });
+const goalWireSchema = goalSaveSchema.extend({ attemptId: sidecarAttemptIdSchema.optional() });
 const count = z.number().refine((n) => Number.isSafeInteger(n) && n >= 0);
 const progressSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("complete"), bookId: bookIdSchema, targetWords: goalSchema.shape.targetWords, savedWords: count, remaining: count.nullable() }),
@@ -85,9 +87,9 @@ export async function validateSidecarRead<T extends SidecarDocument>(schema: z.Z
 
 async function validateSave<T extends SidecarDocument>(schema: z.ZodType<T>, value: unknown, bookId: string, kind: "planning" | "goals"): Promise<SidecarSave<T>> {
   const result = z.discriminatedUnion("status", [
-    z.strictObject({ status: z.enum(["saved", "unchanged"]), current: z.unknown() }),
+    z.strictObject({ status: z.enum(["saved", "unchanged"]), current: z.unknown(), attempt: sidecarAttemptSchema }),
     z.strictObject({ status: z.literal("conflict"), bookId: bookIdSchema, reason: z.enum(["external-edit", "missing-file"]), savedAs: z.string().max(600), observed: sourceSchema,
-      preserved: z.strictObject({ hash: hashSchema, rawJson: z.string().refine((text) => encoder.encode(text).byteLength <= RECOVERY_BYTES) }) })
+      preserved: z.strictObject({ hash: hashSchema, rawJson: z.string().refine((text) => encoder.encode(text).byteLength <= RECOVERY_BYTES) }), attempt: sidecarAttemptSchema })
   ]).parse(value);
   if (result.status === "conflict") {
     if (result.bookId !== bookId || !result.savedAs.startsWith(`books/${bookId}/conflicts/${kind}.conflict-${result.reason}.`) ||
@@ -97,7 +99,7 @@ async function validateSave<T extends SidecarDocument>(schema: z.ZodType<T>, val
   }
   const current = await validateSidecarRead(schema, result.current, bookId);
   if (result.status === "saved" && current.source.kind !== "sha256") throw new Error("A saved result requires a persisted source.");
-  return { status: result.status, current };
+  return { status: result.status, current, attempt: result.attempt };
 }
 
 /** One validated handler shared by desktop IPC and browser hosts. Resolve the open Library once. */
@@ -105,9 +107,13 @@ export function planningHandler(getLibrary: () => { planning: PlanningService; g
   return async (operation: PlanningOperation, payload: unknown): Promise<Result<unknown>> => {
     let bookId: string;
     let request: PlanningSaveRequest | GoalSaveRequest | undefined;
+    let requestId: string | undefined;
     try {
-      if (operation === "save") request = planningSaveSchema.parse(payload);
-      else if (operation === "saveGoal") request = goalSaveSchema.parse(payload);
+      if (operation === "save" || operation === "saveGoal") {
+        const { attemptId, ...parsed } = (operation === "save" ? planningWireSchema : goalWireSchema).parse(payload);
+        request = parsed;
+        requestId = attemptId;
+      }
       bookId = operation === "listCopies" ? copyListInput.parse(payload).bookId
         : operation === "readCopy" ? copyReadInput.parse(payload).bookId
         : scopeSchema.parse(request ? { bookId: request.bookId } : payload).bookId;
@@ -116,16 +122,21 @@ export function planningHandler(getLibrary: () => { planning: PlanningService; g
     }
     try {
       const library = getLibrary();
+      // Keep validation state private across the service await, including a fresh host identity.
+      const attempt = request ? newSidecarAttempt(requestId) : undefined;
+      const submitted = request ? structuredClone(request) : undefined;
       const data = operation === "read" ? await library.planning.read(bookId)
         : operation === "listCopies" ? await library.planningRecovery.list(payload)
         : operation === "readCopy" ? await library.planningRecovery.read(payload)
         : operation === "readGoal" ? await library.goals.read(bookId)
         : operation === "progress" ? await library.goals.progress(bookId)
-        : operation === "save" ? await library.planning.save(request) : await library.goals.save(request);
+        : operation === "save" ? await library.planning.save(submitted, attempt ? { ...attempt } : undefined)
+        : await library.goals.save(submitted, attempt ? { ...attempt } : undefined);
       const output = await validateOutput(operation, data, bookId);
       if (operation === "save" || operation === "saveGoal") {
         const result = output as SidecarSave<Planning | Goal>;
-        await validateIntentResult(request as PlanningSaveRequest | GoalSaveRequest, result, operation === "save" ? "planning" : "goals");
+        if (!attempt) throw new Error("Missing planning attempt.");
+        await validateIntentResult(request as PlanningSaveRequest | GoalSaveRequest, result, operation === "save" ? "planning" : "goals", attempt);
         if (result.status === "conflict") {
           const copy = await library.planningRecovery.read({ bookId, name: result.savedAs.split("/").at(-1) });
           const verified = await validateOutput("readCopy", copy, bookId) as PlanningCopy;
@@ -176,6 +187,8 @@ export function createPlanningApi(invoke: (operation: PlanningOperation, payload
     // Retain a schema-detached intent before invoke can yield or mutate its own payload object.
     const request = operation === "save" ? planningSaveSchema.parse(payload)
       : operation === "saveGoal" ? goalSaveSchema.parse(payload) : undefined;
+    const attemptId = request ? globalThis.crypto.randomUUID() : undefined;
+    if (request) payload = { ...structuredClone(request), attemptId };
     if (operation === "listCopies") copyListInput.parse(payload);
     const copyRequest = operation === "readCopy" ? copyReadInput.parse(payload) : undefined;
     const response = resultEnvelope.parse(await invoke(operation, payload));
@@ -185,7 +198,8 @@ export function createPlanningApi(invoke: (operation: PlanningOperation, payload
     const data = await validateOutput(operation, response.data, bookId);
     if (request) {
       const result = data as SidecarSave<Planning | Goal>;
-      await validateIntentResult(request, result, operation === "save" ? "planning" : "goals");
+      if (!attemptId) throw new Error("Missing planning attempt.");
+      await validateIntentResult(request, result, operation === "save" ? "planning" : "goals", { requestId: attemptId });
     }
     if (copyRequest && (data as PlanningCopy).name !== copyRequest.name) throw new Error("Foreign copy reply.");
     return { ok: true, data };
@@ -201,7 +215,12 @@ export function createPlanningApi(invoke: (operation: PlanningOperation, payload
   };
 }
 
-async function validateIntentResult(request: PlanningSaveRequest | GoalSaveRequest, result: SidecarSave<Planning | Goal>, kind: "planning" | "goals"): Promise<void> {
+async function validateIntentResult(request: PlanningSaveRequest | GoalSaveRequest, result: SidecarSave<Planning | Goal>, kind: "planning" | "goals",
+  expectedAttempt: Pick<SidecarAttempt, "requestId"> & Partial<Pick<SidecarAttempt, "publicationId">>): Promise<void> {
+  const attempt = sidecarAttemptSchema.parse(result.attempt);
+  if (attempt.requestId !== expectedAttempt.requestId || (expectedAttempt.publicationId !== undefined && attempt.publicationId !== expectedAttempt.publicationId)) {
+    throw new Error("The planning reply belongs to a different save attempt.");
+  }
   const baseline = await validateSidecarRead<Planning | Goal>(kind === "planning" ? planningSchema : goalSchema, { bookId: request.bookId, source: request.source, baselineJson: request.baselineJson,
     data: request.baselineJson === null ? null : parseJson(encoder.encode(request.baselineJson))
   }, request.bookId);
@@ -212,27 +231,17 @@ async function validateIntentResult(request: PlanningSaveRequest | GoalSaveReque
   const proposed = request.draft.kind === "set-goal" ? {
     data: { ...(base ?? { schemaVersion: 1, bookId: request.bookId, revision: 1 }), targetWords: request.draft.targetWords },
     changed: (base?.targetWords ?? null) !== request.draft.targetWords
-  } : applyPlanningDraft(base as Planning | null, request.bookId, request.draft, (prefix) => {
-    const planning = current as Planning | null;
-    const original = base as Planning | null;
-    const list = prefix === "wb" ? planning?.worldbuilding : prefix === "tl" ? planning?.timeline
-      : prefix === "beat" ? planning?.beats : planning?.storyNotes ? [planning.storyNotes] : [];
-    const previous = prefix === "wb" ? original?.worldbuilding : prefix === "tl" ? original?.timeline
-      : prefix === "beat" ? original?.beats : original?.storyNotes ? [original.storyNotes] : [];
-    const added = list?.filter((record) => !previous?.some((old) => old.id === record.id)) ?? [];
-    if (added.length !== 1 || !added[0]) throw new Error("Foreign created planning record.");
-    return added[0].id;
-  });
+  } : applyPlanningDraft(base as Planning | null, request.bookId, request.draft, (prefix) => `${prefix}_${attempt.publicationId}`);
   const projected = proposed.changed ? { ...proposed.data, revision: increment(base?.revision ?? 0) } : proposed.data;
   if (result.status === "conflict") {
     const reason = result.observed.kind === "absent" && request.source.kind !== "absent" ? "missing-file" : "external-edit";
     const requestHash = await sha256(sidecarIntentBytes(request));
     if (!copy || copy.kind !== kind || result.reason !== reason || copy.metadata.reason !== reason ||
-        copy.metadata.requestHash !== requestHash || !sameSource(copy.metadata.baseline, request.source) ||
+        copy.metadata.requestHash !== requestHash || !sameValue(copy.metadata.attempt, attempt) || !sameSource(copy.metadata.baseline, request.source) ||
         !sameSource(copy.metadata.observed, result.observed) || !sameValue(current, projected)) {
       throw new Error("The recovery copy does not match the exact intended operation.");
     }
-    const raw = decoder.decode(serializeDocument({ ...projected, conflictMetadata: { reason, baseline: request.source, observed: result.observed, requestHash } }, RECOVERY_BYTES));
+    const raw = decoder.decode(serializeDocument({ ...projected, conflictMetadata: { reason, baseline: request.source, observed: result.observed, requestHash, attempt } }, RECOVERY_BYTES));
     if (raw !== result.preserved.rawJson) throw new Error("Unexpected recovery serialization.");
     return;
   }

@@ -94,7 +94,7 @@ function ManualFields({ draft, change }: { draft: Draft; change: (draft: Draft) 
     <ol aria-label="Draft planning order" className="space-y-2">{intent.ids.map((recordId, index) => <li key={recordId} className="flex flex-wrap items-center gap-2">
       <span className="break-words">{index + 1}. {draft.labels[recordId]}</span>
       {([-1, 1] as const).map((direction) => <Button key={direction} type="button" variant="secondary"
-        aria-label={`Move ${draft.labels[recordId]} · position ${index + 1} ${direction < 0 ? "up" : "down"}`} disabled={index + direction < 0 || index + direction >= intent.ids.length}
+        aria-label={`Move ${direction < 0 ? "up" : "down"} · position ${index + 1} · ${draft.labels[recordId]}`} disabled={index + direction < 0 || index + direction >= intent.ids.length}
         onClick={() => {
           const ids = [...intent.ids];
           const other = ids[index + direction];

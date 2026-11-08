@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { LibraryService } from "../../src/library/service";
 import { createPlanningApi, planningHandler, planningValue } from "../../src/library/planning-api";
 import { bookFilePath, chapterPath } from "../../src/library/paths";
-import { sidecarPath, type SidecarRead } from "../../src/planning/checked-sidecar";
+import { sidecarPath, type SidecarRead, type SidecarSave } from "../../src/planning/checked-sidecar";
 import { encoder, type Planning } from "../../src/planning/schema";
-import type { PlanningDraft } from "../../src/planning/service";
+import type { PlanningDraft, PlanningSaveRequest } from "../../src/planning/service";
 import { InMemoryLibraryPort } from "../support/in-memory-port";
 import { envelope, fields } from "./fixture";
 
@@ -197,9 +197,12 @@ describe("manual planning through real Library and validated handler", () => {
   test("handler also rejects a self-consistent response for a different operation", async () => {
     const f = await setup();
     const base = await f.read();
-    const otherResult = await f.save({ kind: "create-beat", fields: beat }, base);
+    const save = f.library.planning.save.bind(f.library.planning);
     let calls = 0;
-    f.library.planning.save = async () => { calls++; return otherResult; };
+    f.library.planning.save = async (_input, attempt) => {
+      calls++;
+      return save({ ...envelope(base), draft: { kind: "create-beat", fields: beat } }, attempt);
+    };
     const handler = planningHandler(() => f.library);
     expect(await handler("save", { ...envelope(base), draft: { kind: "create-timeline", fields: timeline } })).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
     expect(calls).toBe(1);
@@ -233,17 +236,20 @@ describe("manual planning through real Library and validated handler", () => {
       : operation === "noop" ? { kind: "edit-timeline", id, fields: timeline }
       : { kind: "archive-timeline", id, archived: operation === "archive" };
     const request = { ...envelope(base), draft };
-    const result = await planningValue(f.api.save(request));
-    if (result.status === "conflict") throw new Error("Unexpected conflict");
-    const wrong = structuredClone(result);
-    const current = required(wrong.current.data);
-    // Correct intent fields but unrelated data was dropped/changed: reject a self-consistent forged hash.
-    current.worldbuilding = [{ id: "wb_foreign01", bookId: f.book.id, revision: 1, archived: false, kind: "worldbuilding", ...fields }];
-    wrong.current.baselineJson = JSON.stringify(current);
-    wrong.current.source = { kind: "sha256", revision: current.revision, value: await f.port.sha256(encoder.encode(wrong.current.baselineJson)) };
     let calls = 0;
-    const foreign = createPlanningApi(async () => { calls++; return { ok: true, data: wrong }; });
-    await expect(foreign.save(request)).rejects.toThrow();
+    const handler = planningHandler(() => f.library);
+    const foreign = createPlanningApi(async (kind, payload) => {
+      calls++;
+      const wrong = await planningValue(handler(kind, payload)) as SidecarSave<Planning>;
+      if (wrong.status === "conflict") throw new Error("Unexpected conflict");
+      const current = required(wrong.current.data);
+      // Keep this call's real binding and intent fields, but change unrelated data and self-hash it.
+      current.worldbuilding = [{ id: "wb_foreign01", bookId: f.book.id, revision: 1, archived: false, kind: "worldbuilding", ...fields }];
+      wrong.current.baselineJson = JSON.stringify(current);
+      wrong.current.source = { kind: "sha256", revision: current.revision, value: await f.port.sha256(encoder.encode(wrong.current.baselineJson)) };
+      return { ok: true, data: wrong };
+    });
+    await expect(foreign.save(request)).rejects.toThrow("exact intended operation");
     expect(calls).toBe(1);
   });
 
@@ -254,11 +260,14 @@ describe("manual planning through real Library and validated handler", () => {
     await f.seed({ ...data, ...JSON.parse('{"__proto__":{}}') });
     const base = await f.read();
     const request = { ...envelope(base), draft: { kind: "clear-story-notes" as const } };
-    const current = structuredClone(base);
-    Reflect.deleteProperty(required(current.data), "__proto__");
-    const bad = createPlanningApi(async () => ({ ok: true, data: { status: "unchanged", current } }));
-    await expect(bad.save(request)).rejects.toThrow();
     const handler = planningHandler(() => f.library);
+    const bad = createPlanningApi(async (kind, payload) => {
+      const reply = await planningValue(handler(kind, payload)) as SidecarSave<Planning>;
+      if (reply.status !== "unchanged") throw new Error("Expected unchanged");
+      Reflect.deleteProperty(required(reply.current.data), "__proto__");
+      return { ok: true, data: reply };
+    });
+    await expect(bad.save(request)).rejects.toThrow();
     for (const draft of [
       { kind: "edit-timeline", id: required(data.beats[0]).id, fields: timeline },
       { kind: "create-beat", fields: { ...beat, extra: "not allowed" } },
@@ -304,16 +313,27 @@ describe("manual planning through real Library and validated handler", () => {
     expect(result.current.baselineJson).toBe(`${JSON.stringify(result.current.data, null, 2)}\n`);
     const originalSave = f.library.planning.save.bind(f.library.planning);
     for (const format of ["compact", "reordered"] as const) {
-      const forged = structuredClone(result);
-      const data = required(forged.current.data);
-      forged.current.baselineJson = format === "compact" ? JSON.stringify(data)
-        : `${JSON.stringify(Object.fromEntries(Object.entries(data).reverse()), null, 2)}\n`;
-      forged.current.source = { kind: "sha256", revision: data.revision, value: await f.port.sha256(encoder.encode(forged.current.baselineJson)) };
+      const changeSerialization = async (forged: SidecarSave<Planning>) => {
+        if (forged.status !== "saved") throw new Error("Expected a real changed save");
+        const data = required(forged.current.data);
+        forged.current.baselineJson = format === "compact" ? JSON.stringify(data)
+          : `${JSON.stringify(Object.fromEntries(Object.entries(data).reverse()), null, 2)}\n`;
+        forged.current.source = { kind: "sha256", revision: data.revision, value: await f.port.sha256(encoder.encode(forged.current.baselineJson)) };
+        return forged;
+      };
+      await f.seed(base.data);
       let calls = 0;
-      f.library.planning.save = async () => { calls++; return forged; };
+      f.library.planning.save = async (input, attempt) => {
+        calls++;
+        return changeSerialization(await originalSave(input, attempt));
+      };
       expect(await planningHandler(() => f.library)("save", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
       expect(calls).toBe(1);
-      const transport = createPlanningApi(async () => ({ ok: true, data: forged }));
+      f.library.planning.save = originalSave;
+      await f.seed(base.data);
+      const handler = planningHandler(() => f.library);
+      const transport = createPlanningApi(async (kind, payload) => ({ ok: true,
+        data: await changeSerialization(await planningValue(handler(kind, payload)) as SidecarSave<Planning>) }));
       await expect(transport.save(request)).rejects.toThrow("serialization");
     }
     f.library.planning.save = originalSave;
@@ -324,15 +344,17 @@ describe("manual planning through real Library and validated handler", () => {
     expect(copy.hash).toBe(conflict.preserved.hash);
     expect(Object.hasOwn(JSON.parse(copy.rawJson), "__proto__")).toBe(true);
     const replay = createPlanningApi(async () => ({ ok: true, data: conflict }));
-    expect((await planningValue(replay.save(request))).status).toBe("conflict");
+    await expect(replay.save(request)).rejects.toThrow("different save attempt");
     const different = { ...envelope(base), draft: { kind: "create-beat" as const, fields: { ...beat, title: "Different submitted draft" } } };
     await expect(replay.save(different)).rejects.toThrow();
-    await expect(createPlanningApi(async (_operation, payload) => {
+    // Match the fresh token while substituting an authentic receipt for a different intent.
+    const handler = planningHandler(() => f.library);
+    await expect(createPlanningApi(async (kind, payload) => {
       Object.assign(payload as object, request);
-      return { ok: true, data: conflict };
-    }).save(different)).rejects.toThrow();
+      return handler(kind, payload);
+    }).save(different)).rejects.toThrow("exact intended operation");
     let replayCalls = 0;
-    f.library.planning.save = async () => { replayCalls++; return conflict; };
+    f.library.planning.save = async (_input, attempt) => { replayCalls++; return originalSave(request, attempt); };
     expect(await planningHandler(() => f.library)("save", different)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
     expect(replayCalls).toBe(1);
   });
@@ -342,18 +364,28 @@ describe("manual planning through real Library and validated handler", () => {
     const base = await f.read();
     await f.save({ kind: "create-beat", fields: beat });
     const request = { ...envelope(base), draft: { kind: "create-timeline" as const, fields: timeline } };
-    const conflict = await planningValue(f.api.save(request));
-    if (conflict.status !== "conflict") throw new Error("Expected conflict");
-    const changed = structuredClone(conflict);
-    const parsed = JSON.parse(changed.preserved.rawJson);
-    parsed.timeline[0].notes = "Different copy content despite unchanged request digest";
-    changed.preserved.rawJson = `${JSON.stringify(parsed, null, 2)}\n`;
-    changed.preserved.hash = await f.port.sha256(encoder.encode(changed.preserved.rawJson));
-    await expect(createPlanningApi(async () => ({ ok: true, data: changed })).save(request)).rejects.toThrow();
+    const handler = planningHandler(() => f.library);
+    const alter = async (rawJson: string) => {
+      const parsed = JSON.parse(rawJson);
+      parsed.timeline[0].notes = "Different copy content despite unchanged request digest and attempt";
+      const raw = `${JSON.stringify(parsed, null, 2)}\n`;
+      return { rawJson: raw, hash: await f.port.sha256(encoder.encode(raw)) };
+    };
+    await expect(createPlanningApi(async (kind, payload) => {
+      const reply = await planningValue(handler(kind, payload)) as SidecarSave<Planning>;
+      if (reply.status !== "conflict") throw new Error("Expected conflict");
+      reply.preserved = await alter(reply.preserved.rawJson);
+      return { ok: true, data: reply };
+    }).save(request)).rejects.toThrow("exact intended operation");
     const readCopy = f.library.planningRecovery.read.bind(f.library.planningRecovery);
-    f.library.planning.save = async () => conflict;
-    f.library.planningRecovery.read = async (input) => ({ ...await readCopy(input), ...changed.preserved });
+    let copyReads = 0;
+    f.library.planningRecovery.read = async (input) => {
+      copyReads++;
+      const copy = await readCopy(input);
+      return { ...copy, ...await alter(copy.rawJson) };
+    };
     expect(await planningHandler(() => f.library)("save", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(copyReads).toBe(1);
   });
 
   test("equivalent clear and set intents cannot replay a recovery receipt even when their projected documents match", async () => {
@@ -361,9 +393,10 @@ describe("manual planning through real Library and validated handler", () => {
     await f.save({ kind: "set-story-notes", fields: notes });
     const base = await f.read();
     await f.save({ kind: "create-beat", fields: beat });
-    const result = await f.save({ kind: "clear-story-notes" }, base);
     const request = { ...envelope(base), draft: { kind: "set-story-notes" as const, fields: { workingNotes: "", styleNotes: "", synopsis: "" } } };
-    await expect(createPlanningApi(async () => ({ ok: true, data: result })).save(request)).rejects.toThrow();
+    const handler = planningHandler(() => f.library);
+    await expect(createPlanningApi(async (kind, payload) => handler(kind, { ...payload as object, draft: { kind: "clear-story-notes" } }))
+      .save(request)).rejects.toThrow("exact intended operation");
   });
 
   test("pre-publication output overflow refuses with zero commits and permits a shortened explicit save", async () => {
@@ -379,6 +412,127 @@ describe("manual planning through real Library and validated handler", () => {
     expect(commits).toBe(0); expect(await f.raw()).toEqual(before);
     expect((await planningValue(f.api.save({ ...request, draft: { ...request.draft, fields: { ...request.draft.fields, description: "Short" } } }))).status).toBe("saved");
     expect((await f.read()).data?.timeline[0]?.description).toBe("Short");
+  });
+
+  const creations: { prefix: string; draft: PlanningDraft }[] = [
+    { prefix: "wb", draft: { kind: "create-worldbuilding", fields } },
+    { prefix: "tl", draft: { kind: "create-timeline", fields: timeline } },
+    { prefix: "beat", draft: { kind: "create-beat", fields: beat } },
+    { prefix: "sn", draft: { kind: "set-story-notes", fields: notes } }
+  ];
+  test.each(creations)("$prefix identical stale creates cannot replay an earlier durable publication", async ({ prefix, draft }) => {
+    const f = await setup();
+    const base = await f.read();
+    await f.save({ kind: "create-beat", fields: beat });
+    const request = { ...envelope(base), draft };
+    const first = await planningValue(f.api.save(request));
+    const second = await planningValue(f.api.save(request));
+    if (first.status !== "conflict" || second.status !== "conflict") throw new Error("Expected stale copies");
+    const document = (result: typeof first) => JSON.parse(result.preserved.rawJson) as Planning;
+    const createdId = (data: Planning) => prefix === "wb" ? data.worldbuilding[0]?.id
+      : prefix === "tl" ? data.timeline[0]?.id : prefix === "beat" ? data.beats[0]?.id : data.storyNotes?.id;
+    expect(first.attempt?.requestId).not.toBe(second.attempt?.requestId);
+    expect(first.attempt?.publicationId).not.toBe(second.attempt?.publicationId);
+    expect(createdId(document(first))).toBe(`${prefix}_${required(first.attempt).publicationId}`);
+    expect(createdId(document(second))).not.toBe(createdId(document(first)));
+    for (const receipt of [first, second]) {
+      const copy = await planningValue(f.api.readCopy(f.book.id, required(receipt.savedAs.split("/").at(-1))));
+      expect(copy.rawJson).toBe(receipt.preserved.rawJson);
+      expect(JSON.parse(copy.rawJson).conflictMetadata.attempt).toEqual(receipt.attempt);
+    }
+    await expect(createPlanningApi(async () => ({ ok: true, data: first })).save(request)).rejects.toThrow("different save attempt");
+
+    // A real later write happens, but the service returns the older authentic copy instead.
+    const save = f.library.planning.save.bind(f.library.planning);
+    const later: SidecarSave<Planning>[] = [];
+    f.library.planning.save = async (input, attempt) => { later.push(await save(input, attempt)); return first; };
+    const handler = planningHandler(() => f.library);
+    // Reusing the client token does not reuse the host's independently issued publication identity.
+    expect(await handler("save", { ...request, attemptId: required(first.attempt).requestId }))
+      .toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(later).toHaveLength(1);
+    const third = required(later[0]);
+    if (third.status !== "conflict") throw new Error("Expected third durable copy");
+    expect(third.attempt?.requestId).toBe(first.attempt?.requestId);
+    expect(third.attempt?.publicationId).not.toBe(first.attempt?.publicationId);
+    expect(createdId(document(third))).not.toBe(createdId(document(first)));
+    expect((await planningValue(f.api.readCopy(f.book.id, required(third.savedAs.split("/").at(-1))))).rawJson).toBe(third.preserved.rawJson);
+    expect((await f.read()).data?.beats).toHaveLength(1);
+
+    // Echoing the new binding cannot make the old created identity match this invocation.
+    let copyReads = 0;
+    const readCopy = f.library.planningRecovery.read.bind(f.library.planningRecovery);
+    f.library.planningRecovery.read = async (input) => { copyReads++; return readCopy(input); };
+    f.library.planning.save = async (_input, attempt) => {
+      const replay = structuredClone(first);
+      replay.attempt = required(attempt);
+      const old = JSON.parse(replay.preserved.rawJson);
+      old.conflictMetadata.attempt = attempt;
+      replay.preserved.rawJson = `${JSON.stringify(old, null, 2)}\n`;
+      replay.preserved.hash = await f.port.sha256(encoder.encode(replay.preserved.rawJson));
+      return replay;
+    };
+    expect(await handler("save", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(copyReads).toBe(0);
+    f.library.planning.save = save;
+    await expect(createPlanningApi(async (operation, payload) => {
+      const reply = await planningValue(handler(operation, payload)) as SidecarSave<Planning>;
+      if (reply.status !== "conflict") throw new Error("Expected current conflict");
+      const id = required(createdId(document(reply)));
+      // Keep metadata/binding valid and update every order reference as well as the record ID.
+      reply.preserved.rawJson = reply.preserved.rawJson.replaceAll(id, `${prefix}_${globalThis.crypto.randomUUID()}`);
+      reply.preserved.hash = await f.port.sha256(encoder.encode(reply.preserved.rawJson));
+      return { ok: true, data: reply };
+    }).save(request)).rejects.toThrow("exact intended operation");
+  });
+
+  test.each(["draft", "binding"] as const)("handler pins validation state while a service mutates its pending %s", async (scenario) => {
+    const f = await setup();
+    const base = await f.read();
+    const request = { ...envelope(base), draft: { kind: "create-timeline" as const, fields: timeline } };
+    const save = f.library.planning.save.bind(f.library.planning);
+    let entered!: () => void;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { entered = resolve; });
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    let mutate!: () => void;
+    let calls = 0;
+    f.library.planning.save = async (input, attempt) => {
+      calls++;
+      const submitted = input as PlanningSaveRequest;
+      mutate = () => {
+        if (scenario === "binding") required(attempt).publicationId = globalThis.crypto.randomUUID();
+        else submitted.draft = { kind: "create-timeline", fields: { ...timeline, title: "Different pending intent" } };
+      };
+      entered();
+      await wait;
+      return save(submitted, attempt);
+    };
+    const response = planningHandler(() => f.library)("save", request);
+    await pending;
+    mutate();
+    expect(request.draft.fields.title).toBe(timeline.title);
+    release();
+    expect(await response).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(calls).toBe(1);
+    expect((await f.read()).data?.timeline).toHaveLength(1);
+  });
+
+  test("goal receipts use fresh bindings and a pending service cannot change the validated target", async () => {
+    const f = await setup();
+    const base = await planningValue(f.api.readGoal(f.book.id));
+    const request = { ...envelope(base), draft: { kind: "set-goal" as const, targetWords: 100 } };
+    const first = await planningValue(f.api.saveGoal(request));
+    await expect(createPlanningApi(async () => ({ ok: true, data: first })).saveGoal(request)).rejects.toThrow("different save attempt");
+    const save = f.library.goals.save.bind(f.library.goals);
+    f.library.goals.save = async (input, attempt) => {
+      await Promise.resolve();
+      const submitted = input as typeof request;
+      submitted.draft.targetWords = 200;
+      return save(submitted, attempt);
+    };
+    expect(await planningHandler(() => f.library)("saveGoal", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(request.draft.targetWords).toBe(100);
   });
 
   test.each([1, 1_000_000_000])("sparse unknown transport arrays of length %s are refused before serialization", async (length) => {
