@@ -7,6 +7,18 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Voice permission host owner
+
+- Put both desktop default-session permission handlers under one deny-by-default owner. The real
+  callback sender window, trusted top-level frame, renderer origin (packaged `file://` or the dev
+  server's exact origin) and audio-only media list decide the result; foreign windows, subframes,
+  foreign/missing origins, camera, display capture, mixed media and missing details deny. Trusted
+  push-to-talk audio keeps its existing explicit-press path and creates no grant. Add an in-memory
+  exact hands-free grant with an injected clock, explicit register/replace/revoke/clear and
+  window-close/quit revocation, checked through the core permission predicates. 34 synthetic host
+  tests cover the decisions; OS grants, microphone, mounted hands-free capture and 038 T022 remain
+  unclaimed.
+
 ### Hands-free pure core
 
 - Keep Pause/Stop work inhibition through late permission success. Retain exact bounded failed

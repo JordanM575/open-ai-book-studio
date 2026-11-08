@@ -80,9 +80,15 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   Synthetic tests cover the 1.2s/250ms/60s defaults, bounded reads/PCM, explicit held state, exact
   unconsumed suffix, noise/silence, stale results and never-settling slots. The injected classifier
   is not a certified acoustic detector; actual host intake/echo/local-engine qualification remains.
-- [ ] T015 Add pure trusted-main-frame/audio-grant predicates; wire both permission handlers under one owner.
+- [x] T015 Add pure trusted-main-frame/audio-grant predicates; wire both permission handlers under one owner.
   Pure `permission.ts` and synthetic sender/frame/origin/audio-only/expiry tests are implemented.
-  Both real Electron handlers, actual OS grants and owned-track lifecycle still need host integration.
+  The desktop host now owns both Electron handlers in `apps/desktop/src/main/voice-permissions.ts`.
+  It derives the renderer origin from the real packaged `file://` or dev-server load path, denies
+  missing/ambiguous sender, frame, origin and media facts, and preserves trusted audio-only
+  push-to-talk without creating a grant. An in-memory exact hands-free grant (injected clock,
+  register/replace/revoke/clear, window-close/quit revocation) is checked through pure
+  `permitsAudio`/`activeAudioGrant`; 34 synthetic host tests pass. Actual OS grants/microphone,
+  mounted hands-free capture, owned-track stop and T022–T024 remain unclaimed.
 - [ ] T016 Add host-owned cancellable STT/TTS request IDs, per-chunk route checks and honest unknown-charge state.
 - [ ] T017 Mount session/transcript/correct/confirm/stop controls with actual Discuss/book/chapter/thread binding.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
