@@ -195,6 +195,9 @@ export const reviewReportSchema = z
       issue(context, ["findings"], "A finding ID is repeated.");
     }
     const books = new Set(report.books.map((book) => book.bookId));
+    if (!books.has(report.owner.bookId)) {
+      issue(context, ["owner", "bookId"], "A saved report must live in one of the books it reviewed.");
+    }
     const sourceBooks = new Set(report.sources.map((source) => source.bookId));
     if (sourceBooks.size !== books.size || [...sourceBooks].some((bookId) => !books.has(bookId))) {
       issue(context, ["books"], "The disclosed books and selected sources disagree.");
@@ -207,8 +210,14 @@ export const reviewReportSchema = z
     if (report.coverage.books !== report.books.length) issue(context, ["coverage", "books"], "The book count is wrong.");
     if (report.coverage.sources !== report.sources.length) issue(context, ["coverage", "sources"], "The source count is wrong.");
     if (report.coverage.items !== items) issue(context, ["coverage", "items"], "The selected item count is wrong.");
+    if (items > REVIEW_LIMITS.items) {
+      issue(context, ["coverage", "items"], "The selected item count exceeds the review limit.");
+    }
     if (report.coverage.sourceBytes !== sourceBytes) {
       issue(context, ["coverage", "sourceBytes"], "The selected byte count is wrong.");
+    }
+    if (report.coverage.contentBytes < sourceBytes) {
+      issue(context, ["coverage", "contentBytes"], "Content bytes cannot be fewer than the selected source bytes.");
     }
     if (Date.parse(report.run.completedAt) < Date.parse(report.run.startedAt)) {
       issue(context, ["run"], "The run cannot finish before it starts.");
@@ -337,6 +346,11 @@ export const reviewDispositionsSchema = z
     if (!unique(record.dispositions.map((entry) => entry.findingId))) {
       issue(context, ["dispositions"], "A finding ID is repeated.");
     }
+    const ordered = record.dispositions.every((entry, index) => {
+      const previous = record.dispositions[index - 1];
+      return previous === undefined || previous.findingId < entry.findingId;
+    });
+    if (!ordered) issue(context, ["dispositions"], "Dispositions must be ordered by finding ID.");
     if (Date.parse(record.createdAt) > Date.parse(record.updatedAt)) {
       issue(context, ["updatedAt"], "A record cannot be updated before it was created.");
     }
@@ -485,12 +499,19 @@ export const reviewCampaignSchema = z
     }
     for (const [index, entry] of record.synthesis.entries()) {
       const path = ["synthesis", index];
+      const stage = record.stages.find((candidate) => candidate.stageId === entry.stageId);
       if (!stageIds.has(entry.stageId)) issue(context, [...path, "stageId"], "The synthesis stage does not exist.");
+      else if (stage?.kind !== "synthesis") {
+        issue(context, [...path, "stageId"], "A synthesis description must name a synthesis stage.");
+      }
       if (!unique(entry.sourceStageIds)) issue(context, [...path, "sourceStageIds"], "A source stage is repeated.");
       if (entry.sourceStageIds.some((stageId) => !stageIds.has(stageId) || stageId === entry.stageId)) {
         issue(context, [...path, "sourceStageIds"], "A synthesis source stage does not exist.");
       }
-      if (reportRuns.has(entry.report.runId)) issue(context, [...path, "report"], "A report is used twice.");
+      // A completed synthesis stage naturally names the same saved report in both places.
+      if (entry.report.runId !== stage?.report?.runId && reportRuns.has(entry.report.runId)) {
+        issue(context, [...path, "report"], "A report is used twice.");
+      }
       reportRuns.add(entry.report.runId);
     }
     const synthesisStages = record.stages.filter((stage) => stage.kind === "synthesis");
@@ -581,6 +602,8 @@ function assertSupportedSemantics(kind: ReviewRecordKind, raw: Record<string, un
   }
   if (kind === "reader-profile-record" && isRecord(raw.profile)) {
     check(raw.profile.origin, ["builtin", "author"], "lens origin");
+    const lensMembers = new Set(["name", "purpose", "focus", "guidance", "id", "origin", "version", "digest"]);
+    if (Object.keys(raw.profile).some((member) => !lensMembers.has(member))) unsupported("lens member");
   }
   if (kind === "review-campaign") {
     check(raw.status, ["planned", "running", "incomplete", "complete"], "campaign status");
@@ -1032,7 +1055,8 @@ export function buildCampaignRecord(input: NewCampaignRecordInput): ReviewCampai
     createdAt: input.createdAt,
     updatedAt: input.updatedAt
   };
-  if (!reviewCampaignSchema.safeParse(record).success) {
+  const parsedCampaign = reviewCampaignSchema.safeParse(record);
+  if (!parsedCampaign.success) {
     throw new ReviewRecordError("invalid", "The campaign manifest is invalid or its coverage disagrees. Nothing was written.");
   }
   return record as ReviewCampaign;

@@ -239,6 +239,17 @@ describe("saved disposition format 1", () => {
     expect(refusal(() => decoded(unsupported))).toBe("unsupported");
     expect(refusal(() => decodeReviewRecord(bytesOf(raw), { kind: "review-dispositions", bookId: "book_999999" }))).toBe("corrupt");
   });
+
+  test("refuses dispositions that are not ordered by finding ID", () => {
+    const first = initial();
+    const second = applyDispositionEvent(first.record, { findingId: "finding-0", state: "ignored", at: later });
+    const ordered = second.record.dispositions.map((entry) => entry.findingId);
+    expect(ordered).toEqual([...ordered].sort());
+    const raw = copy(second.record) as Record<string, unknown>;
+    raw.dispositions = [...(raw.dispositions as unknown[])].reverse();
+    expect(refusal(() => decodeReviewRecord(bytesOf(raw), { kind: "review-dispositions", bookId })))
+      .toBe("corrupt");
+  });
 });
 
 describe("saved reader lens and campaign formats", () => {
@@ -265,6 +276,10 @@ describe("saved reader lens and campaign formats", () => {
     const raw = copy(record) as Record<string, unknown>;
     expect(refusal(() => decodeReviewRecord(bytesOf({ ...raw, id: "author-lens-2" }), { kind: "reader-profile-record", bookId }))).toBe("corrupt");
     expect(refusal(() => decodeReviewRecord(bytesOf(raw), { kind: "reader-profile-record", bookId: "book_999999" }))).toBe("corrupt");
+    const unknownMember = copy(record) as Record<string, unknown>;
+    (unknownMember.profile as Record<string, unknown>).style = "future";
+    expect(refusal(() => decodeReviewRecord(bytesOf(unknownMember), { kind: "reader-profile-record", bookId })))
+      .toBe("unsupported");
     const builtin = await builtinReaderProfile("alpha");
     expect(() =>
       buildProfileRecord({
@@ -365,5 +380,60 @@ describe("saved reader lens and campaign formats", () => {
         updatedAt: at
       })
     ).toThrow();
+  });
+});
+
+describe("saved record review corrections", () => {
+  test("a report must live in one of the books it reviewed", async () => {
+    const raw = copy(await report());
+    (raw.owner as Record<string, unknown>).bookId = "book_999999";
+    expect(refusal(() => decodeReviewRecord(bytesOf(raw), { kind: "review-report", bookId: "book_999999" })))
+      .toBe("corrupt");
+  });
+
+  test("content bytes cannot be fewer than the selected source bytes", async () => {
+    const raw = copy(await report());
+    (raw.coverage as Record<string, unknown>).contentBytes = 0;
+    expect(refusal(() => decodeReviewRecord(bytesOf(raw), { kind: "review-report", bookId })))
+      .toBe("corrupt");
+  });
+
+  test("a completed synthesis repeats its own stage report and must name a synthesis stage", async () => {
+    const first = await report();
+    const second = await report(bookId, "run_00000002");
+    const hashOf = (value: unknown) => createHash("sha256").update(encodeReviewRecord("review-report", value)).digest("hex");
+    const alpha = await builtinReaderProfile("alpha");
+    const planned = [{ start: citationFor(bookId).start, end: citationFor(bookId).end }];
+    const draft: CampaignDraft = {
+      status: "complete",
+      profile: { id: alpha.id, version: alpha.version, digest: alpha.digest },
+      sources: [{
+        sourceId: "source-1", bookId, chapterId: "ch_123456", title: "Synthetic chapter",
+        position: 1, version: 3, hash: "a".repeat(64), planned
+      }],
+      stages: [
+        { stageId: "stage-1", kind: "range", sourceIds: ["source-1"], planned,
+          status: "completed", report: { runId, hash: hashOf(first) }, at: afterRun },
+        { stageId: "stage-2", kind: "synthesis", sourceIds: ["source-1"], planned: [],
+          status: "completed", report: { runId: "run_00000002", hash: hashOf(second) }, at: afterRun }
+      ],
+      synthesis: [{ stageId: "stage-2", sourceStageIds: ["stage-1"],
+        report: { runId: "run_00000002", hash: hashOf(second) } }],
+      plannedAt: stamp,
+      sourceBytes: 40
+    };
+    const record = buildCampaignRecord({
+      bookId, id: "campaign-1", revision: 1, base: { kind: "absent", revision: 0 }, draft,
+      createdAt: afterRun, updatedAt: afterRun
+    });
+    expect(() => decodeReviewRecord(encodeReviewRecord("review-campaign", record),
+      { kind: "review-campaign", bookId })).not.toThrow();
+
+    // Naming a range stage as the synthesis stage is refused.
+    const wrong = copy(record) as Record<string, unknown>;
+    const wrongSynthesis = (wrong.synthesis as Array<Record<string, unknown>>)[0] as Record<string, unknown>;
+    wrongSynthesis.stageId = "stage-1";
+    expect(refusal(() => decodeReviewRecord(bytesOf(wrong), { kind: "review-campaign", bookId })))
+      .toBe("corrupt");
   });
 });

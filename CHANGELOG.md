@@ -14,8 +14,12 @@ Update the `Unreleased` section before every commit.
   hash. Add one checked writer on `LibraryService.reviewRecords`: Library queue/journal commits,
   conflict copies, readback verification, grouped `.studio/trash` move/restore and no pruning.
   Unknown plain fields survive read-modify-write; malformed, duplicate-key, lone-surrogate,
-  lossy-number and oversized documents are refused without rewriting. 039 T014/T015 remain partial:
-  segmented continuation, IPC/UI/export mounting and independent review are still open.
+  lossy-number and oversized documents are refused without rewriting. Review corrections: require a
+  saved report to live in one of the books it reviewed, cap `coverage.items`, refuse
+  `contentBytes < sourceBytes`, refuse mis-ordered dispositions, treat an unknown member inside a
+  closed lens as unsupported, validate campaign synthesis stages and allow a completed synthesis to
+  repeat its own stage report. 039 T014/T015 remain partial: segmented continuation, IPC/UI/export
+  mounting and independent review are still open.
 
 ### Conversation storage
 

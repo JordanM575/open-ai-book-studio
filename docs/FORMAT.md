@@ -737,10 +737,10 @@ The report also records the accepted envelope's aggregate facts: `sourceBytes` a
 | `savedAt` | yes | Explicit save time, not the run time. |
 | `analyzer` | yes | `{ provider, model, endpointIdentity }`; provider/model attribution only, never a credential or endpoint URL. |
 | `profile` | yes | Complete reader-lens snapshot used by the run: `name`, `purpose`, `focus`, `guidance`, `id`, `origin`, `version`, `digest`. A built-in lens is stored here and needs no `profiles/` file. |
-| `books` | yes | 1–4 `{ bookId, title, consentRevision, termsRevision, enabledTools }`; the source books and no others. |
+| `books` | yes | 1–4 `{ bookId, title, consentRevision, termsRevision, enabledTools }`; the source books and no others. The owning book in `owner.bookId` must be one of them. |
 | `disclosure` | yes | `{ contractVersion:1, requestId, scopeDigest, capturedAt, promptDigest, priorFeedback:{count, digest} }`. The prompt and feedback text are not retained; their digests keep input-change attribution. |
 | `sources` | yes | Ordered source coverage, below. No source body text. |
-| `coverage` | yes | `{ books, sources, items, sourceBytes, contentBytes }`; counts must equal the arrays and byte sums. |
+| `coverage` | yes | `{ books, sources, items, sourceBytes, contentBytes }`; counts must equal the arrays, `items` is at most 64, and byte sums must match with `contentBytes >= sourceBytes`. |
 | `findings` | yes | 0–50 bounded findings, below. |
 | `verification` | yes | `"verified-at-capture"`. Currentness is computed at read/export time and is never stored as a claim. |
 
@@ -772,8 +772,9 @@ bounded reason (`shape`, `source`, `revision`, `range`, `quote`) and never becom
 An entry is `{ findingId, state, updatedAt, events }`, where `state` is `open`, `ignored`,
 `author-resolved` or `reopened`. Events are append-only, ordered by `sequence` starting at 1, with
 non-decreasing `at`, `from` equal to the previous `to` (`null` for the first), and an `action` of
-`set`, `ignore`, `resolve` or `reopen` matching the new state. `updatedAt` must equal the last
-event's `at`. A request that repeats the current state with no note is a read, not a write.
+`set`, `ignore`, `resolve` or `reopen` matching the new state. An event may carry an optional `note`
+of at most 2,000 Unicode scalar values; it is part of the append-only history. `updatedAt` must equal
+the last event's `at`. A request that repeats the current state with no note is a read, not a write.
 Disposition is independent of freshness: a rerun never resolves or relabels an earlier finding.
 The writer checks that the finding exists in the saved report and that the report hash has not
 changed; an unknown finding or changed report refuses without writing.
