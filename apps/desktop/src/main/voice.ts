@@ -12,6 +12,7 @@ import {
 import { DEFAULT_VOICE_PREFERENCES, type TranscriptionSelection, type VoicePreferences } from "@ai-book-studio/core/providers/voice-preferences";
 import { ProviderError, type ConnectionSummary } from "@ai-book-studio/core/providers/types";
 import type { ProviderService } from "./providers";
+import { requestSignal } from "./voice-transport";
 
 const TRANSCRIBE_TIMEOUT_MS = 120_000;
 
@@ -20,6 +21,8 @@ export interface TranscribeInput {
   expectedSelection: TranscriptionSelection;
   languageBias?: string[];
   keywords?: string[];
+  /** Host-owned cancellation. Closing it stops the local wait; it is not a provider refund. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -79,9 +82,15 @@ export class VoiceService {
           ...(isMeta ? {} : { "content-type": "application/json" })
         },
         body,
-        signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS)
+        signal: requestSignal(TRANSCRIBE_TIMEOUT_MS, input.signal)
       });
     } catch (error) {
+      if (input.signal?.aborted) {
+        throw new ProviderError("unknown", "The transcription request was cancelled.", {
+          provider: credential.provider,
+          cause: input.signal.reason ?? error
+        });
+      }
       throw new ProviderError("offline", "Could not reach the transcription service. Check your connection.", {
         provider: credential.provider,
         cause: error

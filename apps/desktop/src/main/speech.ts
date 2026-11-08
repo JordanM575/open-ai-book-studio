@@ -11,6 +11,7 @@ import {
 import { DEFAULT_VOICE_PREFERENCES, type VoicePreferences } from "@ai-book-studio/core/providers/voice-preferences";
 import { ProviderError, type ConnectionSummary } from "@ai-book-studio/core/providers/types";
 import type { ProviderService } from "./providers";
+import { requestSignal } from "./voice-transport";
 
 const SPEAK_TIMEOUT_MS = 120_000;
 
@@ -36,6 +37,8 @@ export interface SpeakInput {
   text: string;
   speed?: number;
   instructions?: string;
+  /** Host-owned cancellation, checked again before every chunk. Not a provider refund. */
+  signal?: AbortSignal;
 }
 
 export interface SpeakResult extends SpokenAudio {
@@ -102,6 +105,13 @@ export class SpeechService {
     const parts: Uint8Array[] = [];
 
     for (const chunk of chunks) {
+      // Recheck the local gate before every chunk: a later chunk must not be spent after a stop.
+      if (input.signal?.aborted) {
+        throw new ProviderError("unknown", "The speaking request was cancelled.", {
+          provider: credential.provider,
+          cause: input.signal.reason
+        });
+      }
       const body = ttsRequestBody(chunk, {
         // The capability names the model: OpenRouter's ids are not OpenAI's.
         model: capability.model,
@@ -120,9 +130,15 @@ export class SpeechService {
             "content-type": "application/json"
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(SPEAK_TIMEOUT_MS)
+          signal: requestSignal(SPEAK_TIMEOUT_MS, input.signal)
         });
       } catch (error) {
+        if (input.signal?.aborted) {
+          throw new ProviderError("unknown", "The speaking request was cancelled.", {
+            provider: credential.provider,
+            cause: input.signal.reason ?? error
+          });
+        }
         throw new ProviderError("offline", "Could not reach the voice service. Check your connection.", {
           provider: credential.provider,
           cause: error
