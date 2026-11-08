@@ -10,6 +10,10 @@ Update the `Unreleased` section before every commit.
 
 ### Manual planning records
 
+- Extend verified recovery-copy inspection with decoded, labelled read-only timeline, beat, order
+  and story-notes values alongside world details and goals. Explain the correct fresh editor for
+  each kind and retain archived identities, literal text and the complete JSON. Test actual manual
+  recovery from displayed fields without replacing a newer saved document or changing the copy.
 - Bind every transported save to a fresh client request and independently issued host publication
   identity. Derive created record IDs from that publication, verify the same binding in complete
   recovery bytes, and keep handler validation snapshots separate from service submissions. Reject

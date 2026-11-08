@@ -176,6 +176,7 @@ describe("mounted Workspace through real checked filesystem and registered IPC",
     const button = await page().findByRole("button", { name: `Inspect ${list.names[0]}` });
     testing.fireEvent.click(button);
     await page().findByText("Copy target: 100");
+    expect(page().getByText(/Reopen Set saved-word goal or Edit saved-word goal/)).toBeTruthy();
   });
 
   test("More-sheet Back respects the planning guard and leaves the dirty draft usable", async () => {

@@ -53,6 +53,111 @@ async function setup() {
 }
 
 describe("mounted manual planning through real filesystem Library and handler", () => {
+  const recoveryKinds = [
+    { kind: "timeline", editor: "New timeline event", group: "Timeline event 1 · read-only", fields: [["Title", "title"], ["When · literal label", "when"], ["Description", "description"], ["Notes", "notes"]] },
+    { kind: "beat", editor: "New outline beat", group: "Outline beat 1 · read-only", fields: [["Title", "title"], ["Summary", "summary"], ["Notes", "notes"]] },
+    { kind: "notes", editor: "Edit story notes", group: "Story notes · read-only", fields: [["Working notes", "workingNotes"], ["Style notes", "styleNotes"], ["Synopsis", "synopsis"]] },
+    { kind: "world", editor: "New world detail", group: "World detail 1 · read-only", fields: [["Name", "name"], ["Category", "category"], ["Description", "description"], ["Notes", "notes"]] }
+  ] as const;
+  test.each(recoveryKinds)("$kind stale recovery re-enters decoded inspected fields through the correct fresh editor", async ({ kind, editor, group, fields }) => {
+    const f = await setup();
+    await open(editor);
+    for (const [label] of fields) change(label, label === "Title" || label === "Name" ? "Recovered record"
+      : `  ${label}: "literal" \\ path\nSecond line · e\u0301 界 😀  `);
+    const before = await planningValue(f.api.read(f.book.id));
+    await planningValue(f.api.save({ bookId: before.bookId, source: before.source, baselineJson: before.baselineJson,
+      draft: { kind: "create-beat", fields: { title: "Competing saved beat", summary: "Retain winner", notes: "" } } }));
+    const winner = required((await planningValue(f.api.read(f.book.id))).data?.beats[0]);
+    click("Save changes"); await page().findByText(/Your submitted draft was kept in conflict copy/);
+    click("Close editor"); click("Discard draft and close");
+    const list = await planningValue(f.api.listCopies(f.book.id, 0));
+    const name = required(list.names[0]);
+    const copy = await planningValue(f.api.readCopy(f.book.id, name));
+    testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect ${name}` }));
+    const inspected = await page().findByRole("group", { name: group });
+    const raw = input("Complete read-only copy");
+    expect(raw.readOnly).toBe(true);
+    expect(raw.value).toBe(copy.rawJson);
+    expect(page().getByText(new RegExp(`reopen.*${editor}`))).toBeTruthy();
+    const data = JSON.parse(copy.rawJson) as Planning;
+    const intended = required(kind === "timeline" ? data.timeline[0] : kind === "beat" ? data.beats[0]
+      : kind === "world" ? data.worldbuilding[0] : data.storyNotes);
+    // Recovery values come from the decoded inspection, not from the known fixture or JSON text.
+    const decoded = Object.fromEntries(fields.map(([label, key]) => {
+      const term = testing.within(inspected).getByText(label, { exact: true });
+      const value = required(term.nextElementSibling).textContent ?? "";
+      expect(intended[key]).toBe(value);
+      return [label, value];
+    }));
+    await open(editor);
+    for (const [label] of fields) change(label, required(decoded[label]));
+    click("Save changes"); await saved(); click("Close editor");
+    const current = required((await planningValue(f.api.read(f.book.id))).data);
+    expect(current.beats.find((record) => record.id === winner.id)).toEqual(winner);
+    const recovered = required(kind === "timeline" ? current.timeline[0] : kind === "beat" ? current.beats[1]
+      : kind === "world" ? current.worldbuilding[0] : current.storyNotes);
+    for (const [label, key] of fields) expect(recovered[key]).toBe(decoded[label]);
+    expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(copy.rawJson);
+  });
+
+  test("legacy decoded copies retain archived records, explicit order and empty story-note fields", async () => {
+    const f = await setup();
+    const save = async (draft: PlanningSaveRequest["draft"]) => {
+      const read = await planningValue(f.api.read(f.book.id));
+      return planningValue(f.api.save({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft }));
+    };
+    for (const title of ["First", "Second"]) {
+      await save({ kind: "create-timeline", fields: { title, when: "Literal\\time", description: "Line one\r\nLine two", notes: "" } });
+      await save({ kind: "create-beat", fields: { title, summary: "Summary\n\"quoted\"", notes: "" } });
+    }
+    await save({ kind: "set-story-notes", fields: { workingNotes: "Before clear", styleNotes: "", synopsis: "" } });
+    await save({ kind: "clear-story-notes" });
+    const base = await planningValue(f.api.read(f.book.id));
+    const data = required(base.data);
+    await save({ kind: "archive-timeline", id: required(data.timeline[0]).id, archived: true });
+    await save({ kind: "archive-beat", id: required(data.beats[0]).id, archived: true });
+    const latest = await planningValue(f.api.read(f.book.id));
+    await save({ kind: "order-timeline", ids: [...data.timelineOrder].reverse() });
+    const conflict = await planningValue(f.api.save({ bookId: latest.bookId, source: latest.source, baselineJson: latest.baselineJson,
+      draft: { kind: "order-beats", ids: [...data.beatOrder].reverse() } }));
+    if (conflict.status !== "conflict") throw new Error("Expected synthetic conflict");
+    const legacy = JSON.parse(conflict.preserved.rawJson);
+    Reflect.deleteProperty(legacy.conflictMetadata, "requestHash");
+    Reflect.deleteProperty(legacy.conflictMetadata, "attempt");
+    const legacyRaw = JSON.stringify(legacy);
+    await writeFile(join(f.root, conflict.savedAs), legacyRaw);
+    click("Refresh planning");
+    testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    const name = required(conflict.savedAs.split("/").at(-1));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect ${name}` }));
+    await page().findByRole("group", { name: "Timeline order · read-only" });
+    const field = (group: string, label: string) => required(testing.within(page().getByRole("group", { name: `${group} · read-only` }))
+      .getByText(label, { exact: true }).nextElementSibling).textContent;
+    expect(field("Timeline event 1", "Status")).toBe("Archived");
+    expect(field("Outline beat 1", "Status")).toBe("Archived");
+    expect(field("Timeline event 1", "Description")).toBe("Line one\r\nLine two");
+    expect(field("Story notes", "Working notes")).toBe("");
+    for (const [label, expected] of [["Timeline order", legacy.timelineOrder], ["Beat order", legacy.beatOrder]] as const) {
+      const items = testing.within(page().getByRole("group", { name: `${label} · read-only` })).getAllByRole("listitem");
+      expect(items.map((item) => item.querySelectorAll("span")[1]?.textContent)).toEqual(expected);
+    }
+    expect(input("Complete read-only copy").value).toBe(legacyRaw);
+    const current = required((await planningValue(f.api.read(f.book.id))).data);
+    expect(current.timelineOrder).toEqual([...data.timelineOrder].reverse());
+    expect(current.beatOrder).toEqual(data.beatOrder);
+    await open("Order timeline"); click("Move up · position 2 · First · Literal\\time · archived");
+    click("Save changes"); await saved(); click("Close editor");
+    await open("Order beats"); click("Move up · position 2 · Second");
+    click("Save changes"); await saved(); click("Close editor");
+    const recovered = required((await planningValue(f.api.read(f.book.id))).data);
+    expect(recovered.timelineOrder).toEqual(legacy.timelineOrder);
+    expect(recovered.beatOrder).toEqual(legacy.beatOrder);
+    expect(recovered.timeline).toEqual(current.timeline);
+    expect(recovered.beats).toEqual(current.beats);
+    expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(legacyRaw);
+  });
+
   test("create, continue editing stable IDs, reopen, order, archive confirmation and restore all list kinds", async () => {
     const f = await setup();
     const paths = [join(f.root, "books", f.book.id, "book.json"), join(f.root, "books", f.book.id, "chapters", f.chapter.path)];

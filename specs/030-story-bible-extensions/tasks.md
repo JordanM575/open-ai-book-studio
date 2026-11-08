@@ -54,6 +54,13 @@ expanded focused set passes **260 tests / 1,502 assertions**, with workspace, st
 desktop typechecks and touched-file lint passing. Prior original probes/reports remain historical
 evidence; this correction still requires fresh independent review and exact-head broad gates.
 
+The later recovery-panel correction adds accurate fresh-editor instructions and decoded read-only
+fields for timeline events, outline beats, explicit orders and story notes, retaining world details,
+goals, archived identities and the complete verified JSON. Mounted filesystem tests actually re-enter
+the inspected fields and restore inspected orders through new checked edits, preserving a competing
+saved record and the original recovery copy. Historical copies remain inspectable. Fresh independent
+and exact-head gates, built new-intent adapter journeys and native accessibility remain required.
+
 No task checkbox is closed by this candidate: fresh exact-head independent review, integrated broad
 gates, native theme/viewport/keyboard/accessibility acceptance and integrated host/adapter gates remain. The new mounted
 tests exercise the existing handler directly; native IPC/preload acceptance for the new intents
