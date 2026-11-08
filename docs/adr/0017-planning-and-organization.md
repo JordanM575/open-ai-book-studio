@@ -121,6 +121,20 @@ stale an anchor when its version/hash changes; unchanged-byte identity-preservin
 
 ## Required evidence
 
+### Numeric and saved-source review follow-through
+
+Before parsing a mutable sidecar, compare each unquoted JSON number token with the exact decimal
+value that its JavaScript Number will serialize. Refuse non-finite, rounded, underflowed or negative-zero
+tokens instead of rewriting them, including inside unknown values and recovery baselines. Numeric
+strings are data and remain untouched. Known identity/revision/target fields retain their stricter
+safe-integer rules. This is an admission boundary, not a migration or retention policy.
+
+Goal progress independently checks the raw bytes and hash of every enumerated chapter, uses fatal
+UTF-8 decoding, and verifies the canonical saved body and recorded identity/version against the
+supplied chapter view. A repeated but lossy or unverified BookDetail is insufficient for a confirmed
+count. The host still owns complete enumeration and the existing shared queue; these checks add no
+second writer or general legacy-file migration.
+
 The research's 49 synthetic premise tests are not the unbuilt feature tests. Implementation needs
 real new-service round trips, exact no-op/stale/collision/unknown-field/owner/byte-boundary cases,
 failed copy publication and uncertain readback, archive/trash preservation, complete/partial goals,

@@ -433,6 +433,42 @@ describe("agent runtime contract", () => {
     expect(thread?.messages.at(-1)?.parts).toContainEqual({ type: "error", code: "rate-limit", message: failure.message, retryAfterSeconds: 90 });
   });
 
+  test("completion and background consumers retain a conversation warning alongside the original failure", async () => {
+    library.threads.upsertMessage = async () => { throw new Error("Synthetic local save failure"); };
+    const model = rateLimitModel("90");
+    const events: AgentEvent[] = [];
+    const outcomes: AgentOutcome[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model,
+      (outcome) => outcomes.push(outcome));
+    const failure = await runtime.runToCompletion({ mode: "discuss", bookId: book.id, prompt: "Read", background: true })
+      .then(() => { throw new Error("Expected the provider failure"); }, (error: unknown) => error);
+    const terminal = events.find((event) => event.type === "error");
+    expect(terminal?.message).toContain("rate limit");
+    expect(terminal?.persistenceError).toContain("conversation outcome could not be fully saved");
+    expect(failure).toMatchObject({ changed: 0, undoAvailable: true, persistenceError: terminal?.persistenceError });
+    expect((failure as Error).message).toContain(terminal!.message);
+    expect((failure as Error).message).toContain(terminal!.persistenceError!);
+    expect(outcomes).toEqual([expect.objectContaining({
+      kind: "error", message: terminal?.message, changed: 0, persistenceError: terminal?.persistenceError
+    })]);
+    expect(runtime.isWorking(book.id)).toBe(false);
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  test("a successful completion retains its answer when only the conversation write fails", async () => {
+    library.threads.upsertMessage = async () => { throw new Error("Synthetic local save failure"); };
+    const model = textModel("The opening works.", 0.0012);
+    const outcomes: AgentOutcome[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), () => {}, () => model,
+      (outcome) => outcomes.push(outcome));
+    const result = await runtime.runToCompletion({ mode: "discuss", bookId: book.id, prompt: "Read", background: true });
+    expect(result).toMatchObject({ text: "The opening works.", changed: 0, costUsd: 0.0012 });
+    expect(result.persistenceError).toContain("conversation outcome could not be fully saved");
+    expect(outcomes).toEqual([expect.objectContaining({ kind: "done", text: result.text, persistenceError: result.persistenceError })]);
+    expect((await library.threads.read(book.id, result.threadId))?.messages.map((message) => message.role)).toEqual(["user"]);
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
   test("a long provider error still terminates and retains a bounded, marked conversation error", async () => {
     const detail = `Synthetic detail ${"x".repeat(2_001)}`;
     const model = new MockLanguageModelV4({ doStream: async () => { throw new Error(detail); } });
@@ -1176,7 +1212,11 @@ describe("agent runtime contract", () => {
       "user: Now replace it again."
     ]);
 
+    const stopped = new Promise<void>((resolve) => {
+      const off = runtime.onEvent((event) => { if (event.type === "stopped") { off(); resolve(); } });
+    });
     await runtime.stop(next.turnId);
+    await stopped;
     expect((await library.readChapter(book.id, chapter.id)).content).toBe("A new opening.\n");
     expect(second.doStreamCalls).toHaveLength(1);
   });
@@ -1201,7 +1241,11 @@ describe("agent runtime contract", () => {
 
     const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Remove the tide memory.", guidance: "Only this turn." });
     await approval;
+    const stopped = new Promise<void>((resolve) => {
+      const off = runtime.onEvent((event) => { if (event.type === "stopped") { off(); resolve(); } });
+    });
     await runtime.stop(started.turnId);
+    await stopped;
 
     const thread = await library.threads.read(book.id, started.threadId);
     expect(thread?.messages.at(-1)?.mode).toBe("edit");

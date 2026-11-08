@@ -56,6 +56,10 @@ export interface AgentTurnResult {
   costUsd?: number | null;
   /** True when the author stopped the turn. */
   stopped?: boolean;
+  /** Whether the runtime confirmed a checkpoint covering the recorded changes. */
+  undoAvailable?: boolean;
+  /** Local outcome/usage persistence failed; the answer and recorded book effects still stand. */
+  persistenceError?: string;
 }
 
 /** What one undo of an agent turn did. */
@@ -83,6 +87,7 @@ export interface AgentTurnModel {
 }
 
 export type AgentEvent =
+  | { type: "stopping"; turnId: string }
   | { type: "text"; turnId: string; delta: string }
   | { type: "reasoning"; turnId: string; delta: string }
   | {
@@ -109,6 +114,7 @@ export type AgentEvent =
       context: ContextBreakdown;
       changed?: number;
       undoAvailable?: boolean;
+      persistenceError?: string;
     }
-  | { type: "stopped"; turnId: string; changed?: number; undoAvailable?: boolean }
-  | { type: "error"; turnId: string; code: string; message: string; changed?: number; undoAvailable?: boolean; retryAfterSeconds?: number };
+  | { type: "stopped"; turnId: string; changed?: number; undoAvailable?: boolean; persistenceError?: string }
+  | { type: "error"; turnId: string; code: string; message: string; changed?: number; undoAvailable?: boolean; retryAfterSeconds?: number; persistenceError?: string };

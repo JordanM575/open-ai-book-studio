@@ -2,8 +2,8 @@
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
 
-**Status:** Draft / Planned. D-193 / ADR 0018 accepts initial envelope/citation/profile/overflow
-contracts; implementation and persistence acceptance remain separate.
+**Status:** In progress. D-193 / ADR 0018 and D-197–D-199 / ADR 0020 accept the initial and expanded
+contracts; source candidates, actual integration and acceptance remain separate.
 
 ## Approach
 
@@ -29,9 +29,15 @@ first delivery is a single-book volatile report, after those gates. Add cross-bo
 030 is needed only when its proposed planning records are included. Existing manuscript sources do
 not wait for all of 030. 036 remains advisory and is not a dispatch prerequisite.
 
-Resolve U-039-03 and D-171 before planning any persistence implementation. This plan adds no file
-format. If approved later, amend docs/FORMAT.md, add a storage ADR, checked Library writes, conflict,
-retention/deletion and recovery tests before implementing saved reports.
+U-039-03/D-171 are resolved by ADR 0020. Add detailed FORMAT/continuation schemas before implementing
+immutable explicit saves, checked separate dispositions/profiles/campaigns and related-file recovery.
+No new persistence is inferred for the unsaved run. Saved quotes travel with archive/sync.
+
+T010–T019 order the expansion: corrected scoped boundary → pure exact-source/overlap contracts →
+minimal CodeMirror adapter preserving the current editor/save owner → accessible mounted review →
+explicit recoverable storage → author-invoked checked suggestion → all-range campaign/coverage →
+037 scheduler integration and exact-candidate evidence. W08 owns concurrent Library/API/Workspace
+edits until its bounded planning integration returns; editor leaves expose injected contracts first.
 
 ## Decision work before implementation
 

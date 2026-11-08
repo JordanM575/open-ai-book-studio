@@ -1,5 +1,15 @@
 # Plan: voice notes and background runs
 
+## November 7 hands-free extension
+
+D-200 / ADR 0021 selects the explicit-session contract. Start with platform-independent reducers,
+typed confirmation/targets, injected PCM/VAD segmentation and permission predicates in a new core
+voice-session module. Then a single owner connects cancellable STT/TTS operations, both permission
+handlers, actual Ambient/Chat/editor targets and lifecycle. Preserve the existing PTT/profile routes;
+corrected W04 settlement must precede terminal control claims. Add reading/local-input and 037
+check-in adapters without a second scheduler. Tasks T013–T024 and ADR 0021's failure matrix govern
+the expansion; the original plan below remains historical first-slice context.
+
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
 
 ## Shape

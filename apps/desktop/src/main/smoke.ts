@@ -483,6 +483,36 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "empty state explained Discuss, explicit Edit and destructive approval";
     }));
 
+    await check("planning uses the checked preload journey", async () => {
+      return evaluate<string>(win, `(async () => {
+        const api = window.studio.planning;
+        if (!api) throw new Error("Planning API unavailable");
+        if (![...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Set saved-word goal')) throw new Error("Planning controls missing");
+        const value = result => { if (!result.ok) throw new Error(result.error.message); return result.data; };
+        const book = value(await window.studio.books.list())[0];
+        if (!book) throw new Error("Synthetic book missing");
+        const input = read => ({bookId: read.bookId, source: read.source, baselineJson: read.baselineJson});
+        const goal = value(await api.readGoal(book.id));
+        const saved = value(await api.saveGoal({...input(goal), draft:{kind:'set-goal',targetWords:50000}}));
+        if (!['saved','unchanged'].includes(saved.status)) throw new Error("Goal did not save");
+        const reopened = value(await api.readGoal(book.id));
+        if (reopened.data.targetWords !== 50000) throw new Error("Goal did not reopen");
+        const progress = value(await api.progress(book.id));
+        if (progress.status !== 'complete' || progress.remaining !== Math.max(0,50000-progress.savedWords)) throw new Error("Saved progress was not verified");
+        value(await api.saveGoal({...input(reopened),draft:{kind:'set-goal',targetWords:null}}));
+        if (value(await api.readGoal(book.id)).data.targetWords !== null) throw new Error("Goal did not clear");
+        const planning = value(await api.read(book.id));
+        const fields = {name:'Synthetic smoke harbor',category:'Place',description:'Synthetic fixture only',notes:''};
+        value(await api.save({...input(planning),draft:{kind:'create-worldbuilding',fields}}));
+        const created = value(await api.read(book.id));
+        const record = created.data.worldbuilding.find(entry => !planning.data?.worldbuilding.some(previous => previous.id === entry.id));
+        if (!record) throw new Error("World detail did not reopen");
+        value(await api.save({...input(created),draft:{kind:'edit-worldbuilding',id:record.id,fields:{...fields,notes:'Reopened and checked'}}}));
+        if (value(await api.read(book.id)).data.worldbuilding.find(entry => entry.id === record.id)?.notes !== 'Reopened and checked') throw new Error("World edit did not reopen");
+        return 'goal set/reopen/clear, complete saved progress, world create/edit/reopen through preload';
+      })()`);
+    });
+
     await check("the Story Bible opens", async () => {
       const clicked = await evaluate<boolean>(
         win,

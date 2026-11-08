@@ -1,7 +1,13 @@
 # Feature Specification: Task-aware model routing
 
+**Scope amendment, November 7:** D-196/D-116 / ADR 0019 selects pinned, explicitly chosen workflow
+role routes and finite admission under a 037 grant. FR-016/017/019 and the no-dispatch/non-persistence
+clauses remain binding for this offline preview. Workflow execution/attribution is a distinct path;
+no automatic model replacement, ranking, fallback or ambiguous retry is selected. The preview leaf
+still needs its production mount; policy acceptance is not runtime evidence.
+
 **Feature Branch**: `036-task-aware-model-routing`  
-**Status**: Draft / Planned — requirements only; no implementation or verification is claimed.  
+**Status**: In progress — offline preview leaf exists; production mount and selected workflow routing remain open.
 **Depends on**: [011](../011-model-access/spec.md) provider access and model selection; [022](../022-provider-compatibility/spec.md) provider compatibility and Contributor consent; [002](../002-studio-v1/spec.md) writing-agent behavior.
 
 ## Overview
@@ -31,7 +37,7 @@ provider path require their own accepted public decisions before dependent work 
 - Spec 022 already defines the shared provider compatibility seam and the book-level Contributor
   training-consent guard. Contributor consent is not general permission to route manuscript content,
   train a model, or conduct a review; this feature MUST NOT set, broaden, infer, or transfer that consent.
-- Public decision D-116 is **Proposed**, not Accepted. Existing cost-helper warnings are informational,
+- D-116 now selects two cost modes under ADR 0019; enforcement remains open. Existing warnings are informational,
   not enforceable ceilings. A missing or unknown price remains unknown and MUST NOT be treated as zero.
 - The writing agent and its editing tools are defined in spec 002. Import, illustration, voice, export,
   and any future review journeys remain separate; this spec does not route those jobs.
@@ -174,7 +180,7 @@ zero writes, and unchanged fixture selection and chapter contents.
   unknown input/output prices MUST remain unknown and MUST NOT be interpreted as zero or free.
 - **FR-010**: A total price estimate MAY be shown only when both the price basis and a documented token
   estimate are available. It MUST be labelled an estimate and MUST identify its basis.
-- **FR-011**: D-116 remains Proposed unless separately accepted. This feature MUST NOT implement or
+- **FR-011**: Under accepted D-116, this offline preview MUST NOT implement or
   claim an enforceable per-turn/session ceiling, reject a turn based on an estimated amount, or describe
   an informational cost-helper warning as a ceiling.
 - **FR-012**: Opening the preview MUST use only the catalogue data already available under spec 011.
@@ -244,14 +250,15 @@ depends on that answer; it does not block independent offline preview work.
    existing one-turn override, and whether any task/decision data belongs in a turn record. Until
    accepted, the preview is transient and selection-neutral. This blocks selection integration and
    persistence, not preview display.
-5. **D-116 cost enforcement**: D-116 is Proposed. Any enforceable ceiling, budget rejection, or promise
-   that estimated spend cannot be exceeded remains blocked until D-116 is explicitly accepted and its
-   unknown-price behavior is decided. Informational cost warnings and catalogue estimates are not
-   ceilings.
+5. **D-116 cost enforcement**: Accepted ADR 0019 distinguishes finite operation mode (not a money
+   cap) from qualified strict money with conservative durable reservations and provider-enforceable
+   all-charge limits. Unknown/unresolved charges block strict mode. Implementation and adapter
+   qualification remain; current informational warnings/catalog estimates are not ceilings.
 6. **Dispatch and recovery policy**: Whether future task routing may dispatch directly, automatically
    switch models, retry, or fall back, and how stop, partial writes, uncertain charges, and provider
    failures are handled. This blocks those behaviors only; this spec's preview never dispatches or
-   falls back.
+   falls back. D-196 now selects explicitly pinned workflow-role dispatch, zero automatic retries
+   and no fallback under the separate 037 grant; ordinary preview authority stays unchanged.
 
 ## Assumptions
 

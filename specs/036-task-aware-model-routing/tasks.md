@@ -1,8 +1,8 @@
 # Tasks: task-aware model routing
 
-**Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **State**: Draft / Planned; no implementation or acceptance is claimed.
+**Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **State**: In progress; offline preview leaf implemented, production mount and broader integration remain.
 
-Tasks are ordered by dependency. Every task is intentionally unchecked. A decision blocks only the task
+Tasks are ordered by dependency; checked rows name their evidence. A decision blocks only the task
 that relies on it; offline preview work does not wait for decisions about dispatch or fallback.
 
 ## Phase 0 — Resolve only the policies needed by each slice
@@ -16,15 +16,17 @@ that relies on it; offline preview work does not wait for decisions about dispat
 - [ ] T003 Decide whether a local request-size/token estimate is in scope and how its uncertainty is
   disclosed. Until accepted, T008 may show catalogue limits and prices but must not claim actual request
   fit or compute a total without known estimate inputs.
-- [ ] T004 Keep D-116 explicitly Proposed unless separately accepted. Any task to enforce a money ceiling,
-  reject a request by estimated spend, or guarantee a maximum cost is blocked on acceptance of D-116
-  and its unknown-price policy; informational estimates do not depend on that acceptance.
+- [x] T004 Resolve D-116 and its unknown-price policy. Accepted November 7 / ADR 0019: finite
+  operation mode versus qualified strict money, unknown/unresolved-charge refusal in strict mode.
+  Implementation/adapter qualification remain; ordinary warnings are not upgraded into ceilings.
 - [ ] T005 Record a public decision on whether a later explicit suggestion action may populate the
   existing one-turn override and whether task/route details may be persisted. Until accepted, T010 must
   remain selection-neutral and transient. This does not block a link to the existing model picker.
-- [ ] T006 Before any future direct dispatch, automatic routing, fallback, or retry is proposed, record
+- [x] T006 Before any future direct dispatch, automatic routing, fallback, or retry is proposed, record
   public decisions for author authorization, stop/cancel, partial edits, uncertain charges, and recovery.
-  This blocks only those dispatch/fallback tasks; it does not block the preview slice.
+  Accepted November 7 as D-196/ADR 0019 for explicitly pinned workflow roles, zero automatic retries,
+  no fallback, distinct 037 grant/admission and conservative recovery. This decision does not check
+  implementation or authorize preview dispatch.
 
 ## Phase 1 — Build the local preview contract
 

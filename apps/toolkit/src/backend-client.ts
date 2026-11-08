@@ -213,6 +213,7 @@ export class BackendClient {
     return result.result;
   }
 
+  /** `stopped` counts requests accepted; the turn result/ambient status confirms settlement. */
   async stop(bookId: string): Promise<{ stopped: number }> {
     const result = await this.request<{ result: { stopped: number } }>(
       `/v1/books/${encodeURIComponent(bookId)}/stop`,

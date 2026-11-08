@@ -10,6 +10,11 @@ import { licenseCollector } from "../../scripts/licenses.mjs";
 const externalize = externalizeDepsPlugin({
   exclude: ["@ai-book-studio/core", "@ai-book-studio/ui", "@ai-book-studio/app"]
 });
+// The sandboxed preload validates planning replies with core's Zod/YAML graph. Bundle both there:
+// external requires cannot be resolved by the sandboxed preload at runtime.
+const preloadExternalize = externalizeDepsPlugin({
+  exclude: ["@ai-book-studio/core", "@ai-book-studio/ui", "@ai-book-studio/app", "zod", "yaml"]
+});
 const { version, commit } = buildVars();
 // The packaged app ships all three bundles plus the dependencies left external, so one license
 // report covers them (D-186). It is written once all three builds have written their bundles.
@@ -41,7 +46,7 @@ export default defineConfig({
   },
   preload: {
     define: buildDefine,
-    plugins: [externalize, licenses.plugin("preload")],
+    plugins: [preloadExternalize, licenses.plugin("preload")],
     // Sandboxed preload scripts are loaded as CommonJS, so do not emit an ESM `.mjs` file even
     // though the package itself is `"type": "module"`.
     build: {

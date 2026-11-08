@@ -1,5 +1,8 @@
 # W03 — Discuss, Edit and one-turn guidance
 
+The subsequent [W04 terminal-stop prerequisite](stop-boundary.md) records the bounded D-178
+implementation, focused evidence, unresolved-adapter behavior and additional interaction runbook.
+
 ## Candidate behavior
 
 The composer defaults each new request to **Discuss**. Choose **Edit** explicitly

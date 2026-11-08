@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,8 +9,13 @@ import type { StoredCredential } from "@ai-book-studio/core/providers/types";
 import type { BookMeta } from "@ai-book-studio/core/schema";
 import type { ProviderService } from "../src/main/providers";
 import type { Studio } from "../src/main/studio";
-import { AgentRuntime } from "../src/main/agent/runtime";
+import { AgentRuntime, type AgentOutcome } from "../src/main/agent/runtime";
 import { Library } from "../src/main/library/store";
+import { CheckpointStore } from "../src/main/agent/checkpoints";
+import { UsageStore } from "../src/main/usage";
+import { notificationFor } from "../src/main/background-copy";
+import { LocalBackend } from "../src/main/backend";
+import { BackendClient } from "../../toolkit/src/backend-client";
 
 let root = "";
 let library: Library;
@@ -120,7 +125,7 @@ function waitForDone(events: AgentEvent[], turnId: string): Promise<Extract<Agen
   });
 }
 
-function replaceModel(chapterId: string): MockLanguageModelV4 {
+function replaceModel(chapterId: string, destructive = false): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doStream: [
       {
@@ -130,8 +135,9 @@ function replaceModel(chapterId: string): MockLanguageModelV4 {
             {
               type: "tool-call",
               toolCallId: "call-1",
-              toolName: "replace_in_chapter",
-              input: JSON.stringify({ chapterId, find: "The old opening.", replace: "The new opening." })
+              toolName: destructive ? "overwrite_chapter" : "replace_in_chapter",
+              input: JSON.stringify(destructive ? { chapterId, content: "The new opening.\n" }
+                : { chapterId, find: "The old opening.", replace: "The new opening." })
             },
             { type: "finish", finishReason: { unified: "tool-calls", raw: undefined }, logprobs: undefined, usage: USAGE }
           ]
@@ -236,6 +242,7 @@ describe("pause boundary premises", () => {
     const first = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Forget the tide." });
     const approval = await waitForApproval(events, first.turnId);
     await runtime.stop(first.turnId);
+    await waitForStopped(events, first.turnId);
 
     await expect(runtime.approve(first.turnId, approval.approvalId, true)).rejects.toThrow(/no longer waiting/);
     const second = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Something else." });
@@ -244,6 +251,7 @@ describe("pause boundary premises", () => {
     await waitForApproval(events, second.turnId);
     await expect(runtime.approve(second.turnId, approval.approvalId, true)).rejects.toThrow(/no longer waiting/);
     await runtime.stop(second.turnId);
+    await waitForStopped(events, second.turnId);
   });
 
   test("a stop during a write waits out the write: the file is never torn and the stop is reported", async () => {
@@ -295,5 +303,434 @@ describe("pause boundary premises", () => {
     await waitForDone(events, second.turnId);
     const thread = await library.threads.read(book.id, second.threadId);
     expect(thread?.messages.length).toBeGreaterThan(0);
+  });
+});
+
+function gate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => { release = resolve; });
+  return { promise, release };
+}
+
+function terminals(events: AgentEvent[]) {
+  return events.filter((event) => event.type === "done" || event.type === "stopped" || event.type === "error");
+}
+
+describe("D178 definitive stop boundary", () => {
+  test("the real loopback completion client receives settlement warnings after request-only Stop", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Loopback", content: "The old opening.\n" });
+    const entered = gate();
+    const held = gate();
+    const append = spyOn(UsageStore.prototype, "append").mockImplementation(async () => {
+      entered.release();
+      await held.promise;
+      throw new Error("Synthetic usage failure");
+    });
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => replaceModel(chapter.id));
+    const backend = new LocalBackend({
+      current: () => ({ root, deviceId: library.deviceId, deviceName: library.deviceName }),
+      requireLibrary: () => library
+    }, {
+      locatorPath: join(root, "synthetic-backend.json"), token: "synthetic-stop-token", port: 0,
+      agent: {
+        run: (input) => runtime.runToCompletion(input),
+        stop: async (bookId) => ({ stopped: await runtime.stopBook(bookId) }),
+        undo: (bookId, turnId) => runtime.undoLast(bookId, turnId)
+      }
+    });
+    const address = await backend.start();
+    const client = new BackendClient({ url: address.url, token: address.token });
+    const completion = client.turn(book.id, "Replace");
+    try {
+      await entered.promise;
+      expect(await client.stop(book.id)).toEqual({ stopped: 1 });
+      expect(runtime.isWorking(book.id)).toBe(true);
+      expect(terminals(events)).toHaveLength(0);
+      await expect(client.turn(book.id, "Another")).rejects.toThrow(/still stopping/);
+      held.release();
+      const result = await completion;
+      expect(result).toMatchObject({ stopped: true, changed: 1, undoAvailable: true });
+      expect(result.persistenceError).toContain("usage could not be saved");
+      expect(runtime.isWorking(book.id)).toBe(false);
+      expect((await library.readChapter(book.id, chapter.id)).content).toBe("The new opening.\n");
+    } finally { held.release(); await completion; await backend.stop(); append.mockRestore(); }
+  });
+
+  for (const stop of [false, true]) {
+    for (const conversationFails of [false, true]) {
+      test(`usage persistence failure survives ${stop ? "Stop" : "completion"}${conversationFails ? " with a conversation failure" : ""}`, async () => {
+        const chapter = await library.createChapter(book.id, { title: "Usage", content: "The old opening.\n" });
+        const entered = gate();
+        const held = gate();
+        const append = spyOn(UsageStore.prototype, "append").mockImplementation(async () => {
+          entered.release();
+          await held.promise;
+          throw new Error("Synthetic usage storage failure");
+        });
+        if (conversationFails) library.threads.upsertMessage = async () => { throw new Error("Synthetic conversation failure"); };
+        const events: AgentEvent[] = [];
+        const outcomes: AgentOutcome[] = [];
+        const model = replaceModel(chapter.id);
+        const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model,
+          (outcome) => outcomes.push(outcome));
+        let completed = false;
+        const completion = runtime.runToCompletion({ mode: "edit", bookId: book.id, prompt: "Replace", background: true })
+          .then((result) => { completed = true; return result; });
+        try {
+          await entered.promise;
+          const turnId = events[0]!.turnId;
+          if (stop) expect(await runtime.stopBook(book.id)).toBe(1); // Request count, not settled turns.
+          expect(completed).toBe(false);
+          expect(terminals(events)).toHaveLength(0);
+          expect(runtime.isWorking(book.id)).toBe(true);
+          expect(runtime.hasActiveBackgroundTurns()).toBe(true);
+          await expect(runtime.start({ mode: "edit", bookId: book.id, prompt: "Another" })).rejects.toThrow(/still stopping/);
+          held.release();
+          const result = await completion;
+          const terminal = terminals(events)[0]!;
+          expect(terminals(events)).toHaveLength(1);
+          expect(terminal).toMatchObject({ type: stop ? "stopped" : "done", turnId, changed: 1, undoAvailable: true });
+          const warning = "persistenceError" in terminal ? terminal.persistenceError : undefined;
+          expect(warning).toContain("usage could not be saved");
+          expect(warning).toContain("spend history may be incomplete");
+          expect(warning?.includes("conversation outcome")).toBe(conversationFails);
+          if (conversationFails) expect(warning?.match(/conversation outcome/g)).toHaveLength(1);
+          expect(result).toMatchObject({ text: stop ? "" : "Sharpened.", changed: 1, undoAvailable: true, persistenceError: warning });
+          expect(result.stopped).toBe(stop ? true : undefined);
+          expect(outcomes).toHaveLength(1);
+          expect(outcomes[0]).toMatchObject({ kind: stop ? "stopped" : "done", text: "Sharpened.", changed: 1, undoAvailable: true, persistenceError: warning });
+          expect(notificationFor(outcomes[0]!)?.title).toContain("save warning");
+          expect(notificationFor(outcomes[0]!)?.body).toContain(warning!);
+          expect(await new UsageStore(root).read(book.id)).toHaveLength(0);
+          expect(runtime.isWorking(book.id)).toBe(false);
+          expect(model.doStreamCalls).toHaveLength(2);
+          expect((await library.readChapter(book.id, chapter.id)).content).toBe("The new opening.\n");
+          expect((await runtime.undoLast(book.id, turnId)).restored).toBe(1);
+        } finally { held.release(); await completion; append.mockRestore(); }
+      });
+    }
+  }
+
+  test("a never-settling usage write keeps completion and Stop unresolved", async () => {
+    const entered = gate();
+    const append = spyOn(UsageStore.prototype, "append").mockImplementation(async () => {
+      entered.release();
+      return new Promise(() => {});
+    });
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => textModel());
+    try {
+      const started = await runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read" });
+      await entered.promise;
+      await runtime.stop(started.turnId);
+      expect(terminals(events)).toHaveLength(0);
+      expect(runtime.isWorking(book.id)).toBe(true);
+      await expect(runtime.start({ mode: "discuss", bookId: book.id, prompt: "Read again" })).rejects.toThrow(/still stopping/);
+    } finally { append.mockRestore(); }
+  });
+
+  test("failed approval and final conversation writes retain both warnings", async () => {
+    const events: AgentEvent[] = [];
+    const model = memoryApprovalModel();
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Forget" });
+    const approval = await waitForApproval(events, started.turnId);
+    library.threads.updateApproval = async () => { throw new Error("Synthetic approval failure"); };
+    library.threads.upsertMessage = async () => { throw new Error("Synthetic conversation failure"); };
+    await expect(runtime.approve(started.turnId, approval.approvalId, true)).rejects.toThrow(/action was not started/);
+    const stopped = await waitForStopped(events, started.turnId);
+    expect(stopped.persistenceError).toContain("approval could not be saved");
+    expect(stopped.persistenceError).toContain("conversation outcome could not be fully saved");
+    expect(stopped.changed).toBe(0);
+    expect(model.doStreamCalls).toHaveLength(1);
+  });
+
+  test("stop after approval has dispatched preserves the destructive write's late outcome", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Approved", content: "The old opening.\n" });
+    const entered = gate();
+    const held = gate();
+    const save = library.saveChapter.bind(library);
+    library.saveChapter = async (...args) => { entered.release(); await held.promise; return save(...args); };
+    const model = replaceModel(chapter.id, true);
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Overwrite" });
+    try {
+      const approval = await waitForApproval(events, started.turnId);
+      await runtime.approve(started.turnId, approval.approvalId, true);
+      await entered.promise;
+      await runtime.stop(started.turnId);
+      expect(terminals(events)).toHaveLength(0);
+      expect(runtime.isWorking(book.id)).toBe(true);
+      held.release();
+      expect(await waitForStopped(events, started.turnId)).toMatchObject({ changed: 1, undoAvailable: true });
+      const tail = (await library.threads.read(book.id, started.threadId))?.messages.at(-1);
+      expect(tail?.parts.filter((part) => part.type === "tool-result")).toEqual([
+        expect.objectContaining({ id: "call-1", output: expect.objectContaining({ ok: true }) })
+      ]);
+      expect(tail?.parts.find((part) => part.type === "approval")).toMatchObject({ status: "approved" });
+      expect(model.doStreamCalls).toHaveLength(1);
+      expect(terminals(events)).toHaveLength(1);
+      expect((await runtime.undoLast(book.id, started.turnId)).restored).toBe(1);
+    } finally { held.release(); }
+  });
+
+  test("a stop at tool dispatch closes the execution gate synchronously", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Dispatch", content: "The old opening.\n" });
+    const save = spyOn(library, "saveChapter");
+    const events: AgentEvent[] = [];
+    const model = replaceModel(chapter.id);
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => {
+      events.push(event);
+      if (event.type === "tool" && event.status === "start") void runtime.stop(event.turnId);
+    }, () => model);
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace" });
+    expect(await waitForStopped(events, started.turnId)).toMatchObject({ changed: 0 });
+    expect(save).not.toHaveBeenCalled();
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
+    save.mockRestore();
+  });
+
+  test("a late write rejection has a definitive failure receipt without a claimed change", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Rejected", content: "The old opening.\n" });
+    const entered = gate();
+    const held = gate();
+    library.saveChapter = async () => { entered.release(); await held.promise; throw new Error("Synthetic rejected save"); };
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => replaceModel(chapter.id));
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace" });
+    try {
+      await entered.promise;
+      await runtime.stop(started.turnId);
+      held.release();
+      expect(await waitForStopped(events, started.turnId)).toMatchObject({ changed: 0 });
+      const tail = (await library.threads.read(book.id, started.threadId))?.messages.at(-1);
+      expect(tail?.parts.filter((part) => part.type === "tool-result")).toEqual([
+        expect.objectContaining({ isError: true, output: expect.objectContaining({ ok: false }) })
+      ]);
+      expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
+      expect(terminals(events)).toHaveLength(1);
+    } finally { held.release(); }
+  });
+
+  test("a checked write held beyond five seconds retains ownership and records its late receipt exactly once", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Gate", content: "The old opening.\n" });
+    const entered = gate();
+    const held = gate();
+    const save = library.saveChapter.bind(library);
+    library.saveChapter = async (...args) => { entered.release(); await held.promise; return save(...args); };
+    const model = replaceModel(chapter.id);
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace", background: true });
+    try {
+      await entered.promise;
+      await runtime.stop(started.turnId);
+      await runtime.stop(started.turnId);
+      await new Promise((resolve) => setTimeout(resolve, 5_250));
+      expect(terminals(events)).toHaveLength(0);
+      expect(runtime.isWorking(book.id)).toBe(true);
+      expect(runtime.hasActiveBackgroundTurns()).toBe(true);
+      expect(events.filter((event) => event.type === "stopping")).toHaveLength(1);
+      expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
+      await expect(runtime.start({ mode: "edit", bookId: book.id, threadId: started.threadId, prompt: "New attempt" })).rejects.toThrow(/still stopping/);
+      held.release();
+      const stopped = await waitForStopped(events, started.turnId);
+      expect(stopped).toMatchObject({ changed: 1, undoAvailable: true });
+      expect(runtime.isWorking(book.id)).toBe(false);
+      expect(terminals(events)).toHaveLength(1);
+      expect(model.doStreamCalls).toHaveLength(1);
+      expect((await library.readChapter(book.id, chapter.id)).content).toBe("The new opening.\n");
+      const thread = await library.threads.read(book.id, started.threadId);
+      const receipts = thread?.messages.at(-1)?.parts.filter((part) => part.type === "tool-result");
+      expect(receipts).toHaveLength(1);
+      expect(receipts?.[0]).toMatchObject({ id: "call-1", output: { ok: true } });
+      expect(thread?.checkpointTurns).toContain(started.turnId);
+      expect(events.filter((event) => event.type === "tool" && event.status === "end")).toHaveLength(1);
+      expect((await runtime.undoLast(book.id, started.turnId)).restored).toBe(1);
+      expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
+    } finally { held.release(); }
+  }, 10_000);
+
+  for (const order of ["stop-first", "approve-first"] as const) {
+    test(`${order} consumes approval ownership before slow persistence`, async () => {
+      const model = memoryApprovalModel();
+      const events: AgentEvent[] = [];
+      const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+      const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Forget" });
+      const approval = await waitForApproval(events, started.turnId);
+      const held = gate();
+      const entered = gate();
+      const update = library.threads.updateApproval.bind(library.threads);
+      const upsert = library.threads.upsertMessage.bind(library.threads);
+      if (order === "approve-first") {
+        library.threads.updateApproval = async (...args) => { entered.release(); await held.promise; return update(...args); };
+      } else {
+        library.threads.upsertMessage = async (...args) => { entered.release(); await held.promise; return upsert(...args); };
+      }
+      let answering: Promise<null> | undefined;
+      try {
+        if (order === "approve-first") answering = runtime.approve(started.turnId, approval.approvalId, true);
+        await runtime.stop(started.turnId);
+        await entered.promise;
+        await expect(runtime.approve(started.turnId, approval.approvalId, true)).rejects.toThrow(/no longer waiting/);
+        expect(terminals(events)).toHaveLength(0);
+        expect(runtime.isWorking(book.id)).toBe(true);
+        held.release();
+        await answering;
+        await waitForStopped(events, started.turnId);
+        expect(model.doStreamCalls).toHaveLength(1);
+        expect(terminals(events)).toHaveLength(1);
+        const tail = (await library.threads.read(book.id, started.threadId))?.messages.at(-1);
+        expect(tail?.parts.find((part) => part.type === "approval")).toMatchObject({ status: order === "approve-first" ? "approved" : "expired" });
+        expect(tail?.parts.some((part) => part.type === "tool-result")).toBe(false);
+      } finally { held.release(); }
+    });
+  }
+
+  test("failed approval persistence never resumes a destructive action", async () => {
+    const model = memoryApprovalModel();
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Forget" });
+    const approval = await waitForApproval(events, started.turnId);
+    library.threads.updateApproval = async () => { throw new Error("Synthetic disk full"); };
+    await expect(runtime.approve(started.turnId, approval.approvalId, true)).rejects.toThrow(/could not be saved/);
+    const stopped = await waitForStopped(events, started.turnId);
+    expect(stopped.persistenceError).toContain("action was not started");
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(terminals(events)).toHaveLength(1);
+  });
+
+  test("initial approval publication failure has a distinct primary error and one persistence warning", async () => {
+    const model = memoryApprovalModel();
+    const events: AgentEvent[] = [];
+    const outcomes: AgentOutcome[] = [];
+    const updateBook = spyOn(library, "updateBook");
+    library.threads.upsertMessage = async () => { throw new Error("PRIVATE_SYNTHETIC_STORAGE_FAILURE"); };
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model,
+      (outcome) => outcomes.push(outcome));
+    try {
+      const failure: unknown = await runtime.runToCompletion({ mode: "edit", bookId: book.id, prompt: "Forget", background: true })
+        .then(() => null, (error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      if (!(failure instanceof Error)) throw new Error("Missing completion failure");
+      const terminal = events.find((event) => event.type === "error");
+      const outcome = outcomes.find((entry) => entry.kind === "error");
+      if (terminal?.type !== "error" || !outcome) throw new Error("Missing error receipts");
+      const warning = "The conversation outcome could not be fully saved. Changes to the book remain.";
+      const primary = "The approval request could not be saved. The proposed action was not started.";
+      expect(terminal.message).toBe(primary);
+      expect(terminal.persistenceError).toBe(warning);
+      expect(terminal.changed).toBe(0);
+      expect(failure.message).toContain(primary);
+      expect(failure.message.split(warning)).toHaveLength(2);
+      const notification = notificationFor(outcome);
+      expect(notification?.body).toContain(primary);
+      expect(notification?.body.split(warning)).toHaveLength(2);
+      expect(JSON.stringify(events)).not.toContain("PRIVATE_SYNTHETIC_STORAGE_FAILURE");
+      expect(events.some((event) => event.type === "approval")).toBe(false);
+      expect(terminals(events)).toHaveLength(1);
+      expect(model.doStreamCalls).toHaveLength(1);
+      expect(updateBook).not.toHaveBeenCalled();
+    } finally { updateBook.mockRestore(); }
+  });
+
+  for (const failure of ["none", "checkpoint", "conversation", "reference"] as const) {
+    test(`stop waits for slow persistence with failure at: ${failure}`, async () => {
+      const chapter = await library.createChapter(book.id, { title: "Checkpoint", content: "The old opening.\n" });
+      const entered = gate();
+      const held = gate();
+      const saving = CheckpointStore.prototype.save;
+      const checkpoint = spyOn(CheckpointStore.prototype, "save").mockImplementation(async function (this: CheckpointStore, ...args) {
+        entered.release();
+        await held.promise;
+        if (failure === "checkpoint") throw new Error("Synthetic checkpoint failure");
+        return saving.apply(this, args);
+      });
+      const events: AgentEvent[] = [];
+      const model = replaceModel(chapter.id);
+      const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+      const finalEntered = gate();
+      const finalHeld = gate();
+      const upsert = library.threads.upsertMessage.bind(library.threads);
+      library.threads.upsertMessage = async (...args) => {
+        finalEntered.release();
+        await finalHeld.promise;
+        if (failure === "conversation") throw new Error("Synthetic conversation failure");
+        return upsert(...args);
+      };
+      const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace" });
+      if (failure === "reference") {
+        const saveThread = library.threads.save.bind(library.threads);
+        library.threads.save = async (thread) => {
+          if (thread.checkpointTurns.includes(started.turnId)) throw new Error("Synthetic checkpoint reference failure");
+          return saveThread(thread);
+        };
+      }
+      try {
+        await entered.promise;
+        await runtime.stop(started.turnId);
+        expect(terminals(events)).toHaveLength(0);
+        expect((await library.readChapter(book.id, chapter.id)).content).toBe("The new opening.\n");
+        held.release();
+        await finalEntered.promise;
+        expect(terminals(events)).toHaveLength(0);
+        expect(runtime.isWorking(book.id)).toBe(true);
+        finalHeld.release();
+        const stopped = await waitForStopped(events, started.turnId);
+        expect(stopped).toMatchObject({ changed: 1, undoAvailable: failure !== "checkpoint" });
+        expect(Boolean(stopped.persistenceError)).toBe(failure === "conversation" || failure === "reference");
+        expect(terminals(events)).toHaveLength(1);
+        expect(model.doStreamCalls).toHaveLength(1);
+        expect(events.filter((event) => event.type === "tool" && event.status === "end")).toHaveLength(1);
+      } finally { held.release(); finalHeld.release(); checkpoint.mockRestore(); }
+    });
+  }
+
+  for (const approval of [false, true]) {
+    test(`stop during ${approval ? "approval" : "ordinary outcome"} persistence cannot publish a late approval or done`, async () => {
+      const entered = gate();
+      const held = gate();
+      const upsert = library.threads.upsertMessage.bind(library.threads);
+      library.threads.upsertMessage = async (...args) => { entered.release(); await held.promise; return upsert(...args); };
+      const model = approval ? memoryApprovalModel() : textModel();
+      const events: AgentEvent[] = [];
+      const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => model);
+      const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Request" });
+      try {
+        await entered.promise;
+        await runtime.stop(started.turnId);
+        expect(runtime.isWorking(book.id)).toBe(true);
+        expect(terminals(events)).toHaveLength(0);
+        held.release();
+        await waitForStopped(events, started.turnId);
+        expect(terminals(events)).toHaveLength(1);
+        expect(events.some((event) => event.type === "approval")).toBe(false);
+        expect(model.doStreamCalls).toHaveLength(1);
+        const tail = (await library.threads.read(book.id, started.threadId))?.messages.at(-1);
+        expect(tail?.parts.some((part) => part.type === "error" && part.code === "stopped")).toBe(true);
+        if (approval) expect(tail?.parts.find((part) => part.type === "approval")).toMatchObject({ status: "expired" });
+      } finally { held.release(); }
+    });
+  }
+
+  test("a never-settling adapter remains stopping with unknown outcome", async () => {
+    const chapter = await library.createChapter(book.id, { title: "Hung", content: "The old opening.\n" });
+    const entered = gate();
+    // No delayed disk access: this adapter deliberately never returns or writes.
+    library.saveChapter = async () => { entered.release(); return new Promise(() => {}); };
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime(studioFor(), providersFor(), (event) => events.push(event), () => replaceModel(chapter.id));
+    const started = await runtime.start({ mode: "edit", bookId: book.id, prompt: "Replace" });
+    await entered.promise;
+    await runtime.stop(started.turnId);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(runtime.isWorking(book.id)).toBe(true);
+    expect(terminals(events)).toHaveLength(0);
+    await expect(runtime.start({ mode: "edit", bookId: book.id, prompt: "Another" })).rejects.toThrow(/still stopping/);
+    expect((await library.readChapter(book.id, chapter.id)).content).toBe("The old opening.\n");
   });
 });

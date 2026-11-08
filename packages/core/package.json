@@ -6,6 +6,22 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
+    "./planning/schema": {
+      "types": "./src/planning/schema.ts",
+      "default": "./src/planning/schema.ts"
+    },
+    "./planning/service": {
+      "types": "./src/planning/service.ts",
+      "default": "./src/planning/service.ts"
+    },
+    "./planning/checked-sidecar": {
+      "types": "./src/planning/checked-sidecar.ts",
+      "default": "./src/planning/checked-sidecar.ts"
+    },
+    "./organization/goals": {
+      "types": "./src/organization/goals.ts",
+      "default": "./src/organization/goals.ts"
+    },
     "./schema": {
       "types": "./src/schema.ts",
       "default": "./src/schema.ts"

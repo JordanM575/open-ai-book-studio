@@ -50,8 +50,8 @@ capability results rather than copying provider-specific catalogue parsing or se
 Reuse catalogue price/context fields and their provenance. A catalogue context limit is not a guarantee
 that a particular request fits. A total cost estimate is shown only when the profile's token estimate
 and every required price are known; otherwise the total is “unknown” or unavailable. Estimates and
-existing cost-helper warnings remain informational. No thresholds or ceilings are introduced while
-D-116 is Proposed.
+existing warnings remain informational. Accepted D-116 does not turn this preview into enforcement;
+bounded-operation/qualified strict-money admission belongs to the separate ADR 0019 path.
 
 ### Shared UI and existing selection journey
 
@@ -101,11 +101,11 @@ the smallest compatible extension and preserve specs 011 and 022.
 | Ranking and model-quality evidence | Unresolved | Scores, ordering by quality/speed, or a single “best” suggestion | Unranked compatibility and catalogue comparison |
 | Local request-size/token estimate | Unresolved | Actual prompt-fit claims and total cost estimates without known input sizes | Showing catalogue context limits and prices |
 | Applying/persisting a suggestion | Unresolved | Changing a selection from the preview or storing task/route metadata | Link to the unchanged existing picker; transient preview |
-| D-116 cost enforcement | Proposed | Hard ceilings, cost-based refusal, or guarantees about spend | Informational catalogue prices and estimates with unknowns |
-| Dispatch, automatic routing, fallback, and recovery | Unresolved | Any new dispatch, automatic switch, fallback, or retry | The existing author-requested spec 011 send path |
+| D-116 cost enforcement | Accepted contract; implementation/adapter qualification pending | Strict-money claims before qualified enforcement | Informational prices and estimates with unknowns |
+| Workflow dispatch and recovery | D-196 accepted for pinned selected roles; zero automatic retries/fallback | Runtime dispatch before 037 ownership/authority/admission integration | Existing author-requested send and neutral preview |
 
 The decisions without an existing public ID must be recorded in the public decision register before the
-dependent tasks start. D-116 retains its public Proposed status unless separately accepted. These gates
+dependent tasks start. D-116/D-196 are now specifically accepted; other questions above remain. These gates
 are local to dependent work; they do not make the offline preview or its fixture tests globally blocked.
 
 ## Verification approach
@@ -131,7 +131,7 @@ are local to dependent work; they do not make the offline preview or its fixture
 | A recommendation is mistaken for a quality guarantee | Keep candidates unranked until evidence and ranking policy are publicly decided; show the basis and unknowns. |
 | Catalogue facts are stale or incomplete | Show freshness and unknown values; never refresh automatically or guess. |
 | A model context limit is mistaken for a prompt-fit guarantee | Separate catalogue limit from actual-request fit; do not claim fit without an accepted estimator. |
-| Estimated cost is mistaken for a ceiling | Label estimates and warnings as informational; D-116 remains Proposed and unknown prices remain unknown. |
+| Estimated cost is mistaken for a ceiling | Label estimates/warnings informational; D-116 contract acceptance is not enforcement and unknown prices remain unknown. |
 | Opening the feature unexpectedly sends author data | Preview consumes only local non-secret catalogue summaries; test with a provider-call spy and fixture library. |
 | Preview and current selection drift | Preview never mutates selection; the existing picker and send path remain authoritative. |
 | Contributor consent is generalized to other purposes | Preserve spec 022's per-book, default-off guard; the preview cannot set consent. |

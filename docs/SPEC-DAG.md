@@ -1,7 +1,8 @@
 # Completion spec ownership and DAG
 
 This map reconciles ownership against the November 7 status baseline in
-[PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md). All new 039–042 tasks are unchecked. Existing specs
+[PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md). 039 is now In progress with its retention decision
+checked; implementation remains open. 040–042 remain Draft/Planned with unchecked tasks. Existing specs
 remain authoritative for their implemented slices and open decisions. Spec 038 is integrated through
 PR #26 under D-192; its final verification task T022 remains open. The original review baseline and
 results in [SPEC-REVIEW.md](SPEC-REVIEW.md) remain historical evidence.
@@ -14,6 +15,10 @@ they are not replacement implementations. Acceptance criteria in
 
 | Requirement | Primary spec | Supporting contracts / remaining acceptance work | Lane |
 | --- | --- | --- | --- |
+| REQ-AUTO-001 | 037 | 030/031/033; short brief/onboarding to durable ~70,000-word drafting and revision workflow | L05 |
+| REQ-AUTO-002 | 037 | 031/032/036; asynchronous specialists, background ownership/recovery and human direction | L05 |
+| REQ-REVIEW-004 | 039 | 034/033/037; AutoCrit-style editorial workflow, exact source underlines and stale feedback | L09 |
+| REQ-VOICE-002 | 017 | 038/031/037; hands-free activation, interruption, correction and spoken check-ins | L12 |
 | REQ-TOOL-001 | 024 | 018/025; parity, opted-in writes/destruction, undo and single-writer conformance, not a new CLI/MCP | L15 |
 | REQ-REVIEW-001 | 034 | Saved-only local metrics, stale/cancel/coverage and byte-identical sources; D-171 gates persistence | L08 |
 | REQ-REVIEW-002 | 037 | 011/022/024/025; exact outgoing scope, zero-send cancel and read-only execution | L05 |
@@ -25,7 +30,7 @@ they are not replacement implementations. Acceptance criteria in
 | REQ-COVER-001 | 041 (new) | 019/035; distinct book-level composition, original asset preservation and target geometry | L10 |
 | REQ-AUDIOBOOK-001 | 042 (new) | 038 preferences and existing TTS helpers; 017 background boundary, 011/022 consent and 035 snapshot concepts; stock cast/text consent and recovery | L13 |
 | REQ-LIBRARY-001 | 033 | 001/002; identity, unknown-field preservation, checked collections/notes/goals and stale anchors | L07 |
-| REQ-HISTORY-001 | 032 | D-175/D-176 accepted; format/schema follow-through, conflict-preserving restore and undo/recovery remain | L07 |
+| REQ-HISTORY-001 | 032 | Core merged PR #33; restore/UI correction accepted and merged in PR #34, host mount remains | L07 |
 | REQ-ROUTING-001 | 036 | 011/022; advisory-only preview, zero side effects and honest unknown price/capability; D-116 not a cap | L14 |
 | REQ-RELEASE-001 | 009 | 013; signing/update decision gates, unsigned provenance and install/update library preservation | L20 |
 | REQ-SURFACE-001 | 013 | 010/014/026/040; per-surface matrix and refusal before capture/request/write | L16 |
@@ -68,7 +73,7 @@ must match it. The machine-readable ownership map is [completion-specs.json](com
 | L21 Quality and accessibility | 012; exact-commit evidence |
 | L22 Guides, samples and film | 021, 023 |
 | L23 Desktop release sign-off | 009, 012, 013; release checklist |
-| L24 Requested roadmap complete | All retained lanes or explicit public deferral |
+| L24 Requested roadmap complete | All retained lanes or explicit author-approved scope change |
 
 ## Reading the dependencies correctly
 
@@ -80,7 +85,8 @@ to new character records, not a narrator-only audition. The JSON records their c
 L10 → L11 concerns cover-dependent target claims, not every existing document export. L12 → L18
 concerns claimed voice support; an Android storage/editor slice can precede voice. Planned features
 do not become desktop blockers through these edges: L23 accepts the explicitly supported desktop
-matrix, while wider retained scope closes at L24. Any deferral must be recorded, not silently skipped.
+matrix, while wider retained scope closes at L24. Any deferral requires explicit author-approved scope
+change, not delegated omission. [Retained follow-through](RETAINED-DELIVERY.md) assigns original gaps.
 
 The new specs' contract-level prerequisites are:
 
@@ -109,10 +115,11 @@ These contract arrows do not require full feature completion of all source specs
 snapshot/validation contracts to 041; 041 may later supply cover measurements to a 035 readiness
 check. These are different slices, not a cycle requiring both entire specs to finish first. Likewise
 037's conversational review and 039's structured reports remain distinct; neither changes 034's
-deterministic metrics. D-171, D-115, D-116 and all new U-039…U-042 questions retain their open gates.
+deterministic metrics. D-171/D-116 and U-037/U-039 are now specifically accepted under ADRs 0019–0020;
+format, integration and independent evidence gates remain. D-115 and U-040…U-042 retain open decisions.
 
-Spec 017 explicitly excludes TTS; 038 and the existing speech services supply selection/request
-seams, not an audiobook job system. The all-features direction on November 7 adds L06 → L24 explicitly;
+Spec 017's D-200 extension now includes hands-free/reading; 038 and existing speech services supply
+selection/request seams, not an audiobook job system. The November 7 direction adds L06 → L24 explicitly;
 claim-scoped lane interpretations remain documented in
 [the dependency notes](PRODUCT-COMPLETION.md#dependency-questions-still-open).
 [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md) and its JSON map independent execution packages to

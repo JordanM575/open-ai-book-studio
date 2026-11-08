@@ -35,6 +35,7 @@
     "tests/**/*.ts"
   ],
   "exclude": [
+    "tests/planning-dialogs.test.tsx",
     "tests/manuscript-editor.test.ts",
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",

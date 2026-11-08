@@ -1,0 +1,13 @@
+{
+  "extends": "../../../../apps/desktop/tsconfig.node.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "typeRoots": ["../../../../apps/desktop/node_modules/@types", "../../../../node_modules/@types"]
+  },
+  "include": [
+    "./integration.test.ts",
+    "../../../../apps/web/tests/storage/planning-integration.test.ts",
+    "../../../../apps/web/tests/storage/fake-indexeddb.d.ts"
+  ],
+  "exclude": []
+}

@@ -10,6 +10,7 @@ import { Notice } from "@ai-book-studio/ui/notice";
 import { DriftReportDialog, type DriftReviewTarget } from "./components/DriftReportDialog";
 import { SchemaRefusalDialog } from "./components/SchemaRefusalDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PlanningNavigation } from "./components/planning/navigation";
 
 type Screen = { kind: "library" } | { kind: "workspace"; bookId: string };
 
@@ -22,6 +23,7 @@ export default function App() {
 }
 
 function Studio() {
+  const [planningNavigation] = useState(() => new PlanningNavigation());
   const theme = useTheme();
   const [library, setLibrary] = useState<LibraryInfo | null | undefined>(undefined);
   const [screen, setScreen] = useState<Screen>({ kind: "library" });
@@ -91,6 +93,8 @@ function Studio() {
   }, [report]);
 
   const chooseLibrary = useCallback(async () => {
+    const release = planningNavigation.acquire();
+    if (!release) return;
     try {
       const info = await must(window.studio.library.choose());
       if (info) {
@@ -99,8 +103,10 @@ function Studio() {
       }
     } catch (error) {
       report(error);
+    } finally {
+      release();
     }
-  }, [report]);
+  }, [report, planningNavigation]);
 
   useEffect(() => window.studio.menu.onOpenLibrary(() => void chooseLibrary()), [chooseLibrary]);
 
@@ -117,20 +123,22 @@ function Studio() {
   useEffect(
     () =>
       window.studio.app.onOpenConversation(({ bookId, threadId, chapterId }) => {
+        if (!planningNavigation.allow()) return;
         setScreen({ kind: "workspace", bookId });
         setConversationRequest({ bookId, threadId, nonce: Date.now() });
         if (chapterId) setChapterRequest({ bookId, chapterId, nonce: Date.now(), revert: false });
       }),
-    []
+    [planningNavigation]
   );
 
   const reviewDriftTarget = useCallback(
     (target: DriftReviewTarget, revert: boolean) => {
+      if (!planningNavigation.allow()) return;
       setScreen({ kind: "workspace", bookId: target.bookId });
       setChapterRequest({ ...target, nonce: Date.now(), revert });
       setDrift(null);
     },
-    []
+    [planningNavigation]
   );
 
   const refreshDrift = useCallback(
@@ -247,6 +255,8 @@ function Studio() {
         <WelcomeView onChooseLibrary={chooseLibrary} />
       ) : screen.kind === "workspace" ? (
         <WorkspaceView
+          key={`${library.root}:${screen.bookId}`}
+          planningNavigation={planningNavigation}
           bookId={screen.bookId}
           theme={theme}
           libraryRoot={library.root}
@@ -293,6 +303,7 @@ function Studio() {
         <SchemaRefusalDialog
           detectedSchema={schemaRefusal.detectedSchema}
           onBack={() => {
+            if (!planningNavigation.allow()) return;
             setSchemaRefusal(null);
             setScreen({ kind: "library" });
           }}
