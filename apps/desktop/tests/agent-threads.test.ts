@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,8 +10,9 @@ import {
   type AgentMessage
 } from "@ai-book-studio/core/agent/messages";
 import { ThreadStore, ThreadStoreError } from "@ai-book-studio/core/agent/threads";
-import { toLibraryFilePath } from "@ai-book-studio/core/library/path";
-import { threadsPath } from "@ai-book-studio/core/library/paths";
+import { libraryPathFromArchivePath, toLibraryFilePath } from "@ai-book-studio/core/library/path";
+import { conflictsPath, threadsPath } from "@ai-book-studio/core/library/paths";
+import { LibraryService } from "@ai-book-studio/core/library/service";
 import type { LibraryEnvironment } from "@ai-book-studio/core/library/port";
 import { createFileSystemEnvironment } from "../src/main/library/fs-port";
 import { prepareThread } from "../src/main/agent/runtime";
@@ -243,10 +244,189 @@ describe("thread store", () => {
   });
 
   test("removing a missing conversation is idempotent", async () => {
-    await store.remove(BOOK, "thread_missing01");
+    expect(await store.remove(BOOK, "thread_missing01")).toEqual({ status: "missing" });
     const thread = await store.create(BOOK, "Gone");
     await store.remove(BOOK, thread.id);
     expect(await store.read(BOOK, thread.id)).toBeNull();
+  });
+});
+
+describe("checked conversation writes", () => {
+  function pathOf(threadId: string): string {
+    return join(root, ...toLibraryFilePath([...threadsPath(BOOK), `${threadId}.json`]));
+  }
+
+  function trashPathOf(trashedAt: string): string {
+    return join(root, ...libraryPathFromArchivePath(trashedAt));
+  }
+
+  test("a stale base hash keeps the intended conversation and never overwrites", async () => {
+    const thread = await store.create(BOOK, "First");
+    const path = pathOf(thread.id);
+    const baseHash = (await env.storage.readFile(toLibraryFilePath([...threadsPath(BOOK), `${thread.id}.json`])))!
+      .sha256;
+
+    await store.rename(BOOK, thread.id, "Second");
+    await expect(store.save({ ...thread, title: "Mine" }, { baseHash })).rejects.toMatchObject({
+      code: "conflict"
+    });
+
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Second");
+    const copies = await readdir(join(root, ...conflictsPath(BOOK)));
+    expect(copies.some((name) => name.includes(thread.id) && name.endsWith(".json"))).toBe(true);
+    const copy = JSON.parse(await readFile(join(root, ...conflictsPath(BOOK), copies[0]!), "utf8"));
+    expect(copy.title).toBe("Mine");
+    expect(await readFile(path, "utf8")).toContain('"title": "Second"');
+  });
+
+  test("two writers from the same base produce one result and one kept copy", async () => {
+    const service = await LibraryService.open(env);
+    const thread = await store.create(BOOK, "Base");
+    const first = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    const second = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    const readFirst = await first.read(BOOK, thread.id);
+    const readSecond = await second.read(BOOK, thread.id);
+
+    const results = await Promise.allSettled([
+      first.save({ ...readFirst!, title: "First writer" }),
+      second.save({ ...readSecond!, title: "Second writer" })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: "conflict" });
+    const stored = await store.read(BOOK, thread.id);
+    expect(["First writer", "Second writer"]).toContain(stored?.title ?? "");
+    const copies = await readdir(join(root, ...conflictsPath(BOOK)));
+    expect(copies.some((name) => name.includes(thread.id))).toBe(true);
+  });
+
+  test("saving an unchanged conversation writes nothing and keeps the timestamp", async () => {
+    const thread = await store.create(BOOK, "Unchanged");
+    const path = pathOf(thread.id);
+    const before = await readFile(path, "utf8");
+    const saved = await store.save(thread);
+    expect(saved.updatedAt).toBe(thread.updatedAt);
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  test("unknown plain fields survive an ordinary rename", async () => {
+    const thread = await store.create(BOOK, "Extras");
+    const path = pathOf(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.futureTop = { keep: [1, 2, 3] };
+    raw.messages = [
+      {
+        id: "msg_test0001",
+        role: "user",
+        parts: [{ type: "text", text: "Hello.", futurePart: "kept" }],
+        futureMessage: "kept",
+        createdAt: thread.createdAt
+      }
+    ];
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    await store.rename(BOOK, thread.id, "Renamed");
+    const after = JSON.parse(await readFile(path, "utf8"));
+    expect(after.title).toBe("Renamed");
+    expect(after.futureTop).toEqual({ keep: [1, 2, 3] });
+    expect(after.messages[0].futureMessage).toBe("kept");
+    expect(after.messages[0].parts[0].futurePart).toBe("kept");
+  });
+
+  test("replacing a message keeps unknown fields attached to it", async () => {
+    const thread = await store.create(BOOK, "Upsert");
+    const path = pathOf(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.messages = [
+      {
+        id: "msg_test0002",
+        role: "assistant",
+        parts: [{ type: "text", text: "First", futurePart: "part extra" }],
+        futureMessage: "message extra",
+        createdAt: thread.createdAt
+      }
+    ];
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    await store.upsertMessage(
+      BOOK,
+      thread.id,
+      agentMessageSchema.parse({
+        id: "msg_test0002",
+        role: "assistant",
+        parts: [{ type: "text", text: "Second" }],
+        createdAt: thread.createdAt
+      })
+    );
+
+    const after = JSON.parse(await readFile(path, "utf8"));
+    expect(after.messages[0].futureMessage).toBe("message extra");
+    expect(after.messages[0].parts[0].futurePart).toBe("part extra");
+    expect(after.messages[0].parts[0].text).toBe("Second");
+  });
+
+  test("deletion moves the file to recoverable trash and restore brings it back", async () => {
+    const thread = await store.create(BOOK, "Delete me");
+    const removed = await store.remove(BOOK, thread.id);
+    expect(removed.status).toBe("trashed");
+    if (removed.status !== "trashed") throw new Error("expected a trashed conversation");
+    expect(await store.read(BOOK, thread.id)).toBeNull();
+    expect(removed.trashedAt).toContain(".studio/trash/");
+    expect((await env.storage.readFile(libraryPathFromArchivePath(removed.trashedAt)))).not.toBeNull();
+    expect(await readFile(trashPathOf(removed.trashedAt), "utf8")).toContain('"title": "Delete me"');
+
+    const restored = await store.restore(BOOK, thread.id, removed.trashedAt);
+    expect(restored.title).toBe("Delete me");
+    expect((await store.read(BOOK, thread.id))?.title).toBe("Delete me");
+
+    await expect(store.restore(BOOK, thread.id, removed.trashedAt)).rejects.toMatchObject({ code: "exists" });
+    await expect(store.restore(BOOK, thread.id, "books/book_test0001/threads/x.json")).rejects.toMatchObject({
+      code: "invalid-id"
+    });
+    await expect(store.restore(BOOK, "thread_other01", removed.trashedAt.replace(thread.id, "thread_other01"))).rejects.toMatchObject({
+      code: "not-found"
+    });
+  });
+
+  test("a future schema and an oversized record are refused without rewriting the file", async () => {
+    const thread = await store.create(BOOK, "Future");
+    const path = pathOf(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.schemaVersion = 2;
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    const futureBytes = await readFile(path, "utf8");
+    await expect(store.read(BOOK, thread.id)).rejects.toMatchObject({ code: "newer" });
+    await expect(store.save({ ...thread, title: "No" })).rejects.toMatchObject({ code: "newer" });
+    expect(await readFile(path, "utf8")).toBe(futureBytes);
+
+    const normal = await store.create(BOOK, "A normal conversation with enough bytes to exceed a small test limit.");
+    const limited = new ThreadStore(env.storage, env.runtime, undefined, { maxBytes: 64 });
+    const normalBytes = await readFile(pathOf(normal.id), "utf8");
+    await expect(limited.read(BOOK, normal.id)).rejects.toMatchObject({ code: "too-large" });
+    expect(await readFile(pathOf(normal.id), "utf8")).toBe(normalBytes);
+  });
+
+  test("the desktop Library writes conversations through the shared write host and does not migrate on open", async () => {
+    const service = await LibraryService.open(env);
+    const hosted = new ThreadStore(env.storage, env.runtime, service.writeHost);
+    const thread = await hosted.create(BOOK, "Hosted conversation");
+    const path = pathOf(thread.id);
+    const before = await readFile(path, "utf8");
+
+    // Reopening the library rebuilds the catalog; it must not migrate or rewrite a v1 conversation.
+    await LibraryService.open(env);
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect((await hosted.read(BOOK, thread.id))?.title).toBe("Hosted conversation");
+  });
+
+  test("no unchecked conversation writer remains", async () => {
+    const threads = await readFile(new URL("../../../packages/core/src/agent/threads.ts", import.meta.url), "utf8");
+    expect(threads).not.toMatch(/kind:\s*"any"/);
+    expect(threads).not.toMatch(/removeFile\s*\(/);
+    expect(threads).not.toMatch(/\bunlink\b/);
+    const facade = await readFile(new URL("../src/main/library/store.ts", import.meta.url), "utf8");
+    expect(facade).toMatch(/new ThreadStore\([^)]*writeHost/s);
   });
 });
 

@@ -29,6 +29,7 @@ and words a close or quit could not save until the author restores or discards t
       device_…json             this device's last scan; never exported
     trash/
       book_…/1719340000000-0002-the-lighthouse.md
+      book_…/threads/mw84o1sb-thread_855661fbeed74ce0.json
 ```
 
 The library folder can live anywhere: locally, in iCloud Drive, in Google Drive, in Dropbox, on a
@@ -54,7 +55,7 @@ schema from these directory names or from an unchecked TypeScript object.
 | `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records; full/segmented continuation and related-report trash/restore rules before writers |
-| Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration, checked whole-document revisions/raw hashes, lossless supported unknown fields and future/unknown-semantic read-only behavior before new semantic parts |
+| Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
 
 The workflow row is now specified in [Workflow records (schema 1)](#workflow-records-schema-1);
@@ -67,7 +68,8 @@ receipts; issue-bearing list/read; conflict preservation; explicit migration; ar
 trash/restore. Cross-file operations are recoverable sequences. No automatic pruning or replay of
 uncertain dispatch/publication. Adopt the ADR-specific byte bounds without inventing eviction.
 Changing a reservation requires updating its ADR and owning spec. Existing v1 thread behavior below
-is current format evidence, not a claim that checked-write migration is complete.
+is current format evidence: its checked-write migration covers every v1 caller, while an explicit v2
+semantic migration remains unimplemented.
 
 ## Checked planning and goal sidecars
 
@@ -916,11 +918,11 @@ as a chapter and is not part of `library.json`; a missing or stale catalog never
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `schemaVersion` | number | Currently `1`. A newer version is refused. |
+| `schemaVersion` | number | Currently `1`. A missing version is read as 1; a newer version is refused read-only and never migrated when the library opens. |
 | `id` | string | `thread_` + at least 6 letters, digits or hyphens. Matches the file name. |
 | `bookId` | string | The owning book. |
 | `title` | string | Author-facing label; defaults to "New conversation". |
-| `createdAt`, `updatedAt` | ISO 8601 | `updatedAt` changes on every save. |
+| `createdAt`, `updatedAt` | ISO 8601 | `updatedAt` changes when the conversation content changes. A save that changes nothing is not rewritten and keeps the stored timestamp. |
 | `messages` | array | Each has `id`, `role`, `parts`, optional `model`, `mode` and `usage`, and `createdAt`. New user submissions and assistant outcomes record their fixed turn `mode` (`discuss` or `edit`); older messages have none and are shown as unrecorded, never inferred from the current composer. |
 | `checkpointTurns` | string[] | Turn ids whose checkpoints belong to this conversation, newest last: each turn that changed the book and saved its checkpoint, including one stopped while it waited for approval and one that failed before it stored a reply. Undo takes the book's newest checkpoint, so the chat offers it only on the last of these, and names that turn: if another change now owns the newest checkpoint, nothing is undone (see [Agent turn checkpoints](#agent-turn-checkpoints)). An undo removes its turn from every conversation that lists it. A branch copies its source's list when it keeps the newest of these turns, and starts with none otherwise. |
 
@@ -941,8 +943,33 @@ preserved as seconds in the stored explanation instead of being clamped; the liv
 still carries the original wait. Conversation validation or persistence failure cannot suppress
 the turn's terminal event.
 
-A corrupt file is never rewritten or deleted by a list operation; opening it reports the error. Thread
-writes use the library port's checked commit, so a failed write leaves the previous file intact.
+A corrupt file is never rewritten or deleted by a list operation; opening it reports the error. A
+conversation may carry unknown plain fields at any depth; a checked read-modify-write keeps them,
+including fields on a message whose body is replaced with the same id. Unknown message roles and part
+types are semantic, not plain data: this build reports the file as unsupported and leaves it
+untouched rather than guessing. A newer `schemaVersion` is likewise read-only. There is no v2 writer
+or automatic migration in this slice; a future v2 that adds semantic parts must ship an explicit
+migration with an original-byte backup.
+
+Thread writes are checked. A save names the exact raw SHA-256 of the bytes it read; the commit refuses
+to overwrite a file that changed, and keeps the caller's whole intended document as
+`conflicts/<threadId>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json` with its
+bytes verified before it reports `savedAs`. A written document is read back and compared with the
+bytes submitted; a different or uncertain readback is reported as uncertain, never as saved. Parsing
+is fatal UTF-8 and lossless JSON: a byte-order mark, duplicate key, lone surrogate, non-finite or
+negative-zero number, or an integer outside the safe range is refused rather than normalized. A
+supported number keeps its exact value and strings are kept exactly, without trimming or Unicode
+normalization; a literal that cannot be represented without loss is refused instead. The
+materialization ceiling is 64 MiB per conversation; a larger file is reported and left untouched
+(D-113). Every conversation caller writes through the Library's per-book queue and journal-aware
+commit; there is no unchecked thread writer or second queue.
+
+Deleting a conversation moves its whole file to
+`.studio/trash/<bookId>/threads/<stamp>-<threadId>[-N].json`; it never unlinks the file. The source
+must exist and the destination must be absent, with a collision taking the next suffix. Restoring
+moves the same bytes back to `threads/<threadId>.json`, requires that destination to be absent, and
+refuses a file that no longer names this book and conversation. There is no automatic pruning, quota
+or expiry.
 
 ## Agent turn checkpoints
 

@@ -1,27 +1,54 @@
 import { LibraryPortError } from "../library/errors";
-import { libraryPathToArchivePath, toLibraryFilePath, type LibraryPath } from "../library/path";
-import { threadsPath } from "../library/paths";
-import type { LibraryPort, LibraryRuntime } from "../library/port";
+import {
+  libraryPathFromArchivePath,
+  libraryPathToArchivePath,
+  toLibraryFilePath,
+  type LibraryPath
+} from "../library/path";
+import { conflictPath, conflictsPath, threadsPath, threadsTrashPath } from "../library/paths";
+import type {
+  CommitFileResult,
+  FileExpectation,
+  LibraryFileSnapshot,
+  LibraryPort,
+  LibraryRuntime,
+  LibraryWriteHost
+} from "../library/port";
 import { assertBookWritable } from "../library/schema-guard";
-import { noteRemovedFiles, noteWrittenFiles } from "../sync/journal";
+import { noteMovedPrefix, noteRemovedFiles, noteWrittenFiles } from "../sync/journal";
 import {
   agentThreadSchema,
   lastMessageText,
-  serializeAgentThread,
   type AgentApprovalStatus,
   type AgentMessage,
   type AgentThread
 } from "./messages";
+import {
+  buildThreadDocument,
+  readThreadDocument,
+  ThreadDocumentError,
+  THREAD_DOCUMENT_MAX_BYTES,
+  type ThreadDocument
+} from "./thread-document";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-export type ThreadStoreErrorCode = "invalid-id" | "not-found" | "exists" | "corrupt";
+export type ThreadStoreErrorCode =
+  | "invalid-id"
+  | "not-found"
+  | "exists"
+  | "corrupt"
+  | "conflict"
+  | "uncertain"
+  | "newer"
+  | "unsupported"
+  | "too-large"
+  | "io";
 
 export class ThreadStoreError extends Error {
   constructor(
     readonly code: ThreadStoreErrorCode,
-    message: string
+    message: string,
+    /** Library-relative path of the kept copy, when the failure preserved the author's version. */
+    readonly savedAs?: string
   ) {
     super(message);
     this.name = "ThreadStoreError";
@@ -37,18 +64,38 @@ export interface ThreadSummary {
   preview: string;
 }
 
+export type ThreadTrashResult = { status: "trashed"; trashedAt: string } | { status: "missing" };
+
+export interface ThreadStoreOptions {
+  /** Test/forward-compatible override; never raises above the D-113 ceiling. */
+  maxBytes?: number;
+}
+
 /**
- * Conversations are files beside the manuscript, written through the library port so every target
- * gets the same atomic commit. The store owns the file layout and schema; the runtime decides when
- * a turn is appended.
+ * Conversations are files beside the manuscript. Every write joins the Library's per-book queue and
+ * takes the library's journal-aware checked commit: the save names the exact raw hash it started from,
+ * verifies the bytes the adapter published and keeps the author's version in `conflicts/` when the
+ * file moved underneath it. There is no second queue and no unchecked overwrite.
+ *
+ * A store opened without a host (pure core tests, a future non-Library host) still commits through the
+ * same `LibraryPort` primitive, but production construction in the desktop Library always passes the
+ * service's `writeHost`.
  */
 export class ThreadStore {
   private notedDeviceId: string | null = null;
+  /** The exact raw hash this process last read or wrote, so a later save is checked against its base. */
+  private readonly hashes = new Map<string, string>();
 
   constructor(
     private readonly storage: LibraryPort,
-    private readonly runtime: LibraryRuntime
+    private readonly runtime: LibraryRuntime,
+    private readonly host?: LibraryWriteHost,
+    private readonly options: ThreadStoreOptions = {}
   ) {}
+
+  private get maxBytes(): number {
+    return Math.min(this.options.maxBytes ?? THREAD_DOCUMENT_MAX_BYTES, THREAD_DOCUMENT_MAX_BYTES);
+  }
 
   async create(bookId: string, title?: string, messages: AgentMessage[] = []): Promise<AgentThread> {
     assertBookId(bookId);
@@ -63,30 +110,31 @@ export class ThreadStore {
       messages,
       checkpointTurns: []
     };
-    return this.write(thread, "create");
+    return this.withBook(bookId, () => this.writeDocument(thread, "create"));
   }
 
-  async save(thread: AgentThread): Promise<AgentThread> {
-    return this.write(thread, "save");
+  /**
+   * Save a conversation this store read or created. `baseHash` overrides the remembered read hash;
+   * either way the commit is checked against the exact raw bytes it started from, not a version number.
+   */
+  async save(thread: AgentThread, options: { baseHash?: string } = {}): Promise<AgentThread> {
+    const parsed = agentThreadSchema.parse(thread);
+    const key = threadKey(parsed.bookId, parsed.id);
+    // Capture the base before the queue: the read below records the current hash and must not
+    // become the base the caller is checked against.
+    const known = options.baseHash ?? this.hashes.get(key);
+    return this.withBook(parsed.bookId, async () => {
+      const current = await this.readDocument(parsed.bookId, parsed.id);
+      return this.writeDocument(parsed, "save", known, current);
+    });
   }
 
   async read(bookId: string, threadId: string): Promise<AgentThread | null> {
-    const path = this.filePath(bookId, threadId);
-    const snapshot = await this.storage.readFile(path);
-    if (!snapshot) return null;
-    try {
-      const thread = agentThreadSchema.parse(JSON.parse(decoder.decode(snapshot.bytes)));
-      if (thread.bookId !== bookId || thread.id !== threadId) {
-        throw new ThreadStoreError("corrupt", "That file belongs to a different conversation.");
-      }
-      return thread;
-    } catch (error) {
-      if (error instanceof ThreadStoreError) throw error;
-      throw new ThreadStoreError("corrupt", "That conversation could not be read. The file was left untouched.");
-    }
+    const document = await this.readDocument(bookId, threadId);
+    return document?.thread ?? null;
   }
 
-  /** Newest first. A corrupt file is skipped here; `read` reports it when opened directly. */
+  /** Newest first. A corrupt, newer or unsupported file is skipped here; `read` reports it when opened. */
   async list(bookId: string): Promise<ThreadSummary[]> {
     assertBookId(bookId);
     const directory = threadsPath(bookId);
@@ -97,20 +145,25 @@ export class ThreadStore {
         const path = toLibraryFilePath([...directory, entry.name]);
         const snapshot = await this.storage.readFile(path);
         if (!snapshot) continue;
-        const thread = agentThreadSchema.parse(JSON.parse(decoder.decode(snapshot.bytes)));
-        if (thread.bookId !== bookId) continue;
-        summaries.push(summarize(thread));
+        const document = readThreadDocument({
+          bytes: snapshot.bytes,
+          sha256: snapshot.sha256,
+          maxBytes: this.maxBytes
+        });
+        if (document.thread.bookId !== bookId) continue;
+        summaries.push(summarize(document.thread));
       } catch {
-        // A half-written or foreign file is not a conversation. Do not hide it by deleting it.
+        // A half-written, foreign, newer or unsupported file is not a conversation to rewrite or hide.
       }
     }
     return summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   async appendMessage(bookId: string, threadId: string, message: AgentMessage): Promise<AgentThread> {
-    const thread = await this.read(bookId, threadId);
-    if (!thread) throw new ThreadStoreError("not-found", "That conversation no longer exists.");
-    return this.save({ ...thread, messages: [...thread.messages, message] });
+    return this.mutate(bookId, threadId, (thread) => ({
+      ...thread,
+      messages: [...thread.messages, message]
+    }));
   }
 
   /**
@@ -119,14 +172,16 @@ export class ThreadStore {
    * keeps one message per turn rather than a partial copy beside the final one.
    */
   async upsertMessage(bookId: string, threadId: string, message: AgentMessage): Promise<AgentThread> {
-    const thread = await this.read(bookId, threadId);
-    if (!thread) throw new ThreadStoreError("not-found", "That conversation no longer exists.");
-    const index = thread.messages.findIndex((entry) => entry.id === message.id);
-    const messages =
-      index >= 0
-        ? thread.messages.map((entry, position) => (position === index ? message : entry))
-        : [...thread.messages, message];
-    return this.save({ ...thread, messages });
+    return this.mutate(bookId, threadId, (thread) => {
+      const index = thread.messages.findIndex((entry) => entry.id === message.id);
+      const messages =
+        index >= 0
+          ? thread.messages.map((entry, position) =>
+              position === index ? carryMessageExtras(entry, message) : entry
+            )
+          : [...thread.messages, message];
+      return { ...thread, messages };
+    });
   }
 
   /** Record the author's answer on a stored approval. Returns null when the part is not there. */
@@ -138,27 +193,34 @@ export class ThreadStore {
     status: AgentApprovalStatus,
     resolvedAt: string = this.runtime.now()
   ): Promise<AgentThread | null> {
-    const thread = await this.read(bookId, threadId);
-    if (!thread) throw new ThreadStoreError("not-found", "That conversation no longer exists.");
-    const message = thread.messages.find((entry) => entry.id === messageId);
-    if (!message) return null;
-    let changed = false;
-    const parts = message.parts.map((part) => {
-      if (part.type !== "approval" || part.approvalId !== approvalId) return part;
-      changed = true;
-      return { ...part, status, resolvedAt };
-    });
-    if (!changed) return null;
-    return this.save({
-      ...thread,
-      messages: thread.messages.map((entry) => (entry.id === messageId ? { ...message, parts } : entry))
-    });
+    let found = false;
+    const saved = await this.mutate(
+      bookId,
+      threadId,
+      (thread) => {
+        const message = thread.messages.find((entry) => entry.id === messageId);
+        if (!message) return null;
+        let changed = false;
+        const parts = message.parts.map((part) => {
+          if (part.type !== "approval" || part.approvalId !== approvalId) return part;
+          changed = true;
+          return { ...part, status, resolvedAt };
+        });
+        if (!changed) return null;
+        found = true;
+        return {
+          ...thread,
+          messages: thread.messages.map((entry) => (entry.id === messageId ? { ...message, parts } : entry))
+        };
+      },
+      { allowNoChange: true }
+    );
+    if (!found) return null;
+    return saved;
   }
 
   async rename(bookId: string, threadId: string, title: string): Promise<AgentThread> {
-    const thread = await this.read(bookId, threadId);
-    if (!thread) throw new ThreadStoreError("not-found", "That conversation no longer exists.");
-    return this.save({ ...thread, title: cleanTitle(title) });
+    return this.mutate(bookId, threadId, (thread) => ({ ...thread, title: cleanTitle(title) }));
   }
 
   /** Copy a conversation up to and including one assistant turn into a new thread. */
@@ -196,36 +258,265 @@ export class ThreadStore {
     }
   }
 
-  async remove(bookId: string, threadId: string): Promise<void> {
-    await assertBookWritable(this.storage, bookId);
-    try {
-      await this.storage.removeFile(this.filePath(bookId, threadId));
-    } catch (error) {
-      if (error instanceof LibraryPortError && error.code === "not-found") return;
-      throw error;
-    }
-    await this.noteFiles({
-      written: [],
-      removed: [libraryPathToArchivePath(this.filePath(bookId, threadId))]
+  /**
+   * Move a conversation file to this book's recoverable trash. The source must exist and the chosen
+   * destination must be free; a collision gets the next suffix rather than overwriting. Nothing is
+   * unlinked, and a missing source is reported as such rather than treated as success.
+   */
+  async remove(bookId: string, threadId: string): Promise<ThreadTrashResult> {
+    assertBookId(bookId);
+    assertThreadId(threadId);
+    return this.withBook(bookId, async () => {
+      await assertBookWritable(this.storage, bookId);
+      const source = this.filePath(bookId, threadId);
+      const snapshot = await this.storage.readFile(source);
+      if (!snapshot) {
+        this.hashes.delete(threadKey(bookId, threadId));
+        return { status: "missing" };
+      }
+      await this.storage.ensureDirectory(threadsTrashPath(bookId));
+      const stamp = this.stamp();
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+        const destination = toLibraryFilePath([
+          ...threadsTrashPath(bookId),
+          `${stamp}-${threadId}${suffix}.json`
+        ]);
+        // Checked before the move: a file already at the destination is a different deletion.
+        if (await this.storage.readFile(destination)) continue;
+        try {
+          await this.moveFile(source, destination);
+        } catch (error) {
+          if (error instanceof LibraryPortError && error.code === "already-exists") continue;
+          throw error;
+        }
+        await this.noteMoved(source, destination);
+        this.hashes.delete(threadKey(bookId, threadId));
+        return { status: "trashed", trashedAt: libraryPathToArchivePath(destination) };
+      }
+      throw new ThreadStoreError(
+        "io",
+        "Could not find a free name in the conversation trash. Nothing was deleted."
+      );
     });
   }
 
-  private async write(thread: AgentThread, mode: "create" | "save"): Promise<AgentThread> {
+  /**
+   * Move the very file `remove` trashed back to `threads/<threadId>.json`. The source must be a
+   * conversation in this book's trash, the destination must be absent, and the file must still name
+   * this book and conversation. Nothing is migrated or rewritten by a restore.
+   */
+  async restore(bookId: string, threadId: string, trashedAt: string): Promise<AgentThread> {
+    assertBookId(bookId);
+    assertThreadId(threadId);
+    return this.withBook(bookId, async () => {
+      await assertBookWritable(this.storage, bookId);
+      const source = trashedThreadPath(bookId, trashedAt);
+      const destination = this.filePath(bookId, threadId);
+      if (await this.storage.readFile(destination)) {
+        throw new ThreadStoreError("exists", "That conversation is already in the book. Nothing was moved.");
+      }
+      const snapshot = await this.storage.readFile(source);
+      if (!snapshot) throw new ThreadStoreError("not-found", "That conversation is no longer in the trash.");
+      const document = await this.readDocumentFrom(snapshot, bookId, threadId);
+      try {
+        await this.moveFile(source, destination);
+      } catch (error) {
+        if (error instanceof LibraryPortError && error.code === "already-exists") {
+          throw new ThreadStoreError("exists", "That conversation is already in the book. Nothing was moved.");
+        }
+        throw error;
+      }
+      await this.noteMoved(source, destination);
+      this.hashes.set(threadKey(bookId, threadId), document.sha256);
+      return document.thread;
+    });
+  }
+
+  private async mutate(
+    bookId: string,
+    threadId: string,
+    change: (thread: AgentThread) => AgentThread | null,
+    options: { allowNoChange?: boolean } = {}
+  ): Promise<AgentThread> {
+    assertBookId(bookId);
+    assertThreadId(threadId);
+    return this.withBook(bookId, async () => {
+      const current = await this.readDocument(bookId, threadId);
+      if (!current) throw new ThreadStoreError("not-found", "That conversation no longer exists.");
+      const next = change(current.thread);
+      if (!next) {
+        if (options.allowNoChange) return current.thread;
+        throw new ThreadStoreError("corrupt", "That conversation could not be updated. The file was left untouched.");
+      }
+      return this.writeDocument(next, "save", current.sha256, current);
+    });
+  }
+
+  private async writeDocument(
+    thread: AgentThread,
+    mode: "create" | "save",
+    baseHash?: string,
+    currentInput?: ThreadDocument | null
+  ): Promise<AgentThread> {
     const parsed = agentThreadSchema.parse(thread);
     const path = this.filePath(parsed.bookId, parsed.id);
+    const key = threadKey(parsed.bookId, parsed.id);
+    const current = currentInput === undefined ? await this.readDocument(parsed.bookId, parsed.id) : currentInput;
+
+    if (mode === "create") {
+      if (current) throw new ThreadStoreError("exists", "That conversation already exists.");
+    } else {
+      if (!current) {
+        if (baseHash) return this.keepConflict(parsed, "missing-file");
+        throw new ThreadStoreError("not-found", "That conversation no longer exists.");
+      }
+      if (baseHash && baseHash !== current.sha256) return this.keepConflict(parsed, "external-edit");
+    }
+
     // A book another device upgraded to a newer schema gets no new conversation file either.
     await assertBookWritable(this.storage, parsed.bookId);
-    const next: AgentThread = { ...parsed, updatedAt: this.runtime.now() };
-    const result = await this.storage.commitFile(
-      path,
-      encoder.encode(serializeAgentThread(next)),
-      mode === "create" ? { kind: "absent" } : { kind: "any" }
+    const built = buildThreadDocument(
+      mode === "save" ? current : null,
+      parsed,
+      this.runtime.now(),
+      this.maxBytes
     );
-    if (result.status === "changed") {
-      throw new ThreadStoreError("exists", "That conversation already exists.");
+    if (mode === "save" && built.unchanged && current) {
+      this.hashes.set(key, current.sha256);
+      return current.thread;
     }
-    await this.noteFiles({ written: [libraryPathToArchivePath(path)], removed: [] });
-    return next;
+
+    const expected: FileExpectation = current ? { kind: "sha256", value: current.sha256 } : { kind: "absent" };
+    const result = await this.commit(path, built.bytes, expected);
+    if (result.status === "changed") {
+      if (result.publication === "uncertain") {
+        return this.uncertain(parsed, built.bytes, "publication");
+      }
+      return this.keepConflict(parsed, current ? "external-edit" : "missing-file");
+    }
+
+    const verified = await this.verify(result, built.bytes);
+    if (!verified) return this.uncertain(parsed, built.bytes, "readback");
+    this.hashes.set(key, result.snapshot.sha256);
+    if (!this.host) {
+      await this.noteFiles({ written: [libraryPathToArchivePath(path)], removed: [] });
+    }
+    return agentThreadSchema.parse(built.raw);
+  }
+
+  /** Keep the caller's whole intended document beside the active file and report where it went. */
+  private async keepConflict(
+    thread: AgentThread,
+    reason: "external-edit" | "missing-file"
+  ): Promise<never> {
+    const built = buildThreadDocument(null, thread, this.runtime.now(), this.maxBytes);
+    const savedAs = await this.writeConflictCopy(thread.bookId, thread.id, built.bytes, reason);
+    throw new ThreadStoreError(
+      "conflict",
+      "That conversation changed since it was read. Your version was kept as a copy; nothing was overwritten.",
+      savedAs
+    );
+  }
+
+  /**
+   * The adapter published but the exact readback differed, or it reported an uncertain publication.
+   * Never report success; preserve the intended bytes and say the outcome is uncertain.
+   */
+  private async uncertain(thread: AgentThread, bytes: Uint8Array, cause: "readback" | "publication"): Promise<never> {
+    let savedAs: string | undefined;
+    try {
+      savedAs = await this.writeConflictCopy(thread.bookId, thread.id, bytes, "external-edit");
+    } catch {
+      // The copy is best-effort here; the uncertain outcome still must be reported.
+    }
+    throw new ThreadStoreError(
+      "uncertain",
+      cause === "publication"
+        ? "The conversation file may have been published, but the adapter could not confirm it. Check the conversation and the kept copy before retrying."
+        : "The conversation file was written but did not read back exactly. Check the conversation and the kept copy before retrying.",
+      savedAs
+    );
+  }
+
+  private async writeConflictCopy(
+    bookId: string,
+    threadId: string,
+    bytes: Uint8Array,
+    reason: "external-edit" | "missing-file"
+  ): Promise<string> {
+    await this.ensureDirectory(conflictsPath(bookId));
+    const deviceId = await this.deviceId();
+    const stamp = this.runtime.now().replace(/[:.]/g, "-");
+    const base = `${threadId}.conflict-${reason}.${deviceId}.${stamp}`;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+      const path = conflictPath(bookId, `${base}${suffix}.json`);
+      const result = await this.commit(path, bytes, { kind: "absent" });
+      if (result.status === "written") {
+        if (!(await this.verify(result, bytes))) {
+          throw new ThreadStoreError("uncertain", "The kept conversation copy could not be verified. Keep your version and try again.");
+        }
+        if (!this.host) {
+          await this.noteFiles({ written: [libraryPathToArchivePath(path)], removed: [] });
+        }
+        return libraryPathToArchivePath(path);
+      }
+    }
+    throw new ThreadStoreError("io", "Could not keep a copy of your conversation. Nothing was overwritten.");
+  }
+
+  private async verify(result: Extract<CommitFileResult, { status: "written" }>, bytes: Uint8Array): Promise<boolean> {
+    if (!sameBytes(result.snapshot.bytes, bytes)) return false;
+    return result.snapshot.sha256 === (await this.runtime.sha256(bytes));
+  }
+
+  private async readDocument(bookId: string, threadId: string): Promise<ThreadDocument | null> {
+    const path = this.filePath(bookId, threadId);
+    const snapshot = await this.storage.readFile(path);
+    if (!snapshot) return null;
+    const document = await this.readDocumentFrom(snapshot, bookId, threadId);
+    this.hashes.set(threadKey(bookId, threadId), document.sha256);
+    return document;
+  }
+
+  private async readDocumentFrom(
+    snapshot: LibraryFileSnapshot,
+    bookId: string,
+    threadId: string
+  ): Promise<ThreadDocument> {
+    try {
+      const document = readThreadDocument({
+        bytes: snapshot.bytes,
+        sha256: snapshot.sha256,
+        maxBytes: this.maxBytes
+      });
+      if (document.thread.bookId !== bookId || document.thread.id !== threadId) {
+        throw new ThreadStoreError("corrupt", "That file belongs to a different conversation.");
+      }
+      return document;
+    } catch (error) {
+      if (error instanceof ThreadStoreError) throw error;
+      if (error instanceof ThreadDocumentError) throw new ThreadStoreError(error.code, error.message);
+      throw error;
+    }
+  }
+
+  private withBook<T>(bookId: string, work: () => Promise<T>): Promise<T> {
+    if (this.host) return this.host.withBook(bookId, work);
+    return work();
+  }
+
+  private commit(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
+    return this.host ? this.host.commitFile(path, bytes, expected) : this.storage.commitFile(path, bytes, expected);
+  }
+
+  private moveFile(from: LibraryPath, to: LibraryPath): Promise<void> {
+    return this.host ? this.host.moveFile(from, to) : this.storage.moveFile(from, to);
+  }
+
+  private ensureDirectory(path: LibraryPath): Promise<void> {
+    return this.storage.ensureDirectory(path);
   }
 
   /**
@@ -234,13 +525,38 @@ export class ThreadStore {
    */
   private async noteFiles(input: { written: string[]; removed: string[] }): Promise<void> {
     try {
-      this.notedDeviceId ??= (await this.storage.deviceInfo()).id;
+      const deviceId = await this.deviceId();
       const now = this.runtime.now();
-      await noteWrittenFiles({ storage: this.storage, deviceId: this.notedDeviceId, paths: input.written, now });
-      await noteRemovedFiles({ storage: this.storage, deviceId: this.notedDeviceId, paths: input.removed, now });
+      await noteWrittenFiles({ storage: this.storage, deviceId, paths: input.written, now });
+      await noteRemovedFiles({ storage: this.storage, deviceId, paths: input.removed, now });
     } catch {
       // Detection degrades to a reviewable report.
     }
+  }
+
+  private async noteMoved(from: LibraryPath, to: LibraryPath): Promise<void> {
+    try {
+      const deviceId = await this.deviceId();
+      await noteMovedPrefix({
+        storage: this.storage,
+        deviceId,
+        from: libraryPathToArchivePath(from),
+        to: libraryPathToArchivePath(to),
+        now: this.runtime.now()
+      });
+    } catch {
+      // Detection degrades to a reviewable report.
+    }
+  }
+
+  private async deviceId(): Promise<string> {
+    this.notedDeviceId ??= (await this.storage.deviceInfo()).id;
+    return this.notedDeviceId;
+  }
+
+  private stamp(): string {
+    const millis = Date.parse(this.runtime.now());
+    return Number.isFinite(millis) ? millis.toString(36) : this.runtime.now().replace(/\D/g, "").slice(-10);
   }
 
   private filePath(bookId: string, threadId: string): LibraryPath {
@@ -248,6 +564,102 @@ export class ThreadStore {
     assertThreadId(threadId);
     return toLibraryFilePath([...threadsPath(bookId), `${threadId}.json`]);
   }
+}
+
+function threadKey(bookId: string, threadId: string): string {
+  return `${bookId}/${threadId}`;
+}
+
+/** Fields this build reads and writes on a message or part. Everything else is supported unknown data. */
+const MESSAGE_KEYS = new Set([
+  "id",
+  "role",
+  "parts",
+  "model",
+  "mode",
+  "usage",
+  "context",
+  "turnId",
+  "createdAt"
+]);
+const PART_KEYS = new Set([
+  "type",
+  "text",
+  "redacted",
+  "id",
+  "name",
+  "input",
+  "output",
+  "isError",
+  "url",
+  "title",
+  "mediaType",
+  "data",
+  "approvalId",
+  "turnId",
+  "status",
+  "requestedAt",
+  "resolvedAt",
+  "code",
+  "message",
+  "retryAfterSeconds"
+]);
+
+function extras(previous: object, keys: Set<string>, next: object): Record<string, unknown> {
+  const carried: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(previous)) {
+    if (keys.has(key) || Object.hasOwn(next, key)) continue;
+    carried[key] = value;
+  }
+  return carried;
+}
+
+/**
+ * Replacing a message's body (the same id written again after an approval or a finished turn) must
+ * not drop plain fields another build added to that message. Known fields stay what the caller set;
+ * unknown fields carry over. Parts are matched by id or approval id, then by position.
+ */
+function carryMessageExtras(previous: AgentMessage, next: AgentMessage): AgentMessage {
+  const parts = next.parts.map((part, index) => {
+    const old =
+      previous.parts.find(
+        (entry) =>
+          (part.type === "tool-call" || part.type === "tool-result") &&
+          entry.type === part.type &&
+          entry.id === part.id
+      ) ??
+      previous.parts.find(
+        (entry) => part.type === "approval" && entry.type === "approval" && entry.approvalId === part.approvalId
+      ) ??
+      previous.parts[index];
+    if (!old || old.type !== part.type) return part;
+    return { ...extras(old, PART_KEYS, part), ...part };
+  });
+  return { ...extras(previous, MESSAGE_KEYS, next), ...next, parts };
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+/** The trash file `remove` moved a conversation to, from the path it returned. */
+function trashedThreadPath(bookId: string, trashedAt: string): LibraryPath {
+  const refused = () =>
+    new ThreadStoreError("invalid-id", "That is not a conversation in this book's trash. Nothing was moved.");
+  let path: LibraryPath;
+  try {
+    path = libraryPathFromArchivePath(trashedAt);
+  } catch {
+    throw refused();
+  }
+  const trash = threadsTrashPath(bookId);
+  const inTrash = path.length === trash.length + 1 && trash.every((segment, index) => path[index] === segment);
+  if (!inTrash || !path[trash.length]?.endsWith(".json")) throw refused();
+  return path;
 }
 
 function summarize(thread: AgentThread): ThreadSummary {

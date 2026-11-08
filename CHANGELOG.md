@@ -7,6 +7,20 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Checked conversation storage
+- Route every v1 conversation write through the Library's per-book queue and journal-aware checked
+  raw-hash commit, with exact readback verification and a verified `conflicts/` copy when the file
+  moved underneath the writer. Equal bodies are no-ops, stale hashes never overwrite, and uncertain
+  publications are reported as uncertain.
+- Parse conversation files as fatal UTF-8 and lossless JSON, preserve supported unknown plain fields
+  at every depth through read-modify-write, and treat unknown roles/parts and newer schema versions as
+  read-only rather than rewriting them. Refuse malformed, duplicate-key, lone-surrogate, lossy-number
+  and over-64-MiB files without touching them.
+- Move conversation deletion to recoverable `.studio/trash/<bookId>/threads/` and add a checked
+  restore that requires an absent destination and an unchanged book/conversation identity. No
+  automatic pruning, quota or expiry. 037 T019 remains partial; v2 semantic migration, restore
+  UI/IPC and independent review are still open.
+
 ### Pure authoring foundation
 - Tighten the workflow codec after independent review: a `maxBytes` override may only lower the
   record-kind bound, receipt `savedAs` uses the same bounded library-relative path rule as a target,

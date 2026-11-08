@@ -1,4 +1,4 @@
-import { toLibraryPath, type LibraryPath } from "./path";
+import { toLibraryFilePath, toLibraryPath, type LibraryPath } from "./path";
 
 /** Names from docs/FORMAT.md. They are format constants, not preferences. */
 export const LIBRARY_DIRS = {
@@ -41,6 +41,9 @@ export const imageFilePath = (bookId: string, fileName: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.images, fileName]);
 export const threadsPath = (bookId: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.threads]);
+/** Deleted conversations, kept whole under this book's trash so restore can move the same file back. */
+export const threadsTrashPath = (bookId: string): LibraryPath =>
+  toLibraryFilePath([...trashPath(bookId), LIBRARY_DIRS.threads]);
 export const checkpointsPath = (bookId: string): LibraryPath =>
   toLibraryPath([LIBRARY_DIRS.books, bookId, LIBRARY_DIRS.checkpoints]);
 /** Device-local sync baselines; never exported in the portable archive. */

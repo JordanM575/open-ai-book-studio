@@ -56,7 +56,7 @@ export class Library {
     return new Library(
       root,
       service,
-      new ThreadStore(environment.storage, environment.runtime),
+      new ThreadStore(environment.storage, environment.runtime, service.writeHost),
       new ImageStore(environment)
     );
   }
