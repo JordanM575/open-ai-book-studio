@@ -36,6 +36,7 @@ export type LibraryPortErrorCode =
   | "already-exists"
   | "invalid-path"
   | "conflict"
+  | "too-large"
   | "unsupported"
   | "io";
 

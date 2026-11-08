@@ -7,9 +7,10 @@ import {
   type WorkflowBase,
   type WorkflowRecord
 } from "../authoring/wire";
-import { LibraryError } from "../library/errors";
+import { LibraryError, LibraryPortError } from "../library/errors";
 import { libraryPathToArchivePath, type LibraryPath } from "../library/path";
 import { bookFilePath } from "../library/paths";
+import { WORKFLOW_CONFLICT_BYTES } from "../library/read-limits";
 import type {
   CommitFileResult,
   FileExpectation,
@@ -52,7 +53,7 @@ const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const encoder = new TextEncoder();
 
 /** FORMAT: a workflow conflict copy is bounded to 5,000,000 bytes. */
-const CONFLICT_COPY_BYTES = 5_000_000;
+const CONFLICT_COPY_BYTES = WORKFLOW_CONFLICT_BYTES;
 /** Leave room under the typical 255-byte component limit for the atomic writer's temp suffix. */
 const CONFLICT_NAME_LIMIT = 200;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -592,15 +593,7 @@ export class WorkflowRecordStore {
     id: string
   ): Promise<WorkflowRecordSnapshot | null> {
     const path = recordFilePath(kind, bookId, runId, id);
-    const stat = await this.host.storage.stat(path);
-    if (!stat) return null;
-    if (stat.size > RECORD_BOUND[kind]) {
-      throw new WorkflowRecordError(
-        "too-large",
-        `This ${kind} record is larger than the ${RECORD_BOUND[kind].toLocaleString("en-US")} UTF-8 bytes this version can open. The file was left untouched.`
-      );
-    }
-    const snapshot = await this.host.storage.readFile(path);
+    const snapshot = await this.readObserved(path, RECORD_BOUND[kind], `${kind} record`);
     if (!snapshot) return null;
     return this.decodeSnapshot(kind, bookId, runId, id, snapshot);
   }
@@ -782,19 +775,21 @@ export class WorkflowRecordStore {
         `This ${label} is larger than the ${bound.toLocaleString("en-US")} UTF-8 bytes this version can open. The file was left untouched.`
       );
     }
-    return this.host.storage.readFile(path);
+    try {
+      return await this.host.storage.readFile(path, { maxBytes: bound });
+    } catch (error) {
+      if (error instanceof LibraryPortError && error.code === "too-large") {
+        throw new WorkflowRecordError(
+          "too-large",
+          `This ${label} is larger than the ${bound.toLocaleString("en-US")} UTF-8 bytes this version can open. The file was left untouched.`
+        );
+      }
+      throw error;
+    }
   }
 
   private async readArtifactBody(path: LibraryPath): Promise<LibraryFileSnapshot | null> {
-    const stat = await this.host.storage.stat(path);
-    if (!stat) return null;
-    if (stat.size > WORKFLOW_LIMITS.artifactBytes) {
-      throw new WorkflowRecordError(
-        "too-large",
-        `An artifact body is at most ${WORKFLOW_LIMITS.artifactBytes.toLocaleString("en-US")} bytes. The file was left untouched.`
-      );
-    }
-    return this.host.storage.readFile(path);
+    return this.readObserved(path, WORKFLOW_LIMITS.artifactBytes, "artifact body");
   }
 
   /** Keep the whole intended document beside the active file and report where it went. */

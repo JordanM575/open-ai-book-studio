@@ -18,6 +18,9 @@ export interface FakeHooks {
   afterWrite?: (name: string, directory: FakeDirectory) => void;
   /** Run after close commits, to model a writer racing the read-back. */
   afterClose?: (name: string, directory: FakeDirectory) => void;
+  /** Instrument reads or simulate an inaccurate size when testing bounded slices. */
+  onRead?: (name: string, method: "full" | "slice", size: number) => void;
+  reportedSize?: (name: string, actualSize: number) => number;
 }
 
 export class FakeFileHandle {
@@ -33,10 +36,18 @@ export class FakeFileHandle {
     if (!file) throw domError("NotFoundError");
     return {
       name: this.name,
-      size: file.bytes.length,
+      size: this.directory.hooks.reportedSize?.(this.name, file.bytes.length) ?? file.bytes.length,
       lastModified: file.lastModified,
       type: "application/octet-stream",
-      arrayBuffer: async () => file.bytes.slice().buffer,
+      arrayBuffer: async () => {
+        this.directory.hooks.onRead?.(this.name, "full", file.bytes.length);
+        return file.bytes.slice().buffer;
+      },
+      slice: (start?: number, end?: number) => {
+        const bytes = file.bytes.slice(start, end);
+        this.directory.hooks.onRead?.(this.name, "slice", bytes.length);
+        return new Blob([bytes as BlobPart]);
+      },
       text: async () => new TextDecoder().decode(file.bytes)
     } as unknown as File;
   }

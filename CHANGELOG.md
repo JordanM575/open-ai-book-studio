@@ -9,6 +9,11 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 HEAD
 ### Workflow records
+- Enforce workflow byte ceilings at desktop and browser read boundaries, including checked-commit
+  comparisons/readbacks, drift scans, journal observations, watcher checks and move-copy fallbacks.
+  Oversized replacements are refused without truncation; a possible post-publication failure stays
+  uncertain and is never replayed. Service journal notes now record only the exact verified intended
+  write, so a subsequent outside replacement remains reviewable for new and existing paths.
 - Classify missing or non-string workflow envelope kinds as corrupt on read and invalid on write;
   future/foreign string kinds remain unavailable, with exact file bytes retained and no write.
 - Bind final artifact readback to the exact intended metadata/body on both creation and no-op;

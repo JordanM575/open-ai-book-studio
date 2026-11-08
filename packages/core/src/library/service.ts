@@ -1307,22 +1307,25 @@ export class LibraryService {
   }
 
   private async commitBytes(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
+    const intendedHash = await this.env.runtime.sha256(bytes);
     await notePlannedWrite({
       storage: this.env.storage,
       deviceId: this.device.id,
       paths: [libraryPathToArchivePath(path)],
-      sha256: await this.env.runtime.sha256(bytes),
+      sha256: intendedHash,
       now: this.env.runtime.now()
     });
     const result = await this.env.storage.commitFile(path, bytes, expected);
-    if (result.status === "written") {
-      // The journal records what this device wrote, so the next scan reads it as local, not
-      // remote. After the prose commit, never before; best-effort so a note failure cannot fail
-      // the save it follows.
+    if (result.status === "written" && result.snapshot.sha256 === intendedHash &&
+        result.snapshot.bytes.byteLength === bytes.byteLength &&
+        result.snapshot.bytes.every((byte, index) => byte === bytes[index])) {
+      // Only this exact adapter readback is attributable to our commit. A later journal
+      // observation may already be another writer's bytes; it must not become the baseline.
       await noteWrittenFiles({
         storage: this.env.storage,
         deviceId: this.device.id,
         paths: [libraryPathToArchivePath(path)],
+        verifiedWrite: { sha256: intendedHash, size: bytes.byteLength },
         now: this.env.runtime.now()
       });
     }

@@ -630,8 +630,15 @@ prose.
 | Question options | 16 |
 | Journal page size | 256 |
 
-All intersecting limits apply. Reads and streams are bounded before allocating the whole value.
-Overflow preserves existing durable data; it never truncates or deletes a record.
+All intersecting limits apply. The desktop and browser Library adapters enforce workflow-path byte
+ceilings during the actual read, including checked-commit comparisons and readbacks; an earlier
+size check alone is not sufficient. Drift scans, write notes, the desktop watcher and copy fallbacks
+also use the applicable limit, including for workflow files under whole-book trash. The tighter of a
+caller's bound and the path's bound applies. The adapter refuses an over-limit value without returning
+partial bytes; it never truncates or deletes the file. A readback failure after a possible publication
+is uncertain, not proof that no write occurred, and is not automatically replayed. The 2,500,000-byte
+context-envelope limit above is a format/host requirement; storing or verifying the separate envelope
+is not implemented by the T023 context-manifest store.
 
 ### Ordering, retention and related-file recovery
 
@@ -1361,9 +1368,14 @@ its `book.json`, chapters, conflicts and checkpoints, so restoring is a move bac
 each author-owned file, the hash this device last wrote, and tombstones for deletions. It is written
 after a reviewed scan, never during one. The chapters, conversations, images and agent checkpoints
 the studio writes or removes are noted in it as this device's own, so a scan does not list them. For
-an existing file, the intended save hash is recorded before the atomic file commit as well as the
-observed hash after it. If the process stops between those writes, a later scan still recognizes the
-exact committed bytes; a different on-disk hash remains an outside change for review. A
+an existing file, the intended save hash is recorded before the atomic file commit. After a service
+commit, the baseline advances only when the adapter's returned snapshot has the exact intended bytes
+and hash. The verified intended hash, not a later path observation, is recorded for both new and
+existing paths. If a different writer replaces or removes the file afterward, that difference remains
+reviewable; a failed best-effort note also leaves drift to be reviewed. Explicit notes from other
+existing writers retain their observation-based behavior. If the process stops between the intent and
+the verified note, a later scan still recognizes exact intended bytes on an existing path; a different
+on-disk hash remains an outside change for review. A
 conflict copy is not, because the save that made it still needs the author's review. Notes take
 turns, so two made at once both land. It contains no prose or credentials, is excluded from portable
 archives, and is safe to delete; the next scan rebuilds it by comparing the files and warns that it had

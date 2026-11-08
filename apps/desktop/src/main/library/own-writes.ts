@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
+import { readBoundedSnapshot } from "./bounded-read";
 
 /*
  * What the studio itself last left at each path it wrote, so the library watcher can tell the
@@ -77,11 +78,11 @@ export function asOtherWriter<T>(work: () => T): T {
  * Whether `path` is exactly as the studio last left it. A folder is never a change by itself: the
  * files in it are reported on their own. A file that cannot be read is reported, never assumed.
  */
-export async function isOwnState(path: string): Promise<boolean> {
+export async function isOwnState(path: string, maxBytes?: number): Promise<boolean> {
   const key = resolve(path);
   let digest: string | null;
   try {
-    digest = sha256(await readFile(key));
+    digest = sha256(maxBytes === undefined ? await readFile(key) : (await readBoundedSnapshot(key, maxBytes)).bytes);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "EISDIR") return true;

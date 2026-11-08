@@ -1,0 +1,4 @@
+{
+  "extends": "../authoring/tsconfig.strict.json",
+  "include": ["./**/*.ts", "../sync-verified-write.test.ts"]
+}

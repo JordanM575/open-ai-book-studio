@@ -1,4 +1,6 @@
 import type { LibraryChangeEvent } from "@ai-book-studio/core/ipc";
+import { toLibraryPath } from "@ai-book-studio/core/library/path";
+import { workflowReadLimit } from "@ai-book-studio/core/library/read-limits";
 import { isAtomicTempName } from "./atomic";
 import { isOwnState } from "./own-writes";
 import { safeJoin } from "./paths";
@@ -50,7 +52,8 @@ export class ChangeBatcher {
 
   private async isOwn(path: string): Promise<boolean> {
     try {
-      return await isOwnState(safeJoin(this.root, ...path.split("/")));
+      const relative = toLibraryPath(path.split("/"));
+      return await isOwnState(safeJoin(this.root, ...relative), workflowReadLimit(relative));
     } catch {
       // A path that escapes the library is never taken for the studio's own.
       return false;

@@ -2,6 +2,7 @@ import { LibraryPortError } from "../library/errors";
 import { isConflictCopyName } from "../markdown";
 import { libraryPathFromArchivePath } from "../library/path";
 import { syncJournalPath } from "../library/paths";
+import { workflowReadLimit } from "../library/read-limits";
 import type { LibraryFileSnapshot, LibraryPort } from "../library/port";
 import { scanLibrary } from "./scan";
 import {
@@ -208,6 +209,11 @@ export interface NoteFilesInput {
   now: string;
 }
 
+export interface NoteWrittenFilesInput extends NoteFilesInput {
+  /** Exact intended bytes already verified against the checked commit's readback. */
+  verifiedWrite?: { sha256: string; size: number };
+}
+
 /**
  * Only scanned roots are journaled; anything else (the catalog, staging areas) is noise. Conflict
  * copies are scanned but never noted as own writes: the failed save that made them still needs a
@@ -219,14 +225,14 @@ function isJournaledPath(path: string): boolean {
 }
 
 /**
- * Record bytes this device just wrote. Called after the prose commit succeeds, never before, so
- * the journal can never claim bytes the disk does not have. Best-effort: a failed note leaves
- * detection intact — the next scan reports the file and the author accepts it.
+ * Record bytes this device just wrote. With a verified commit readback, that exact snapshot is the
+ * baseline even if another writer replaced or removed it before this best-effort note. Other
+ * existing callers retain their observation-based behavior.
  */
-export async function noteWrittenFiles({ storage, deviceId, paths, now }: NoteFilesInput): Promise<void> {
+export async function noteWrittenFiles({ storage, deviceId, paths, now, verifiedWrite }: NoteWrittenFilesInput): Promise<void> {
   const wanted = [...new Set(paths)].filter(isJournaledPath);
   if (wanted.length === 0) return;
-  await updateSyncJournal(storage, () => noteWritten(storage, deviceId, wanted, now));
+  await updateSyncJournal(storage, () => noteWritten(storage, deviceId, wanted, now, verifiedWrite));
 }
 
 /**
@@ -257,7 +263,13 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
   });
 }
 
-async function noteWritten(storage: LibraryPort, deviceId: string, wanted: string[], now: string): Promise<void> {
+async function noteWritten(
+  storage: LibraryPort,
+  deviceId: string,
+  wanted: string[],
+  now: string,
+  verifiedWrite?: { sha256: string; size: number }
+): Promise<void> {
   try {
     const previous = await readSyncJournal(storage, deviceId);
     if (!previous) return;
@@ -266,17 +278,21 @@ async function noteWritten(storage: LibraryPort, deviceId: string, wanted: strin
     for (const path of wanted) {
       let snapshot: LibraryFileSnapshot | null | undefined;
       try {
-        snapshot = await storage.readFile(libraryPathFromArchivePath(path));
+        const libraryPath = libraryPathFromArchivePath(path);
+        const limit = workflowReadLimit(libraryPath);
+        snapshot = await storage.readFile(libraryPath, limit === undefined ? undefined : { maxBytes: limit });
       } catch {
-        continue;
+        // A verified readback remains the baseline, even if this later observation failed.
       }
-      if (!snapshot) continue;
+      if (!verifiedWrite && !snapshot) continue;
       const old = files[path];
+      const sha256 = verifiedWrite?.sha256 ?? snapshot?.sha256;
+      if (!sha256) continue;
       files[path] = {
         ...(old?.version !== undefined ? { version: old.version } : {}),
-        ...(old?.size !== undefined ? { size: old.size } : {}),
-        sha256: snapshot.sha256,
-        writtenSha256: snapshot.sha256,
+        ...(verifiedWrite ? { size: verifiedWrite.size } : old?.size !== undefined ? { size: old.size } : {}),
+        sha256,
+        writtenSha256: sha256,
         observedAt: now
       };
       changed = true;

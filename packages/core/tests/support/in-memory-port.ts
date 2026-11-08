@@ -1,15 +1,16 @@
 import { createHash } from "node:crypto";
 import { LibraryPortError } from "../../src/library/errors";
 import { toLibraryFilePath, toLibraryPath, validateLibraryPath } from "../../src/library/path";
-import {
-  type CommitFileResult,
-  type FileExpectation,
-  type LibraryDeviceInfo,
-  type LibraryEntry,
-  type LibraryFileSnapshot,
-  type LibraryPath,
-  type LibraryPort,
-  type LibraryRuntime
+import { effectiveReadLimit, readTooLarge } from "../../src/library/read-limits";
+import type {
+  CommitFileResult,
+  FileExpectation,
+  LibraryDeviceInfo,
+  LibraryEntry,
+  LibraryFileSnapshot,
+  LibraryPath,
+  LibraryPort,
+  LibraryRuntime
 } from "../../src/library/port";
 
 function key(path: LibraryPath): string {
@@ -40,8 +41,12 @@ export class InMemoryLibraryPort implements LibraryPort, LibraryRuntime {
     private readonly clock: () => string = () => "2026-10-24T00:00:00.000Z"
   ) {}
 
-  async readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null> {
+  async readFile(path: LibraryPath, options?: { maxBytes: number }): Promise<LibraryFileSnapshot | null> {
     const snapshot = this.files.get(fileKey(path));
+    // With no requested limit this test port also models an unrelated external writer/reader.
+    // Several preserved probes use that access to install and inspect malformed oversized files.
+    const limit = options ? effectiveReadLimit(path, options) : undefined;
+    if (snapshot && limit !== undefined && snapshot.bytes.byteLength > limit) throw readTooLarge();
     return snapshot ? cloneSnapshot(snapshot) : null;
   }
 
@@ -93,6 +98,8 @@ export class InMemoryLibraryPort implements LibraryPort, LibraryRuntime {
   async commitFile(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
     const target = fileKey(path);
     const current = this.files.get(target) ?? null;
+    const limit = effectiveReadLimit(path);
+    if (current && limit !== undefined && current.bytes.byteLength > limit) throw readTooLarge();
     const matches =
       expected.kind === "any"
         ? true
