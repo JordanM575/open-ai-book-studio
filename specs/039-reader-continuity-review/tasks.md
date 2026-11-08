@@ -45,6 +45,24 @@ task is completed. T010 retains the independent correction gate. The policy amen
   composition/dirty/source-change/conflict/duplicate application cannot bypass the writer.
 - [ ] T017 Add a pure all-range campaign planner, versioned source/category union coverage, boundary and
   attributed synthesis stages; test 70k/250k/oversized chapters under all per-request bounds.
+  - November 8, W10 v19: new pure `review/campaign-planner.ts` and `campaign-coverage.ts` implement
+    explicit scalar-safe all-range planning, existing-envelope admission, bounded attributed synthesis
+    reservations/actual-input admission, and exact revision/category/profile union coverage. Dedicated
+    synthetic tests include 70k/250k single chapters and a 120-chapter/250k selection. Oversized durable
+    plans remain whole and explicitly non-persistable under existing 64-source/64-stage limits.
+    `review/CAMPAIGN-README.md` names continuation-format, lossless persistence mapping and execution
+    prerequisites. T017 stays unchecked pending fresh independent exact-head review; these checks
+    provide no host/provider-quality/device/release evidence and do not complete T018/T019.
+  - November 8, v21 correction: the immutable plan/digest now retains the chosen owning book, with
+    equal-length cross-owner receipt/summary refusal tests. Shared plain-data validation memoizes
+    completed objects per call to avoid exponential malformed DAG traversal while preserving active
+    cycle, accessor and lossy-value rejection. Fresh independent review remains required.
+  - November 8, synthesis follow-through: individually validated evidence windows now sort/union
+    inside their selected segments, preserving scalar boundaries, exact original text/line numbers
+    and all genuine gaps. Generated summary-feedback IDs avoid selected-history collisions with
+    deterministic bounded suffixes; actual admission retains every history field and dependency.
+    Positive interval/citation/ID-collision regressions accompany both review corrections. T017 and
+    connected host/continuation/provider acceptance remain open pending fresh exact-head review.
 - [ ] T018 Integrate campaign/check-in artifacts into the separately authorized 037 coordinator.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
