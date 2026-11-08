@@ -51,6 +51,48 @@
    Proactive speech occurs only within an activated speaking session; hidden-window notices are generic
    and the durable inbox retains the question. No separate voice scheduler or question store.
 
+## Mounted synthetic seam and retained host boundary
+
+The currently mounted controller accepts only a `synthetic-in-process-v1` `HandsFreePort`. This is a
+test contract for one JavaScript realm, **not** a native/IPC capture integration. A port must:
+
+- Keep one non-recycled monotonic revision for its entire lifetime. Advance it for every relevant
+  identity, scope, availability, visibility, lock, source, route or grant change, including expiry and
+  A–B–A changes; stamp each snapshot at capture time. Provide a synchronous current revision and a
+  working lifecycle subscription that promptly reports changes. The controller refuses incomplete
+  ports, invalid revision/subscription setup, stale snapshots and old pending lifetimes. If a
+  revision advances before its notification arrives, an old transcript is not admitted; its actual
+  transport settlement is still retained.
+- Independently end all owned capture on lifecycle loss or expiry, including an acquisition still in
+  progress, even if the renderer is suspended or disposed. Prompt notifications and the controller's
+  expiry timer are additional defenses, not substitutes for host-owned closure.
+- Implement `admit` as a synchronous critical section which checks the current revision, requested
+  scope, grant, route and expiry and either refuses or calls its callback once. The callback must cross
+  the **actual** capture, STT or agent-start boundary in that same section. Deferred preflight,
+  renderer polling or merely wrapping IPC does not meet this contract. ChatPanel still flushes the
+  draft and uses its checked turn flow, but a voice turn crosses the qualified host's `startAgent`
+  boundary; normal typed sending remains separate.
+
+An already-dispatched turn keeps its actual result visible even if the host becomes unavailable.
+Capture closure has its own status and remains unconfirmed on a failed close, regardless of whether
+the turn or closure receipt arrives first.
+
+The qualification marker and runtime checks can reject an incomplete adapter; they cannot prove that
+an adapter which claims the contract actually honors atomicity, notifications or independent closure.
+No production adapter currently qualifies. A future native host needs a separate trusted-process
+contract and atomic validation at the real external dispatch boundary, plus independent lifecycle and
+device evidence; a renderer-side revision check is not that proof.
+
+Within the synthetic realm, the same port object owns capture attempts and a bounded STT ledger across
+component disposal/remount. A failed or rejected acquisition is compensated through its original
+owner; Stop joins pending acquisition/closure, and failed cleanup remains unconfirmed until an
+explicit successful retry. A best-effort abort does not release a dispatched STT slot. Exact late
+settlements release only their own slot and retain unknown charges; operation cancellation and the
+actual final dispatched-chunk outcome are separate receipt facts. The in-memory ledger cannot survive
+process loss or coordinate different port objects representing one underlying host. A native host
+must provide stable, authoritative ownership and accounting for those cases. Exhausted bounded
+receipt history refuses further operations rather than discarding accounting.
+
 ## Scope amendments
 
 D-125 memory-only audio and D-192 explicit destinations/no fallback remain. D-109's specific OS/offline

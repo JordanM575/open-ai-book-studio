@@ -360,7 +360,8 @@ export function ChatPanel({
         return window.studio.agent.start(request);
       };
       const started = voiceAdmission
-        ? await voiceAdmission.dispatch(dispatch, () => voiceView.current.mounted && voiceView.current.epoch === voiceViewEpoch)
+        ? await voiceAdmission.dispatch(request, () => voiceView.current.mounted && voiceView.current.epoch === voiceViewEpoch,
+          () => { dispatched = true; })
         : await dispatch();
       if (!started) {
         // Revoked before dispatch: keep the words visible, without a retry that could bypass a

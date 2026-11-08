@@ -61,6 +61,7 @@ function scope(overrides: Partial<HandsFreeScope> = {}): HandsFreeScope {
 
 function facts(overrides: Partial<HandsFreeFacts> = {}): HandsFreeFacts {
   return {
+    hostRevision: 1,
     now: 1_000,
     identity: IDENTITY,
     routes: { stt: STT, tts: null, agent: AGENT },
@@ -149,7 +150,7 @@ describe("hands-free availability", () => {
     expect(handsFreeAvailability(SCOPE, noGrant).ready).toBe(false);
     expect(handsFreeAvailability(SCOPE, noGrant)).toEqual({
       ready: false,
-      reason: "No audio grant is active for this conversation. Nothing was recorded.",
+      reason: "No audio grant is active for this conversation.",
     });
     const expired = facts({ now: 70_000 });
     expect(handsFreeAvailability(SCOPE, expired).ready).toBe(false);
@@ -325,6 +326,29 @@ describe("target changes discard the words", () => {
 });
 
 describe("truthful stop", () => {
+  test.each([true, false].flatMap((sendOk) => [true, false].flatMap((closeOk) =>
+    ["send-first", "close-first"].map((order) => [sendOk, closeOk, order] as const))))(
+    "a dispatched send and closure retain independent receipts (send=%s close=%s %s)",
+    (sendOk, closeOk, order) => {
+      const confirmed = step(spoke(started()), { type: "confirm" }).state;
+      const requestId = confirmed.send.requestId;
+      if (requestId === null) throw new Error("No dispatched turn");
+      const dispatched = step(confirmed, { type: "send-dispatched", requestId }).state;
+      const stopping = step(dispatched, { type: "stop" }).state;
+      const close = { type: "stop-settled" as const, ok: closeOk, ...stopIdentity(stopping),
+        ...(!closeOk ? { reason: "Track still open." } : {}) };
+      const send = { type: "send-settled" as const, ok: sendOk, requestId,
+        ...(!sendOk ? { reason: "Turn failed after dispatch." } : {}) };
+      const first = step(stopping, order === "send-first" ? send : close).state;
+      const settled = step(first, order === "send-first" ? close : send).state;
+      expect(settled.send.status).toBe(sendOk ? "sent" : "failed");
+      expect(settled.note).toBe(sendOk ? "Sent to this conversation." : "Turn failed after dispatch.");
+      expect(settled.stop.status).toBe(closeOk ? "stopped" : "failed");
+      expect(handsFreePhase(settled)).toBe(closeOk ? "stopped" : "stop-unconfirmed");
+      if (!closeOk) expect(settled.stop.reason).toBe("Track still open.");
+    },
+  );
+
   test("stop says stopping until the host settles, then stopped", () => {
     const state = spoke(started());
     const stop = step(state, { type: "stop" });

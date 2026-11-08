@@ -41,7 +41,7 @@ export function statusCopy(state: HandsFreeState, phase: HandsFreePhase): string
     case "idle":
       return "Ready when you are.";
     case "starting":
-      return "Starting… Nothing is being recorded yet.";
+      return "Starting… Capture may be active while the host verifies the session.";
     case "recording":
       return "Listening. Nothing is sent until you confirm.";
     case "transcribing":
@@ -215,7 +215,7 @@ export function HandsFreeBar({
         </p>
       ) : null}
 
-      {state.note && phase !== "unavailable" ? (
+      {state.note && (phase !== "unavailable" || state.send.status === "sent" || state.send.status === "failed") ? (
         <p
           className={`mt-1 text-(length:--text-caption-size) ${failed ? "text-[var(--destructive-text)]" : "text-muted-foreground"}`}
           role={failed ? "alert" : "status"}

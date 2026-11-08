@@ -115,7 +115,14 @@ using a microphone. New work does not close 038 T022 or the remaining manual/dev
   revocable admission through its existing draft flush to the actual agent-start boundary; Stop stays
   usable during send-start and dispatched outcomes remain attributable. Positive synthetic race
   tests cover these contracts, unique status descriptions, retained correction focus and StrictMode.
-  This is host-neutral source/test evidence, not native capture, provider or connected-host acceptance.
+  The mounted seam now accepts only the documented single-realm `synthetic-in-process-v1` contract:
+  monotonic host-fact revisions and prompt notifications, independent host closure on loss/expiry,
+  and synchronous admission at the actual capture/STT/agent boundary. Per-port synthetic ownership
+  retains outstanding STT and exact unknown-charge/late receipts across remounts; failed partial
+  acquisition is compensated and failed cleanup remains unconfirmed. A marker or renderer revision
+  cannot qualify a native IPC host: trusted-process atomic admission, independent lifecycle closure,
+  provider and device evidence are still required. This is synthetic source/test evidence, not native
+  capture, provider or connected-host acceptance.
   T018–T024 and 038 T022 remain unchecked.
 - [ ] T018 Preserve selected manuscript text and intended verse breaks by default; explicit replacement
   uses checked editor mutation/undo and exact-source confirmation.

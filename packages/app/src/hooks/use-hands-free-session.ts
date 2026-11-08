@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { sameToken, type SessionToken } from "../../../core/src/voice-session";
+import { initialTransportLedger, reduceTransport, safeCounter, sameToken, type SessionToken,
+  type TransportLedger } from "../../../core/src/voice-session";
 import {
   handsFreePhase,
   initialHandsFreeState,
@@ -65,6 +66,7 @@ interface HandsFreeStore {
   subscribe(listener: () => void): () => void;
   get(): HandsFreeState;
   observe(scope: HandsFreeScope, port: HandsFreePort | undefined): Promise<void>;
+  watch(port: HandsFreePort | undefined): () => void;
   revoke(scope: HandsFreeScope): void;
   start(): Promise<void>;
   stop(): void;
@@ -90,6 +92,33 @@ interface CaptureOwner {
 // Port ownership survives component disposal/remount and reused session tokens. A new acquisition
 // cannot replace an unresolved owner, so an old compensating close can never close a newer track.
 const captureOwners = new WeakMap<HandsFreePort, CaptureOwner>();
+interface PortLifetime {
+  ledger: TransportLedger;
+  requestSequence: number;
+  listeners: Set<() => void>;
+}
+const portLifetimes = new WeakMap<HandsFreePort, PortLifetime>();
+function portLifetime(port: HandsFreePort): PortLifetime {
+  let value = portLifetimes.get(port);
+  if (!value) {
+    value = { ledger: initialTransportLedger(), requestSequence: 0, listeners: new Set() };
+    portLifetimes.set(port, value);
+  }
+  return value;
+}
+function qualified(port: HandsFreePort | undefined): port is HandsFreePort {
+  return !!port && port.qualification === "synthetic-in-process-v1" &&
+    typeof port.currentRevision === "function" && typeof port.onFactsChanged === "function" &&
+    typeof port.admit === "function" && typeof port.snapshot === "function" &&
+    typeof port.startCapture === "function" && typeof port.stopCapture === "function" &&
+    typeof port.transcribeSegment === "function" && typeof port.startAgent === "function" &&
+    typeof port.onSegment === "function";
+}
+function revision(port: HandsFreePort | undefined): number | null {
+  if (!qualified(port)) return null;
+  try { const value = port.currentRevision(); return safeCounter(value) ? value : null; }
+  catch { return null; }
+}
 let captureSequence = 0;
 function closeCapture(owner: CaptureOwner, retry = false): Promise<HandsFreeHostOutcome> {
   if (retry && owner.closeResult && !owner.closeResult.ok) {
@@ -99,11 +128,7 @@ function closeCapture(owner: CaptureOwner, retry = false): Promise<HandsFreeHost
   if (owner.closing) return owner.closing;
   if (owner.closed) return Promise.resolve({ ok: true });
   owner.closing = (async () => {
-    const acquired = await owner.acquisition;
-    if (!acquired.ok) {
-      owner.closed = true;
-      return { ok: true };
-    }
+    await owner.acquisition;
     // No newer owner can be installed until this one is confirmed closed.
     if (captureOwners.get(owner.port) !== owner) return { ok: false, reason: "Capture ownership changed unexpectedly." };
     try {
@@ -125,7 +150,10 @@ function createHandsFreeStore(
   let state = initialHandsFreeState();
   let lastFacts: HandsFreeFacts | null = null;
   const listeners = new Set<() => void>();
-  const aborts = new Map<number, AbortController>();
+  const aborts = new Map<HandsFreePort, Map<number, AbortController>>();
+  const abortAll = () => {
+    for (const requests of aborts.values()) for (const controller of requests.values()) controller.abort();
+  };
   // Stop invalidates queued effects synchronously, even while fresh host facts are pending.
   let dispatchEpoch = 0;
   let lifetime = new AbortController();
@@ -139,11 +167,20 @@ function createHandsFreeStore(
   // later subscribe re-arms it. A real unmount has no subscribe, so the store stays closed.
   let open = true;
   let captureOwner: CaptureOwner | null = null;
+  let watchedPort: HandsFreePort | undefined;
+  let ledgerPort: HandsFreePort | undefined;
+  let observedRevision: number | null = null;
+  let sessionRevision: number | null = null;
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const context = () => ({ epoch: dispatchEpoch, scope: getScope(), port: getOptions().port, signal: lifetime.signal });
+  const context = () => ({ epoch: dispatchEpoch, scope: getScope(), port: getOptions().port,
+    hostRevision: revision(getOptions().port), signal: lifetime.signal });
   type Context = ReturnType<typeof context>;
   const current = (origin: Context) => open && origin.epoch === dispatchEpoch &&
-    origin.port === getOptions().port && sameScope(origin.scope, getScope());
+    origin.port === getOptions().port && sameScope(origin.scope, getScope()) &&
+    (origin.port === undefined || (origin.port === watchedPort && origin.hostRevision !== null &&
+      revision(origin.port) === origin.hostRevision)) &&
+    (!state.session.active || sessionRevision === origin.hostRevision);
 
   const emit = () => {
     for (const listener of listeners) listener();
@@ -151,7 +188,7 @@ function createHandsFreeStore(
 
   const readFacts = async (origin: Context): Promise<HandsFreeFacts | null> => {
     const port = origin.port;
-    if (!port) return null;
+    if (!qualified(port) || origin.hostRevision === null) return null;
     try {
       if (origin.signal.aborted) return null;
       const snapshot = await new Promise<Awaited<ReturnType<HandsFreePort["snapshot"]>>>((resolve) => {
@@ -165,9 +202,35 @@ function createHandsFreeStore(
         try { void port.snapshot(origin.scope).then(finish, () => finish(null)); }
         catch { finish(null); }
       });
-      if (!snapshot) return null;
+      if (!snapshot || snapshot.hostRevision !== origin.hostRevision || revision(port) !== origin.hostRevision) return null;
+      if (!state.session.active) observedRevision = origin.hostRevision;
       return { ...snapshot, now: port.now ? port.now() : Date.now() };
     } catch {
+      return null;
+    }
+  };
+
+  /** The guard must call synchronously, once, at the synthetic boundary or not at all. */
+  const admit = <T,>(origin: Context, kind: "capture" | "stt" | "agent", start: () => T): T | null => {
+    const port = origin.port;
+    if (!qualified(port) || origin.hostRevision === null || !current(origin)) return null;
+    let inside = true;
+    let called = false;
+    let value: T | null = null;
+    try {
+      port.admit({ revision: origin.hostRevision, scope: origin.scope, kind }, () => {
+        if (!inside || called || !current(origin)) throw new Error("Invalid synthetic admission.");
+        called = true;
+        value = start();
+        return value;
+      });
+      inside = false;
+      // An invoked boundary has an actual result even if a broken host reports refusal afterward.
+      return called ? value : null;
+    } catch (error) {
+      inside = false;
+      if (called && value !== null) return value;
+      if (called) throw error;
       return null;
     }
   };
@@ -227,10 +290,23 @@ function createHandsFreeStore(
         const owner: CaptureOwner = { id: ++captureSequence, port, token: effect.token, acquisition, closed: false };
         captureOwners.set(port, owner);
         captureOwner = owner;
-        try { resolve(await port.startCapture(effect.token)); }
-        catch { resolve({ ok: false, reason: "Capture could not be opened." }); }
+        let invoked = false;
+        try {
+          const pending = admit(origin, "capture", () => { invoked = true; return port.startCapture(effect.token); });
+          if (!pending) {
+            if (!invoked) owner.closed = true; // Only an uninvoked boundary needs no compensation.
+            resolve({ ok: false, reason: "The host refused capture admission." });
+          } else resolve(await pending);
+        } catch { resolve({ ok: false, reason: "Capture could not be opened." }); }
         const outcome = await acquisition;
-        if (!outcome.ok) owner.closed = true;
+        if (!outcome.ok && invoked) {
+          const cleanup = await closeCapture(owner);
+          if (!cleanup.ok && current(origin)) {
+            dispatch({ type: "capture-unsafe", token: effect.token,
+              reason: cleanup.reason ?? "Capture closure was not confirmed.", facts, scope: origin.scope });
+            continue;
+          }
+        }
         const latest = current(origin) ? await readFacts(origin) : null;
         if (current(origin)) dispatch({ type: "sync", facts: latest, scope: origin.scope });
         if (!current(origin) || !mayOpenHandsFreeCapture(state, latest, origin.scope, effect.attemptId)) {
@@ -251,25 +327,38 @@ function createHandsFreeStore(
       }
       if (effect.type === "transcribe") {
         const port = origin.port;
+        if (!port) continue;
         const controller = new AbortController();
-        aborts.set(effect.operationId, controller);
+        let requests = aborts.get(port);
+        if (!requests) { requests = new Map(); aborts.set(port, requests); }
+        requests.set(effect.operationId, controller);
         try {
           const facts = await readFacts(origin);
           const ready = captureClosed && current(origin) && !controller.signal.aborted && !!port?.transcribeSegment;
-          dispatch({
-            type: "dispatch-transcribe", requestId: effect.requestId,
-            operationId: effect.operationId, chunkId: effect.chunkId,
-            ready, facts: current(origin) ? facts : lastFacts, scope: getScope(),
-          });
-          const operation = state.transport.slots.stt;
-          if (!ready || !port?.transcribeSegment || operation?.operationId !== effect.operationId ||
-              operation.cancelled || operation.chunks.find((chunk) => chunk.chunkId === effect.chunkId)?.state !== "dispatched") continue;
-          // No await between the exact admission above and this external boundary.
-          const result = await port.transcribeSegment({
-            requestId: effect.requestId,
-            segmentId: effect.segmentId,
-            signal: controller.signal,
-          });
+          const pending = ready && port?.transcribeSegment ? admit(origin, "stt", () => {
+            dispatch({ type: "dispatch-transcribe", requestId: effect.requestId,
+              operationId: effect.operationId, chunkId: effect.chunkId, ready: true, facts, scope: origin.scope });
+            const operation = state.transport.slots.stt;
+            if (operation?.operationId !== effect.operationId || operation.cancelled ||
+                operation.chunks.find((chunk) => chunk.chunkId === effect.chunkId)?.state !== "dispatched") return null;
+            return port.transcribeSegment({ requestId: effect.requestId, segmentId: effect.segmentId,
+              signal: controller.signal });
+          }) : null;
+          if (!pending) {
+            if (port === getOptions().port) {
+              dispatch({ type: "dispatch-transcribe", requestId: effect.requestId,
+                operationId: effect.operationId, chunkId: effect.chunkId, ready: false,
+                facts: current(origin) ? facts : lastFacts, scope: getScope() });
+            } else {
+              // A queued old-port effect cannot cancel a coincidentally equal new-port ID.
+              const shared = portLifetime(port);
+              shared.ledger = reduceTransport(shared.ledger, { type: "cancel", operationId: effect.operationId,
+                reason: "The capture host changed before dispatch." }).ledger;
+              for (const listener of shared.listeners) listener();
+            }
+            continue;
+          }
+          const result = await pending;
           // A late result is still delivered: the reducer, not this hook, decides whether it may
           // change the draft. That keeps "a late transcript cannot send after stop" in one place.
           if (result.ok) {
@@ -278,14 +367,14 @@ function createHandsFreeStore(
               text: result.text,
               operationId: effect.operationId,
               chunkId: effect.chunkId,
-            });
+            }, origin);
           } else {
             await receipt({
               type: "transcript-failed",
               reason: result.reason,
               operationId: effect.operationId,
               chunkId: effect.chunkId,
-            });
+            }, origin);
           }
         } catch (error) {
           await receipt({
@@ -293,44 +382,52 @@ function createHandsFreeStore(
             reason: error instanceof Error ? error.message : "Transcription failed.",
             operationId: effect.operationId,
             chunkId: effect.chunkId,
-          });
+          }, origin);
         } finally {
-          aborts.delete(effect.operationId);
+          if (requests.get(effect.operationId) === controller) requests.delete(effect.operationId);
+          if (!requests.size) aborts.delete(port);
         }
         continue;
       }
       if (effect.type === "abort-transcribe") {
-        aborts.get(effect.operationId)?.abort();
+        if (origin.port) aborts.get(origin.port)?.get(effect.operationId)?.abort();
         continue;
       }
       if (effect.type === "send-turn") {
         if (!current(origin)) {
           await receipt({ type: "send-settled", requestId: effect.requestId, ok: false,
-            reason: "The voice session ended before dispatch. Nothing was sent." });
+            reason: "The voice session ended before dispatch. Nothing was sent." }, origin);
           continue;
         }
         let dispatched = false;
         const admission: HandsFreeAdmission = {
-          async dispatch(start, viewCurrent) {
+          async dispatch(request, viewCurrent, onDispatched) {
             if (dispatched || !current(origin)) return null;
             const facts = await readFacts(origin);
             if (!current(origin)) return null;
             dispatch({ type: "sync", facts, scope: origin.scope });
             if (!current(origin) || viewCurrent?.() === false ||
                 !mayDispatchHandsFreeTurn(state, facts, origin.scope, effect.requestId)) return null;
-            dispatched = true;
-            dispatch({ type: "send-dispatched", requestId: effect.requestId, facts, scope: origin.scope });
-            return start();
+            const port = origin.port;
+            if (!port?.startAgent) return null;
+            return admit(origin, "agent", () => {
+              if (viewCurrent?.() === false || !mayDispatchHandsFreeTurn(state, facts, origin.scope, effect.requestId)) return null;
+              dispatched = true;
+              dispatch({ type: "send-dispatched", requestId: effect.requestId, facts, scope: origin.scope });
+              onDispatched?.();
+              return port.startAgent(request);
+            });
           },
         };
         try {
           const outcome = await getOptions().onSendTurn(effect.turn, admission);
           await receipt({
             type: "send-settled",
-            ok: outcome.ok,
+            ok: outcome.ok && dispatched,
             requestId: effect.requestId,
-            ...(outcome.reason ? { reason: outcome.reason } : {}),
-          });
+            ...(!dispatched ? { reason: "The host did not dispatch this voice turn. Nothing was sent." }
+              : outcome.reason ? { reason: outcome.reason } : {}),
+          }, origin);
         } catch (error) {
           getOptions().onNotice?.(error);
           await receipt({
@@ -338,7 +435,7 @@ function createHandsFreeStore(
             ok: false,
             requestId: effect.requestId,
             reason: error instanceof Error ? error.message : "The turn could not be sent.",
-          });
+          }, origin);
         }
       }
     }
@@ -349,27 +446,71 @@ function createHandsFreeStore(
     // Disposed stores still consume attributable receipts and finish owned cleanup, but never
     // acquire/send. StrictMode may later resubscribe; counters and revoked state are retained.
     lastFacts = event.facts;
+    const port = getOptions().port;
+    const shared = port ? portLifetime(port) : null;
+    if (shared) state = { ...state, transport: shared.ledger,
+      session: { ...state.session, sequence: Math.max(state.session.sequence, shared.requestSequence) } };
     const wasActive = state.session.active;
     const next = reduceHandsFree(state, event);
     state = next.state;
+    if (!wasActive && state.session.active) sessionRevision = revision(port);
+    if (wasActive && !state.session.active) sessionRevision = null;
+    if (shared) {
+      shared.ledger = state.transport;
+      shared.requestSequence = Math.max(shared.requestSequence, state.session.sequence);
+      for (const listener of shared.listeners) listener();
+    }
     if (wasActive && !state.session.active) advanceEpoch();
+    if (expiryTimer) clearTimeout(expiryTimer);
+    expiryTimer = undefined;
+    const expires = event.facts?.grant?.expiresAt;
+    if (state.session.active && port && expires !== undefined && event.facts) {
+      const schedule = () => {
+        const remaining = expires - (port.now?.() ?? Date.now());
+        if (remaining <= 0) { revoke(getScope()); return; }
+        expiryTimer = setTimeout(schedule, Math.min(2_147_483_647, remaining));
+      };
+      schedule();
+    }
     emit();
     void runEffects(next.effects, context());
   };
 
-  const receipt = async (intent: HandsFreeIntent) => {
+  const revokeChangedRevision = (origin: Context) => {
+    // A revision can advance before its lifecycle notice is delivered, including while this
+    // receipt's snapshot is pending. End only the still-matching old session before feeding its
+    // attributable settlement to the reducer; an old receipt must not revoke a newer session.
+    if (open && state.session.active && origin.epoch === dispatchEpoch && origin.port &&
+        origin.port === getOptions().port && sameScope(origin.scope, getScope()) &&
+        sessionRevision === origin.hostRevision && revision(origin.port) !== origin.hostRevision) {
+      revoke(getScope());
+    }
+  };
+
+  const receipt = async (intent: HandsFreeIntent, original?: Context) => {
+    const origin = original ?? context();
     if (intent.type === "send-settled") {
+      revokeChangedRevision(origin);
       dispatch({ ...intent, facts: lastFacts, scope: getScope() });
       return;
     }
-    const origin = context();
-    const facts = open ? await readFacts(origin) : null;
+    const facts = current(origin) ? await readFacts(origin) : null;
+    revokeChangedRevision(origin);
+    if (origin.port && origin.port !== getOptions().port &&
+        (intent.type === "transcript" || intent.type === "transcript-failed")) {
+      const shared = portLifetime(origin.port);
+      shared.ledger = reduceTransport(shared.ledger, { type: "settle", operationId: intent.operationId,
+        chunkId: intent.chunkId, outcome: intent.type === "transcript" ? "success" : "failure",
+        ...(intent.type === "transcript-failed" ? { failure: intent.reason } : {}) }).ledger;
+      for (const listener of shared.listeners) listener();
+      return;
+    }
     dispatch({ ...intent, facts: current(origin) ? facts : lastFacts, scope: getScope() });
   };
 
   const revoke = (scope: HandsFreeScope) => {
     advanceEpoch();
-    for (const controller of aborts.values()) controller.abort();
+    abortAll();
     dispatch({ type: "revoke", facts: lastFacts, scope });
   };
 
@@ -388,11 +529,77 @@ function createHandsFreeStore(
       return state;
     },
     observe: (scope, port) => send({ type: "sync" }, { ...context(), scope, port }),
+    watch(port) {
+      watchedPort = undefined;
+      if (ledgerPort !== port) {
+        state = { ...state, sttRequest: null };
+        ledgerPort = port;
+      }
+      if (!qualified(port)) {
+        observedRevision = null;
+        state = { ...state, transport: initialTransportLedger(), lastReceipt: null };
+        dispatch({ type: "sync", facts: null, scope: getScope() });
+        return () => {};
+      }
+      observedRevision = revision(port);
+      const shared = portLifetime(port);
+      const updateLedger = () => {
+        if (getOptions().port !== port || state.transport === shared.ledger) return;
+        state = { ...state, transport: shared.ledger,
+          lastReceipt: shared.ledger.receipts.at(-1) ?? null };
+        emit();
+      };
+      shared.listeners.add(updateLedger);
+      updateLedger();
+      let active = true;
+      let unsubscribe: (() => void) | undefined;
+      const invalidate = () => {
+        watchedPort = undefined;
+        observedRevision = null;
+        revoke(getScope());
+        dispatch({ type: "sync", facts: null, scope: getScope() });
+      };
+      try {
+        unsubscribe = port.onFactsChanged((notice) => {
+          if (!active || getOptions().port !== port) return;
+          const now = revision(port);
+          if (!safeCounter(notice) || now === null || observedRevision === null || now < observedRevision || notice > now) {
+            invalidate();
+            return;
+          }
+          if (now === observedRevision) return; // An old, delayed notification cannot revoke a new session.
+          observedRevision = now;
+          revoke(getScope());
+          void send({ type: "sync" });
+        });
+        if (typeof unsubscribe !== "function" || observedRevision === null) throw new Error("Invalid lifecycle subscription.");
+        watchedPort = port;
+        // Do not miss a change occurring while the subscription was being installed.
+        const now = revision(port);
+        if (now === null || now < observedRevision) throw new Error("Invalid host revision.");
+        if (now !== observedRevision) {
+          observedRevision = now;
+          revoke(getScope());
+          void send({ type: "sync" });
+        }
+      } catch {
+        active = false;
+        if (typeof unsubscribe === "function") { try { unsubscribe(); } catch {} }
+        invalidate();
+        return () => { shared.listeners.delete(updateLedger); };
+      }
+      return () => {
+        active = false;
+        if (watchedPort === port) watchedPort = undefined;
+        try { unsubscribe?.(); } catch {} // No cleanup error can make a failed host qualified.
+        shared.listeners.delete(updateLedger);
+      };
+    },
     revoke,
     start: () => send({ type: "start" }),
     stop: () => {
       advanceEpoch();
-      for (const controller of aborts.values()) controller.abort();
+      abortAll();
       // Revocation must not wait for a host snapshot. Cached facts can only close work here.
       dispatch({ type: "stop", facts: lastFacts, scope: getScope() });
     },
@@ -413,6 +620,7 @@ function createHandsFreeStore(
     dispose() {
       revoke(getScope());
       open = false;
+      if (expiryTimer) clearTimeout(expiryTimer);
       listeners.clear();
     },
   };
@@ -448,12 +656,14 @@ export function useHandsFreeSession(options: UseHandsFreeSessionOptions): HandsF
 
   const port = options.port;
 
+  useLayoutEffect(() => store.watch(port), [store, port]);
+
   useLayoutEffect(() => {
     void store.observe(scope, port);
   }, [store, scope, port]);
 
   useLayoutEffect(() => {
-    if (!port?.onSegment) return;
+    if (!qualified(port)) return;
     const receive = store.segmentListener(scope, port, state.session.token);
     return port.onSegment((segment) => {
       receive(segment.segmentId);

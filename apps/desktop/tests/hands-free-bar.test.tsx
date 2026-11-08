@@ -3,12 +3,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bu
 import React from "react";
 import { mountDom, unmountDom } from "./support/dom";
 import type { AgentEvent } from "@ai-book-studio/core/agent";
+import { validRoute } from "../../../packages/core/src/voice-session";
 import type {
   HandsFreePort,
   HandsFreeSnapshot,
   HandsFreeTurn,
   HandsFreeHostOutcome,
   HandsFreeTranscript,
+  HandsFreeAdmission,
 } from "@ai-book-studio/app/lib/hands-free";
 import type { HandsFreeSessionApi } from "@ai-book-studio/app/hooks/use-hands-free-session";
 
@@ -77,6 +79,10 @@ interface FakePort {
   stopCapture: ReturnType<typeof mock>;
   transcribeSegment: ReturnType<typeof mock>;
   emitSegment: (segmentId: number) => void;
+  facts: () => HandsFreeSnapshot;
+  change: (patch: Partial<HandsFreeSnapshot>, notify?: boolean) => void;
+  notify: (revision: number) => void;
+  setThread: (threadId: string) => void;
 }
 
 function makePort(options: {
@@ -84,26 +90,45 @@ function makePort(options: {
   text?: string;
   startCapture?: () => Promise<{ ok: boolean; reason?: string }>;
   stopCapture?: () => Promise<{ ok: boolean; reason?: string }>;
+  onFactChange?: () => void;
 } = {}): FakePort {
   const grant = options.grant === undefined ? GRANT : options.grant;
   let listener: ((segment: { segmentId: number }) => void) | null = null;
+  let authorizedThread: string = THREAD;
+  const factListeners = new Set<(revision: number) => void>();
+  let facts: HandsFreeSnapshot = {
+    hostRevision: 1,
+    identity: IDENTITY,
+    routes: { stt: ROUTE, tts: null, agent: ROUTE },
+    grant: grant as HandsFreeSnapshot["grant"],
+    sourceDigest: "sha256:synthetic-source",
+    available: true,
+    visible: true,
+    unlocked: true,
+  };
   const startCapture = mock(options.startCapture ?? (() => Promise.resolve({ ok: true })));
   const stopCapture = mock(options.stopCapture ?? (() => Promise.resolve({ ok: true })));
   const transcribeSegment = mock(() => Promise.resolve({ ok: true as const, text: options.text ?? "The gate was open." }));
   const port: HandsFreePort = {
-    snapshot: async (): Promise<HandsFreeSnapshot> => ({
-      identity: IDENTITY,
-      routes: { stt: ROUTE, tts: null, agent: ROUTE },
-      grant: grant as HandsFreeSnapshot["grant"],
-      sourceDigest: "sha256:synthetic-source",
-      available: true,
-      visible: true,
-      unlocked: true,
-    }),
+    qualification: "synthetic-in-process-v1",
+    currentRevision: () => facts.hostRevision,
+    onFactsChanged(next) { factListeners.add(next); return () => { factListeners.delete(next); }; },
+    admit(input, start) {
+      if (input.revision !== facts.hostRevision || !facts.available || !facts.visible || !facts.unlocked ||
+          input.scope.bookId !== BOOK || input.scope.chapterId !== CHAPTER || input.scope.threadId !== authorizedThread ||
+          input.scope.mode !== "discuss" || !facts.identity || !facts.routes || !validRoute(facts.routes.stt) ||
+          !validRoute(facts.routes.agent) || !facts.sourceDigest || !facts.grant?.active || !facts.grant.audioOnly ||
+          facts.grant.hostId !== facts.identity.hostId || facts.grant.windowId !== facts.identity.windowId ||
+          facts.grant.frameId !== facts.identity.frameId || facts.grant.origin !== facts.identity.origin ||
+          (port.now?.() ?? Date.now()) >= facts.grant.expiresAt) return { admitted: false };
+      return { admitted: true, value: start() };
+    },
+    snapshot: async (): Promise<HandsFreeSnapshot> => facts,
     now: () => 1_000,
     startCapture,
     stopCapture,
     transcribeSegment,
+    startAgent: (request) => window.studio.agent.start(request), // The Studio API in these tests is an in-process fake.
     onSegment(next) {
       listener = next;
       return () => {
@@ -117,12 +142,26 @@ function makePort(options: {
     stopCapture,
     transcribeSegment,
     emitSegment: (segmentId: number) => listener?.({ segmentId }),
+    facts: () => facts,
+    change: (patch, notify = true) => {
+      facts = { ...facts, ...patch, hostRevision: facts.hostRevision + 1 };
+      options.onFactChange?.(); // This fake host can independently close its synthetic resource.
+      if (notify) for (const next of factListeners) next(facts.hostRevision);
+    },
+    notify: (value) => { for (const next of factListeners) next(value); },
+    setThread: (threadId) => {
+      authorizedThread = threadId;
+      facts = { ...facts, hostRevision: facts.hostRevision + 1 };
+      options.onFactChange?.();
+      for (const next of factListeners) next(facts.hostRevision);
+    },
   };
 }
 
 function renderBar(
   port: HandsFreePort | undefined,
-  onSendTurn = mock((_turn: HandsFreeTurn) => Promise.resolve({ ok: true })),
+  onSendTurn: (turn: HandsFreeTurn, admission: HandsFreeAdmission) => Promise<{ ok: boolean; reason?: string }> =
+    mock((_turn: HandsFreeTurn) => Promise.resolve({ ok: true })),
   threadId: string | null = THREAD
 ): { view: ReturnType<typeof testing.within>; onSendTurn: typeof onSendTurn } {
   testing.render(
@@ -178,7 +217,7 @@ describe("mounted hands-free controls", () => {
     const fake = makePort({ grant: null });
     const { view } = renderBar(fake.port);
     await testing.waitFor(() =>
-      expect(status(view)).toBe("No audio grant is active for this conversation. Nothing was recorded.")
+      expect(status(view)).toBe("No audio grant is active for this conversation.")
     );
     expect((view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(true);
     expect(fake.startCapture).not.toHaveBeenCalled();
@@ -237,11 +276,14 @@ describe("mounted hands-free controls", () => {
   test("one confirm sends one Discuss turn to the exact bound thread", async () => {
     const fake = makePort();
     let release!: () => void;
-    const onSendTurn = mock(
-      (_turn: HandsFreeTurn) => new Promise<{ ok: boolean }>((resolve) => {
-        release = () => resolve({ ok: true });
-      })
-    );
+    fake.port.startAgent = () => new Promise((resolve) => {
+      release = () => resolve({ ok: true, data: { turnId: "synthetic", threadId: THREAD } });
+    });
+    const onSendTurn = mock(async (turn: HandsFreeTurn, admission: HandsFreeAdmission) => {
+      const result = await admission.dispatch({ bookId: turn.bookId, chapterId: turn.chapterId,
+        threadId: turn.threadId, prompt: turn.text, mode: turn.mode });
+      return { ok: result?.ok === true };
+    });
     const { view } = renderBar(fake.port, onSendTurn);
     await beginSession(view);
     await speak(view, fake);
@@ -584,11 +626,7 @@ function SessionProbe({ port, receive }: { port: HandsFreePort; receive: (api: H
 }
 
 async function changingHost(options: Parameters<typeof makePort>[0] = {}) {
-  const fake = makePort(options);
-  let snapshot = await fake.port.snapshot({ ...TARGET, mode: "discuss" }) as HandsFreeSnapshot;
-  fake.port.snapshot = async () => snapshot;
-  return { ...fake, facts: () => snapshot,
-    change: (patch: Partial<HandsFreeSnapshot>) => { snapshot = { ...snapshot, ...patch }; } };
+  return makePort(options);
 }
 
 function lifetimeBar(fake: FakePort, send = mock((_turn: HandsFreeTurn) => Promise.resolve({ ok: true }))) {
@@ -865,10 +903,17 @@ describe("R5 attributable transcript receipts release revoked core requests", ()
 
 describe("R6 real ChatPanel post-flush voice admission", () => {
   test.each(["none", "unmount", "stop", "scope", "scope-aba", "port", "permission", "route", "source", "hide",
-    "admission-stop", "admission-unmount", "admission-scope-aba", "dispatched-stop", "dispatched-stop-failure",
-    "dispatched-scope", "flush-failure"])(
+    "admission-stop", "admission-unmount", "admission-scope-aba", "host-refusal", "dispatched-stop", "dispatched-stop-failure",
+    "dispatched-scope", "dispatched-hide", "dispatched-permission", "dispatched-hide-failure",
+    "dispatched-permission-failure", "flush-failure", ...["permission", "visibility", "source", "route"].flatMap((fact) =>
+      [`aba-${fact}`, `admission-aba-${fact}`, `dispatched-aba-${fact}`, `dispatched-delayed-aba-${fact}`])])(
     "deferred draft flush followed by %s", async (loss) => {
       const fake = await changingHost();
+      if (loss === "host-refusal") {
+        const guard = fake.port.admit;
+        fake.port.admit = (input, start) => input.kind === "agent" ? { admitted: false } : guard(input, start);
+      }
+      const originalFacts = fake.facts();
       const flush = deferred<void>();
       const startResult = deferred<{ ok: true; data: { turnId: string; threadId: string } } |
         { ok: false; error: { code: string; message: string } }>();
@@ -912,12 +957,23 @@ describe("R6 real ChatPanel post-flush voice admission", () => {
         if (loss === "route") fake.change({ routes: { stt: ROUTE, tts: null, agent: { ...ROUTE, revision: 2 } } });
         if (loss === "source") fake.change({ sourceDigest: "changed" });
         if (loss === "hide") fake.change({ visible: false });
+        if (loss.startsWith("dispatched-permission")) fake.change({ grant: null });
+        if (loss.startsWith("dispatched-hide")) fake.change({ visible: false });
+        if (loss.includes("aba-") && !loss.includes("scope-aba")) {
+          const name = loss.slice(loss.lastIndexOf("aba-") + 4);
+          const patch = FACT_LOSSES.find(([key]) => key === name)?.[1];
+          if (patch) {
+            const notify = !loss.startsWith("dispatched-delayed-");
+            fake.change(patch, notify);
+            fake.change(originalFacts, notify);
+          }
+        }
       });
       if (loss === "scope-aba" || loss === "admission-scope-aba") await testing.act(async () => rendered.rerender(React.createElement(ChatPanel, props)));
       await testing.act(async () => {
         flush.resolve();
         admissionFacts.resolve(fake.facts());
-        startResult.resolve(loss === "dispatched-stop-failure"
+        startResult.resolve(loss.startsWith("dispatched-") && loss.endsWith("-failure")
           ? { ok: false, error: { code: "synthetic", message: "Start failed after dispatch." } }
           : { ok: true, data: { turnId: "synthetic", threadId: THREAD } });
       });
@@ -925,10 +981,27 @@ describe("R6 real ChatPanel post-flush voice admission", () => {
       expect(before).toHaveBeenCalledTimes(1);
       if (loss === "none") expect(start.mock.calls[0]?.[0]).toMatchObject({ bookId: BOOK, chapterId: CHAPTER,
         threadId: THREAD, prompt: "The gate was open.", mode: "discuss" });
-      else if (!loss.includes("unmount")) expect(view.queryByTestId("hands-free-confirm")).toBeNull();
+      else if (!loss.includes("unmount") && loss !== "host-refusal") expect(view.queryByTestId("hands-free-confirm")).toBeNull();
+      if (loss === "host-refusal") expect(view.getByTestId("hands-free-note").textContent).toContain("Nothing was sent");
       if (loss === "dispatched-stop") {
         expect(status(view)).toBe("Stopped.");
         expect(view.getByTestId("hands-free-note").textContent).toBe("Sent to this conversation.");
+        expect(fake.startCapture).toHaveBeenCalledTimes(1);
+      }
+      if (loss.startsWith("dispatched-aba-")) {
+        expect(view.getByTestId("hands-free-note").textContent).toBe("Sent to this conversation.");
+        expect(fake.startCapture).toHaveBeenCalledTimes(1);
+      }
+      if (loss.startsWith("dispatched-delayed-aba-")) {
+        expect(status(view)).toBe("Stopped.");
+        expect(view.getByTestId("hands-free-note").textContent).toBe("Sent to this conversation.");
+        expect(fake.startCapture).toHaveBeenCalledTimes(1);
+        await testing.act(async () => fake.notify(fake.facts().hostRevision));
+      }
+      if (loss.startsWith("dispatched-hide") || loss.startsWith("dispatched-permission")) {
+        expect(view.getByTestId("hands-free-note").textContent).toBe(loss.endsWith("-failure")
+          ? "Start failed after dispatch." : "Sent to this conversation.");
+        expect(status(view)).not.toContain("Nothing was recorded");
         expect(fake.startCapture).toHaveBeenCalledTimes(1);
       }
       if (loss === "dispatched-stop-failure") {
@@ -940,7 +1013,10 @@ describe("R6 real ChatPanel post-flush voice admission", () => {
       if (loss === "flush-failure") expect(view.queryByTestId("agent-retry-request")).toBeNull();
       if (loss === "dispatched-scope") {
         expect(view.getByTestId("hands-free-note").textContent).toContain("original conversation");
-        fake.change({ grant: { ...GRANT, generation: 2 } });
+        await testing.act(async () => {
+          fake.setThread("thread_other");
+          fake.change({ grant: { ...GRANT, generation: 2 } });
+        });
         await beginSession(view);
         await speak(view, fake);
         await testing.act(async () => testing.fireEvent.click(view.getByTestId("hands-free-confirm")));
@@ -948,4 +1024,492 @@ describe("R6 real ChatPanel post-flush voice admission", () => {
         expect(start.mock.calls[1]?.[0]).toMatchObject({ threadId: "thread_other" });
       }
     });
+});
+
+const FACT_LOSSES: [string, Partial<HandsFreeSnapshot>][] = [
+  ["permission", { grant: null }],
+  ["visibility", { visible: false }],
+  ["source", { sourceDigest: "sha256:other" }],
+  ["route", { routes: { stt: { ...ROUTE, revision: 2 }, tts: null, agent: ROUTE } }],
+];
+
+describe("qualified synthetic host lifetime (F1–F5)", () => {
+  test("the synthetic admission boundary refuses foreign scope and invalid current routes", () => {
+    const fake = makePort();
+    const start = mock(() => true);
+    const scope = { ...TARGET, mode: "discuss" as const };
+    for (const foreign of [{ ...scope, bookId: "other" }, { ...scope, chapterId: "other" },
+      { ...scope, threadId: "other" }]) {
+      expect(fake.port.admit({ revision: fake.facts().hostRevision, scope: foreign, kind: "capture" }, start))
+        .toEqual({ admitted: false });
+    }
+    fake.change({ routes: { stt: { ...ROUTE, revision: -1 }, tts: null, agent: ROUTE } });
+    expect(fake.port.admit({ revision: fake.facts().hostRevision, scope, kind: "stt" }, start))
+      .toEqual({ admitted: false });
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  for (const [label, loss] of FACT_LOSSES) {
+    test(`ABA ${label} while STT waits for capture close remains unsent`, async () => {
+      const close = deferred<HandsFreeHostOutcome>();
+      const fake = makePort({ stopCapture: () => close.promise });
+      const old = fake.facts();
+      let api!: HandsFreeSessionApi;
+      testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+      await testing.act(async () => api.start());
+      await testing.act(async () => fake.emitSegment(1));
+      expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+      await testing.act(async () => { fake.change(loss); fake.change(old); close.resolve({ ok: true }); });
+      expect(fake.transcribeSegment).not.toHaveBeenCalled();
+      expect(api.state.session.active).toBe(false);
+      expect(api.state.lastReceipt?.unsentChunks).toBe(1);
+    });
+
+    test(`ABA ${label} while Start joins the old owner requires a new activation`, async () => {
+      const close = deferred<HandsFreeHostOutcome>();
+      const fake = makePort({ stopCapture: () => close.promise });
+      const old = fake.facts();
+      let api!: HandsFreeSessionApi;
+      const first = testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+      await testing.act(async () => api.start());
+      await testing.act(async () => first.unmount());
+      testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+      await testing.act(async () => api.start());
+      expect(fake.startCapture).toHaveBeenCalledTimes(1);
+      await testing.act(async () => { fake.change(loss); fake.change(old); close.resolve({ ok: true }); });
+      expect(fake.startCapture).toHaveBeenCalledTimes(1);
+      expect(api.state.session.active).toBe(false);
+    });
+  }
+
+  test.each(["success", "failure"] as const)("same-port remount preserves outstanding STT and %s receipt", async (outcome) => {
+    const firstResult = deferred<HandsFreeTranscript>();
+    const fake = makePort();
+    let firstSignal: AbortSignal | undefined;
+    const transcribe = mock((input: { requestId: number; segmentId: number; signal: AbortSignal }) => {
+      if (!firstSignal) { firstSignal = input.signal; return firstResult.promise; }
+      return Promise.resolve({ ok: true as const, text: "New words." });
+    });
+    fake.port.transcribeSegment = transcribe;
+    let api!: HandsFreeSessionApi;
+    const first = testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+    await testing.act(async () => api.start());
+    await testing.act(async () => fake.emitSegment(1));
+    const oldOperation = api.state.transport.slots.stt?.operationId;
+    const oldRequest = transcribe.mock.calls[0]?.[0].requestId;
+    expect(oldOperation).toBeDefined();
+    await testing.act(async () => first.unmount());
+    expect(firstSignal?.aborted).toBe(true);
+    testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+    await testing.act(async () => api.start());
+    expect(api.state.transport.slots.stt?.operationId).toBe(oldOperation);
+    await testing.act(async () => fake.emitSegment(1));
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    expect(api.state.transport.slots.stt?.operationId).toBe(oldOperation);
+    await testing.act(async () => firstResult.resolve(outcome === "success"
+      ? { ok: true, text: "Old words." } : { ok: false, reason: "Old failure." }));
+    expect(api.state.transport.slots.stt).toBeNull();
+    expect(api.state.transport.receipts).toHaveLength(1);
+    expect(api.state.lastReceipt?.operation.operationId).toBe(oldOperation);
+    expect(api.state.lastReceipt?.unknownChunks).toBe(1);
+    expect(api.state.lastReceipt?.finalChunkOutcome).toBe(outcome);
+    expect(api.state.lastReceipt?.finalChunkFailure).toBe(outcome === "failure" ? "Old failure." : null);
+    expect(api.state.session.draft).toBe("");
+    await testing.act(async () => api.acknowledge());
+    await testing.act(async () => api.continueSession());
+    await testing.act(async () => fake.emitSegment(2));
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(transcribe.mock.calls[1]?.[0].requestId).not.toBe(oldRequest);
+    expect(api.state.transport.receipts).toHaveLength(2);
+    expect(api.state.transport.receipts[1]?.operation.operationId).not.toBe(oldOperation);
+    expect(api.state.transport.receipts[0]?.unknownChunks).toBe(1);
+    expect(api.state.session.draft).toBe("New words.");
+  });
+
+  test("a second consumer cannot cancel another consumer's outstanding STT", async () => {
+    const result = deferred<HandsFreeTranscript>();
+    const fake = makePort();
+    let signal: AbortSignal | undefined;
+    fake.port.transcribeSegment = (input) => { signal = input.signal; return result.promise; };
+    let first!: HandsFreeSessionApi;
+    let second!: HandsFreeSessionApi;
+    testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (api) => { first = api; } }));
+    await testing.act(async () => first.start());
+    await testing.act(async () => fake.emitSegment(1));
+    expect(first.state.transport.slots.stt?.cancelled).toBe(false);
+    testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (api) => { second = api; } }));
+    await testing.act(async () => second.start());
+    await testing.act(async () => second.stop());
+    expect(first.state.transport.slots.stt?.cancelled).toBe(false);
+    expect(signal?.aborted).toBe(false);
+    await testing.act(async () => result.resolve({ ok: true, text: "First owner's words." }));
+    expect(first.state.session.draft).toBe("First owner's words.");
+    expect(second.state.session.draft).toBe("");
+  });
+
+  test("a late receipt on a replaced port cannot remove the new port's abort handle", async () => {
+    const oldResult = deferred<HandsFreeTranscript>();
+    const newResult = deferred<HandsFreeTranscript>();
+    const old = makePort();
+    const next = makePort({ grant: { ...GRANT, generation: 2 } });
+    let newSignal: AbortSignal | undefined;
+    old.port.transcribeSegment = () => oldResult.promise;
+    next.port.transcribeSegment = (input) => { newSignal = input.signal; return newResult.promise; };
+    let api!: HandsFreeSessionApi;
+    const receive = (value: HandsFreeSessionApi) => { api = value; };
+    const mounted = testing.render(React.createElement(SessionProbe, { port: old.port, receive }));
+    await testing.act(async () => api.start());
+    await testing.act(async () => old.emitSegment(1));
+    expect(api.state.transport.slots.stt?.operationId).toBe(1);
+    await testing.act(async () => mounted.rerender(React.createElement(SessionProbe, { port: next.port, receive })));
+    await testing.act(async () => api.start());
+    await testing.act(async () => next.emitSegment(1));
+    expect(api.state.transport.slots.stt?.operationId).toBe(1);
+    await testing.act(async () => oldResult.resolve({ ok: true, text: "Old words." }));
+    expect(api.state.transport.slots.stt?.operationId).toBe(1);
+    expect(api.state.session.draft).toBe("");
+    await testing.act(async () => api.stop());
+    expect(newSignal?.aborted).toBe(true);
+    await testing.act(async () => newResult.resolve({ ok: false, reason: "New failure." }));
+    expect(api.state.lastReceipt?.finalChunkFailure).toBe("New failure.");
+    let oldView!: HandsFreeSessionApi;
+    testing.render(React.createElement(SessionProbe, { port: old.port, receive: (value) => { oldView = value; } }));
+    expect(oldView.state.transport.receipts[0]?.finalChunkOutcome).toBe("success");
+    expect(oldView.state.transport.receipts[0]?.unknownChunks).toBe(1);
+  });
+
+  test("an old queued effect cannot cancel an equal operation ID on a different port", async () => {
+    const oldClose = deferred<HandsFreeHostOutcome>();
+    const newClose = deferred<HandsFreeHostOutcome>();
+    const old = makePort({ stopCapture: () => oldClose.promise });
+    const next = makePort({ stopCapture: () => newClose.promise });
+    let oldApi!: HandsFreeSessionApi;
+    let newApi!: HandsFreeSessionApi;
+    const receive = (value: HandsFreeSessionApi) => { oldApi = value; };
+    const mounted = testing.render(React.createElement(SessionProbe, { port: old.port, receive }));
+    await testing.act(async () => oldApi.start());
+    await testing.act(async () => old.emitSegment(1));
+    expect(oldApi.state.transport.slots.stt?.chunks[0]?.state).toBe("queued");
+    await testing.act(async () => mounted.rerender(React.createElement(SessionProbe, { port: next.port, receive })));
+    testing.render(React.createElement(SessionProbe, { port: next.port, receive: (value) => { newApi = value; } }));
+    await testing.act(async () => newApi.start());
+    await testing.act(async () => next.emitSegment(1));
+    expect(newApi.state.transport.slots.stt?.operationId).toBe(1);
+    expect(newApi.state.transport.slots.stt?.chunks[0]?.state).toBe("queued");
+    await testing.act(async () => oldClose.resolve({ ok: true }));
+    expect(newApi.state.transport.slots.stt?.chunks[0]?.state).toBe("queued");
+    await testing.act(async () => newClose.resolve({ ok: true }));
+    expect(next.transcribeSegment).toHaveBeenCalledTimes(1);
+    expect(newApi.state.session.draft).toBe("The gate was open.");
+  });
+
+  test.each(["capture", "stt"] as const)("host refusal at the actual %s boundary sends nothing", async (kind) => {
+    const fake = makePort();
+    const guard = fake.port.admit;
+    fake.port.admit = (input, start) => input.kind === kind ? { admitted: false } : guard(input, start);
+    let api!: HandsFreeSessionApi;
+    testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (value) => { api = value; } }));
+    await testing.act(async () => api.start());
+    if (kind === "capture") {
+      expect(fake.startCapture).not.toHaveBeenCalled();
+      expect(fake.stopCapture).not.toHaveBeenCalled();
+    } else {
+      await testing.act(async () => fake.emitSegment(1));
+      expect(fake.transcribeSegment).not.toHaveBeenCalled();
+      expect(api.state.lastReceipt).toMatchObject({ unsentChunks: 1, unknownChunks: 0 });
+    }
+  });
+
+  test.each([...FACT_LOSSES, ["lock", { unlocked: false }] as [string, Partial<HandsFreeSnapshot>]])(
+    "silent %s loss closes the owned synthetic capture", async (_label, loss) => {
+      let recording = false;
+      const fake = makePort({ startCapture: async () => { recording = true; return { ok: true }; },
+        stopCapture: async () => { recording = false; return { ok: true }; },
+        onFactChange: () => { recording = false; } });
+      const b = lifetimeBar(fake);
+      await beginSession(b.view);
+      expect(recording).toBe(true);
+      await testing.act(async () => fake.change(loss));
+      expect(recording).toBe(false);
+      expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+      expect(status(b.view)).not.toContain("Listening");
+    });
+
+  test("expiry ends silent capture without an author action", async () => {
+    let recording = false;
+    const fake = makePort({ grant: { ...GRANT, expiresAt: Date.now() + 80 },
+      startCapture: async () => { recording = true; return { ok: true }; },
+      stopCapture: async () => { recording = false; return { ok: true }; } });
+    fake.port.now = () => Date.now();
+    const b = lifetimeBar(fake);
+    await beginSession(b.view);
+    expect(recording).toBe(true);
+    await testing.waitFor(() => expect(recording).toBe(false));
+    expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+    expect(status(b.view)).not.toContain("Listening");
+  });
+
+  test("a synthetic host expires its own capture without a mounted renderer", async () => {
+    let recording = false;
+    const expiresAt = Date.now() + 80;
+    const fake = makePort({ grant: { ...GRANT, expiresAt },
+      startCapture: async () => { recording = true; return { ok: true }; },
+      onFactChange: () => { recording = false; } });
+    fake.port.now = () => Date.now();
+    const timeout = setTimeout(() => fake.change({ grant: null }), Math.max(0, expiresAt - Date.now()));
+    const admission = fake.port.admit({ revision: fake.facts().hostRevision, scope: { ...TARGET, mode: "discuss" },
+      kind: "capture" }, () => fake.port.startCapture({ sessionId: GRANT.sessionId, generation: GRANT.generation }));
+    expect(admission.admitted).toBe(true);
+    if (admission.admitted) await admission.value;
+    expect(recording).toBe(true);
+    await testing.waitFor(() => expect(recording).toBe(false));
+    clearTimeout(timeout);
+    expect(fake.facts().hostRevision).toBe(2);
+    expect(fake.stopCapture).not.toHaveBeenCalled();
+  });
+
+  test("a notified loss during acquisition is independently closed and joined", async () => {
+    const pending = deferred<void>();
+    let revoked = false;
+    let recording = false;
+    let closedBeforeController = false;
+    const fake = makePort({ startCapture: async () => {
+      await pending.promise;
+      recording = true;
+      if (revoked) { recording = false; closedBeforeController = true; }
+      return { ok: true };
+    }, stopCapture: async () => ({ ok: !recording }), onFactChange: () => { revoked = true; recording = false; } });
+    const b = lifetimeBar(fake);
+    await testing.waitFor(() => expect((b.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    await testing.act(async () => testing.fireEvent.click(b.view.getByTestId("hands-free-start")));
+    await testing.act(async () => fake.change({ visible: false }));
+    expect(status(b.view)).toContain("Stopping");
+    await testing.act(async () => pending.resolve());
+    expect(closedBeforeController).toBe(true);
+    expect(recording).toBe(false);
+    expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+    expect(status(b.view)).not.toContain("Listening");
+  });
+
+  for (const [label, loss] of FACT_LOSSES) for (const stage of ["start-facts", "capture-facts", "acquisition",
+    "post-open-facts", "stt-facts", "stt-result", "receipt-facts"] as const) {
+    test(`ABA ${label} during ${stage} revokes the original lifetime`, async () => {
+      const fake = makePort();
+      const old = fake.facts();
+      const heldFacts = deferred<HandsFreeSnapshot | null>();
+      const heldCapture = deferred<HandsFreeHostOutcome>();
+      const heldStt = deferred<HandsFreeTranscript>();
+      let reads = 0;
+      let api!: HandsFreeSessionApi;
+      testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+      await testing.waitFor(() => expect(api.state.availability.ready).toBe(true));
+      if (stage === "start-facts" || stage === "capture-facts" || stage === "post-open-facts") {
+        const heldRead = stage === "start-facts" ? 1 : stage === "capture-facts" ? 2 : 3;
+        fake.port.snapshot = async () => ++reads === heldRead ? heldFacts.promise : fake.facts();
+      }
+      if (stage === "acquisition") fake.port.startCapture = mock(() => heldCapture.promise);
+      if (stage === "stt-result" || stage === "receipt-facts") fake.port.transcribeSegment = mock(() => heldStt.promise);
+      await testing.act(async () => api.start());
+      if (stage === "stt-facts" || stage === "stt-result" || stage === "receipt-facts") {
+        expect(api.phase).toBe("recording");
+        if (stage === "stt-facts") fake.port.snapshot = async () => ++reads === 2 ? heldFacts.promise : fake.facts();
+        await testing.act(async () => fake.emitSegment(1));
+        if (stage === "receipt-facts") {
+          fake.port.snapshot = () => heldFacts.promise;
+          await testing.act(async () => heldStt.resolve({ ok: true, text: "Revoked words." }));
+        }
+      }
+      await testing.act(async () => { fake.change(loss); fake.change(old); });
+      await testing.act(async () => {
+        heldFacts.resolve(old);
+        heldCapture.resolve({ ok: true });
+        heldStt.resolve({ ok: true, text: "Revoked words." });
+      });
+      expect(api.state.session.active).toBe(false);
+      expect(api.state.session.draft).toBe("");
+      if (stage === "start-facts" || stage === "capture-facts") expect(fake.startCapture).not.toHaveBeenCalled();
+      if (stage === "stt-facts") expect(fake.transcribeSegment).not.toHaveBeenCalled();
+      if (stage === "stt-result" || stage === "receipt-facts") expect(api.state.lastReceipt?.unknownChunks).toBe(1);
+    });
+  }
+
+  test("a stale snapshot and delayed notification cannot authorize an old Start", async () => {
+    const fake = makePort();
+    const old = fake.facts();
+    const pending = deferred<HandsFreeSnapshot | null>();
+    let api!: HandsFreeSessionApi;
+    testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (next) => { api = next; } }));
+    await testing.waitFor(() => expect(api.state.availability.ready).toBe(true));
+    fake.port.snapshot = () => pending.promise;
+    await testing.act(async () => api.start());
+    await testing.act(async () => { fake.change({ grant: null }, false); pending.resolve(old); });
+    expect(fake.startCapture).not.toHaveBeenCalled();
+    expect(api.state.session.active).toBe(false);
+    await testing.act(async () => fake.notify(fake.facts().hostRevision));
+    expect(fake.startCapture).not.toHaveBeenCalled();
+  });
+
+  test.each(["result", "receipt-facts"] as const)(
+    "a delayed host notification cannot admit an old transcript during %s", async (stage) => {
+      const fake = makePort();
+      const old = fake.facts();
+      const result = deferred<HandsFreeTranscript>();
+      const facts = deferred<HandsFreeSnapshot | null>();
+      fake.port.transcribeSegment = () => result.promise;
+      let api!: HandsFreeSessionApi;
+      testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (value) => { api = value; } }));
+      await testing.act(async () => api.start());
+      await testing.act(async () => fake.emitSegment(1));
+      expect(api.state.transport.slots.stt?.chunks[0]?.state).toBe("dispatched");
+      if (stage === "receipt-facts") {
+        fake.port.snapshot = () => facts.promise;
+        await testing.act(async () => result.resolve({ ok: true, text: "Revoked words." }));
+      }
+      await testing.act(async () => {
+        fake.change({ grant: null }, false);
+        fake.change(old, false);
+        result.resolve({ ok: true, text: "Revoked words." });
+        facts.resolve(old);
+      });
+      expect(api.state.session.active).toBe(false);
+      expect(api.state.session.draft).toBe("");
+      expect(api.state.lastReceipt).toMatchObject({ finalChunkOutcome: "success", unknownChunks: 1 });
+      await testing.act(async () => fake.notify(fake.facts().hostRevision));
+      expect(api.state.session.draft).toBe("");
+    });
+
+  test("an old STT receipt does not revoke a newer session on the same port", async () => {
+    const fake = makePort();
+    const result = deferred<HandsFreeTranscript>();
+    fake.port.transcribeSegment = () => result.promise;
+    let api!: HandsFreeSessionApi;
+    testing.render(React.createElement(SessionProbe, { port: fake.port, receive: (value) => { api = value; } }));
+    await testing.act(async () => api.start());
+    await testing.act(async () => fake.emitSegment(1));
+    await testing.act(async () => api.stop());
+    await testing.act(async () => fake.change({ grant: { ...GRANT, generation: 2 } }));
+    await testing.act(async () => api.start());
+    expect(api.state.session.active).toBe(true);
+    await testing.act(async () => result.resolve({ ok: true, text: "Old words." }));
+    expect(api.state.session.active).toBe(true);
+    expect(api.state.session.draft).toBe("");
+    expect(api.state.lastReceipt).toMatchObject({ finalChunkOutcome: "success", unknownChunks: 1 });
+  });
+
+  test("a delayed old notification does not revoke a fresh session", async () => {
+    const fake = makePort();
+    const b = lifetimeBar(fake);
+    await beginSession(b.view);
+    await testing.act(async () => fake.change({ grant: null }));
+    await testing.act(async () => fake.change({ grant: { ...GRANT, generation: 2 } }));
+    await beginSession(b.view);
+    await testing.act(async () => fake.notify(2));
+    expect(status(b.view)).toContain("Listening");
+    expect(fake.startCapture).toHaveBeenCalledTimes(2);
+  });
+
+  test("a nonqualified adapter cannot activate", async () => {
+    const fake = makePort();
+    const incomplete = { ...fake.port, qualification: "unqualified" } as unknown as HandsFreePort;
+    const { view } = renderBar(incomplete);
+    expect((view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(true);
+    expect(fake.startCapture).not.toHaveBeenCalled();
+  });
+
+  test("replacing a qualified port with an unsupported one clears ready availability", async () => {
+    const fake = makePort();
+    const b = lifetimeBar(fake);
+    await testing.waitFor(() => expect((b.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    const incomplete = { ...fake.port, qualification: "unqualified" } as unknown as HandsFreePort;
+    await testing.act(async () => b.rendered.rerender(React.createElement(HandsFreeBar, { ...b.props, port: incomplete })));
+    expect((b.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(true);
+    expect(status(b.view)).toContain("not connected");
+    expect(fake.startCapture).not.toHaveBeenCalled();
+  });
+
+  test.each(["throws", "invalid-unsubscribe"] as const)("a %s lifecycle subscription cannot activate", async (failure) => {
+    const fake = makePort();
+    fake.port.onFactsChanged = failure === "throws" ? () => { throw new Error("No subscription."); }
+      : () => undefined as unknown as () => void;
+    const { view } = renderBar(fake.port);
+    await testing.act(async () => {});
+    expect((view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(true);
+    expect(fake.startCapture).not.toHaveBeenCalled();
+  });
+
+  test.each(["failure", "rejection"] as const)("partial acquisition %s after Stop is compensated", async (kind) => {
+    const pending = deferred<void>();
+    let recording = false;
+    const fake = makePort({ startCapture: async () => {
+      await pending.promise; recording = true;
+      if (kind === "rejection") throw new Error("Synthetic partial acquisition");
+      return { ok: false, reason: "Synthetic partial acquisition" };
+    }, stopCapture: async () => { recording = false; return { ok: true }; } });
+    const b = lifetimeBar(fake);
+    await testing.waitFor(() => expect((b.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    await testing.act(async () => testing.fireEvent.click(b.view.getByTestId("hands-free-start")));
+    await testing.act(async () => testing.fireEvent.click(b.view.getByTestId("hands-free-stop")));
+    expect(status(b.view)).toContain("Stopping");
+    await testing.act(async () => pending.resolve());
+    expect(recording).toBe(false);
+    expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+    expect(status(b.view)).toBe("Stopped.");
+  });
+
+  test.each(["failure", "rejection"] as const)("partial acquisition %s after disposal joins failed cleanup on remount", async (kind) => {
+    const pending = deferred<void>();
+    let recording = false;
+    let closeOk = false;
+    const fake = makePort({ startCapture: async () => {
+      await pending.promise; recording = true;
+      if (kind === "rejection") throw new Error("Partial acquisition.");
+      return { ok: false, reason: "Partial acquisition." };
+    }, stopCapture: async () => { if (closeOk) recording = false; return { ok: closeOk, reason: "Still open." }; } });
+    const first = lifetimeBar(fake);
+    await testing.waitFor(() => expect((first.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    await testing.act(async () => testing.fireEvent.click(first.view.getByTestId("hands-free-start")));
+    await testing.act(async () => first.rendered.unmount());
+    const second = lifetimeBar(fake);
+    await testing.waitFor(() => expect((second.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    await testing.act(async () => testing.fireEvent.click(second.view.getByTestId("hands-free-start")));
+    expect(fake.startCapture).toHaveBeenCalledTimes(1);
+    await testing.act(async () => pending.resolve());
+    expect(recording).toBe(true);
+    expect(status(second.view)).toContain("Stop was not confirmed");
+    closeOk = true;
+    await testing.act(async () => testing.fireEvent.click(second.view.getByTestId("hands-free-stop")));
+    expect(recording).toBe(false);
+    expect(status(second.view)).toBe("Stopped.");
+  });
+
+  test("failed compensation remains unconfirmed and blocks replacement until explicit retry", async () => {
+    let recording = false;
+    let closeOk = false;
+    const fake = makePort({ startCapture: async () => { recording = true; return { ok: false }; },
+      stopCapture: async () => { if (closeOk) recording = false; return { ok: closeOk, reason: "Still open." }; } });
+    const b = lifetimeBar(fake);
+    await testing.waitFor(() => expect((b.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    await testing.act(async () => testing.fireEvent.click(b.view.getByTestId("hands-free-start")));
+    expect(recording).toBe(true);
+    expect(status(b.view)).toContain("Stop was not confirmed");
+    expect(fake.stopCapture).toHaveBeenCalledTimes(1);
+    closeOk = true;
+    await testing.act(async () => testing.fireEvent.click(b.view.getByTestId("hands-free-stop")));
+    expect(recording).toBe(false);
+    expect(status(b.view)).toBe("Stopped.");
+  });
+
+  test("Starting makes no claim of closure after acquisition while verification waits", async () => {
+    const fake = makePort();
+    const pending = deferred<HandsFreeSnapshot | null>();
+    let reads = 0;
+    const b = lifetimeBar(fake);
+    await testing.waitFor(() => expect((b.view.getByTestId("hands-free-start") as HTMLButtonElement).disabled).toBe(false));
+    fake.port.snapshot = async () => ++reads === 3 ? pending.promise : fake.facts();
+    await testing.act(async () => testing.fireEvent.click(b.view.getByTestId("hands-free-start")));
+    expect(fake.startCapture).toHaveBeenCalledTimes(1);
+    expect(status(b.view)).toContain("Capture may be active");
+    expect(status(b.view)).not.toContain("Nothing is being recorded");
+    await testing.act(async () => pending.resolve(fake.facts()));
+  });
 });

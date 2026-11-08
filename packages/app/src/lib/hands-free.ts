@@ -22,6 +22,8 @@ import {
   type VoiceEvent,
   type VoiceSession,
 } from "../../../core/src/voice-session";
+import type { AgentTurnInput, AgentTurnStarted } from "../../../core/src/agent";
+import type { Result } from "../../../core/src/ipc";
 
 /*
  * The Discuss surface's hands-free controller (017 T017).
@@ -72,6 +74,8 @@ export interface HandsFreeRoutes {
 
 /** What the host adapter can see. `now` is stamped by the caller so the clock is injected. */
 export interface HandsFreeSnapshot {
+  /** Revision at which the snapshot was captured, not when its promise resolved. */
+  readonly hostRevision: number;
   readonly identity: HandsFreeIdentity | null;
   readonly routes: HandsFreeRoutes | null;
   readonly grant: AudioGrant | null;
@@ -93,9 +97,9 @@ export interface HandsFreeTurn {
   readonly mode: HandsFreeMode;
 }
 
-/** Calls the external boundary itself, after fresh facts; no cached boolean crosses an await. */
+/** The host, not the panel, owns the voice start boundary. */
 export interface HandsFreeAdmission {
-  dispatch<T>(start: () => Promise<T>, current?: () => boolean): Promise<T | null>;
+  dispatch(request: AgentTurnInput, current?: () => boolean, onDispatched?: () => void): Promise<Result<AgentTurnStarted> | null>;
 }
 
 export type HandsFreeAvailability =
@@ -111,20 +115,37 @@ export type HandsFreeTranscript =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: string };
 
-/** Everything a host adapter could implement. Nothing here ships a capture or provider call. */
+/**
+ * Synthetic, single-JS-realm test seam only. `admit` synchronously checks the current host revision,
+ * scope, grant and expiry and invokes `start` exactly once inside that same critical section, or
+ * refuses without invoking it. The callback must itself cross the actual in-process boundary before
+ * returning; wrapping IPC or an async preflight here is NOT qualified. Facts revisions are monotonic
+ * for the whole port lifetime, including ABA and expiry; snapshots carry their capture revision.
+ * Every relevant change promptly notifies subscribers. The host independently closes capture on
+ * lifecycle loss/expiry even if this renderer is suspended or disposed. See ADR 0021.
+ *
+ * This build has no native qualified adapter. A native bridge needs a different contract with the
+ * revision, grant and scope checked atomically in the trusted process at the real dispatch boundary.
+ */
 export interface HandsFreePort {
+  readonly qualification: "synthetic-in-process-v1";
+  currentRevision(): number;
+  onFactsChanged(listener: (revision: number) => void): () => void;
+  admit<T>(input: { readonly revision: number; readonly scope: HandsFreeScope;
+    readonly kind: "capture" | "stt" | "agent" }, start: () => T): { admitted: true; value: T } | { admitted: false };
   snapshot(scope: HandsFreeScope): Promise<HandsFreeSnapshot | null>;
   /** Injectable clock so expiries are deterministic in tests. */
   now?(): number;
-  startCapture?(token: SessionToken): Promise<HandsFreeHostOutcome>;
-  stopCapture?(token: SessionToken): Promise<HandsFreeHostOutcome>;
-  transcribeSegment?(input: {
+  startCapture(token: SessionToken): Promise<HandsFreeHostOutcome>;
+  stopCapture(token: SessionToken): Promise<HandsFreeHostOutcome>;
+  transcribeSegment(input: {
     readonly requestId: number;
     readonly segmentId: number;
     readonly signal: AbortSignal;
   }): Promise<HandsFreeTranscript>;
+  startAgent(request: AgentTurnInput): Promise<Result<AgentTurnStarted>>;
   /** A qualified segment ended. The host owns segmentation; this module owns no PCM. */
-  onSegment?(listener: (segment: { readonly segmentId: number }) => void): () => void;
+  onSegment(listener: (segment: { readonly segmentId: number }) => void): () => void;
 }
 
 export type HandsFreeCaptureState = "closed" | "opening" | "open" | "failed";
@@ -213,6 +234,7 @@ export type HandsFreeIntent =
   | { readonly type: "sync" }
   | { readonly type: "revoke" }
   | { readonly type: "capture-blocked"; readonly token: SessionToken; readonly reason: string }
+  | { readonly type: "capture-unsafe"; readonly token: SessionToken; readonly reason: string }
   | { readonly type: "start" }
   | { readonly type: "segment"; readonly segmentId: number }
   | {
@@ -258,7 +280,7 @@ export type HandsFreeEvent = HandsFreeIntent & {
 };
 
 const TEXT_LIMIT = 65_536;
-const NO_GRANT_REASON = "No audio grant is active for this conversation. Nothing was recorded.";
+const NO_GRANT_REASON = "No audio grant is active for this conversation.";
 export const HANDS_FREE_UNCONNECTED =
   "Hands-free audio is not connected in this build, so nothing is recorded or sent.";
 
@@ -331,7 +353,7 @@ export function handsFreeAvailability(
   if (!facts.unlocked) return { ready: false, reason: "The studio is locked. Unlock it before starting." };
   const { identity, routes } = facts;
   if (!identity) {
-    return { ready: false, reason: "This window cannot identify its own session. Nothing was recorded." };
+    return { ready: false, reason: "This window cannot identify its own session." };
   }
   if (!scope.bookId) return { ready: false, reason: "Open a book before starting a hands-free session." };
   if (!scope.chapterId) {
@@ -547,7 +569,10 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
 
   const cancelSttTransport = (reason: string) => {
     const operation = state.transport.slots.stt;
-    if (!operation) return;
+    // The ledger belongs to the port, not this mounted controller. A second controller may see
+    // another owner's slot, but it cannot cancel that owner's request just by stopping itself.
+    const owned = state.sttRequest;
+    if (!operation || !owned || owned.operationId !== operation.operationId || !sameToken(operation, owned.request)) return;
     const cancelled = reduceTransport(state.transport, {
       type: "cancel",
       operationId: operation.operationId,
@@ -581,6 +606,16 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
   switch (event.type) {
     case "capture-blocked": {
       if (state.session.active) break;
+      const attemptId = state.ioSequence + 1;
+      update({ ioSequence: attemptId, capture: "failed", captureReason: event.reason,
+        stop: { status: "failed", reason: event.reason, token: event.token, attemptId } });
+      break;
+    }
+    case "capture-unsafe": {
+      if (!state.session.active || !state.session.token || !sameToken(state.session.token, event.token)) break;
+      endSession("Capture closure is unconfirmed.");
+      // The original owner's failed close is already known. Do not silently retry it here.
+      effects.splice(0, effects.length, ...effects.filter((effect) => effect.type !== "capture-close"));
       const attemptId = state.ioSequence + 1;
       update({ ioSequence: attemptId, capture: "failed", captureReason: event.reason,
         stop: { status: "failed", reason: event.reason, token: event.token, attemptId } });
@@ -1004,18 +1039,21 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
       }
       if (event.purpose !== "shutdown" || state.stop.status !== "stopping" ||
           state.stop.attemptId !== event.attemptId || !state.stop.token || !sameToken(state.stop.token, event.token)) break;
+      // Closure and an already-dispatched turn settle independently. The phase/status reports
+      // closure; don't erase the actual turn receipt if it happened to arrive first.
+      const turnSettled = state.send.status === "sent" || state.send.status === "failed";
       if (event.ok) {
         update({
           stop: { ...state.stop, status: "stopped", reason: null },
           capture: "closed" as HandsFreeCaptureState,
-          note: "Stopped.",
+          note: turnSettled ? state.note : "Stopped.",
         });
       } else {
         const reason = failureCopy(event.reason);
         update({
           stop: { ...state.stop, status: "failed", reason },
           capture: "closed" as HandsFreeCaptureState,
-          note: `Stop was not confirmed: ${reason} This session cannot send.`,
+          note: turnSettled ? state.note : `Stop was not confirmed: ${reason} This session cannot send.`,
         });
       }
       break;

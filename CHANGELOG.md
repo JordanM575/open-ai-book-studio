@@ -10,6 +10,15 @@ Update the `Unreleased` section before every commit.
 HEAD
 ### Hands-free Discuss controls
 
+- Restrict mounted hands-free activation to the documented `synthetic-in-process-v1` host contract:
+  monotonic fact revisions, prompt lifecycle notifications, independent host closure and synchronous
+  admission at the actual capture/STT/agent boundary. Stale snapshots and unsupported subscriptions
+  refuse activation; renderer checks do not qualify native IPC. Retain per-port STT slots, unique
+  request IDs and honest late-settlement/unknown-charge receipts across remounts, isolating consumers
+  and port replacements. Compensate failed partial acquisition through its original owner and leave
+  failed cleanup unconfirmed. Starting no longer claims capture is closed while verification waits.
+  Dispatched turn receipts remain visible independently of closure order or host availability.
+  These are synthetic source/test changes, not a production capture host or device qualification.
 - Correct the complete capture/settlement/dispatch lifetime: every capture acquisition is freshly
   admitted after awaits and owned by its original port and monotonic attempt. Stop and disposal join
   pending acquisition and close it before reporting Stopped; segment holds share native closure with
