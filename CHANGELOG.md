@@ -8,6 +8,10 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 ### Integration
+- Compose the accepted pure authoring, hands-free voice, scoped reader-review and exact-current
+  inline-editor leaves with the checked planning/Stop/history composition. Each leaf keeps its
+  own retained host/storage/permission/mount gates; this commit adds no new runtime authority,
+  provider call, microphone use or mounted review surface.
 
 - Compose the accepted planning vertical with bounded-authoring policy, terminal Stop delivery and
   merged chapter-history restore work. Preserve each exact candidate's bounded evidence; broad
