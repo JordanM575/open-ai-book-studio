@@ -93,6 +93,7 @@ import { ChapterHistoryStore } from "./history-store";
 import { ChapterHistoryRestore, type HistoryChapterWrite, type HistoryMutationResult, type HistoryRecovery } from "./history-restore";
 import { PlanningService } from "../planning/service";
 import { PlanningRecovery } from "./planning-recovery";
+import { ReviewRecordStore } from "../review/record-store";
 import { GoalService, type GoalHost } from "../organization/goals";
 import {
   HistoryError,
@@ -142,6 +143,8 @@ export class LibraryService {
   readonly planning: PlanningService;
   readonly goals: GoalService;
   readonly planningRecovery: PlanningRecovery;
+  /** Explicit saved review records (039 T014). Leaf APIs only; no IPC/UI mounting here. */
+  readonly reviewRecords: ReviewRecordStore;
 
   private constructor(
     private readonly env: LibraryEnvironment,
@@ -163,6 +166,12 @@ export class LibraryService {
     this.planning = new PlanningService(host);
     this.goals = new GoalService(host);
     this.planningRecovery = new PlanningRecovery(host, env.storage);
+    this.reviewRecords = new ReviewRecordStore({
+      ...this.writeHost,
+      storage: env.storage,
+      runtime: env.runtime,
+      deviceId: device.id
+    });
   }
 
   static async open(env: LibraryEnvironment): Promise<LibraryService> {

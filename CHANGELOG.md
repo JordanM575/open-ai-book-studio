@@ -7,6 +7,7 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+HEAD
 ### Hands-free Discuss controls
 
 - Mount explicit hands-free controls in the Discuss panel: start, the words as heard, correction
@@ -23,6 +24,31 @@ Update the `Unreleased` section before every commit.
   capture and is offered when interrupted; and a StrictMode remount re-arms the store. 017 T017
   remains unchecked.
 
+HEAD
+### Saved review records
+- Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only
+  reader reports with analyzer/profile/source/coverage attribution, bounded quotations and no source
+  bodies, plus checked disposition, author-lens and campaign records carrying the exact previous raw
+  hash. Add one checked writer on `LibraryService.reviewRecords`: Library queue/journal commits,
+  conflict copies, readback verification, grouped `.studio/trash` move/restore and no pruning.
+  Unknown plain fields survive read-modify-write; malformed, duplicate-key, lone-surrogate,
+  lossy-number and oversized documents are refused without rewriting. Review corrections: require a
+  saved report to live in one of the books it reviewed, cap `coverage.items`, refuse
+  `contentBytes < sourceBytes`, refuse mis-ordered dispositions, treat an unknown member inside a
+  closed lens as unsupported, validate campaign synthesis stages and allow a completed synthesis to
+  repeat its own stage report. An unfinished synthesis description may record `report: null`, and a
+  completed one must name its stage's exact report and hash. Re-saving the same run after the clock advances stays idempotent by
+  reusing the saved report's own timestamp, and a stale author-lens edit keeps its conflict copy
+  instead of being rejected before the base can be compared. Unknown `__proto__` extensions are
+  carried as own plain data properties in both saved review records and thread documents, so a
+  readable record with that extension stays updatable. Report listings now order by the completion
+  instant rather than the preserved offset spelling, so mixed offsets cannot page an older review
+  ahead of a newer one. A post-publication readback mismatch (adapter `publication: "uncertain"`) is
+  reported as uncertain instead of being retried under another conflict-copy name or relabelled a
+  conflict. Conflict-copy names are bounded below the filesystem component limit (a maximum-length
+  record ID falls back to a hashed name with the full identity inside the document), leaving room for
+  the atomic writer's temporary suffix. 039 T014/T015 remain partial: segmented continuation,
+  IPC/UI/export mounting and independent review are still open.
 ### Voice transport
 
 - Allow `refusal` in the transport settle event (the four-way settlement the README and the

@@ -70,6 +70,27 @@ describe("thread document", () => {
     expect(parts[0]?.text).toBe("Tighten the opening.");
   });
 
+  test("keeps an unknown __proto__ extension as own plain data", () => {
+    const raw = base({
+      messages: [
+        {
+          id: "msg_proto001",
+          role: "user",
+          parts: [{ type: "text", text: "Keep this." }],
+          ["__proto__"]: { keep: true },
+          createdAt: CREATED
+        }
+      ]
+    });
+    const previous = document(raw);
+    const built = buildThreadDocument(previous, { ...previous.thread, title: "New title" }, NOW);
+    const out = JSON.parse(built.text) as Record<string, unknown>;
+    const message = (out.messages as Array<Record<string, unknown>>)[0] as Record<string, unknown>;
+    expect(Object.hasOwn(message, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(message, "__proto__")?.value).toEqual({ keep: true });
+    expect(Object.getPrototypeOf(message)).toBe(Object.prototype);
+  });
+
   test("an unchanged body is a no-op and keeps the stored bytes and timestamp", () => {
     const previous = document(base());
     const built = buildThreadDocument(previous, previous.thread, NOW);
