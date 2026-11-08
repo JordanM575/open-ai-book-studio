@@ -384,6 +384,47 @@ describe("saved reader lens and campaign formats", () => {
 });
 
 describe("saved record review corrections", () => {
+  test("an unknown __proto__ extension survives a campaign update as own data", async () => {
+    const alpha = await builtinReaderProfile("alpha");
+    const planned = [{ start: citationFor(bookId).start, end: citationFor(bookId).end }];
+    const saved = await report();
+    const hash = createHash("sha256").update(encodeReviewRecord("review-report", saved)).digest("hex");
+    const draft: CampaignDraft = {
+      status: "running",
+      profile: { id: alpha.id, version: alpha.version, digest: alpha.digest },
+      sources: [{
+        sourceId: "source-1", bookId, chapterId: "ch_123456", title: "Synthetic chapter",
+        position: 1, version: 3, hash: "a".repeat(64), planned
+      }],
+      stages: [{
+        stageId: "stage-1", kind: "range", sourceIds: ["source-1"], planned,
+        status: "completed", report: { runId, hash }, at: afterRun
+      }],
+      synthesis: [],
+      plannedAt: stamp,
+      sourceBytes: 40
+    };
+    const first = buildCampaignRecord({
+      bookId, id: "campaign-1", revision: 1, base: { kind: "absent", revision: 0 }, draft,
+      createdAt: afterRun, updatedAt: afterRun
+    });
+    const raw = copy(first);
+    const source = (raw.sources as Array<Record<string, unknown>>)[0] as Record<string, unknown>;
+    Object.defineProperty(source, "__proto__", {
+      value: { keep: true }, enumerable: true, writable: true, configurable: true
+    });
+    const updated = buildCampaignRecord({
+      bookId, id: "campaign-1", revision: 2,
+      base: { kind: "sha256", value: "a".repeat(64), revision: 1 },
+      draft, createdAt: afterRun, updatedAt: afterRun, previous: raw
+    });
+    const updatedSource = (copy(updated).sources as Array<Record<string, unknown>>)[0] as Record<string, unknown>;
+    expect(Object.hasOwn(updatedSource, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(updatedSource, "__proto__")?.value).toEqual({ keep: true });
+    expect(Object.getPrototypeOf(updatedSource)).toBe(Object.prototype);
+    expect(() => encodeReviewRecord("review-campaign", updated)).not.toThrow();
+  });
+
   test("a report must live in one of the books it reviewed", async () => {
     const raw = copy(await report());
     (raw.owner as Record<string, unknown>).bookId = "book_999999";

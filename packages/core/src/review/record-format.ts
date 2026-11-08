@@ -995,7 +995,14 @@ export function carryUnknown(previous: unknown, next: unknown): unknown {
   if (!old) return next;
   const merged: Record<string, unknown> = { ...(next as Record<string, unknown>) };
   for (const [key, value] of Object.entries(old)) {
-    merged[key] = Object.hasOwn(merged, key) ? carryUnknown(value, merged[key]) : value;
+    // Define rather than assign: a `__proto__` key must become an own data property, not the
+    // inherited prototype setter, or the merged object stops being plain data.
+    Object.defineProperty(merged, key, {
+      value: Object.hasOwn(merged, key) ? carryUnknown(value, merged[key]) : value,
+      enumerable: true,
+      writable: true,
+      configurable: true
+    });
   }
   return merged;
 }

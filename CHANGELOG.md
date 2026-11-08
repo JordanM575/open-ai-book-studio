@@ -21,7 +21,9 @@ HEAD
   closed lens as unsupported, validate campaign synthesis stages and allow a completed synthesis to
   repeat its own stage report. Re-saving the same run after the clock advances stays idempotent by
   reusing the saved report's own timestamp, and a stale author-lens edit keeps its conflict copy
-  instead of being rejected before the base can be compared. 039 T014/T015 remain partial: segmented
+  instead of being rejected before the base can be compared. Unknown `__proto__` extensions are
+  carried as own plain data properties in both saved review records and thread documents, so a
+  readable record with that extension stays updatable. 039 T014/T015 remain partial: segmented
   continuation, IPC/UI/export mounting and independent review are still open.
 ### Voice transport
 
