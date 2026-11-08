@@ -44,10 +44,11 @@ check in with the author, and ask for direction on character development.
 
 ## Five concurrent development slots
 
-The development pool is **five concurrent agents**, using **GPT-6 Astra/high** per the latest
-“no more ultra fast” correction. One coordinator owns integration and full-suite gates.
+This table records the **2026-11-07 five-slot dispatch wave**, when the development pool used
+GPT-6 Astra/high. It is historical, not the live queue: current dispatch and ownership are in
+[CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md). One coordinator owns integration and full-suite gates.
 
-| Slot | Immediate deliverable | Ownership |
+| Slot | 2026-11-07 deliverable | Ownership at dispatch |
 | --- | --- | --- |
 | 1 | Fresh history correction review | Immutable W02 `56c7b7d`; focused checks; broad gates already passed |
 | 2 | Accepted planning/goal vertical integration | W08 alone owns Library/API/preload/Workspace; save/reopen/complete saved counts |

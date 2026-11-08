@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "date": "2026-11-07",
+  "date": "2026-11-08",
   "baseline": "55b55b8beae73e4a8f2d1f566c3ad33fccdc6b34",
   "scope": "Complete all retained planned features; accepted decisions permit dependent work, open decisions require a recorded outcome. A ready research packet is not implementation approval.",
-  "agent": {"model": "openai/gpt-6-astra", "variant": "high"},
+  "agent": {"model": "muse-wonder-1.0", "variant": "max"},
   "maxConcurrentAgents": 5,
   "maxConcurrentIntegrationGates": 1,
   "firstWave": ["W01", "W03", "W05", "W07", "W09", "W15"],

@@ -1,6 +1,6 @@
 # Concurrent feature delivery
 
-**Updated:** November 7, 2026. **Goal:** finish every retained planned feature, with continuous
+**Updated:** November 8, 2026. **Goal:** finish every retained planned feature, with continuous
 independent verification. Source baseline: public `main` at `55b55b8`; the documentation refresh is
 tracked in [PR #30](https://github.com/JordanM575/open-book-studio/pull/30).
 
@@ -39,8 +39,8 @@ finish. Research can proceed while those decisions are open.
   owns the current queue; `firstWave` preserves the initial dispatch.
   The coordinator owns the queue, integration and public completion records. Freed slots take the
   next ready package; five is a concurrency limit, not five permanent assignments.
-- **Every new child uses `openai/gpt-6-astra`, `variant: high`.** The author's latest correction,
-  “no more ultra fast just the same model as yourself”, supersedes the historical model choice.
+- **Every new child uses Muse Wonder 1.0 (`muse-wonder-1.0`), reasoning `max`.** The author's
+  latest correction supersedes the historical Astra/high dispatch records below.
   This includes fresh review. No silent model/effort substitution. The remaining monthly allowance is a
   capacity note, not a measured token balance or permission for paid application-provider calls.
 - **Isolated worktrees for builders.** Each starts from an identified public commit. A branch from

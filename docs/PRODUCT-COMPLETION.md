@@ -112,7 +112,7 @@ or narrator-only audio. The union of both edge types is acyclic.
 
 ## Execution and ownership
 
-Use up to five concurrent GPT-6 Astra/high agents as specified in
+Use up to five concurrent Muse Wonder 1.0 agents at reasoning `max` as specified in
 [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md); the original six-agent wave is historical.
 The graph does not require starting every lane at once. Edges identify required contracts: an
 existing verified implementation may already satisfy one while other work in that lane remains.

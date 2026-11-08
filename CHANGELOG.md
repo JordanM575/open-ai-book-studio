@@ -15,6 +15,8 @@ Update the `Unreleased` section before every commit.
 - Clarify that history record creation is absent-only while intent transitions use checked updates,
   and reconcile merged PR #34 history status across current-state records without claiming host
   mounting or whole-feature acceptance.
+- Refresh current development dispatch records to Muse Wonder 1.0 at reasoning max and date-stamp
+  the earlier five-slot table as historical, preserving prior model decisions as history.
 - Keep history restore/undo success results complete for partial saved front matter without adding
   runtime defaults to the file. Require a post-failure history refresh to unlock uncertain capture,
   and make close notifications idempotent even when the host callback fails.
