@@ -76,6 +76,13 @@ function required<T>(value: T | null | undefined): T {
   if (value == null) throw new Error("Expected synthetic fixture value");
   return value;
 }
+function worldDraft(request: PlanningSaveRequest | undefined) {
+  const draft = required(request).draft;
+  if (draft.kind !== "create-worldbuilding" && draft.kind !== "edit-worldbuilding") {
+    throw new Error("Expected a worldbuilding draft");
+  }
+  return draft.fields;
+}
 async function ready() { await page().findByText(/Ready · changes save/); }
 function conflict(): SidecarSave<Planning> & { status: "conflict" } {
   return { status: "conflict", bookId, reason: "external-edit", savedAs: "conflicts/planning-synthetic.json", observed: { kind: "sha256", revision: 4, value: "c".repeat(64) } };
@@ -228,7 +235,7 @@ describe("worldbuilding leaf", () => {
     click("Save changes");
     await page().findByText(/Not saved. Synthetic refusal/);
     expect(save.mock.calls[0]?.[0].baselineJson).toBe(original.baselineJson);
-    expect(save.mock.calls[0]?.[0].draft.fields.name).toBe("Exact observer draft  ");
+    expect(worldDraft(save.mock.calls[0]?.[0]).name).toBe("Exact observer draft  ");
   });
 
   test.each([false, true])("failed close leaves a usable retained session (dirty %s)", async (dirty) => {
@@ -248,7 +255,7 @@ describe("worldbuilding leaf", () => {
     click("Save changes");
     await page().findByText(/Not saved. Synthetic refusal/);
     expect(save.mock.calls[0]?.[0].baselineJson).toBe(original.baselineJson);
-    expect(save.mock.calls[0]?.[0].draft.fields.name).toBe("After failed close");
+    expect(worldDraft(save.mock.calls[0]?.[0]).name).toBe("After failed close");
     fail = false;
     click("Close editor");
     click("Discard draft and close");
@@ -319,7 +326,7 @@ describe("worldbuilding leaf", () => {
       expect(request.baselineJson).toBe(planning().baselineJson);
       expect(request.source).toEqual(planning().source);
     }
-    expect(save.mock.calls[1]?.[0].draft.fields.notes).toBe("retry notes  ");
+    expect(worldDraft(save.mock.calls[1]?.[0]).notes).toBe("retry notes  ");
   });
 
   test("current no-op still calls the checked service and says no file was written", async () => {

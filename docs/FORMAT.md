@@ -77,9 +77,10 @@ semantic migration remains unimplemented.
 ## Checked planning and goal sidecars
 
 D-163–D-168 / [ADR 0017](adr/0017-planning-and-organization.md) define these optional
-book-owned files. Worldbuilding create/read/edit and goal set/clear are connected to the current
-Library's shared queue, desktop/browser transport and workspace controls. Timeline/beat/story-note
-mutation, record archive/restore and the remaining organization journeys are separate delivery work.
+book-owned files. Worldbuilding, timeline events, beats, optional story notes, explicit ordering,
+record archive/restore and goal set/clear use the current Library's shared queue and validated
+desktop/browser transport. Workspace planning controls expose those manual operations; full native
+host/visual acceptance and the remaining organization journeys retain their separate delivery gates.
 
 ### `books/<bookId>/planning.json` (schema 1)
 
@@ -177,10 +178,24 @@ The core save envelope is `{bookId, source, baselineJson, draft}`. `source` is e
 `{kind:"absent", revision:0}` with `baselineJson:null`, or
 `{kind:"sha256", value:<64 lowercase hex>, revision:<positive safe integer>}` with the exact raw
 UTF-8 JSON string returned by read. The service checks that string's hash/revision/owner. `draft`
-is a strict typed intent: `create-worldbuilding` with `{name,category,description,notes}` fields,
-`edit-worldbuilding` with an existing `id` and those fields, or (for goals) `set-goal` with
-`targetWords`. No path, generated ID, revision, owner, arbitrary document replacement or unrelated
-field patch is accepted in a draft. The full intended document is constructed from that bounded
+is one of these strict typed intents:
+
+- `create-worldbuilding` / `edit-worldbuilding`: `{name,category,description,notes}` fields; edits
+  also carry the existing `id`.
+- `create-timeline` / `edit-timeline`: `{title,when,description,notes}` fields, with existing `id`
+  for edits. `create-beat` / `edit-beat`: `{title,summary,notes}` fields and existing `id` for edits.
+- `set-story-notes`: `{workingNotes,styleNotes,synopsis}` fields. `clear-story-notes` clears those
+  known strings but retains the singleton's identity and unknown supported data. An absent singleton
+  plus clear or an all-empty set writes nothing.
+- `order-timeline` / `order-beats`: `ids`, an exact permutation of all retained corresponding IDs.
+- `archive-worldbuilding` / `archive-timeline` / `archive-beat`: existing `id` and `archived` boolean;
+  false restores. Archive retains content and order position. Editing an archived list record requires
+  restore first. New timeline/beat IDs append to their order. Order-only edits increment the file
+  revision, not record revisions; changed content or archive state advances the affected record too.
+- For goals, `set-goal` with `targetWords`.
+
+No path, generated ID, revision, owner, arbitrary document replacement or unrelated field patch is
+accepted in a draft. The full intended document is constructed from that bounded
 baseline plus draft; this preserves unknown/unrelated fields without trusting an editor to resend
 them correctly. The request carries only one full baseline and bounded authored fields, within
 the ADR's two-document allowance: the raw baseline and serialized `{bookId,draft}` are each capped

@@ -18,8 +18,9 @@ Update the `Unreleased` section before every commit.
   and edits. Clear notes keeps the singleton identity and unknown fields; empty optional notes and
   current no-ops write nothing. Synthetic Library/handler and mounted filesystem journeys cover
   ordering, retained limits, recovery, archive/restore and untouched Bible/chapter bytes.
-- Candidate acceptance remains gated by coordinator FORMAT reconciliation, three existing
-  worldbuilding-test type narrowings, independent review and integrated visual/host checks.
+- Reconcile the complete typed-intent inventory in FORMAT and narrow existing worldbuilding test
+  assertions across the expanded save union. Independent review and integrated visual/host checks
+  remain acceptance gates.
 
 HEAD
 ### Saved review records
