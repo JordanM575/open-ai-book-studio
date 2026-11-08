@@ -7,6 +7,16 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Saved review records
+- Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only
+  reader reports with analyzer/profile/source/coverage attribution, bounded quotations and no source
+  bodies, plus checked disposition, author-lens and campaign records carrying the exact previous raw
+  hash. Add one checked writer on `LibraryService.reviewRecords`: Library queue/journal commits,
+  conflict copies, readback verification, grouped `.studio/trash` move/restore and no pruning.
+  Unknown plain fields survive read-modify-write; malformed, duplicate-key, lone-surrogate,
+  lossy-number and oversized documents are refused without rewriting. 039 T014/T015 remain partial:
+  segmented continuation, IPC/UI/export mounting and independent review are still open.
+
 ### Conversation storage
 
 - Bind every conversation save to the exact base hash its caller read: a save without that base is

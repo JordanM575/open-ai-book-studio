@@ -49,6 +49,21 @@ task is completed. T010 retains the independent correction gate. The policy amen
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
 
+### November 8 — saved review records, schema 1 (T014/T015 partial)
+
+`packages/core/src/review/record-json.ts` and `record-format.ts` define the field-level schema-1
+report, disposition, author-lens and campaign records; `record-store.ts` is the only writer and is
+constructed as `LibraryService.reviewRecords`. Reports are immutable and absent-only; the other
+records carry the exact previous raw hash and revision, keep conflict copies, verify readback, join
+the Library queue/journal, restore from grouped `.studio/trash` only into free paths, and never
+prune. Unknown plain fields survive read-modify-write; newer or unknown semantics stay read-only.
+`docs/FORMAT.md` records the fields and bounds.
+
+Candidate-local evidence: `packages/core/tests/review/record-format.test.ts` and
+`record-store.test.ts` (synthetic). Still open: segmented continuation, IPC/preload/UI mounting,
+Markdown/archive export, campaign scheduling/execution, cross-book campaign aggregation and fresh
+independent exact-head review. T014 and T015 stay unchecked. 038 T022 is unchanged.
+
 ### November 7 — bounded T011/T012 editor candidate
 
 The new `packages/app/src/components/inline-editor/` leaf and

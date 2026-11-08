@@ -53,13 +53,16 @@ schema from these directory names or from an unchecked TypeScript object.
 | Reserved location | Accepted ownership / prerequisite |
 | --- | --- |
 | `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers and independent storage review remain separate. |
-| `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies |
-| `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records; full/segmented continuation and related-report trash/restore rules before writers |
+| `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer exists, mounting/export and independent storage review remain open. |
+| `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records. Schema 1 and full-document writers are defined in [Saved review records](#saved-review-records-schema-1); segmented continuation remains unspecified and T015 stays partial. |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
 
 The workflow row is now specified in [Workflow records (schema 1)](#workflow-records-schema-1);
-its checked writers and independent storage review remain open. The other rows remain reservations.
+its checked writers and independent storage review remain open. The saved-review rows are now
+specified in [Saved review records (schema 1)](#saved-review-records-schema-1); their checked writer
+exists but IPC/UI mounting, export/archive, segmented continuation and independent review remain
+open. The host-local workflow permission row remains a reservation.
 
 Each detailed format must name every field and optional/default rule; schema/kind/owner/host-issued ID;
 safe revisions/generations; raw-byte and semantic limits (including unknown fields); supported JSON/
@@ -648,6 +651,198 @@ Overflow preserves existing durable data; it never truncates or deletes a record
   recovery and requires Continue; an uncertain attempt or publication is never blindly replayed.
 - In-memory run/admission snapshots are aggregates across these records. **They are never written as a
   wholesale `run.json`**, never used as a wire record and never assumed to fit a per-file bound.
+
+## Saved review records (schema 1)
+
+D-199 and the revised D-171 / [ADR 0020](adr/0020-inline-editorial-review.md) select explicit,
+recoverable saved review reports. This section specifies the schema-1 records under
+`books/<bookId>/reviews/`. The pure codec is
+`packages/core/src/review/record-{json,format}.ts`; the only checked writer is
+`packages/core/src/review/record-store.ts`, constructed as `LibraryService.reviewRecords`. No report
+is written unless the author explicitly saves one. Provider wiring, the Review workspace UI, IPC or
+preload exposure, export/archive mounting, campaign execution, suggestion application and
+independent exact-head review remain separate delivery work. T014 and T015 stay unchecked.
+
+### Layout and kinds
+
+| Path under `reviews/` | `kind` | Mutability |
+| --- | --- | --- |
+| `<runId>.json` | `review-report` | Immutable, revision 1, absent-only. |
+| `dispositions/<runId>.json` | `review-dispositions` | Checked revision. |
+| `profiles/<profileId>.json` | `reader-profile-record` | Checked revision; author lenses only. |
+| `campaigns/<campaignId>.json` | `review-campaign` | Checked revision. |
+
+`id` is the record's own identity and exactly the file stem. It must be a portable file name:
+letters, digits, dot, dash or underscore; no path separator, no `..`, no trailing dot. `owner` is
+exactly `{ "bookId": … }` and must equal the folder's actual `book.json` ID. A report may name up to
+four books but lives in one of them. Conflict copies live in the book-level `conflicts/` folder and
+are never active records.
+
+### Common encoding, identity and bounds
+
+- **Exact bytes.** A saved record is UTF-8 with no byte-order mark. New checked writes use compact
+  canonical JSON: object keys sorted by UTF-16 code-unit order, no insignificant whitespace and no
+  trailing newline. The record's raw SHA-256 is over those exact file bytes. A reader accepts any
+  valid JSON spelling for inspection; a checked writer commits only canonical bytes it has itself
+  read back.
+- **Plain JSON only.** No comments, trailing commas, `NaN`, `Infinity`, `-0`, duplicate member names,
+  lone surrogates, getters, `toJSON`, sparse arrays or foreign prototypes. Strings are never trimmed
+  or Unicode-normalized. A numeric token must round-trip exactly through its `Number` spelling and
+  may not exceed `Number.MAX_SAFE_INTEGER`; `9007199254740993`, `1.0000000000000001`, `1e400` and
+  `-0` are refused.
+- **Schema and identity.** Every record has `schemaVersion: 1`, `kind`, `owner`, `id` and `revision`.
+  A newer `schemaVersion` is refused with an "update the app" error. An unknown member of a closed
+  semantic union (report kind, claim, category, evidence state, disposition state/action, campaign or
+  stage status, lens origin, tool name) makes the file read-only `unsupported`; it is never
+  relabelled or rewritten.
+- **Checked revision.** `review-dispositions`, `reader-profile-record` and `review-campaign` carry
+  `base`. Revision 1 requires exactly `{ "kind": "absent", "revision": 0 }`; revision `n > 1` requires
+  exactly `{ "kind": "sha256", "value": <previous raw hash>, "revision": n-1 }`. A stale, absent or
+  mismatched base refuses and keeps a conflict copy.
+- **Unknown fields.** Fields listed here are known fields. Any other plain JSON field is a supported
+  extension and survives read-modify-write at every depth, including `__proto__` as ordinary data.
+  Control objects (`owner`, `base`, `report`, `analyzer`, `disclosure`, `coverage`, `plan`, stage
+  `report` references) reject extras. A saved report is immutable, so its unknown fields are only
+  read back; they are never rewritten.
+- **Timestamps.** `savedAt`, `createdAt`, `updatedAt` and `at` are UTC ISO 8601 with exactly
+  millisecond precision, for example `2026-11-07T12:05:00.000Z`. The run's own `startedAt` and
+  `completedAt` keep the ISO 8601 spelling the run recorded.
+- **Bounds.** All intersecting limits apply, and reads check the byte count before parsing.
+
+| Bound | Value |
+| --- | --- |
+| Every document, including unknown fields | 2,500,000 UTF-8 bytes |
+| Raw JSON nesting | 64 value wrappers |
+| Books per report | 4 |
+| Sources per report | 64 |
+| Selected segments per chapter source | 64 |
+| Findings per report | 50 |
+| Evidence items per finding / withheld entries | 8 / 8 |
+| Quote scalars per citation | 500 |
+| Interpretation scalars per finding | 2,000 |
+| Disposition findings / events per finding | 50 / 200 |
+| Campaign sources / stages / synthesis entries | 64 / 64 / 64 |
+| Planned spans per campaign source | 64 |
+| Report list page | 1–200, default 50 |
+
+The report also records the accepted envelope's aggregate facts: `sourceBytes` at most 65,536,
+`contentBytes` at most 131,072, and `items` at most 64.
+
+### `<runId>.json` — immutable report
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `reportKind` | yes | `kind:"review-report"`, `revision:1`, `reportKind:"reader-review"`, `id` = the run ID. No `base`. |
+| `run` | yes | `{ startedAt, completedAt }` from the volatile run. |
+| `savedAt` | yes | Explicit save time, not the run time. |
+| `analyzer` | yes | `{ provider, model, endpointIdentity }`; provider/model attribution only, never a credential or endpoint URL. |
+| `profile` | yes | Complete reader-lens snapshot used by the run: `name`, `purpose`, `focus`, `guidance`, `id`, `origin`, `version`, `digest`. A built-in lens is stored here and needs no `profiles/` file. |
+| `books` | yes | 1–4 `{ bookId, title, consentRevision, termsRevision, enabledTools }`; the source books and no others. |
+| `disclosure` | yes | `{ contractVersion:1, requestId, scopeDigest, capturedAt, promptDigest, priorFeedback:{count, digest} }`. The prompt and feedback text are not retained; their digests keep input-change attribution. |
+| `sources` | yes | Ordered source coverage, below. No source body text. |
+| `coverage` | yes | `{ books, sources, items, sourceBytes, contentBytes }`; counts must equal the arrays and byte sums. |
+| `findings` | yes | 0–50 bounded findings, below. |
+| `verification` | yes | `"verified-at-capture"`. Currentness is computed at read/export time and is never stored as a claim. |
+
+A chapter source coverage entry is `{ kind:"chapter", sourceId, bookId, chapterId, bookTitle, title,
+position, version, hash, capturedAt, bodyLength, segments:[{start,end}], bytes, selectedScalars }`.
+A Story Bible entry is `{ kind:"story-bible", sourceId, bookId, bookTitle, label, field, capturedAt,
+containingFileHash, valueDigest, length, bytes, selectedScalars }`. `segments` are ordered,
+non-overlapping half-open UTF-16 ranges; `bytes` counts the selected UTF-8 bytes and
+`selectedScalars` the selected Unicode scalar values.
+
+A finding is `{ findingId, category, readerId, readerVersion, runId, interpretation, subjective:true,
+claim, evidence:[{citation,label}], invalidEvidence:[{index,reason}], evidenceState }`. Every citation
+echoes its captured source identity and exact UTF-16 range, and `quote` is at most 500 scalar values.
+The reader checks, without the source bodies, that the citation names a captured source/revision,
+lies inside a selected range, has `quote.length === end - start`, and that `evidenceState` is exactly
+what its evidence supports. It cannot re-prove the quoted text itself: a saved report is
+`verified-at-capture`, not a fresh verification. `invalidEvidence` keeps the withheld index and a
+bounded reason (`shape`, `source`, `revision`, `range`, `quote`) and never becomes a quotation.
+
+### `dispositions/<runId>.json` — checked author state
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base` | yes | `kind:"review-dispositions"`, `id` = the run ID. |
+| `report` | yes | `{ runId, hash, completedAt }`; `runId` equals `id` and `hash` is the owning report's exact raw hash. |
+| `dispositions` | yes | 1–50 entries, ordered by `findingId`. |
+| `createdAt`, `updatedAt` | yes | First and latest event time. |
+
+An entry is `{ findingId, state, updatedAt, events }`, where `state` is `open`, `ignored`,
+`author-resolved` or `reopened`. Events are append-only, ordered by `sequence` starting at 1, with
+non-decreasing `at`, `from` equal to the previous `to` (`null` for the first), and an `action` of
+`set`, `ignore`, `resolve` or `reopen` matching the new state. `updatedAt` must equal the last
+event's `at`. A request that repeats the current state with no note is a read, not a write.
+Disposition is independent of freshness: a rerun never resolves or relabels an earlier finding.
+The writer checks that the finding exists in the saved report and that the report hash has not
+changed; an unknown finding or changed report refuses without writing.
+
+### `profiles/<profileId>.json` — checked author lens
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base` | yes | `kind:"reader-profile-record"`, `id` = the lens ID. |
+| `profile` | yes | A complete author lens with a verified digest. `profile.id` equals `id`; `origin` is `author`; built-in lenses need no file. |
+| `createdAt`, `updatedAt` | yes | Record timestamps. |
+
+The record revision counts saves; the lens `version` counts content lineage and advances by exactly
+one per edited lens. An identical lens is an unchanged read. Unknown root fields survive; the lens
+object itself is closed, so an unknown member inside it makes the file unsupported rather than being
+silently dropped.
+
+### `campaigns/<campaignId>.json` — checked manifest
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id`, `revision`, `base` | yes | `kind:"review-campaign"`. |
+| `status` | yes | `planned`, `running`, `incomplete` or `complete`. |
+| `profile` | yes | `{ id, version, digest }`; a built-in lens is verified against the fixed lens, an author lens against its saved record. |
+| `plan` | yes | `{ plannedAt, sources, items, sourceBytes }`; counts must equal the source array and its planned spans. |
+| `sources` | yes | 1–64 `{ sourceId, bookId, chapterId, title, position, version, hash, planned:[spans] }`. |
+| `stages` | yes | 1–64 `{ stageId, kind, sourceIds, planned, status, report, at }`. `report` is `{runId,hash}` or `null`. |
+| `synthesis` | yes | 0–64 `{ stageId, sourceStageIds, report }`; one entry per synthesis stage. |
+| `createdAt`, `updatedAt` | yes | Record timestamps. |
+
+A range stage plans at least one span; a synthesis stage plans none. A completed stage names its
+saved report, and a completed campaign has no open stage. Each report reference resolves to an
+immutable report in the same owning book whose hash matches; a missing or different report refuses.
+The manifest embeds no reports and grants no execution authority: scheduling, attempts, budgets and
+retries belong to 037.
+
+### Writer, conflicts, trash and restore
+
+- **One writer.** Every read-modify-write runs inside `LibraryService`'s per-book queue and every
+  commit uses the service's journal-aware checked writer. The review codec has no filesystem access
+  and the store never calls an adapter commit directly.
+- **Reports are absent-only.** Creating a report uses an absent expectation. Same-ID, byte-equal
+  content is an idempotent read; different bytes keep the intended report as a conflict copy and
+  replace nothing. A report is never revised in place.
+- **Checked updates.** The intended bytes are validated and re-parsed by this build's own reader
+  before the commit, then committed against the exact previous raw hash and revision. A mismatch, a
+  missing file or a racing writer keeps the complete intended record under
+  `books/<bookId>/conflicts/<kind>.<id>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`
+  and reports where it went. The copy adds a reserved `conflictMetadata` object (`reason`,
+  `baseline`, `observed`) and is bounded by the same 2,500,000 bytes. Colliding names use absent-only
+  suffixes. A copy cannot be read as an active record.
+- **Readback.** After every write the exact bytes and SHA-256 are compared with the intended bytes.
+  A mismatch or an adapter error after publication is reported as `uncertain`, never as success and
+  never replayed automatically.
+- **Deletion.** Trashing a report moves the report and its dispositions together into
+  `.studio/trash/<bookId>/reviews/<stamp>[-N]/`, preserving their relative names. Profiles and
+  campaigns use the same group shape. A destination collision gets the next suffix; nothing is
+  unlinked. Restore requires both active destinations to be absent, re-verifies each record's
+  identity and the disposition's owning report hash, and verifies the bytes after the move. A
+  refused restore leaves every file where it was.
+- **No pruning.** There is no automatic deletion, eviction, expiry, quota, compaction or trimming.
+  Trashing is the author's explicit action; a full document refuses rather than losing history.
+- **Listing.** `reviews/*.json` is listed newest `completedAt` first, then by ID, with offset/limit
+  paging (1–200). An unreadable, newer or unsupported file is reported as a named issue and left
+  untouched. Nothing in a list or read writes.
+- **Continuation gap.** Segmented occurrence/disposition/campaign continuation is **not** specified
+  by this build. A document over any bound or count refuses with the draft retained; no writer trims
+  history to fit. T015 remains partial until continuation, export/archive, IPC/UI and independent
+  review are delivered.
 
 ## `book.json`
 
