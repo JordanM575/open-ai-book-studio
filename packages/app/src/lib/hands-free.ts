@@ -195,8 +195,18 @@ export type HandsFreeIntent =
   | { readonly type: "sync" }
   | { readonly type: "start" }
   | { readonly type: "segment"; readonly segmentId: number }
-  | { readonly type: "transcript"; readonly text: string }
-  | { readonly type: "transcript-failed"; readonly reason: string }
+  | {
+      readonly type: "transcript";
+      readonly text: string;
+      readonly operationId: number;
+      readonly chunkId: number;
+    }
+  | {
+      readonly type: "transcript-failed";
+      readonly reason: string;
+      readonly operationId: number;
+      readonly chunkId: number;
+    }
   | { readonly type: "correct"; readonly text: string }
   | { readonly type: "discard" }
   | { readonly type: "continue" }
@@ -450,7 +460,13 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     if (!token) return;
     preserveDraft();
     const sending = state.send.status === "sending";
-    core({ type: "end", token, reason: "scope-change" });
+    const hadCapture = state.capture === "open" || state.capture === "opening";
+    const coreEffects = core({ type: "end", token, reason: "scope-change" });
+    // Both stop-capture and revoke-grant describe the same host action; close the track once.
+    if (hadCapture && coreEffects.some((effect) =>
+      effect.type === "stop-capture" || effect.type === "revoke-grant")) {
+      effects.push({ type: "capture-close", token });
+    }
     settleOutstanding("stt");
     settleOutstanding("work");
     // The core deliberately keeps a pending draft across Stop for host recovery. This surface
@@ -458,6 +474,7 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     update({
       session: { ...state.session, draft: "", confirmation: null, active: false, capture: false },
       capture: "closed" as HandsFreeCaptureState,
+      ...(hadCapture ? { stop: { status: "stopping", reason: null } as HandsFreeStopState } : {}),
       send: sending
         ? {
             status: "failed",
@@ -647,6 +664,17 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     case "transcript": {
       const token = state.session.token;
       const request = state.session.requests.stt;
+      const operation = state.transport.slots.stt;
+      if (operation && operation.operationId === event.operationId) {
+        const settle = reduceTransport(state.transport, {
+          type: "settle",
+          operationId: operation.operationId,
+          chunkId: event.chunkId,
+          outcome: "success",
+          costUsd: null,
+        });
+        update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
+      }
       const stopped = state.stop.status === "stopping" || state.stop.status === "failed" || !state.session.active;
       if (stopped || !request || !token) {
         update({
@@ -665,17 +693,6 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         update({ note: "That transcript was too long to handle. The host must keep it for explicit recovery." });
         break;
       }
-      const operation = state.transport.slots.stt;
-      if (operation) {
-        const settle = reduceTransport(state.transport, {
-          type: "settle",
-          operationId: operation.operationId,
-          chunkId: operation.chunks[0]?.chunkId ?? 0,
-          outcome: "success",
-          costUsd: null,
-        });
-        update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
-      }
       core({ type: "transcript", token, request, text: event.text });
       update({ note: state.session.status === "interrupted" ? state.session.reason : null });
       break;
@@ -684,6 +701,17 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
     case "transcript-failed": {
       const token = state.session.token;
       const request = state.session.requests.stt;
+      const operation = state.transport.slots.stt;
+      if (operation && operation.operationId === event.operationId) {
+        const settle = reduceTransport(state.transport, {
+          type: "settle",
+          operationId: operation.operationId,
+          chunkId: event.chunkId,
+          outcome: "failure",
+          failure: event.reason,
+        });
+        update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
+      }
       if (!request || !token) {
         update({ ignoredTranscripts: state.ignoredTranscripts + 1 });
         break;
@@ -698,17 +726,6 @@ export function reduceHandsFree(previous: HandsFreeState, event: HandsFreeEvent)
         break;
       }
       const reason = failureCopy(event.reason);
-      const operation = state.transport.slots.stt;
-      if (operation) {
-        const settle = reduceTransport(state.transport, {
-          type: "settle",
-          operationId: operation.operationId,
-          chunkId: operation.chunks[0]?.chunkId ?? 0,
-          outcome: "failure",
-          failure: reason,
-        });
-        update({ transport: settle.ledger, lastReceipt: settle.ledger.receipts.at(-1) ?? state.lastReceipt });
-      }
       core({ type: "settled", request, failure: reason });
       update({ note: reason });
       break;

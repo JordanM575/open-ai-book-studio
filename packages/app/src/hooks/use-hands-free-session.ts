@@ -165,7 +165,12 @@ function createHandsFreeStore(
       if (effect.type === "transcribe") {
         const port = getOptions().port;
         if (!port?.transcribeSegment) {
-          await send({ type: "transcript-failed", reason: "No transcription adapter is mounted in this build." });
+          await send({
+            type: "transcript-failed",
+            reason: "No transcription adapter is mounted in this build.",
+            operationId: effect.operationId,
+            chunkId: effect.chunkId,
+          });
           continue;
         }
         const controller = new AbortController();
@@ -178,12 +183,27 @@ function createHandsFreeStore(
           });
           // A late result is still delivered: the reducer, not this hook, decides whether it may
           // change the draft. That keeps "a late transcript cannot send after stop" in one place.
-          if (result.ok) await send({ type: "transcript", text: result.text });
-          else await send({ type: "transcript-failed", reason: result.reason });
+          if (result.ok) {
+            await send({
+              type: "transcript",
+              text: result.text,
+              operationId: effect.operationId,
+              chunkId: effect.chunkId,
+            });
+          } else {
+            await send({
+              type: "transcript-failed",
+              reason: result.reason,
+              operationId: effect.operationId,
+              chunkId: effect.chunkId,
+            });
+          }
         } catch (error) {
           await send({
             type: "transcript-failed",
             reason: error instanceof Error ? error.message : "Transcription failed.",
+            operationId: effect.operationId,
+            chunkId: effect.chunkId,
           });
         } finally {
           aborts.delete(effect.operationId);

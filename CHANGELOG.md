@@ -20,9 +20,10 @@ HEAD
   arbitration, IPC/preload change or device evidence is added: without a host adapter the bar says
   hands-free audio is not connected and records nothing. Stop during transcription settles as a
   cancellation instead of a permanent failure receipt; genuine failures are shown with an explicit
-  Dismiss; late capture/send settlements carry session/request identity; Continue retries a held
-  capture and is offered when interrupted; and a StrictMode remount re-arms the store. 017 T017
-  remains unchecked.
+  Dismiss; late capture/send settlements carry session/request identity; a target change while
+  recording tells the host to close capture; a late transcript settles its exact transport slot even
+  when its text is ignored; Continue retries a held capture and is offered when interrupted; and a
+  StrictMode remount re-arms the store. 017 T017 remains unchecked.
 
 HEAD
 ### Saved review records

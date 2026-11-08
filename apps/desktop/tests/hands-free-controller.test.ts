@@ -102,11 +102,19 @@ function started(host: HandsFreeFacts = facts()): HandsFreeState {
   return step(start.state, { type: "capture-settled", open: true, token }, host).state;
 }
 
+/** The exact transport operation a result must name to settle its slot. */
+function sttOp(state: HandsFreeState): { operationId: number; chunkId: number } {
+  const operation = state.transport.slots.stt;
+  const chunkId = operation?.chunks[0]?.chunkId;
+  if (!operation || chunkId === undefined) throw new Error("No STT operation is outstanding");
+  return { operationId: operation.operationId, chunkId };
+}
+
 /** Speak one synthetic segment and deliver its transcript. */
 function spoke(state: HandsFreeState, text = "The gate was open."): HandsFreeState {
   const segment = step(state, { type: "segment", segmentId: 1 });
   expect(segment.effects.some((effect) => effect.type === "transcribe")).toBe(true);
-  return step(segment.state, { type: "transcript", text }).state;
+  return step(segment.state, { type: "transcript", text, ...sttOp(segment.state) }).state;
 }
 
 describe("hands-free availability", () => {
@@ -197,7 +205,7 @@ describe("transcript, correction and one explicit confirm", () => {
     expect(segment.state.transport.slots.stt?.chunks[0]?.charge).toEqual({ state: "unknown" });
     expect(handsFreePhase(segment.state)).toBe("transcribing");
 
-    const heard = step(segment.state, { type: "transcript", text: "The gate was open." });
+    const heard = step(segment.state, { type: "transcript", text: "The gate was open.", ...sttOp(segment.state) });
     expect(heard.state.session.draft).toBe("The gate was open.");
     expect(handsFreePhase(heard.state)).toBe("correcting");
     expect(heard.effects.some((effect) => effect.type === "send-turn")).toBe(false);
@@ -328,7 +336,11 @@ describe("truthful stop", () => {
   test("a transcript that arrives after stop is ignored and cannot send", () => {
     const stop = step(spoke(started()), { type: "stop" });
     const stopped = step(stop.state, { type: "stop-settled", ok: true });
-    const late = step(stopped.state, { type: "transcript", text: "A late sentence." });
+    // No operation is outstanding here: the success already settled it, so this duplicate cannot
+    // name a real slot and must be ignored without touching another operation.
+    const late = step(stopped.state, {
+      type: "transcript", text: "A late sentence.", operationId: 999, chunkId: 1
+    });
     expect(late.effects).toEqual([]);
     expect(late.state.ignoredTranscripts).toBe(1);
     expect(late.state.session.draft).toBe("");
@@ -350,7 +362,7 @@ describe("after-send correction", () => {
     const confirm = step(state, { type: "confirm" });
     const sent = step(confirm.state, { type: "send-settled", ok: true, requestId: confirm.state.send.requestId ?? 0 }).state;
     const again = step(sent, { type: "segment", segmentId: 2 });
-    const heard = step(again.state, { type: "transcript", text: "A second sentence." }).state;
+    const heard = step(again.state, { type: "transcript", text: "A second sentence.", ...sttOp(again.state) }).state;
     const corrected = step(heard, { type: "correct", text: "A corrected sentence." });
     expect(corrected.state.session.correctionPending).toBe(true);
     expect(corrected.state.note).toContain("Continue before sending");
@@ -380,7 +392,7 @@ describe("stop and recovery settlement identity", () => {
   test("a stop during transcription is a cancellation, not a permanent failure", () => {
     const segment = step(started(), { type: "segment", segmentId: 1 });
     const stop = step(segment.state, { type: "stop" });
-    const aborted = step(stop.state, { type: "transcript-failed", reason: "The transcription was aborted." });
+    const aborted = step(stop.state, { type: "transcript-failed", reason: "The transcription was aborted.", ...sttOp(stop.state) });
     expect(aborted.state.session.failures.stt).toBeNull();
     expect(aborted.state.session.requests.stt).toBeNull();
     const stopped = step(aborted.state, { type: "stop-settled", ok: true });
@@ -392,7 +404,7 @@ describe("stop and recovery settlement identity", () => {
 
   test("a genuine transcription failure is presented and explicitly acknowledged", () => {
     const segment = step(started(), { type: "segment", segmentId: 1 });
-    const failed = step(segment.state, { type: "transcript-failed", reason: "Provider failed." });
+    const failed = step(segment.state, { type: "transcript-failed", reason: "Provider failed.", ...sttOp(segment.state) });
     expect(failed.state.session.failures.stt?.message).toBe("Provider failed.");
     expect(handsFreePhase(failed.state)).toBe("interrupted");
     const acknowledged = step(failed.state, { type: "acknowledge" });
@@ -405,12 +417,25 @@ describe("stop and recovery settlement identity", () => {
     const segment = step(started(), { type: "segment", segmentId: 1 });
     const stop = step(segment.state, { type: "stop" });
     expect(stop.state.session.requests.stt).toBeNull();
-    const late = step(stop.state, { type: "transcript", text: "A late sentence." });
+    const late = step(stop.state, { type: "transcript", text: "A late sentence.", ...sttOp(stop.state) });
     expect(late.state.session.draft).toBe("");
+    expect(late.state.transport.slots.stt).toBeNull();
     const stopped = step(late.state, { type: "stop-settled", ok: true });
     const next = step(stopped.state, { type: "start" }, freshGrant());
     expect(handsFreePhase(next.state)).toBe("starting");
     expect(next.state.session.requests.stt).toBeNull();
+  });
+
+  test("a target change while recording tells the host to close capture", () => {
+    const recording = started();
+    expect(handsFreePhase(recording)).toBe("recording");
+    const moved = step(recording, { type: "sync" }, facts(), scope({ threadId: "thread_other" }));
+    expect(moved.effects.filter((effect) => effect.type === "capture-close")).toHaveLength(1);
+    expect(handsFreePhase(moved.state)).toBe("stopping");
+    const stopped = step(
+      moved.state, { type: "stop-settled", ok: true }, facts(), scope({ threadId: "thread_other" })
+    );
+    expect(handsFreePhase(stopped.state)).toBe("stopped");
   });
 
   test("a late capture settlement from an earlier session cannot describe a new one", () => {
@@ -453,7 +478,7 @@ describe("stop and recovery settlement identity", () => {
     expect(retry.state.capture).toBe("opening");
 
     const segment = step(started(), { type: "segment", segmentId: 1 });
-    const interrupted = step(segment.state, { type: "transcript", text: " " });
+    const interrupted = step(segment.state, { type: "transcript", text: " ", ...sttOp(segment.state) });
     expect(handsFreePhase(interrupted.state)).toBe("interrupted");
     const continued = step(interrupted.state, { type: "continue" });
     expect(continued.effects.some((effect) => effect.type === "capture-open")).toBe(true);
