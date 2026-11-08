@@ -1,5 +1,5 @@
 import { Annotation, EditorState, StateEffect, StateField, type Transaction } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, keymap, placeholder as placeholderExtension } from "@codemirror/view";
 import { insertNewline, standardKeymap } from "@codemirror/commands";
 import { normalizePasteText } from "@ai-book-studio/core/paste";
 import { insertTranscript } from "../../lib/voice-text";
@@ -28,6 +28,7 @@ const theme = EditorView.theme({
   ".cm-line": { padding: "0" },
   ".inline-review-mark": { textDecorationLine: "underline", textDecorationStyle: "dotted", textDecorationColor: "var(--primary)", textUnderlineOffset: "0.2em" },
   ".inline-review-active": { textDecorationStyle: "double" },
+  ".cm-placeholder": { color: "var(--muted-foreground)", opacity: "0.6" },
   "@media (forced-colors: active)": {
     ".inline-review-mark": { textDecorationColor: "LinkText", forcedColorAdjust: "auto" },
     "&.cm-focused": { outline: "1px solid Highlight" }
@@ -63,10 +64,11 @@ export class InlineEditor {
         extensions: [
           EditorState.lineSeparator.of("\n"), EditorState.allowMultipleSelections.of(false),
           EditorView.lineWrapping, theme, marks,
+          ...(options.placeholder ? [placeholderExtension(options.placeholder)] : []),
           EditorView.contentAttributes.of({
             "aria-label": options.label ?? "Chapter text", "aria-multiline": "true",
             ...(options.describedBy ? { "aria-describedby": options.describedBy } : {}),
-            spellcheck: "true", "data-testid": "inline-manuscript-text"
+            spellcheck: "true", "data-testid": options.testId ?? "inline-manuscript-text"
           }),
           keymap.of([
             { key: "Enter", run: insertNewline, shift: insertNewline },
@@ -230,6 +232,15 @@ export class InlineEditor {
     return this.applyReplace(text, expectedRevision, origin, selection, false);
   }
 
+  /**
+   * A user-origin commit of exact text, as an input method or the mount's automation contract
+   * delivers it: compare-and-set, one isolated history unit, and allowed during a hold exactly as
+   * native typing is. Controlled replacement, dictation and evidence stay refused during a hold.
+   */
+  typeText(text: string, expectedRevision: number, selection?: TextSelection): boolean {
+    return this.applyReplace(text, expectedRevision, "input", selection, true);
+  }
+
   private applyReplace(text: string, expectedRevision: number, origin: EditOrigin, selection: TextSelection | undefined, allowDuringHold: boolean): boolean {
     const current = this.getSnapshot();
     if (current.destroyed || !this.sameVisit(current) || current.composing || (!allowDuringHold && current.held) || current.revision !== expectedRevision) return false;
@@ -303,6 +314,15 @@ export class InlineEditor {
     this.hidden = hidden;
     this.rebuildVisibleIndex();
     this.renderMarks();
+  }
+
+  /**
+   * The validated layer this visit is showing, or null once it is no longer exact-current.
+   * The host uses it for its own accessible finding list; it never certifies anything itself.
+   */
+  getLayer(): ValidatedInlineLayer | null {
+    if (!this.currentLayer()) return null;
+    return this.layer;
   }
 
   private currentLayer(): boolean {

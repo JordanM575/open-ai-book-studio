@@ -201,9 +201,8 @@ try {
     const marker = `Written after a second copy was refused ${Date.now()}`;
     await page.evaluate((text) => {
       const editor = document.querySelector('[data-testid="manuscript-text"]');
-      if (!(editor instanceof HTMLTextAreaElement)) throw new Error("the manuscript editor was not found");
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
-      setter.call(editor, `${editor.value}\n\n${text}`);
+      if (!editor) throw new Error("the manuscript editor was not found");
+      editor.value = `${editor.value}\n\n${text}`;
       editor.dispatchEvent(new Event("input", { bubbles: true }));
     }, marker);
     let saved = chapter;

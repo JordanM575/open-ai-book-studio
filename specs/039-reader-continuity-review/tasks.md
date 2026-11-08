@@ -31,6 +31,11 @@ task is completed. T010 retains the independent correction gate. The policy amen
     task stays unchecked. 038 T022 remains unchecked.
 - [ ] T012 Implement a minimal CodeMirror plain-text surface/current-source handle with the existing one
   undo owner; prove canonical roundtrip, no writes on navigation, IME/paste/voice and save fidelity.
+  - November 8: the accepted surface is now mounted inside `ManuscriptEditor` with the wrapper's one
+    undo/save/draft owner, an automation contract that preserves the `manuscript-text` smoke hooks,
+    and focused parity tests (typing, Enter, paste, dictation, selection, save/undo/redo commands,
+    composition and hold guards, conflict retention, flush). The full mounted accessibility,
+    native-IME, provider and performance acceptance is still open, so this task stays unchecked.
 - [ ] T013 Mount accessible findings/sidebar/underlines/filters; hide current marks on edit, preserve
   historical explanations, handle overlaps/repeated passages and asynchronous navigation ABA.
 - [ ] T014 Specify field-level report/profile/disposition/campaign and continuation formats/recovery first.

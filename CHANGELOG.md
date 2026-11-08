@@ -7,6 +7,21 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Mounted exact-current manuscript editor
+- Mount the accepted CodeMirror plain-text surface in `ManuscriptEditor` in place of the textarea.
+  The wrapper keeps title, the 700 ms autosave, the 300 ms draft copy, one serialized save queue,
+  the custom 100-state undo, retry/conflict/flush, hold/rebase and voice ownership; the surface
+  reports every change back through that one apply path. Typing, plain Enter, paste normalization,
+  dictation spacing, selection, Ctrl/Cmd-S/Z/Shift-Z/Ctrl-Y, the composition guard, hold/rebase and
+  the latest-buffer flush keep their existing behaviour. The smoke `manuscript-text` hook now reads
+  and writes the mounted surface through its automation contract.
+- Add a minimal accessible findings aside for a host-supplied synthetic layer. The shared
+  exact-source verifier (`createSharedEvidencePort`) validates it; the editor paints exact-current
+  underlines; the aside lists per-finding rows with Next/Previous/Inspect/Return, focus return,
+  category filtering and filtered/total counts. Editing removes current marks and the list. No
+  provider request, report write, disposition, suggestion application or saved review is added.
+  039 T012/T013 remain partial and 038 T022 is untouched.
+
 ### Pure authoring foundation
 - Tighten the workflow codec after independent review: a `maxBytes` override may only lower the
   record-kind bound, receipt `savedAs` uses the same bounded library-relative path rule as a target,
