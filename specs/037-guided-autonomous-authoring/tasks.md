@@ -121,6 +121,12 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
   provider call, publication/effect execution, command/receipt-page or admission writer, IPC/preload/
   UI, deletion or pruning is added. T023 stays unchecked pending fresh exact-head independent review;
   T020–T022, T024–T042 and 038 T022 remain open.
+  **Journal correction:** a definitive prepublication refusal conditionally restores only its exact
+  intent receipt, preserving prior/newer same-hash plans, intervening notes and uncertain-publication
+  recovery. Overlapping refused receipts do not resurrect one another. Positive synthetic regression
+  matrices cover mutable/immutable/shared writers, new/existing paths, equal/different outside bytes,
+  note errors and settlement order. Fresh exact-head independent review and broad gates still precede
+  acceptance; journal best-effort failure and cross-process limitations remain explicit in FORMAT.
 - [ ] T024 Add scoped attempt execution at the existing runtime seam; no ordinary full-book prompt/plugins.
 - [ ] T025 Add event-driven asynchronous scheduling, account limiter, zero automatic retries and no spin.
   - Pure portion only: ready/blocked/settling projections, pinned-route capacity decisions, no-progress/

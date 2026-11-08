@@ -9,6 +9,11 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 HEAD
 ### Workflow records
+- Reconcile only the exact planned journal attempt after a definitive prepublication refusal, so
+  equal outside bytes remain reviewable. Preserve prior and newer same-hash intents, concurrent
+  notes and uncertain-publication recovery; out-of-order refusals cannot resurrect a refused plan.
+  Add positive workflow/shared-writer race, overlap, note-failure and recovery regressions. Journal
+  reconciliation remains best effort and does not retry author-file publication.
 - Enforce workflow byte ceilings at desktop and browser read boundaries, including checked-commit
   comparisons/readbacks, drift scans, journal observations, watcher checks and move-copy fallbacks.
   Oversized replacements are refused without truncation; a possible post-publication failure stays

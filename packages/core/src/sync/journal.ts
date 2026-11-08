@@ -62,6 +62,7 @@ export async function readSyncJournal(storage: LibraryPort, deviceId: string): P
     files[path] = {
       sha256: record.sha256,
       ...(typeof record.writtenSha256 === "string" ? { writtenSha256: record.writtenSha256 } : {}),
+      ...(typeof record.plannedWriteId === "string" ? { plannedWriteId: record.plannedWriteId } : {}),
       ...(typeof record.version === "number" ? { version: record.version } : {}),
       ...(typeof record.size === "number" ? { size: record.size } : {}),
       observedAt: record.observedAt,
@@ -238,29 +239,105 @@ export async function noteWrittenFiles({ storage, deviceId, paths, now, verified
 /**
  * Persist the hash a write is about to commit before touching the author file. If the process
  * stops after the atomic manuscript commit but before `noteWrittenFiles` can update the observed
- * hash, the next scan can still identify those exact bytes as this device's save. A failed or
- * raced commit is harmless: drift detection only treats the bytes as local when they match.
+ * hash, the next scan can still recognize those exact bytes. A definitive prepublication refusal
+ * must settle this receipt as not-published; an exception or uncertain publication must retain it.
  */
-export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }: NoteFilesInput & { sha256: string }): Promise<void> {
+export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }: NoteFilesInput & { sha256: string }): Promise<PlannedWriteReceipt> {
   const wanted = [...new Set(paths)].filter(isJournaledPath);
-  if (wanted.length === 0) return;
+  const entries: PlannedEntry[] = [];
   await updateSyncJournal(storage, async () => {
     try {
+      if (wanted.length === 0) return;
+      const previous = await readSyncJournal(storage, deviceId);
+      if (!previous) return;
+      const active = plannedWrites.get(storage) ?? new Map<string, PlannedEntry>();
+      plannedWrites.set(storage, active);
+      const id = globalThis.crypto.randomUUID();
+      const files = { ...previous.files };
+      for (const path of wanted) {
+        const old = files[path];
+        if (!old) continue;
+        const key = `${deviceId}\0${path}`;
+        let prior = active.get(key);
+        while (prior && !sameRecord(old, prior.after)) prior = prior.prior;
+        // Even an equal-hash intent has a distinct owner. Hash equality cannot cancel another call.
+        const after = { ...old, writtenSha256: sha256, plannedWriteId: id };
+        const entry: PlannedEntry = { key, path, before: old, after, prior, outcome: "pending" };
+        entries.push(entry);
+        active.set(key, entry);
+        files[path] = after;
+      }
+      if (entries.length) await writeSyncJournal(storage, { ...previous, generation: previous.generation + 1, scannedAt: now, files });
+    } catch {
+      // A note can have published before throwing. Keep its receipt for conditional reconciliation.
+      // Journal I/O must never fail an author-file save.
+    }
+  });
+  let settled = false;
+  return { settle: (outcome) => updateSyncJournal(storage, async () => {
+    if (settled) return;
+    settled = true;
+    for (const entry of entries) entry.outcome = outcome;
+    try {
+      if (outcome !== "not-published" || entries.length === 0) return;
       const previous = await readSyncJournal(storage, deviceId);
       if (!previous) return;
       const files = { ...previous.files };
       let changed = false;
-      for (const path of wanted) {
-        const old = files[path];
-        if (!old || old.writtenSha256 === sha256) continue;
-        files[path] = { ...old, writtenSha256: sha256 };
+      for (const entry of entries) {
+        // Restore only this exact attempt's unchanged record. Other paths, newer same-hash notes,
+        // accepted scans, removals and verified writes are not ours to undo.
+        if (!sameRecord(files[entry.path], entry.after)) continue;
+        let before = entry.before;
+        let prior = entry.prior;
+        // Overlapping refusals may finish in either order. Do not resurrect an already-refused plan.
+        while (prior?.outcome === "not-published") {
+          before = prior.before;
+          prior = prior.prior;
+        }
+        files[entry.path] = before;
         changed = true;
       }
       if (changed) await writeSyncJournal(storage, { ...previous, generation: previous.generation + 1, scannedAt: now, files });
     } catch {
-      // Like the post-write note, a failed intent note must never fail or block a manuscript save.
+      // Best effort: failed reconciliation can leave an interrupted-write intent. Never retry the
+      // author-file publication or substitute an outside observation for the baseline.
+    } finally {
+      const active = plannedWrites.get(storage);
+      for (const entry of entries) {
+        if (active?.get(entry.key) !== entry) continue;
+        let prior = entry.prior;
+        while (prior?.outcome === "not-published") prior = prior.prior;
+        if (prior?.outcome === "pending") active.set(entry.key, prior);
+        else active.delete(entry.key);
+      }
+      if (active?.size === 0) plannedWrites.delete(storage);
     }
-  });
+  }) };
+}
+
+export interface PlannedWriteReceipt {
+  /** Settle once, including on thrown errors. Only a definitive no-publication result may retract. */
+  settle(outcome: "not-published" | "possible"): Promise<void>;
+}
+
+interface PlannedEntry {
+  key: string;
+  path: string;
+  before: SyncFileRecord;
+  after: SyncFileRecord;
+  prior: PlannedEntry | undefined;
+  outcome: "pending" | "not-published" | "possible";
+}
+
+// Only live receipts retain this chain; persisted hashes still support recovery after process loss.
+// Completed predecessors remain reachable only while a newer pending receipt needs their outcome.
+const plannedWrites = new WeakMap<LibraryPort, Map<string, PlannedEntry>>();
+
+function sameRecord(a: SyncFileRecord | undefined, b: SyncFileRecord): boolean {
+  return a !== undefined && a.plannedWriteId === b.plannedWriteId && a.sha256 === b.sha256 &&
+    a.writtenSha256 === b.writtenSha256 && a.observedAt === b.observedAt && a.version === b.version &&
+    a.size === b.size && a.deleted === b.deleted;
 }
 
 async function noteWritten(

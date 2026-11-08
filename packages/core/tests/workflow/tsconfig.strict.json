@@ -1,4 +1,4 @@
 {
   "extends": "../authoring/tsconfig.strict.json",
-  "include": ["./**/*.ts", "../sync-verified-write.test.ts"]
+  "include": ["./**/*.ts", "../sync-verified-write.test.ts", "../sync-planned-write.test.ts"]
 }

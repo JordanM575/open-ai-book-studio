@@ -1372,7 +1372,7 @@ an existing file, the intended save hash is recorded before the atomic file comm
 commit, the baseline advances only when the adapter's returned snapshot has the exact intended bytes
 and hash. The verified intended hash, not a later path observation, is recorded for both new and
 existing paths. If a different writer replaces or removes the file afterward, that difference remains
-reviewable; a failed best-effort note also leaves drift to be reviewed. Explicit notes from other
+reviewable. Explicit notes from other
 existing writers retain their observation-based behavior. If the process stops between the intent and
 the verified note, a later scan still recognizes exact intended bytes on an existing path; a different
 on-disk hash remains an outside change for review. A
@@ -1380,6 +1380,24 @@ conflict copy is not, because the save that made it still needs the author's rev
 turns, so two made at once both land. It contains no prose or credentials, is excluded from portable
 archives, and is safe to delete; the next scan rebuilds it by comparing the files and warns that it had
 no baseline. A journal copied from another device is ignored by its device id.
+
+Schema 1 file records may additionally carry `plannedWriteId`, a fresh UUID identifying the particular
+intent that set `writtenSha256`; legacy records without it remain readable. This is bookkeeping, not
+evidence that the file was published or permission to write it. Every planned call on an existing
+journal record gets a new ID, even when the intended hash is unchanged. Absent records are not added
+by intent notes. A verified post-write record no longer carries a planned ID.
+
+If the adapter definitively returns `changed` without `publication: "uncertain"`, the service retracts
+only that attempt's still-identical journal record and restores its prior intent, without accepting
+the outside file as the observed baseline. Reconciliation shares the existing per-port journal queue;
+newer same-hash intents, verified writes, accepted scans and changes to other paths are preserved.
+Live receipts retain predecessor outcomes so overlapping refusals settling out of order cannot restore
+an already-refused intent. That transient bookkeeping is released on settlement; it is not a second
+source of truth. Exceptions, uncertain publication and unverified written readbacks retain the
+persisted intent for interrupted-write recovery. A known refusal never retracts a preexisting unresolved
+same-byte attempt. Journal notes remain best effort: a failed intent/post-write note can require review,
+and failed reconciliation can leave the recovery intent. No author-file retry, cross-process CAS or
+cross-file transaction is implied.
 
 ## Migration record
 

@@ -1308,28 +1308,34 @@ export class LibraryService {
 
   private async commitBytes(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
     const intendedHash = await this.env.runtime.sha256(bytes);
-    await notePlannedWrite({
+    const planned = await notePlannedWrite({
       storage: this.env.storage,
       deviceId: this.device.id,
       paths: [libraryPathToArchivePath(path)],
       sha256: intendedHash,
       now: this.env.runtime.now()
     });
-    const result = await this.env.storage.commitFile(path, bytes, expected);
-    if (result.status === "written" && result.snapshot.sha256 === intendedHash &&
-        result.snapshot.bytes.byteLength === bytes.byteLength &&
-        result.snapshot.bytes.every((byte, index) => byte === bytes[index])) {
-      // Only this exact adapter readback is attributable to our commit. A later journal
-      // observation may already be another writer's bytes; it must not become the baseline.
-      await noteWrittenFiles({
-        storage: this.env.storage,
-        deviceId: this.device.id,
-        paths: [libraryPathToArchivePath(path)],
-        verifiedWrite: { sha256: intendedHash, size: bytes.byteLength },
-        now: this.env.runtime.now()
-      });
+    let publication: "not-published" | "possible" = "possible";
+    try {
+      const result = await this.env.storage.commitFile(path, bytes, expected);
+      if (result.status === "changed" && result.publication !== "uncertain") publication = "not-published";
+      if (result.status === "written" && result.snapshot.sha256 === intendedHash &&
+          result.snapshot.bytes.byteLength === bytes.byteLength &&
+          result.snapshot.bytes.every((byte, index) => byte === bytes[index])) {
+        // Only this exact adapter readback is attributable to our commit. A later journal
+        // observation may already be another writer's bytes; it must not become the baseline.
+        await noteWrittenFiles({
+          storage: this.env.storage,
+          deviceId: this.device.id,
+          paths: [libraryPathToArchivePath(path)],
+          verifiedWrite: { sha256: intendedHash, size: bytes.byteLength },
+          now: this.env.runtime.now()
+        });
+      }
+      return result;
+    } finally {
+      await planned.settle(publication);
     }
-    return result;
   }
 
   /**
