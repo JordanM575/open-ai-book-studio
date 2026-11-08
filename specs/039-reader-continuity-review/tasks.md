@@ -37,3 +37,22 @@ task is completed. T010 retains the independent correction gate. The policy amen
 - [ ] T018 Integrate campaign/check-in artifacts into the separately authorized 037 coordinator.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
+
+### November 7 — bounded T011/T012 editor candidate
+
+The new `packages/app/src/components/inline-editor/` leaf and
+`packages/core/src/review/inline/overlap.ts` provide a minimal unmounted plain-text
+adapter, exact-current snapshot/final post-await gate, trusted evidence-port seam,
+complete overlap membership and keyboard/pointer inspection callbacks. Existing
+ManuscriptEditor and its save/draft/custom-history owner remain unchanged.
+
+Candidate-local evidence: 20 new focused tests; 64 tests / 801 assertions including
+the existing editor/history/failed-save/move-rebase regressions; nine hidden native
+Chromium fidelity probes, strict desktop/web/toolkit typechecks and focused lint.
+The local README records APIs, migration steps, MIT dependency notices, bundle
+measurement procedure and native partial-grapheme selection/clipboard differences.
+This is **partial T011/T012**, not a checked task: the corrected shared verifier,
+disposition/rerun relations, mounted save fidelity, accessible full sidebar and
+whole-product performance/license/bundle gates still need their named owners and
+independent exact-candidate review. No mounted T013 or saved/application completion
+is inferred from the isolated controls or synthetic proof port.

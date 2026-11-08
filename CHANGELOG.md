@@ -21,6 +21,20 @@ Update the `Unreleased` section before every commit.
   This is a leaf UI candidate, not connected runtime or full spec 039 acceptance; reviewed core
   public-boundary fixes and integrated host/accessibility verification remain separately owned.
 
+### Isolated inline editor candidate
+
+- Add an unmounted CodeMirror plain-text leaf with an exact-current source handle,
+  injected validated-evidence boundary, complete endpoint-sweep overlap membership,
+  local visibility and accessible inspection callbacks. Keep the existing manuscript
+  save/draft/history wrapper as the only owner; no live editor replacement is included.
+- Add focused pure/DOM and hidden Chromium fidelity probes, pinned dependency/license
+  evidence and a standalone bundle measurement. Record Chromium's partial-grapheme
+  native selection limitation while preserving exact model/clipboard text. Integrated
+  save, accessibility, whole-app bundle/performance and independent review gates remain.
+- Fix user paste during a leaf hold being silently dropped: paste now inserts
+  normalized text through the normal change path like typing, while controlled
+  replacement, dictation and evidence remain refused during a hold or composition.
+
 ### Integration
 
 - Forward reader-navigation editor facts to the descriptor-first core without reading `clean` in

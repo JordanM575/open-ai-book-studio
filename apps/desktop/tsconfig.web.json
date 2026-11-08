@@ -26,6 +26,8 @@
     "src/renderer/src/**/*.tsx",
     "src/preload/index.d.ts",
     "tests/manuscript-editor.test.ts",
+    "tests/inline-editor.test.tsx",
+    "tests/inline-editor-native-fixture.tsx",
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",
     "tests/reader-review.test.tsx",

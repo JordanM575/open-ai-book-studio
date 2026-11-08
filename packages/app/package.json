@@ -30,6 +30,9 @@
   "dependencies": {
     "@ai-book-studio/core": "workspace:*",
     "@ai-book-studio/ui": "workspace:*",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1"
   },

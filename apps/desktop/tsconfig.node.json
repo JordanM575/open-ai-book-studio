@@ -35,6 +35,8 @@
     "tests/**/*.ts"
   ],
   "exclude": [
+    "tests/inline-editor.test.tsx",
+    "tests/inline-editor-native-fixture.tsx",
     "tests/planning-dialogs.test.tsx",
     "tests/manuscript-editor.test.ts",
     "tests/review-gate.test.tsx",
