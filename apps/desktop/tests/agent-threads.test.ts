@@ -557,3 +557,51 @@ describe("generated titles at a Unicode boundary (review P2)", () => {
     expect(service).toBeTruthy();
   });
 });
+
+function threadPath(threadId: string): string {
+  return join(root, ...threadsPath(BOOK), `${threadId}.json`);
+}
+
+describe("generated content cannot corrupt a conversation (review P2)", () => {
+  test("a lone surrogate anywhere in the document is refused before publishing", async () => {
+    const thread = await store.create(BOOK, "Unsafe");
+    const path = threadPath(thread.id);
+    const before = await readFile(path, "utf8");
+    await expect(store.upsertMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_bad00001",
+      role: "assistant",
+      parts: [{ type: "text", text: "cut \ud800" }],
+      createdAt: thread.createdAt
+    }))).rejects.toBeTruthy();
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect((await store.read(BOOK, thread.id))?.messages).toHaveLength(0);
+  });
+
+  test("unknown fields nested in a replaced message survive", async () => {
+    const thread = await store.create(BOOK, "Nested extras");
+    const path = threadPath(thread.id);
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    raw.messages = [{
+      id: "msg_keep0001",
+      role: "assistant",
+      parts: [{ type: "text", text: "Before.", futurePart: 7 }],
+      model: { provider: "openrouter", modelId: "openai/gpt-5-mini", connectionLabel: "OpenRouter", futureModel: 11 },
+      usage: { inputTokens: 1, outputTokens: 2, cachedInputTokens: 0, costUsd: 0, costBasis: "reported", futureUsage: 13 },
+      createdAt: thread.createdAt
+    }];
+    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    await store.upsertMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_keep0001",
+      role: "assistant",
+      parts: [{ type: "text", text: "After." }],
+      model: { provider: "openrouter", modelId: "openai/gpt-5-mini", connectionLabel: "OpenRouter" },
+      usage: { inputTokens: 2, outputTokens: 3, cachedInputTokens: 0, costUsd: 0, costBasis: "reported" },
+      createdAt: thread.createdAt
+    }));
+    const after = JSON.parse(await readFile(path, "utf8"));
+    expect(after.messages[0].parts[0]).toMatchObject({ text: "After.", futurePart: 7 });
+    expect(after.messages[0].model).toMatchObject({ modelId: "openai/gpt-5-mini", futureModel: 11 });
+    expect(after.messages[0].usage).toMatchObject({ inputTokens: 2, futureUsage: 13 });
+  });
+});

@@ -907,6 +907,14 @@ export function createChapterTools(
   };
 }
 
+
+/** A 240-unit snippet that never ends inside a surrogate pair. */
+function snippet(line: string): string {
+  if (line.length <= 240) return line;
+  const last = line.charCodeAt(239);
+  return line.slice(0, last >= 0xd800 && last <= 0xdbff ? 239 : 240);
+}
+
 function findLines(
   content: string,
   query: string,
@@ -920,7 +928,7 @@ function findLines(
     const haystack = caseSensitive ? line : line.toLowerCase();
     if (!haystack.includes(needle)) continue;
     total += 1;
-    if (matches.length < limit) matches.push({ line: index + 1, text: line.slice(0, 240) });
+    if (matches.length < limit) matches.push({ line: index + 1, text: snippet(line) });
   }
   return { matches, total, truncated: total > matches.length };
 }

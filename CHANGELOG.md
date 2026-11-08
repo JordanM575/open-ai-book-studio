@@ -17,6 +17,9 @@ Update the `Unreleased` section before every commit.
 - Generate conversation titles by code point, not UTF-16 unit, and refuse a non-well-formed title
   before publishing: a prompt ending a 60-unit title in an emoji can no longer create a conversation
   the checked reader rejects.
+- Refuse a non-well-formed document before publishing (any lone surrogate, not only the title), keep
+  generated search snippets off a surrogate split, and carry unknown message/part fields recursively
+  through same-id replacement so a normal update cannot erase them.
 
 ### Checked conversation storage
 - Route every v1 conversation write through the Library's per-book queue and journal-aware checked

@@ -595,54 +595,23 @@ function threadKey(bookId: string, threadId: string): string {
 }
 
 /** Fields this build reads and writes on a message or part. Everything else is supported unknown data. */
-const MESSAGE_KEYS = new Set([
-  "id",
-  "role",
-  "parts",
-  "model",
-  "mode",
-  "usage",
-  "context",
-  "turnId",
-  "createdAt"
-]);
-const PART_KEYS = new Set([
-  "type",
-  "text",
-  "redacted",
-  "id",
-  "name",
-  "input",
-  "output",
-  "isError",
-  "url",
-  "title",
-  "mediaType",
-  "data",
-  "approvalId",
-  "turnId",
-  "status",
-  "requestedAt",
-  "resolvedAt",
-  "code",
-  "message",
-  "retryAfterSeconds"
-]);
-
-function extras(previous: object, keys: Set<string>, next: object): Record<string, unknown> {
-  const carried: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(previous)) {
-    if (keys.has(key) || Object.hasOwn(next, key)) continue;
-    carried[key] = value;
+/**
+ * Deep carry for replacement: every field the new value does not name is kept from the previous
+ * message, at any depth (including unknown members inside `model`, `usage`, `context` and a part).
+ */
+function carryUnknown(previous: unknown, next: unknown): unknown {
+  if (!next || typeof next !== "object" || Array.isArray(next)) return next;
+  const old = previous && typeof previous === "object" && !Array.isArray(previous)
+    ? previous as Record<string, unknown>
+    : null;
+  if (!old) return next;
+  const merged: Record<string, unknown> = { ...(next as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(old)) {
+    merged[key] = Object.hasOwn(merged, key) ? carryUnknown(value, merged[key]) : value;
   }
-  return carried;
+  return merged;
 }
 
-/**
- * Replacing a message's body (the same id written again after an approval or a finished turn) must
- * not drop plain fields another build added to that message. Known fields stay what the caller set;
- * unknown fields carry over. Parts are matched by id or approval id, then by position.
- */
 function carryMessageExtras(previous: AgentMessage, next: AgentMessage): AgentMessage {
   const parts = next.parts.map((part, index) => {
     const old =
@@ -657,9 +626,9 @@ function carryMessageExtras(previous: AgentMessage, next: AgentMessage): AgentMe
       ) ??
       previous.parts[index];
     if (!old || old.type !== part.type) return part;
-    return { ...extras(old, PART_KEYS, part), ...part };
+    return carryUnknown(old, part) as typeof part;
   });
-  return { ...extras(previous, MESSAGE_KEYS, next), ...next, parts };
+  return carryUnknown(previous, { ...next, parts }) as AgentMessage;
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {

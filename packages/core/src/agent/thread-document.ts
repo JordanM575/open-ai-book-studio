@@ -161,9 +161,24 @@ export function buildThreadDocument(
   return finish(raw, maxBytes);
 }
 
+function assertWellFormed(value: unknown): void {
+  if (typeof value === "string") {
+    wellFormed(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) assertWellFormed(item);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value as Record<string, unknown>)) assertWellFormed(item);
+  }
+}
+
 function finish(raw: Record<string, unknown>, maxBytes: number): BuiltThreadDocument {
-  // A lone surrogate survives JSON escaping but is rejected on read; refuse it before publishing.
-  wellFormed(String(raw.title ?? ""));
+  // A lone surrogate survives JSON escaping but is rejected on read; refuse it before publishing,
+  // wherever it sits (title, message text, tool output, metadata).
+  assertWellFormed(raw);
   const text = `${JSON.stringify(raw, null, 2)}\n`;
   const bytes = encoder.encode(text);
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) fail("io", "The conversation size limit is not valid.");
