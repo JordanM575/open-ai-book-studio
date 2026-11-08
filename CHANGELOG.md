@@ -12,6 +12,8 @@ Update the `Unreleased` section before every commit.
 - Compose the accepted planning vertical with bounded-authoring policy, terminal Stop delivery and
   merged chapter-history restore work. Preserve each exact candidate's bounded evidence; broad
   planning/organization scope and integrated product acceptance remain separate follow-through.
+- Bundle the preload's Zod/YAML validation graph into the sandboxed preload so its validated
+  planning bridge loads in the built app instead of failing on external runtime requires.
 - Compose the accepted planning and bounded-authoring policy, terminal Stop delivery and merged
   chapter-history restore work in one integration candidate. Preserve each exact candidate's
   bounded evidence; connected mounting and product acceptance remain separate follow-through.
