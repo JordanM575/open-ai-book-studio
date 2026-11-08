@@ -29,7 +29,8 @@ function scalarWidth(body: string, offset: number): number {
 /**
  * Pure incremental scanner. Yields are work boundaries, never partial findings. Budgets carry
  * across chapters, including empty/short ones, and through final grouping. The async host may
- * stop between steps and discard the iterator. No I/O, provider, clock or persistence dependency.
+ * stop between steps and discard the iterator. Native whole-token NFC/casing is NOT bounded by
+ * these yields; interactive hosts must use an owned terminable worker. No I/O or persistence.
  */
 export function* scanRepetitionSteps(source: ReviewSourceSnapshot): Generator<void, RepetitionAnalysis> {
   const groups = new Map<string, ReviewEvidenceSpan[]>();
@@ -106,7 +107,7 @@ export function* scanRepetitionSteps(source: ReviewSourceSnapshot): Generator<vo
   return { findings, rejectedChapterIds };
 }
 
-/** Synchronous pure entry for small isolated inputs; interactive runs use the incremental entry. */
+/** Synchronous pure entry; interactive runs must isolate this work in a terminable worker. */
 export function scanRepetition(source: ReviewSourceSnapshot): RepetitionAnalysis {
   const steps = scanRepetitionSteps(source);
   let step = steps.next();

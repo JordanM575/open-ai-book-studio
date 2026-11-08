@@ -395,9 +395,9 @@ async function countReviewWordsAsync(
 }
 
 /**
- * Analyze the saved source without blocking the run thread: each slice of chapter text yields,
- * so Cancel stays clickable on long books and an abort discards partial counts instead of
- * completing. Skipped chapters never touch body text, exactly like the synchronous analysis.
+ * Host-neutral cooperative analysis. Yields allow cancellation between scanner steps, but native
+ * whole-token normalization is not bounded by a step budget. Interactive callers must use the
+ * app's owned worker adapter; this function alone cannot guarantee a responsive UI event loop.
  */
 export async function analyzeReviewCoverageAsync(
   source: ReviewSourceSnapshot,

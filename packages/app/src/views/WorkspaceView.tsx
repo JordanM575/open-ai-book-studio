@@ -25,7 +25,6 @@ import { FormatDialog, type FormatChange } from "../components/FormatDialog";
 import { ChatPanel } from "../components/ChatPanel";
 import { SettingsDialog, type SettingsSection } from "../components/SettingsDialog";
 import {
-  analyzeReviewCoverageAsync,
   buildReviewReport,
   revalidateReviewEvidence,
   reviewNoSourceResult,
@@ -46,6 +45,7 @@ import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateD
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
 import { exportBlockedMessage, exportReceipt, type ManuscriptExportReceipt } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
+import { analyzeReviewInWorker } from "../lib/review-worker";
 import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
 import { editBook, formatCount, formatWords, keptCopyText, must, pluralize } from "../lib/utils";
@@ -204,6 +204,9 @@ export function WorkspaceView({
   const [reviewView, setReviewView] = useState<ReviewGateView | ReviewRunView>({ kind: "choice" });
   const [evidenceSelection, setEvidenceSelection] = useState<(EditorSelection & { chapterId: string }) | null>(null);
   const runController = useRef<AbortController | null>(null);
+  const reviewGeneration = useRef(0);
+  const shownLibraryRoot = useRef(libraryRoot);
+  shownLibraryRoot.current = libraryRoot;
   const editorRef = useRef<EditorHandle>(null);
   const isMac = window.studio.platform === "darwin";
 
@@ -223,15 +226,21 @@ export function WorkspaceView({
     setIssuesDismissed(false);
   }, [bookId]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bookId is the trigger, not a closure value — the run-local report discards in place on a book switch
+  // biome-ignore lint/correctness/useExhaustiveDependencies: book/library identity invalidates run-local work even if the view stays mounted
   useEffect(() => {
-    // The report is run-local: switching books discards it without writing anything anywhere.
+    // Terminate owned work on book/library change and unmount (including Strict Mode cleanup).
+    reviewGeneration.current++;
     runController.current?.abort();
     runController.current = null;
     setReviewOpen(false);
     setReviewView({ kind: "choice" });
     setEvidenceSelection(null);
-  }, [bookId]);
+    return () => {
+      reviewGeneration.current++;
+      runController.current?.abort();
+      runController.current = null;
+    };
+  }, [bookId, libraryRoot]);
 
   useEffect(() => {
     // New keystrokes supersede a highlighted evidence span.
@@ -678,6 +687,9 @@ export function WorkspaceView({
   };
 
   const closeReview = useCallback(() => {
+    reviewGeneration.current++;
+    runController.current?.abort();
+    runController.current = null;
     setReviewOpen(false);
     setReviewView((current) =>
       current.kind === "report" || current.kind === "stopped" || current.kind === "failed"
@@ -695,13 +707,18 @@ export function WorkspaceView({
   const startAnalysis = useCallback(
     async () => {
       const requestedAt = new Date().toISOString();
+      runController.current?.abort();
       const controller = new AbortController();
       runController.current = controller;
+      const current = () => runController.current === controller &&
+        shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       setReviewView({ kind: "running" });
       let snapshotDetail: BookDetail;
       try {
         snapshotDetail = await must(window.studio.books.open(bookId));
       } catch (error) {
+        if (!current()) return;
+        runController.current = null;
         onNotice(error);
         setReviewView({
           kind: "failed",
@@ -709,22 +726,22 @@ export function WorkspaceView({
         });
         return;
       }
-      if (controller.signal.aborted) {
-        setReviewView({ kind: "stopped" });
-        return;
-      }
+      if (!current()) return;
       setDetail(snapshotDetail);
       const snapshot = reviewSourceSnapshotFromBookDetail(snapshotDetail, requestedAt);
-      // Sliced analysis yields between chunks, so Cancel stays clickable on long books and
-      // an abort discards partial counts instead of finishing behind a blocked thread.
-      const analysisOutcome = await analyzeReviewCoverageAsync(snapshot, controller.signal);
-      if (analysisOutcome.status !== "complete" || controller.signal.aborted) {
+      // Native NFC may be non-cooperative. Cancel terminates this run's dedicated worker.
+      const analysisOutcome = await analyzeReviewInWorker(snapshot, controller.signal);
+      if (!current()) return;
+      if (analysisOutcome.status !== "complete") {
         runController.current = null;
-        setReviewView({ kind: "stopped" });
+        setReviewView(analysisOutcome.status === "failed"
+          ? { kind: "failed", message: analysisOutcome.message }
+          : { kind: "stopped" });
         return;
       }
       const analysis = analysisOutcome.value;
       if (analysis.status === "failed") {
+        runController.current = null;
         const failure = reviewNoSourceResult(snapshot.scope, requestedAt, analysis.coverage);
         setReviewView({ kind: "failed", message: failure.message });
         return;
@@ -732,6 +749,7 @@ export function WorkspaceView({
       const outcome = await runReviewWork({ requestedAt, source: snapshot }, controller.signal, async () =>
         buildReviewReport(snapshot, analysis, { requestedAt, completedAt: new Date().toISOString() })
       );
+      if (!current()) return;
       runController.current = null;
       if (outcome.status === "complete") {
         setReviewView({ kind: "report", report: outcome.value, freshness: { status: "current" } });
@@ -741,7 +759,7 @@ export function WorkspaceView({
         setReviewView({ kind: "failed", message: outcome.message });
       }
     },
-    [bookId, onNotice]
+    [bookId, libraryRoot, onNotice]
   );
 
   /**
@@ -756,6 +774,9 @@ export function WorkspaceView({
         return;
       }
       setReviewView({ kind: "saving" });
+      const generation = reviewGeneration.current;
+      const current = () => generation === reviewGeneration.current &&
+        shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       try {
         // The gate confirms the save; the cancellable analysis reads its own fresh snapshot.
         const result = await runAfterReviewSave(
@@ -764,15 +785,17 @@ export function WorkspaceView({
           () => editorRef.current?.flush() ?? Promise.resolve(currentStatus),
           async () => {}
         );
+        if (!current()) return;
         if (result.status === "ready") await startAnalysis();
         else if (result.status === "blocked") setReviewView({ kind: "blocked", saveStatus: result.saveStatus });
         else closeReview();
       } catch (error) {
+        if (!current()) return;
         onNotice(error);
         closeReview();
       }
     },
-    [onNotice, closeReview, startAnalysis]
+    [bookId, libraryRoot, onNotice, closeReview, startAnalysis]
   );
 
   const openReview = useCallback(() => {
@@ -807,6 +830,8 @@ export function WorkspaceView({
 
   const cancelRun = useCallback(() => {
     runController.current?.abort();
+    runController.current = null;
+    setReviewView({ kind: "stopped" });
   }, []);
 
   /**

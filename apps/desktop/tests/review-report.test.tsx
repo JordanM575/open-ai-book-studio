@@ -12,6 +12,7 @@ import {
   type ReviewSourceSnapshot
 } from "@ai-book-studio/core/review";
 import type { ReviewRunView } from "@ai-book-studio/app/components/ReviewReportDialog";
+import type { ReviewWorkerReply, ReviewWorkerRequest } from "@ai-book-studio/app/lib/review-worker-protocol";
 
 let testing!: typeof import("@testing-library/react/pure");
 // Loaded in beforeAll, once the DOM exists.
@@ -443,7 +444,208 @@ const ambientStatus: AmbientStatus = {
   say: "Synthetic ambient status for the review integration fixture."
 };
 
+/** Synthetic read-only bridge for worker lifetime tests; any accidental writer/provider call fails. */
+function workerWorkspaceFixture() {
+  const forbidden = mock(() => { throw new Error("No write/provider in local review"); });
+  const open = mock((bookId: string) => Promise.resolve({ ok: true as const, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : firstDetail }));
+  (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
+    platform: "darwin", library: { onChange: () => () => {} }, books: { open },
+    conflicts: { list: () => Promise.resolve({ ok: true, data: [] }) },
+    images: { list: () => Promise.resolve({ ok: true, data: { manifest: { schemaVersion: 1, images: [] }, warning: null } }) },
+    drafts: { set: forbidden, clear: forbidden, onFlushRequest: () => () => {} },
+    recovery: { list: () => Promise.resolve({ ok: true, data: [] }) },
+    chapters: { save: forbidden, updateMeta: forbidden },
+    agent: { send: forbidden, ambient: () => Promise.resolve({ ok: true, data: ambientStatus }), onEvent: () => () => {} },
+    voice: {
+      speakers: () => Promise.resolve({ ok: true, data: { available: false, voices: [] } }),
+      connections: () => Promise.resolve({ ok: true, data: [] })
+    }
+  };
+  const props = {
+    bookId: INTEGRATION_BOOK, libraryRoot: "/synthetic/review-worker",
+    theme: { choice: "light" as const, set: (_choice: "light" | "dark" | "system") => {}, cycle: () => {} },
+    onBack: () => {}, onNotice: mock((_error: unknown) => {}), onSchemaRefusal: () => {}
+  };
+  return { props, open, forbidden };
+}
+
+function controlledReviewWorkers() {
+  const original = globalThis.Worker;
+  const workers: ControlledWorker[] = [];
+  class ControlledWorker extends EventTarget {
+    request: ReviewWorkerRequest | undefined;
+    terminate = mock(() => {});
+    constructor(_url: string | URL, _options?: WorkerOptions) {
+      super();
+      workers.push(this);
+      queueMicrotask(() => this.reply({ kind: "ready" }));
+    }
+    postMessage(request: ReviewWorkerRequest) { this.request = request; }
+    reply(reply: ReviewWorkerReply) { this.dispatchEvent(new MessageEvent("message", { data: reply })); }
+    complete() {
+      if (!this.request) throw new Error("Worker has no saved snapshot");
+      this.reply({ kind: "complete", analysis: analyzeReviewCoverage(this.request.source) });
+    }
+  }
+  globalThis.Worker = ControlledWorker as unknown as typeof Worker;
+  return { workers, restore: () => { globalThis.Worker = original; } };
+}
+
 describe("workspace review entry to report", () => {
+  test("the actual worker reaches adversarial NFC while Workspace Cancel stays usable and Run again completes", async () => {
+    const { props, open, forbidden } = workerWorkspaceFixture();
+    const token = `a${"\u0315".repeat(65_536)}${"\u0300".repeat(65_536)}`;
+    const adversarial = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [
+      integrationChapter("ch_int000001", "Adversarial", 1, `${token} two three`)
+    ]);
+    // Load an ordinary editor; only the explicit saved-review read returns the adversarial fixture.
+    open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: adversarial }));
+    const OriginalWorker = globalThis.Worker;
+    let entered = false;
+    let finished = false;
+    const terminations = mock(() => {});
+    class ObservedWorker extends OriginalWorker {
+      constructor(_url: string | URL, options?: WorkerOptions) {
+        super(new URL("./support/review-normalization.worker.ts", import.meta.url), options);
+        this.addEventListener("message", (event: MessageEvent<{ kind: string; units: number }>) => {
+          if (!event.data.kind.startsWith("test-native-")) return;
+          event.stopImmediatePropagation();
+          if (event.data.units === token.length) {
+            if (event.data.kind === "test-native-enter") entered = true;
+            else finished = true;
+          }
+        });
+      }
+      override terminate() { terminations(); super.terminate(); }
+    }
+    globalThis.Worker = ObservedWorker;
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(entered).toBe(true));
+      const cancelAt = performance.now();
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+      expect(performance.now() - cancelAt).toBeLessThan(500);
+      expect(finished).toBe(false);
+      expect(terminations).toHaveBeenCalledTimes(1);
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone"));
+      expect(terminations).toHaveBeenCalledTimes(2);
+      expect(forbidden).not.toHaveBeenCalled();
+      expect(props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); globalThis.Worker = OriginalWorker; }
+  });
+
+  test("worker failure is visible and Run again uses a fresh worker", async () => {
+    const { props, forbidden } = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      const first = control.workers[0];
+      if (!first) throw new Error("Expected worker");
+      await testing.act(async () => { first.dispatchEvent(new Event("error")); });
+      expect(queries.getByTestId("review-status").textContent).toContain("local review worker");
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      expect(first.terminate).toHaveBeenCalledTimes(1);
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("cancel discards an active worker and late output cannot replace the next run", async () => {
+    const { props, forbidden } = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      const first = control.workers[0];
+      if (!first) throw new Error("Expected active worker");
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+      expect(first.terminate).toHaveBeenCalledTimes(1);
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => { first.complete(); });
+      expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(control.workers[1]?.terminate).toHaveBeenCalledTimes(1);
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["book", "library", "close", "unmount"] as const)("%s cleanup terminates owned work and ignores late completion", async (change) => {
+    const { props, forbidden } = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const rendered = testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      const first = control.workers[0];
+      if (!first) throw new Error("Expected active worker");
+      if (change === "unmount") rendered.unmount();
+      else if (change === "close") testing.fireEvent.click(queries.getAllByRole("button", { name: "Close" })[0] as HTMLElement);
+      else rendered.rerender(React.createElement(WorkspaceView, {
+        ...props, ...(change === "book" ? { bookId: INTEGRATION_BOOK_TWO } : { libraryRoot: "/synthetic/other-library" })
+      }));
+      expect(first.terminate).toHaveBeenCalledTimes(1);
+      await testing.act(async () => { first.complete(); });
+      expect(queries.queryByTestId("review-report")).toBeNull();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      if (change !== "unmount") {
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+        await testing.act(async () => { control.workers[1]?.complete(); });
+        expect(queries.getByTestId("review-run-meta").textContent).toContain(change === "book" ? "Second Fixture" : "Integration Fixture");
+      }
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("a cancelled pending read cannot overwrite a fresh completed report", async () => {
+    const { props, open, forbidden } = workerWorkspaceFixture();
+    let release!: (result: { ok: true; data: BookDetail }) => void;
+    const pending = new Promise<{ ok: true; data: BookDetail }>((resolve) => { release = resolve; });
+    open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    open.mockImplementationOnce(() => pending);
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(queries.getByTestId("review-cancel-run")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      await testing.act(async () => { release({ ok: true, data: secondDetail }); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(control.workers).toHaveLength(1);
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
   test("a clean buffer runs the report with no manuscript writes, and switching books discards it", async () => {
     const saves: unknown[] = [];
     const opens: string[] = [];

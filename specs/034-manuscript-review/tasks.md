@@ -145,3 +145,33 @@ not a new native/smoke, retained-review, provider-quality or release acceptance.
 remains volatile and read-only. Fixed-slice word counting preserves the shared whitespace counter
 even for unbroken tokens; scan/grouping and cross-chapter budgets yield for cancellation. Performance
 measurements are local Bun/macOS observations, not new cross-platform performance baselines.
+
+### Wave 20 runtime correction and evidence boundary
+
+Independent review reproduced R1 on wave 19: a valid token containing `a`, 65,536 U+0315 marks
+and 65,536 U+0300 marks blocked whole-token NFC for about 31 seconds. Scanner yields alone do
+not establish T010/FR-009 responsiveness; independently normalizing arbitrary chunks would change
+the accepted Unicode rule. The pure sync/cooperative entries retain their exact algorithm and now
+document this limit.
+
+Interactive Workspace analysis now uses one owned module worker per explicit run. Cancel terminates
+that worker, removes listeners and discards queued replies; a rerun gets a new worker. Startup,
+load/runtime/deserialization/send failures and missing startup acknowledgement fail honestly with
+no heavy inline fallback. The startup deadline does not cap analysis or omit valid text. Book/library
+changes, dialog dismissal and unmount abort owned work; old reads and replies cannot update a newer
+run. Saved-source acquisition, save gating, currency/navigation checks and volatile results keep their
+existing contracts. No saved-review API, path, mount or writer is added by this correction.
+
+Focused synthetic evidence covers real native-NFC entry in an in-process Bun worker at the reproduced
+131,083-unit size, main-loop heartbeats, cancellation before NFC completion, actual Workspace Cancel
+and Run again, and a smaller adversarial completion with exact native-normalized keys and all original
+spans. Worker transport retains all 249,760 overlapping occurrences from 120 chapters / 250,000 words.
+Protocol doubles separately cover failures and queued late-reply isolation; they are not performance
+evidence. Existing core large-book/cancellation and report paging/navigation/save-gate tests pass.
+
+T016/T018/T019 stay open. Build/CSP paths were inspected, but coordinator-owned integrated builds,
+actual browser/Electron startup/cancel/performance and remaining-host/native accessibility checks
+were not executed here. Full occurrence transport still has structured-clone and memory costs; there
+is no arbitrary-input latency or memory ceiling. Explicit retention/continuation, inline mounting and
+the final dirty/current-editor-after-await navigation gate remain separately owned. 038 T022 remains
+unchecked. A fresh independent review must inspect the corrected exact head.
