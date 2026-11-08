@@ -21,6 +21,8 @@ Update the `Unreleased` section before every commit.
   generated search snippets off a surrogate split, and carry unknown message/part fields recursively
   through same-id replacement so a normal update cannot erase them, and refuse an emitted number the
   reader would reject (non-finite, negative zero or magnitude above `Number.MAX_SAFE_INTEGER`).
+  Before publishing, the built bytes are now parsed by this build's own reader, so depth and any
+  other reader constraint cannot be bypassed by a generated document.
 
 ### Checked conversation storage
 - Route every v1 conversation write through the Library's per-book queue and journal-aware checked

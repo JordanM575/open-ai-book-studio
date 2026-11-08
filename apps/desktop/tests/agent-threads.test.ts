@@ -620,4 +620,19 @@ describe("unsupported numbers cannot corrupt a conversation (review P2)", () => 
     expect(await readFile(path, "utf8")).toBe(before);
     expect((await store.read(BOOK, thread.id))?.messages).toHaveLength(0);
   });
+
+  test("an unknown field past the reader's depth limit is refused", async () => {
+    const thread = await store.create(BOOK, "Deep field");
+    const path = threadPath(thread.id);
+    const before = await readFile(path, "utf8");
+    let deep: unknown = "bottom";
+    for (let index = 0; index < 70; index += 1) deep = { nested: deep };
+    await expect(store.appendMessage(BOOK, thread.id, agentMessageSchema.parse({
+      id: "msg_deep0001",
+      role: "user",
+      parts: [{ type: "text", text: "Deep.", futureDeep: deep }],
+      createdAt: thread.createdAt
+    }))).rejects.toBeTruthy();
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
 });

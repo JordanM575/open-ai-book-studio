@@ -188,6 +188,11 @@ function finish(raw: Record<string, unknown>, maxBytes: number): BuiltThreadDocu
   const text = `${JSON.stringify(raw, null, 2)}\n`;
   const bytes = encoder.encode(text);
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) fail("io", "The conversation size limit is not valid.");
+  if (bytes.byteLength <= maxBytes) {
+    // Publish only bytes this build's own reader accepts: the cheapest proof that a generated
+    // document cannot replace a previously readable conversation with an unreadable one.
+    try { readThreadDocument({ bytes, sha256: "" }); } catch { fail("corrupt"); }
+  }
   if (bytes.byteLength > maxBytes) {
     fail(
       "too-large",
