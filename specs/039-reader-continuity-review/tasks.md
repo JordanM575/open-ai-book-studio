@@ -23,6 +23,12 @@ task is completed. T010 retains the independent correction gate. The policy amen
     and same-view cancellation ownership. Focused regression files accompany the change; fresh
     independent exact-head review and mounted/runtime gates remain required.
 - [ ] T011 Add shared exact-source/evidence identity, complete overlap index, disposition and rerun relations.
+  - Partial evidence: `packages/core/src/review/shared-verifier.ts` with
+    `packages/core/tests/review/shared-verifier.test.ts` verifies one saved-chapter
+    snapshot from raw bytes/text, reuses the accepted envelope/citation/overlap
+    contracts and returns a frozen inline layer or a bounded refusal. Disposition and
+    rerun relations, host mounting/export and independent review remain open, so this
+    task stays unchecked. 038 T022 remains unchecked.
 - [ ] T012 Implement a minimal CodeMirror plain-text surface/current-source handle with the existing one
   undo owner; prove canonical roundtrip, no writes on navigation, IME/paste/voice and save fidelity.
 - [ ] T013 Mount accessible findings/sidebar/underlines/filters; hide current marks on edit, preserve

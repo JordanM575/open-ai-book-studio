@@ -7,6 +7,18 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Shared exact-source verifier
+- Require the saved chapter file to declare its own `id` and `version`: the parser fallback no longer
+  supplies the host's expected identity, so a headerless file or omitted key is refused. Also reject
+  request status facts that are not clean/pending-false/available and an envelope `bodyLength` that
+  disagrees with the proven saved body.
+- Add one host-neutral core verifier backing the inline editor's trusted evidence port: raw byte/text
+  SHA-256 and fatal UTF-8, canonical saved-body and file id/version equality, exact envelope/scope
+  attribution, literal UTF-16 citations reusing the accepted review contracts, complete-overlap
+  identity, frozen spans/findings or a bounded refusal, invalid-evidence withholding and abort racing.
+  It imports no app, Library, filesystem, provider or IPC module. Host mounting/export,
+  disposition/rerun relations and independent review remain open; 039 T011 stays partial and unchecked.
+
 ### Voice permission host owner
 
 - Put both desktop default-session permission handlers under one deny-by-default owner. The real
