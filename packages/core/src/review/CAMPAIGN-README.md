@@ -18,6 +18,9 @@ their wire/profile contracts exist; v1 meanings are not repurposed.
 Input is checked as plain lossless data and detached before hashing. Output is frozen, and only plans
 created here are accepted by the aggregation/admission helpers. Serialized/copied plans must be
 replanned from validated inputs; a matching caller-supplied digest is not validation provenance.
+The chosen `ownerBookId` is retained in the immutable plan and its digest independently of selected
+source ownership or projected record size. Another owner's otherwise identical plan cannot reuse
+its coverage receipts or synthesis summaries.
 
 Policy fields:
 
@@ -106,7 +109,14 @@ Before persistence/integration, the format owner must specify and implement:
 ## Complexity and synthetic verification
 
 Let N be selected UTF-16 text, R primary stages, W the policy window (at most the existing source-byte
-limit), E serialized request size, and A the total retained attribution. Indexing is O(N); admission
+limit), E serialized request size, and A the total retained attribution. Before strict shape parsing,
+plain-data preflight visits each distinct object once, in O(V + P) time and space for V distinct
+objects and P own properties/array entries. Active-cycle detection is separate from completed-object
+memoization; the memo is local to each synchronous check. Unsupported shared DAGs are rejected
+without expanding their paths. Schema parsing still validates/detaches all accepted input before
+the first await; Unicode and scalar checks retain their existing text cost. Canonical serialization
+and schema cloning cost their expanded output, not the number of distinct caller objects.
+Indexing is O(N); admission
 is O(R log W · E), plus schema/capture costs for selected ranges. Capturing many disjoint ranges reuses
 the existing capture routine, whose line-prefix scans can cost O(N · number of ranges). Synthesis
 admission/attribution costs its total serialized reservations and A; fan-in is at least two. Plan

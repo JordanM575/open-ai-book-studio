@@ -53,6 +53,10 @@ task is completed. T010 retains the independent correction gate. The policy amen
     `review/CAMPAIGN-README.md` names continuation-format, lossless persistence mapping and execution
     prerequisites. T017 stays unchecked pending fresh independent exact-head review; these checks
     provide no host/provider-quality/device/release evidence and do not complete T018/T019.
+  - November 8, v21 correction: the immutable plan/digest now retains the chosen owning book, with
+    equal-length cross-owner receipt/summary refusal tests. Shared plain-data validation memoizes
+    completed objects per call to avoid exponential malformed DAG traversal while preserving active
+    cycle, accessor and lossy-value rejection. Fresh independent review remains required.
 - [ ] T018 Integrate campaign/check-in artifacts into the separately authorized 037 coordinator.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.

@@ -9,6 +9,9 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Pure full-book review campaign planning
 
+- Retain the chosen owning book in immutable campaign plans and their digests, refusing cross-owner
+  coverage receipts and synthesis summaries even for equal-length owner IDs. Check shared plain-data
+  subgraphs once per validation while retaining cycle, accessor, lossy-value and fresh-call checks.
 - Add explicit all-range review campaign planning with scalar-safe primary/context separation,
   exact existing-envelope admission, immutable source/profile/category attribution and deterministic
   synthesis dependencies. Actual summaries are admitted without trimming and cannot manufacture

@@ -51,7 +51,7 @@ export type CampaignStage = Immutable<{
   envelope: ReviewEnvelope; serializedBytes: number;
 }>;
 export type CampaignPlan = Immutable<{
-  operation: "full-book-review-plan"; campaignId: string; digest: string;
+  operation: "full-book-review-plan"; campaignId: string; ownerBookId: string; digest: string;
   taxonomyVersion: 1; categories: CampaignPlanInput["categories"]; profile: CampaignPlanInput["profile"];
   sources: ChapterSource[]; stages: CampaignStage[]; policy: CampaignPlanInput["policy"];
   persistence: {
@@ -279,7 +279,7 @@ export async function planReviewCampaign(value: unknown): Promise<CampaignPlanni
       } while (layer.length > 1);
     }
     const bounds = persistence(input, sources, stages);
-    const content = { operation: "full-book-review-plan" as const, campaignId: input.campaignId,
+    const content = { operation: "full-book-review-plan" as const, campaignId: input.campaignId, ownerBookId: input.ownerBookId,
       taxonomyVersion: input.taxonomyVersion, categories: input.categories, profile: input.profile,
       sources, stages, policy: input.policy, persistence: bounds };
     const plan = freeze({ ...content, digest: await digestJson(content) });

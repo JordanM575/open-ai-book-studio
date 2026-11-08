@@ -75,6 +75,27 @@ describe("explicit campaign planning", () => {
     expect(first(result.plan.sources).segments[0]?.text).toBe("Synthetic chapter.\n");
   });
 
+  test("rejects a compact shared DAG in an unknown field without expanding every path", async () => {
+    const input = await campaignInput();
+    let graph: object = { leaf: true };
+    const nodes = new Set([graph]);
+    for (let i = 0; i < 128; i++) {
+      graph = { left: graph, right: graph };
+      nodes.add(graph);
+    }
+    let visits = 0;
+    const ownKeys = Reflect.ownKeys;
+    const scan = spyOn(Reflect, "ownKeys").mockImplementation((value) => {
+      if (nodes.has(value) && ++visits > nodes.size * 4) throw new Error("Unbounded shared-DAG traversal");
+      return ownKeys(value);
+    });
+    try {
+      expect(await planReviewCampaign({ ...input, unknownField: graph }))
+        .toEqual({ status: "refused", code: "invalid-campaign-input" });
+      expect(visits).toBeLessThanOrEqual(nodes.size * 2);
+    } finally { scan.mockRestore(); }
+  });
+
   test("ordinary overflow still refuses while explicit campaign includes all multibyte prose", async () => {
     const input = await campaignInput("😀漢é\"\\\u0000".repeat(10_000));
     const plan = await planned(input);
@@ -133,6 +154,39 @@ describe("explicit campaign planning", () => {
     expect(plan.stages.every((stage) => stage.envelope.books.length === 1)).toBe(true);
     input.request.books.push({ ...firstBook, bookId: "book_unused" });
     expect(await planReviewCampaign(input)).toEqual({ status: "refused", code: "unselected-campaign-book" });
+  });
+
+  test("equal-length owners bind distinct plans, coverage receipts and synthesis summaries", async () => {
+    const input = withSynthesis(await campaignInput());
+    const ownerA = input.ownerBookId;
+    const ownerB = "book_654321";
+    expect(ownerA.length).toBe(ownerB.length);
+    const book = first(input.request.books);
+    const source = first(input.sources);
+    input.request.books.push({ ...book, bookId: ownerB, title: "Other selected book" });
+    input.sources.push({ ...source, sourceId: "source-2", bookTitle: "Other selected book",
+      saved: { ...source.saved, bookId: ownerB, chapterId: "ch_second" } });
+    const pendingA = planned(input);
+    input.ownerBookId = ownerB; // The first owner must already be detached before hashing awaits.
+    const a = await pendingA;
+    const b = await planned(input);
+    expect(a.ownerBookId).toBe(ownerA);
+    expect(b.ownerBookId).toBe(ownerB);
+    expect(Object.isFrozen(a)).toBe(true);
+    expect(a.digest).not.toBe(b.digest);
+    expect(a.persistence.projectedBytes).toBe(b.persistence.projectedBytes);
+    expect(a.stages).toEqual(b.stages);
+    for (const [own, other] of [[a, b], [b, a]] as const) {
+      expect(aggregateCampaignCoverage(own, completed(own)).sourceCoverageComplete).toBe(true);
+      expect(() => aggregateCampaignCoverage(own, completed(other))).toThrow("coverage-plan-mismatch");
+      const stage = first(own.stages.filter((item) => item.kind === "synthesis"));
+      const summaries = stage.dependencies.map((stageId) => ({
+        stageId, planDigest: other.digest, status: "completed", text: "Synthetic summary"
+      }));
+      await expect(admitCampaignSynthesis(own, stage.stageId, summaries)).rejects.toThrow("synthesis-plan-mismatch");
+      expect((await admitCampaignSynthesis(own, stage.stageId,
+        summaries.map((summary) => ({ ...summary, planDigest: own.digest })))).requestId).toBe(stage.stageId);
+    }
   });
 
   test("combined limit accounts for prompt, profile, history and stage disclosure", async () => {
