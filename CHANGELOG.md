@@ -8,6 +8,21 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 HEAD
+### Workflow records
+- Add checked schema-1 workflow storage behind `LibraryService.workflowRecords` (037 T023). Checked
+  `run`, `task`, `attempt`, `effect` and `question` records require the exact previous raw hash and
+  revision, are parsed by the same build's codec before publication, are committed through the
+  Library's per-book queue and journal, and are verified by exact-byte readback. Immutable absent-only
+  `artifact` metadata plus its bounded body (≤1 MiB, `.md`/`.json`) and `context` manifests use the
+  same writer; metadata and body must agree on the exact SHA-256 and size, and a partial or
+  mismatched pair refuses. Stale, missing and racing bases keep the complete intended document under
+  `workflows/<runId>/conflicts/` with bounded names and full identity inside; an unverified
+  publication is reported as uncertain and never replayed. Malformed, duplicate-key, lone-surrogate,
+  lossy-number and oversized records are refused without rewriting; supported unknown plain fields
+  (including own `__proto__`) survive read-modify-write and newer closed-union members stay read-only.
+  There is no scheduler, dispatch, provider call, publication/effect execution, command/admission
+  writer, IPC/UI, pruning or deletion. T023 remains unchecked pending independent storage review;
+  T020–T022, T024–T042 and 038 T022 stay open.
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only
   reader reports with analyzer/profile/source/coverage attribution, bounded quotations and no source

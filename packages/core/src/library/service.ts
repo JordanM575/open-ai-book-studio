@@ -94,6 +94,7 @@ import { ChapterHistoryRestore, type HistoryChapterWrite, type HistoryMutationRe
 import { PlanningService } from "../planning/service";
 import { PlanningRecovery } from "./planning-recovery";
 import { ReviewRecordStore } from "../review/record-store";
+import { WorkflowRecordStore } from "../workflow/record-store";
 import { GoalService, type GoalHost } from "../organization/goals";
 import {
   HistoryError,
@@ -145,6 +146,8 @@ export class LibraryService {
   readonly planningRecovery: PlanningRecovery;
   /** Explicit saved review records (039 T014). Leaf APIs only; no IPC/UI mounting here. */
   readonly reviewRecords: ReviewRecordStore;
+  /** Checked workflow records (037 T023). Leaf APIs only; no scheduler/execution/publication here. */
+  readonly workflowRecords: WorkflowRecordStore;
 
   private constructor(
     private readonly env: LibraryEnvironment,
@@ -167,6 +170,12 @@ export class LibraryService {
     this.goals = new GoalService(host);
     this.planningRecovery = new PlanningRecovery(host, env.storage);
     this.reviewRecords = new ReviewRecordStore({
+      ...this.writeHost,
+      storage: env.storage,
+      runtime: env.runtime,
+      deviceId: device.id
+    });
+    this.workflowRecords = new WorkflowRecordStore({
       ...this.writeHost,
       storage: env.storage,
       runtime: env.runtime,
