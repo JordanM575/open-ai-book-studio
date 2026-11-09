@@ -7,6 +7,13 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+
+### Empty review result disclosure
+
+- Qualify a worker's zero-finding result as unverified for both complete and partial repetition
+  reports. Keep skipped-chapter and insufficient-text explanations distinct; preserve selected-passage
+  verification and read-only behavior. Cover genuine empty reports and controlled omitted results.
+
 ### Review integration
 
 - Integrate the accepted hands-free controls with the selected-evidence verification changes,

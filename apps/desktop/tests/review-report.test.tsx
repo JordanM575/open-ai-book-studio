@@ -141,7 +141,9 @@ describe("ReviewReportDialog", () => {
     expect(definitions).toContain("overlapping three-token");
 
     const findings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
-    expect(findings).toContain("No repeated three-token sequences in the saved chapters");
+    expect(findings).toContain("Unverified result");
+    expect(findings).toContain("worker reported no repeated three-token sequences in the saved chapters");
+    expect(findings).toContain("This does not confirm that none exist");
   });
 
   test("partial and insufficient-evidence reports use their own copy, never a false success", () => {
@@ -160,6 +162,11 @@ describe("ReviewReportDialog", () => {
       freshness: { status: "current" }
     });
     expect(testing.within(document.body).getByTestId("review-status").textContent ?? "").toContain("Partial report");
+    const partialFindings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
+    expect(partialFindings).toContain("Unverified result");
+    expect(partialFindings).toContain("worker reported no repeated three-token sequences in the analyzed chapters");
+    expect(partialFindings).toContain("This does not confirm that none exist");
+    expect(partialFindings).toContain("Skipped chapters were not scanned");
 
     testing.cleanup();
     const emptySource: ReviewSourceSnapshot = { ...dialogSource, chapters: [dialogSource.chapters[0]!] };
@@ -173,6 +180,9 @@ describe("ReviewReportDialog", () => {
     expect(testing.within(document.body).getByTestId("review-status").textContent ?? "").toContain(
       "Not enough saved text to review"
     );
+    const emptyFindings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
+    expect(emptyFindings).toContain("Not enough saved text for phrase findings");
+    expect(emptyFindings).not.toContain("reported no repeated");
   });
 
   test("a stale report names the changed chapter and disables evidence navigation", () => {
@@ -585,6 +595,30 @@ function changeLaterOccurrence(
 }
 
 describe("workspace review entry to report", () => {
+  test.each([false, true])("an omitted worker result discloses unverified zero findings (partial=%s)", async (partial) => {
+    const detail: BookDetail = { ...firstDetail, chapterReadIssues: partial
+      ? [{ fileName: "0003-unreadable-fixture.md", order: 3, reason: "unreadable" }] : [] };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) => {
+        expect(analysis.findings.length).toBeGreaterThan(0);
+        return { ...analysis, findings: [] };
+      }, "Unverified result");
+      const findings = queries.getByTestId("review-findings").textContent ?? "";
+      expect(findings).toContain("worker reported no repeated three-token sequences");
+      expect(findings).toContain("This does not confirm that none exist");
+      expect(findings.includes("Skipped chapters were not scanned")).toBe(partial);
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(at(detail.chapters, 0).content);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
   test.each(["swapped", "label", "token-start", "token-end", "apostrophe", "astral"] as const)(
     "opening a %s claim refuses false finding association and retains the unavailable report", async (defect) => {
       const prefix = defect === "token-start" ? "x" : defect === "apostrophe" ? "x’" : defect === "astral" ? "𐐀" : "";

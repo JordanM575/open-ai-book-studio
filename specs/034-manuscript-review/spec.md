@@ -87,7 +87,10 @@ it does not change the existing count contract or manuscript format.
 - **FR-006 — Definitions and coverage.** The report MUST make each metric's definition available
   beside its result. It MUST show the number of chapters in scope, included, empty and skipped, and
   give a plain-language reason for every skipped chapter. It MUST distinguish a complete report
-  with no phrase matches from partial coverage and from insufficient evidence.
+  with no phrase matches from partial coverage and from insufficient evidence. When worker findings
+  are checked only as passages are opened, zero findings MUST also be labeled as an unverified
+  worker result, not confirmation that no repetitions exist. Saved-source freshness alone does not
+  verify aggregate completeness; skipped chapters and insufficient text keep their own explanations.
 - **FR-007 — Exact evidence navigation.** Every phrase finding MUST be tied to its chapter identity,
   source version/hash and exact span in the saved body, and MUST show its chapter title/order and a
   short excerpt. Selecting a finding MUST open that chapter and highlight the exact span if the

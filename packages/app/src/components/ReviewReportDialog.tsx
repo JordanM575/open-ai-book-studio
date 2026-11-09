@@ -271,8 +271,8 @@ function ReportBody({
             {report.status === "insufficient-evidence"
               ? "Not enough saved text for phrase findings."
               : report.status === "partial"
-                ? "No repeated three-token sequences in the analyzed chapters. Skipped chapters were not scanned."
-                : "No repeated three-token sequences in the saved chapters."}
+                ? "Unverified result · The local review worker reported no repeated three-token sequences in the analyzed chapters. This does not confirm that none exist. Skipped chapters were not scanned."
+                : "Unverified result · The local review worker reported no repeated three-token sequences in the saved chapters. This does not confirm that none exist."}
           </p>
         ) : (
           <PagedFindings findings={report.findings} sources={report.source.chapters} navigationDisabled={navigationDisabled} onNavigate={onNavigate} onMalformedEvidence={onMalformedEvidence} />
