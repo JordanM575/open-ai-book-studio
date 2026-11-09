@@ -148,10 +148,11 @@ manuscripts, credentials, live providers, paid services or devices.
   and copy verified attached image files to the export destination without changing the 019 source
   files. Test with synthetic text and image fixtures. The subordinate gates below own acceptance;
   this task stays unchecked until they and T016/T017/T019 close.
-  - [ ] **T014-C** Independent review of the recorded D-202 packet against its exact head. Owner:
+  - [x] **T014-C** Independent review of the recorded D-202 packet against its exact head. Owner:
     independent reviewer. Evidence: scoped review accepting or revising the decision, format, spec,
-    plan and changelog wording at that head. This gate closes no implementation task.
-  - [ ] **T014-P** Pure planner under one owner. Owner: planner implementer. Evidence: focused tests
+    plan and changelog wording at that head. This gate closes no implementation task. Closed:
+    independently accepted at `914794f`; merged in PR #49.
+  - [x] **T014-P** Pure planner under one owner. Owner: planner implementer. Evidence: focused tests
     asserting complete inventories and exact bytes, the escape notation and its inverse, blank-title
     annotations, parsed-body fidelity, legacy exclusion including the
     `key.toLowerCase().replace(/[^a-z]/g, "")` author/subtitle classification with title-page-off and
@@ -159,8 +160,8 @@ manuscripts, credentials, live providers, paid services or devices.
     excluded, ordinary `authorname` represented, and `authorname` with title page off excluded),
     per-dimension exact-boundary and plus-one refusals, a complete once-per-file retrieval under all
     budgets, and caller/output mutation isolation. No Library, host or interface change is part of
-    this gate.
-  - [ ] **T014-Q0** Host protocol and production policy contract. Owner: shared host integration
+    this gate. Closed: independently accepted at `fe2d7a3`; merged in PR #51.
+  - [x] **T014-Q0** Host protocol and production policy contract. Owner: shared host integration
     owner. Evidence: specified enumeration and observation rules, trusted construction handoff,
     measured acquisition and memory peaks, production limit values and per-target capability matrix,
     including change-and-change-back cases that the bundle wording discloses rather than denies.
@@ -168,17 +169,19 @@ manuscripts, credentials, live providers, paid services or devices.
     (enumeration and closing-sample observation, §3 verification handoff, `Q0 production policy v1`
     with synthetic planner measurements, and a no-claim capability matrix). This records the
     contract only; the box stays unchecked pending independent review, and implemented acquisition
-    counts and host peaks remain T014-Q evidence.
-  - [ ] **T014-Q** Capture, image verification and publication. Owner: shared host integration owner.
+    counts and host peaks remain T014-Q evidence. Closed: independently accepted at `81b474e`;
+    merged in PR #52.
+  - [x] **T014-Q** Capture, image verification and publication. Owner: shared host integration owner.
     Evidence: selected records bound to verified private bytes, genuine no-replace publication with
     protected identities and owned staging/cleanup, existing-folder replacement kept as named
     successor work, and injected staging, write, close and permission failures preserving prior
-    output and source bytes.
-  - [ ] **T014-U** Mounted journey. Owner: interface integrator after P and Q interfaces agree.
+    output and source bytes. Closed: independently accepted at `e91ac11`; merged in PR #53.
+  - [x] **T014-U** Mounted journey. Owner: interface integrator after P and Q interfaces agree.
     Evidence: validated transport, bundle-bound **Continue without them** / **Cancel**, accessible
     warnings and written-file lists, destination-picker cancel, accepted pre-commit cancellation
     that actually prevents publication, and truthful late or unknown settlement, each exercised in
-    synthetic end-to-end journeys without exposing the folder target before this gate passes.
+    synthetic end-to-end journeys without exposing the folder target before this gate passes. Closed:
+    independently accepted at `255fc77`; merged in PR #54.
 - [ ] **T015** After T006, implement the selected PDF and EPUB renderer adapters. Validate structural
   output with synthetic books containing ordered matter, verse-like lines and attached synthetic
   images. Keep preview copy approximate and make no eligibility, pagination, measurement or publisher
