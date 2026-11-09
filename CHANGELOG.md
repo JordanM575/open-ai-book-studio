@@ -8,6 +8,12 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Review and workflow storage integration
+
+- Integrate the accepted workflow storage, bounded reads and journal receipt ownership with the
+  repetition review, retaining both feature histories and their independent acceptance boundaries.
+- Remove inherited merge-label lines from the workflow records and mounted editor history.
+
 ### Review failure details
 
 - Preserve fresh skipped filenames and reasons in run-local failure views, with source-read issues
@@ -58,6 +64,36 @@ Update the `Unreleased` section before every commit.
 - Bind malformed-page failures to the report lifetime independently of individual navigation reads,
   so current failures cancel pending navigation without affecting a replacement run. Synthetic
   regressions cover these boundaries; independent review and native/host acceptance remain open.
+### Pending receipt retirement
+
+- Keep every pending journal receipt reachable for retirement even after a newer possible write
+  loses its active ownership following an intent-note failure. Remove registry roots on settlement
+  or retirement and release settled receipt references while preserving needed predecessor outcomes.
+- Cover three-service remove, move and accepted-deletion interleavings across before/after note and
+  author publication failures, equal/different intents and unchanged tombstones. Preserve legitimate
+  unsuperseded restoration and single-attempt author writes.
+
+### Workflow storage integration
+
+- Integrate the accepted manual planning records with workflow storage and journal-receipt retirement,
+  retaining both feature histories and their checked-publication contracts.
+
+### Retired journal receipts
+
+- Retire pending write-receipt predecessor chains even when a removal or move leaves an existing
+  tombstone unchanged. A later refused write cannot clear that tombstone through an older verified
+  result. Preserve verified-predecessor restoration for unsuperseded writes and best-effort journal
+  failure behavior; cover both settlement orders and equal-byte outside reappearance.
+
+### Verified journal note ownership
+
+- Settle verified saves through their initiating one-shot receipt so delayed snapshots cannot undo
+  later accepted drift baselines, newer verified or uncertain notes, removals or moves. Track missing
+  paths without inventing observed baselines, and restore verified predecessors after a newer
+  definitive refusal. Keep unaccepted outside changes reviewable and journal failures best effort.
+- Add synthetic workflow/shared-writer ordering and journal-failure regressions, including same-port
+  service instances and strict test compilation. Cross-process atomicity and live-host timing remain
+  separate evidence requirements; 037 T023 and 038 T022 stay unchecked.
 
 ### Manual planning records
 
@@ -249,6 +285,41 @@ Update the `Unreleased` section before every commit.
   cancellation and 120-chapter/250k-word inputs. Inline review layers, retained-review mounting and
   native/release acceptance remain open.
 
+### Workflow records
+- Reconcile only the exact planned journal attempt after a definitive prepublication refusal, so
+  equal outside bytes remain reviewable. Preserve prior and newer same-hash intents, concurrent
+  notes and uncertain-publication recovery; out-of-order refusals cannot resurrect a refused plan.
+  Add positive workflow/shared-writer race, overlap, note-failure and recovery regressions. Journal
+  reconciliation remains best effort and does not retry author-file publication.
+- Enforce workflow byte ceilings at desktop and browser read boundaries, including checked-commit
+  comparisons/readbacks, drift scans, journal observations, watcher checks and move-copy fallbacks.
+  Oversized replacements are refused without truncation; a possible post-publication failure stays
+  uncertain and is never replayed. Service journal notes now record only the exact verified intended
+  write, so a subsequent outside replacement remains reviewable for new and existing paths.
+- Classify missing or non-string workflow envelope kinds as corrupt on read and invalid on write;
+  future/foreign string kinds remain unavailable, with exact file bytes retained and no write.
+- Bind final artifact readback to the exact intended metadata/body on both creation and no-op;
+  changed, missing, corrupt or unreadable final pairs report uncertainty without replay. Distinguish
+  future string semantics from malformed known states in workflow record reads.
+- Refuse copy-only metadata before any active workflow publication and enforce the run header's
+  control-only format. Document bounded conflict names and baseline tokens; artifact recovery
+  metadata points to its verified retained body. Unknown artifact/target/accounting semantics stay
+  unavailable and read-only. An orphan artifact is refused, never guessed or silently completed.
+- Add checked schema-1 workflow storage behind `LibraryService.workflowRecords` (037 T023). Checked
+  `run`, `task`, `attempt`, `effect` and `question` records require the exact previous raw hash and
+  revision, are parsed by the same build's codec before publication, are committed through the
+  Library's per-book queue and journal, and are verified by exact-byte readback. Immutable absent-only
+  `artifact` metadata plus its bounded body (≤1 MiB, `.md`/`.json`) and `context` manifests use the
+  same writer; metadata and body must agree on the exact SHA-256 and size, and a partial or
+  mismatched pair refuses. Stale, missing and racing bases keep the complete intended document under
+  `workflows/<runId>/conflicts/` with bounded names and full identity inside; an unverified
+  publication is reported as uncertain and never replayed. Malformed, duplicate-key, lone-surrogate,
+  lossy-number and oversized records are refused without rewriting; supported unknown plain fields
+  (including own `__proto__`) survive read-modify-write and newer closed-union members stay read-only.
+  There is no scheduler, dispatch, provider call, publication/effect execution, command/admission
+  writer, IPC/UI, pruning or deletion. T023 remains unchecked pending independent storage review;
+  T020–T022, T024–T042 and 038 T022 stay open.
+
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only
   reader reports with analyzer/profile/source/coverage attribution, bounded quotations and no source
@@ -325,7 +396,6 @@ Update the `Unreleased` section before every commit.
   restore that requires an absent destination and an unchanged book/conversation identity. No
   automatic pruning, quota or expiry. 037 T019 remains partial; v2 semantic migration, restore
   UI/IPC and independent review are still open.
-HEAD
 ### Mounted editor
 
 - Mount the exact-current CodeMirror surface in the manuscript editor: the existing wrapper keeps

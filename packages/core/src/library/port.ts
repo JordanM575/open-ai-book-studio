@@ -63,7 +63,13 @@ export interface LibraryWriteHost {
 }
 
 export interface LibraryPort {
-  readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null>;
+  /**
+   * Read exact bytes or refuse with `too-large`; never return a truncated snapshot. When maxBytes
+   * is supplied, the adapter must enforce it during the actual read, not just with an earlier stat.
+   * Production adapters also apply workflowReadLimit to workflow paths, including internal commit
+   * reads, even when the caller does not supply an explicit limit.
+   */
+  readFile(path: LibraryPath, options?: { maxBytes: number }): Promise<LibraryFileSnapshot | null>;
   listDirectory(path: LibraryPath): Promise<LibraryEntry[]>;
   /** Metadata only: expose unsupported names without following them, for unavailable-file UI. */
   inspectDirectory?(path: LibraryPath): Promise<LibraryInspectedEntry[]>;

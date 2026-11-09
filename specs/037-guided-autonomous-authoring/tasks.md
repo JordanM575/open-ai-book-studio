@@ -109,6 +109,31 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     qualified-maximum versus bounded-operation cost modes, and generation changes preserving budget
     history. Host permission, durable storage and adapter qualification remain required.
 - [ ] T023 Implement immutable artifact/context and checked run/task/attempt/effect/question storage.
+  **Partial (2026-11-08):** `LibraryService.workflowRecords` now owns the T023 storage slice. Checked
+  `run`, `task`, `attempt`, `effect` and `question` records commit canonical schema-1 bytes with the
+  exact previous raw hash/revision, readback verification, bounded conflict copies and journal-aware
+  commits. `artifact` metadata plus its bounded body (≤1 MiB, `.md`/`.json`) and `context` manifests
+  are absent-only immutable records; a partial or mismatched artifact pair refuses. Supported unknown
+  plain fields (including own `__proto__`) survive read-modify-write and newer closed-union members
+  stay read-only. Focused synthetic tests cover stale/racing/missing bases, idempotent no-ops,
+  malformed/duplicate-key/lone-surrogate/lossy-number/oversized refusal, artifact size and pair
+  checks, foreign book/run/kind refusal and a no-unchecked-writer guard. No scheduler, dispatch,
+  provider call, publication/effect execution, command/receipt-page or admission writer, IPC/preload/
+  UI, deletion or pruning is added. T023 stays unchecked pending fresh exact-head independent review;
+  T020–T022, T024–T042 and 038 T022 remain open.
+  **Journal correction:** a definitive prepublication refusal conditionally restores only its exact
+  intent receipt, preserving prior/newer same-hash plans, intervening notes and uncertain-publication
+  recovery. Overlapping refused receipts do not resurrect one another. Positive synthetic regression
+  matrices cover mutable/immutable/shared writers, new/existing paths, equal/different outside bytes,
+  note errors and settlement order. Fresh exact-head independent review and broad gates still precede
+  acceptance; journal best-effort failure and cross-process limitations remain explicit in FORMAT.
+  **Verified-note ownership correction (2026-11-08):** the initiating receipt also owns verified
+  baseline updates. Later accepted scans, verified/uncertain notes, removals and moves supersede
+  that claim, including previously unjournaled paths. A newer definitive refusal can restore its
+  predecessor's verified snapshot. The focused core set passes 211 tests; all 30 preserved v24
+  probes and 51 v22 journal controls pass, alongside 90 artifact/adapter controls and strict/workspace
+  typechecks. These overlapping synthetic checks do not establish live-host timing or close T023;
+  fresh exact-head review and integrated gates remain required.
 - [ ] T024 Add scoped attempt execution at the existing runtime seam; no ordinary full-book prompt/plugins.
 - [ ] T025 Add event-driven asynchronous scheduling, account limiter, zero automatic retries and no spin.
   - Pure portion only: ready/blocked/settling projections, pinned-route capacity decisions, no-progress/
