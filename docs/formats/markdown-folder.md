@@ -93,6 +93,48 @@ section or chapter is representable and produces no invented chapter. Author bod
 links are kept without rewriting or fetching, and no claim is made that their destinations resolve
 from this folder.
 
+The exact byte templates below are normative. `\n` is one LF byte. The escape notation in §4 applies
+to data segments only, never to the generated Markdown syntax. Saved order, side positions and
+selected-record positions in labels are primitive positive values in ASCII decimal, never locale
+formatting.
+
+- README is exactly `# Reading order\n\n`, then
+  `This folder is a copy, not a backup or a live manuscript. Existing body links are not checked or rewritten. Image copies may contain metadata.\n\n`,
+  then `Headings and navigation use visible escapes for whitespace and controls. Manuscript bodies keep their captured text.\n\n`.
+  It then holds one `- [<label>](<reading-file>)<annotation>\n` line per reading file in reading
+  order, where `<reading-file>` is that file's positional name from §2 and `<annotation>` is the
+  blank-title annotation from §4 (empty when none applies), or `No reading files.\n` when there are
+  no reading files.
+- Labels are exactly `Title page`; `Front matter <side-position>: <title-or-kind>`; `Contents`;
+  `Chapter <saved-order>: <title>`, or `Chapter <saved-order>` when the chapter title is blank;
+  `Illustration for Chapter <saved-order>: <title> (<selected-record-position>)`, or
+  `Illustration for Chapter <saved-order> (<selected-record-position>)` when the chapter title is
+  blank; and `Back matter <side-position>: <title-or-kind>`. Side positions count every saved
+  section on that side. Selected-record positions count every selected record for the chapter,
+  including omitted ones. `<title-or-kind>` is the encoded saved title for a nonblank title and
+  otherwise the fixed kind label from the existing `kindLabel`. Titles in labels are encoded data.
+- Contents is exactly `# Contents\n\n` plus the same `- [<label>](<reading-file>)<annotation>\n`
+  lines for chapters and back sections only, in their reading order, or `No entries.\n` when there
+  are none. It is separate from the README's complete navigation.
+- Title file is exactly `# <encoded display book title>\n\n`, followed in order by
+  `<encoded projected subtitle>\n\n` and `<encoded projected author>\n\n`, each only when nonempty.
+- Chapter file is exactly `# <encoded display chapter title>\n\n` followed by the exact captured
+  parsed body bytes, with nothing added after them.
+- Matter file with a nonblank title is exactly `# <encoded saved title>\n\n` followed by the exact
+  saved section body bytes. Matter with a blank title holds only its body, possibly zero bytes, with
+  no generated kind heading.
+- Illustration file is exactly `![<encoded placement label>](images/<ordinal>.<extension>)\n`,
+  where `<ordinal>` is the illustration file's own ordinal, `<extension>` is its verified format
+  (`png`, `jpg` or `webp`), and the placement label is the same descriptive label as its README link.
+
+Title-page projection uses canonical `settings.manuscript` and `readMatter`/`matterPlan` semantics,
+and an unreadable required matter value refuses. When matter is absent, null or semantically empty,
+the title-page plan is the legacy plan: the projected subtitle is `book.description.trim()` and there
+is no author. Otherwise the plan follows the titlePage toggle and projects `matter.subtitle.trim()`
+as the subtitle and `matter.author.trim()` as the author. These trims and omissions are deliberate
+D-169 projections, not exact raw-field preservation, and unknown fields are not copied into this
+folder.
+
 ## 4. Text representation
 
 Every emitted metadata or body string must be well-formed Unicode scalar text. A lone surrogate in any
@@ -103,10 +145,14 @@ Metadata uses two reversible stages, escape then Markdown-escape:
 
 1. Escape works scalar by scalar without normalization. A literal backslash doubles. Carriage return,
    line feed and tab become `\r`, `\n` and `\t`. A space at either edge or in a run of two or more
-   becomes `\s`; a single inner space stays a space. Other control and invisible scalars in the
-   contract's fixed ranges become `\u{HEX}` with uppercase hex of at least four digits. The named
-   carriage-return, line-feed and tab rules win over the ranges. Every other scalar is unchanged.
-2. Markdown-escape then prefixes every ASCII punctuation scalar with a backslash.
+   becomes `\s`; a single inner space stays a space. Every other scalar in the following fixed ranges
+   becomes `\u{HEX}`: the C0 and C1 controls U+0000–U+001F and U+007F–U+009F, U+00A0, U+00AD,
+   U+034F, U+061C, U+1680, U+180E, U+2000–U+200F, U+2028–U+202F, U+205F–U+206F, U+3000,
+   U+FE00–U+FE0F, U+FEFF, U+E0000–U+E007F and U+E0100–U+E01EF. `HEX` is uppercase, at least four
+   digits, without unnecessary leading zero beyond that minimum. The named carriage-return, line-feed
+   and tab rules win over the ranges. Every other scalar is unchanged.
+2. Markdown-escape then prefixes every ASCII punctuation scalar in U+0021–U+002F, U+003A–U+0040,
+   U+005B–U+0060 and U+007B–U+007E with a backslash.
 
 For a known generated data segment the stages reverse exactly: remove the punctuation escapes, then
 read the escape notation left to right. Because literal backslashes were doubled first, author text
@@ -189,8 +235,9 @@ The counted dimensions are input strings in UTF-16 code units and scalar UTF-8 b
 collections, per-image and total image bytes with identical bytes in distinct records counted
 separately, actual generated UTF-8 counted at every occurrence including repeated labels and
 annotations, total output bytes, regular files and directory entries, cumulative retrieval requests
-and bytes, and a conservative accounted payload covering retained input, captured images,
-materialized output, declared temporary payloads and every issued copy, with overlaps charged even
+and bytes, and a conservative accounted payload covering retained input strings charged at
+2 × code units (UTF-16 code units), captured images, materialized output, declared temporary
+payloads and every issued copy, with overlaps charged even
 where storage could be shared. Counting is bounded and checked before materialization, and the
 temporary-payload strategy must be documented by any implementation. A fresh plan must leave room to
 retrieve every output file once under every limit at the same time, not merely under one counter;

@@ -155,9 +155,11 @@ manuscripts, credentials, live providers, paid services or devices.
     asserting complete inventories and exact bytes, the escape notation and its inverse, blank-title
     annotations, parsed-body fidelity, legacy exclusion including the
     `key.toLowerCase().replace(/[^a-z]/g, "")` author/subtitle classification with title-page-off and
-    whitespace controls, per-dimension exact-boundary and plus-one refusals, a complete once-per-file
-    retrieval under all budgets, and caller/output mutation isolation. No Library, host or interface
-    change is part of this gate.
+    whitespace controls and the paired D1 fixtures (Kelvin-sign `Kauthor` with initial U+212A
+    excluded, ordinary `authorname` represented, and `authorname` with title page off excluded),
+    per-dimension exact-boundary and plus-one refusals, a complete once-per-file retrieval under all
+    budgets, and caller/output mutation isolation. No Library, host or interface change is part of
+    this gate.
   - [ ] **T014-Q0** Host protocol and production policy contract. Owner: shared host integration
     owner. Evidence: specified enumeration and observation rules, trusted construction handoff,
     measured acquisition and memory peaks, production limit values and per-target capability matrix,
