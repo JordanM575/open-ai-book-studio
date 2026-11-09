@@ -20,6 +20,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `admission.ts` | `advanceAdmissionGeneration`, `parkConnection`, `continueConnection` | Preserve budgets across pause/recovery generations. Old reservations cannot dispatch. Auth/quota parks; 429 records eligibility only. Explicit Continue removes a park, never creates a request. |
 | `value.ts` | `copyValue`, `AuthoringError` | Plain acyclic value admission without getters/toJSON, exact escaped JSON-size accounting, well-formed Unicode, depth 64, and checked arithmetic. This is not a wire encoder/parser. |
 | `wire.ts` | `decodeWorkflowRecord`, `encodeWorkflowRecord`, `canonicalWorkflowJson`, `WORKFLOW_LIMITS` | Raw schema-1 UTF-8 JSON admission and deterministic canonical encoding for the FORMAT workflow records. Refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy numeric lexemes, unsupported versions, foreign owner/kind/prefix, stale bases/links, depth and per-kind size/count overflow before returning a semantic record. Preserves supported unknown plain fields; no I/O, crypto, clock or host action. |
+| `adoption-receipt.ts` | `AdoptionReceipt`, `validateAdoptionReceipt`, `countAdoptedChapters`, `ADOPTION_RECEIPT_LIMITS` | Versioned recorded adoption receipt (FR-017) and the pure adopted-chapter counter for T032 cadence. Binds one exact `artifact` candidate, `chapterId`, `resultVersion`/`resultHash`, `owner`, `grant`/`direction` references and caller-supplied `sequence`/`adoptedAt`; counts distinct chapters since an exclusive marker. No prose, clock or adoption decision. |
 
 Factories and reducers defensively copy before returning recursively frozen snapshots. They never
 freeze or mutate caller objects, prior snapshots, commands or receipts. Inputs and supported unknown
@@ -96,6 +97,27 @@ chapters, supplying the first-chapter flag only until that first check-in is tak
 since-check-in counters after a check-in. The policy and evaluator perform no scheduling, persistence,
 inbox or host wiring; the campaign-continuation adapter now emits cadence when the caller supplies
 counted progress (host wiring that supplies it is a later slice).
+
+## Adoption receipts
+
+`adoption-receipt.ts` records the state FR-017 adoption needs before cadence can count it. A
+receipt (`schemaVersion: 1`, `kind: "adoption-receipt"`, id `adoption_…`) binds one exact
+candidate — an `artifact` reference whose hash is the body SHA-256 and whose revision is the
+artifact revision — to `chapterId` and the published chapter's `resultVersion`/`resultHash`
+(the effect receipt's names), plus the adopting `owner`, a `grant` reference and a `direction`
+reference, both checked by `validateReference` against that owner. Adding `grant` to
+`ReferenceKind` is the only contracts change; no grant reference kind existed before. Ordering
+is caller-supplied (`sequence` 1–1,000,000 and millisecond `adoptedAt`); validation reads no
+clock and refuses unknown versions, foreign references and malformed hashes without coercion.
+It proves a record is well-formed, exact and attributable, never that adoption was wise.
+
+`countAdoptedChapters(receipts, owner, since?)` is the pure counter a later cadence host will
+call. The marker is exclusive: only receipts strictly after the marker sequence or instant
+count, so a receipt at the last taken check-in is not recounted; no marker counts from the
+beginning. Chapters are distinct within the window — re-adopting one chapter counts once —
+and `firstAdoptedChapterOccurred` reports any adoption at all, independent of the window.
+Foreign book/run receipts refuse. Checked storage lives beside the workflow store; see
+`packages/core/src/workflow/README.md`.
 
 ## Admission and accounting
 

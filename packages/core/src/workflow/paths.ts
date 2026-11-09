@@ -52,6 +52,10 @@ export const workflowConflictsPath = (bookId: string, runId: string): LibraryPat
   toLibraryPath(["books", bookId, WORKFLOW_DIR, runId, WORKFLOW_CONFLICTS]);
 export const workflowConflictPath = (bookId: string, runId: string, fileName: string): LibraryPath =>
   toLibraryFilePath(["books", bookId, WORKFLOW_DIR, runId, WORKFLOW_CONFLICTS, fileName]);
+export const adoptionReceiptsPath = (bookId: string, runId: string): LibraryPath =>
+  toLibraryPath(["books", bookId, WORKFLOW_DIR, runId, "adoptions"]);
+export const adoptionReceiptPath = (bookId: string, runId: string, receiptId: string): LibraryPath =>
+  toLibraryFilePath(["books", bookId, WORKFLOW_DIR, runId, "adoptions", `${receiptId}.json`]);
 
 /** A human-readable library path for messages. Never used as a host path. */
 export function workflowDisplayPath(path: LibraryPath): string {

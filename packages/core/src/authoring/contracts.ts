@@ -6,7 +6,7 @@ export interface Owner {
   readonly runId: string;
 }
 
-export type ReferenceKind = 'task' | 'direction' | 'context' | 'artifact' | 'effect' | 'attempt';
+export type ReferenceKind = 'task' | 'direction' | 'context' | 'artifact' | 'effect' | 'attempt' | 'grant';
 export interface Reference<K extends ReferenceKind = ReferenceKind> {
   readonly kind: K;
   readonly owner: Owner;
