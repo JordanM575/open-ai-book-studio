@@ -23,11 +23,16 @@ L05/L09/L12; the earlier foreground-only review slices do not complete these jou
 ## Two completion milestones
 
 - **L23: desktop release sign-off.** Complete the supported desktop product and its installation,
-  safety, accessibility, documentation and release evidence. Planned Android, glasses and audiobooks
-  do not block this milestone.
+  safety, accessibility, documentation and release evidence for the explicitly supported feature and
+  target matrix. Planned Android, glasses and audiobooks do not block this milestone. A capability
+  omitted from that matrix remains open in its full retained lane; see the
+  [milestone tradeoffs](PRODUCT-MAP-DESIGN.md#release-milestone-alternatives).
 - **L24: requested roadmap complete.** Close every retained feature/platform lane with acceptance
   evidence, or record an explicit author-approved scope change. Delegated engineering decisions do
-  not permit quiet deferral. [Retained follow-through](RETAINED-DELIVERY.md) owns original omissions.
+  not permit quiet deferral. Its separate direct acceptance conjunction covers every lane L00–L23;
+  the eight incoming sequencing arrows do not replace it. [Retained follow-through](RETAINED-DELIVERY.md)
+  owns original omissions. The [map rationale](PRODUCT-MAP-DESIGN.md) compares this two-milestone
+  choice with one all-target sign-off.
 
 The published CLI/MCP and ambient voice workflows are existing capabilities. Their lanes finish
 conformance and gaps; integrated spec 038 owns the voice preferences. They do not rebuild those features from scratch. The ambient
@@ -106,9 +111,15 @@ flowchart TD
   L06 -. optional new character records .-> L13
 ```
 
-Solid arrows are 63 unconditional prerequisite edges. Three dashed edges are conditional contracts
-with explicit scope in `conditionalDependencies`; they do not gate manuscript-only manual review
-or narrator-only audio. The union of both edge types is acyclic.
+The 63 solid arrows gate applicable upstream **contracts** for whole retained-lane acceptance, not
+all independent implementation slices. Three dashed edges are independent conditional contracts
+with exact scope in `conditionalDependencies`. Manuscript-only review does not require new planning
+records; manual provider/model selection does not require routing; narrator-only audio does not
+require new character records. The union is acyclic. The
+[edge acceptance register](PRODUCT-ACCEPTANCE-GATES.md) names each claim, owner, required evidence
+and refusal; it does not assert that any evidence passed. The distinct L24 direct conjunction is not
+drawn as sequencing arrows. See the [map rationale](PRODUCT-MAP-DESIGN.md) for the alternatives and
+tradeoffs.
 
 ## Execution and ownership
 
@@ -145,13 +156,17 @@ cross-device trust, real-device distribution and glasses transport are not impli
   review/casting use cannot silently remove this lane from completion. D-163–D-168 select the first
   manual planning/organization contracts; series/generated follow-on decisions remain individual work.
 - **Claim-scoped dependencies:** cover inputs for publishing, voice for Android and the supported
-  desktop matrix need explicit acceptance scope. The graph's coarse lanes are not permission to
-  make every future capability a desktop release blocker, or to skip a prerequisite of a claimed
-  capability. Record these interpretations with the acceptance slice before implementation.
+  desktop matrix have explicit applicability and refusal cases in the
+  [edge acceptance register](PRODUCT-ACCEPTANCE-GATES.md). The graph's coarse lanes are not
+  permission to make every future capability a desktop release blocker, or to skip a prerequisite
+  of a claimed capability. Acceptance still requires the applicable evidence and decisions.
 
 The 63 solid and three conditional edges retain the existing claim-scoped interpretations.
-Acyclicity and ownership validation prove structural consistency, not that open design decisions
-are settled. The execution plan records concrete acceptance slices before dispatch.
+A separate direct L24 conjunction requires all retained lanes L00–L23, not just the eight incoming
+arrows or their transitive predecessors. Acyclicity and ownership validation prove structural
+consistency, not that evidence passed or open design decisions are settled. The
+[map rationale](PRODUCT-MAP-DESIGN.md) explains the selected boundaries; the execution plan records
+concrete acceptance slices before dispatch.
 
 ## Current next work
 

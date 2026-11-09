@@ -6,7 +6,14 @@
   "statusBaseline": "19ea1c791c586e64c957f2c43eb379b33d2056e9",
   "statusDate": "2026-11-08",
   "statusEvidence": "Merged foundations through PR32–PR42, PR46 and PR47; PR43–PR45 remain unmerged candidates. Original reviewedBaseline/date remain historical. DELIVERY-FORECAST.md and RETAINED-DELIVERY.md own next slices and follow-ons. Not a new runtime audit or release approval.",
-  "meaning": "Dependencies gate completion of the remaining work, not the existence of already implemented slices. Research-derived scope remains proposed until its spec and decisions are accepted.",
+  "meaning": "Solid edges gate applicable upstream contracts for acceptance of a lane's whole retained scope, not every independent implementation slice or the existence of implemented slices. Conditional edges apply independently only when their recorded conditions hold. The edge register states claim, contract, evidence and refusal requirements; it is not evidence that they passed or that open decisions were accepted.",
+  "gateRegister": "product-acceptance-gates.json",
+  "terminalAcceptance": {
+    "lane": "L24",
+    "kind": "direct-retained-scope-conjunction",
+    "obligations": ["L00", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11", "L12", "L13", "L14", "L15", "L16", "L17", "L18", "L19", "L20", "L21", "L22", "L23"],
+    "meaning": "L24 directly requires retained-scope acceptance of every listed lane, or an explicit author-approved scope change. This conjunction is separate from the sequencing arrows; neither eight incoming arrows nor transitive reachability substitutes for these direct obligations. An unsupported or unclaimed desktop capability cannot close its full retained lane or L24."
+  },
   "conditionalDependencies": [
     {"from":"L06","to":"L09","when":"Review includes new 030 planning records; selected manuscript-only review does not require them."},
     {"from":"L14","to":"L09","when":"An accepted future review slice uses routing policy; manual provider/model selection does not require routing."},

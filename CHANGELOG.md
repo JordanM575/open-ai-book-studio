@@ -22,6 +22,15 @@ Update the `Unreleased` section before every commit.
   enforcement, media decisions and provider qualification open. Explain the selected autonomous
   authoring architecture's alternatives and costs without claiming runtime acceptance.
 
+### Completion graph acceptance contracts
+
+- Record claim-scoped contract, evidence and refusal requirements for all 66 existing lane
+  relationships, with linked owners and independent optional planning, routing and casting gates.
+- Make L24's direct conjunction of all 24 retained lanes explicit without adding sequencing arrows;
+  document the desktop and full-roadmap milestone tradeoffs and navigate to principal owners.
+- Extend structural validation and isolated malformed-fixture tests without treating a graph pass as
+  implementation, evidence, decision or release acceptance.
+
 ### Current requirements and delivery forecast
 
 - Keep the continuation decision and format candidate-labelled until their reviewed contracts are
