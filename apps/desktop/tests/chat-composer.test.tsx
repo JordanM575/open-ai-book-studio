@@ -138,6 +138,28 @@ function composer(): { input: HTMLElement; view: ReturnType<typeof testing.withi
 }
 
 describe("chat composer", () => {
+  test("ordinary typed retry preserves the request and its words remain eligible for the next history", async () => {
+    const { start } = renderComposer(null, async () => ({ ok: false, error: { code: "offline", message: "Synthetic offline" } }));
+    const { input, view } = composer();
+    await testing.act(async () => {
+      testing.fireEvent.change(input, { target: { value: "Deliberately typed first request." } });
+      testing.fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await view.findByTestId("agent-retry-request");
+    const first = start.mock.calls[0]?.[0];
+    await testing.act(async () => testing.fireEvent.click(view.getByTestId("agent-retry-request")));
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(start.mock.calls[1]?.[0]).toEqual(first);
+    await view.findByTestId("chat-send");
+    await testing.act(async () => {
+      testing.fireEvent.change(input, { target: { value: "Separate typed request." } });
+      testing.fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await testing.waitFor(() => expect(start).toHaveBeenCalledTimes(3));
+    expect(start.mock.calls[2]?.[0]).toMatchObject({ prompt: "Separate typed request.",
+      history: [{ role: "user", text: "Deliberately typed first request." }] });
+  });
+
   test("stop return keeps the composer stopping until the terminal receipt and shows persistence failure", async () => {
     const { start, fire } = renderComposer();
     const { input, view } = composer();
