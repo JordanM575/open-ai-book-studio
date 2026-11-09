@@ -99,6 +99,20 @@ const speakInput = z.object({
 
 const ambientRequestSchema = z.object({ bookId: idSchema, chapterId: idSchema });
 
+/**
+ * The authoring cadence policy the renderer may choose. Bounds mirror
+ * `CHECKIN_CADENCE_LIMITS` in the authoring contracts; the adapter
+ * revalidates with its own validator. Counted progress is host-counted
+ * only, so a renderer-supplied progress shape is refused here.
+ */
+const cadencePolicyInput = z.strictObject({
+  version: z.literal(1),
+  adoptedChapterInterval: z.number().int().min(1).max(1024),
+  savedWordInterval: z.number().int().min(1).max(1_000_000),
+  afterFirstChapter: z.boolean(),
+  onIrreversibleChoice: z.boolean()
+});
+
 /** One checked campaign's check-in lookup. Ids only; no path is ever accepted. */
 const continuationCheckinInput = z.strictObject({
   bookId: idSchema,
@@ -106,7 +120,8 @@ const continuationCheckinInput = z.strictObject({
   expected: z.strictObject({
     revision: z.number().int().min(1).optional(),
     manifestHash: hashInput.optional()
-  }).optional()
+  }).optional(),
+  cadence: z.strictObject({ policy: cadencePolicyInput.optional() }).optional()
 });
 
 /** The `book.json` fields the renderer may write. Identity, schema and dates are the main process's. */
@@ -261,7 +276,11 @@ export function registerIpc(
       : undefined;
     return readContinuationCheckin(
       studio.requireLibrary(),
-      { bookId: parsed.bookId, campaignId: parsed.campaignId, ...(expected ? { expected } : {}) },
+      {
+        bookId: parsed.bookId, campaignId: parsed.campaignId,
+        ...(expected ? { expected } : {}),
+        ...(parsed.cadence ? { cadence: parsed.cadence } : {})
+      },
       getCoordinatorIdentity()
     );
   });

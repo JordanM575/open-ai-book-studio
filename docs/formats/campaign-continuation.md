@@ -105,9 +105,26 @@ The desktop host (039 T018 seam 6b) exposes that mapping as one read-only
 campaign is loaded through the store readers above, and the counted inputs cross the `Result`
 envelope with the leaf's refusal codes preserved as typed failures. The 037 run owner and
 direction are host-supplied; this build registers no coordinator session in the main process,
-so the channel refuses truthfully until one exists rather than inventing an owner. The host does
-not yet supply cadence inputs, so the channel emits no cadence section yet. Coordinator
-execution, a presenter surface, a portable archive/export workflow and independent review
+so the channel refuses truthfully until one exists rather than inventing an owner. Host cadence
+supply through that channel is withheld until adoption is countable: the host would count
+saved words only with the canonical `countWords` over chapter bodies loaded through the
+existing `Library.readBook` reader, but no adoption receipts or provenance are recorded that
+distinguish a coordinator-adopted chapter from any other saved chapter, so chapters present
+cannot be named adopted chapters and `0` is also unverified. Cadence is therefore withheld
+(no `cadence` key) in all cases until adoption is countable from recorded
+receipts/provenance; the saved-word counting code is retained as the honest subset that
+resumes then but is not emitted today. The 037 question store primitive exists
+(`WorkflowRecordStore.readQuestion`/`saveQuestion` over `questions/<questionId>.json`), but
+there is no durable question inbox, no irreversible classification on the question record,
+and no host-readable pending-irreversible source, so when adoption becomes countable
+`irreversibleChoicePending` must also be read from recorded question state or supply stays
+withheld — supply must not resume on adoption receipts alone. Supply remains scoped to the
+pre-checkpoint window (a checkpoint record or an unreadable chapter also withholds), and
+withheld cadence stays distinguishable from an evaluated cadence with `due: false` while
+counted inputs still succeed without a cadence section. The channel still validates policy
+input and refuses renderer-supplied progress: the renderer may only choose the versioned
+cadence policy; counted progress is never accepted from the renderer. Coordinator execution,
+presenter display of cadence, a portable archive/export workflow and independent review
 remain separate work. These leaves and the storage slices have focused synthetic tests, not
 independent acceptance or a self-contained archive.
 

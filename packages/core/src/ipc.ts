@@ -33,7 +33,9 @@ import type { BookMatter, SaveMatterResult } from "./matter";
 import type { VoicePreferences } from "./providers/voice-preferences";
 import { planningChannels, type PlanningApi } from "./library/planning-api";
 import { reviewRecordChannel, type ReviewRecordApi } from "./library/review-record-api";
-import type { ContinuationCheckinInput } from "./review/campaign-continuation-checkin";
+import type {
+  ContinuationCheckinCadenceRequest, ContinuationCheckinInput
+} from "./review/campaign-continuation-checkin";
 export { createPlanningApi, planningChannels, planningHandler, planningValue } from "./library/planning-api";
 
 export type { VoicePreferences } from "./providers/voice-preferences";
@@ -394,6 +396,14 @@ export interface ReadContinuationCheckinInput {
   bookId: string;
   campaignId: string;
   expected?: { revision?: number; manifestHash?: string };
+  /**
+   * Optional cadence policy choice only. The renderer may choose the
+   * versioned policy; counted progress is always counted by the desktop
+   * host from Library state, never supplied by the renderer. When the
+   * host cannot count every progress input honestly it withholds the
+   * cadence section entirely instead of fabricating a value.
+   */
+  cadence?: { policy?: ContinuationCheckinCadenceRequest["policy"] };
 }
 
 export interface SaveChapterInput {

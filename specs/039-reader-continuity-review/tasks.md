@@ -110,6 +110,26 @@ task is completed. T010 retains the independent correction gate. The policy amen
     absence of any invented measure; the hidden smoke run covers the mounted panel and its
     no-coordinator state. No coordinator execution or task box is completed by this slice;
     T018 stays unchecked.
+  - Partial evidence (cadence host supply, desktop host only): host cadence supply through
+    the `continuation:checkin` channel is withheld until adoption is countable. The host
+    would count saved words only with the canonical `countWords` over chapter bodies loaded
+    through the existing `Library.readBook` reader, but no adoption receipts or provenance
+    are recorded that distinguish a coordinator-adopted chapter from any other saved chapter,
+    so chapters present cannot be named adopted chapters and `0` is also unverified. Cadence
+    is therefore withheld (no `cadence` key) in all cases until adoption is countable from
+    recorded receipts/provenance; the saved-word counting code is retained as the honest
+    subset that resumes then but is not emitted today. The 037 question store primitive
+    exists (`WorkflowRecordStore.readQuestion`/`saveQuestion`), but there is no durable
+    question inbox, no irreversible classification, and no host-readable pending-irreversible
+    source, so when adoption becomes countable `irreversibleChoicePending` must also be read
+    from recorded question state or supply stays withheld — supply must not resume on
+    adoption receipts alone. Supply remains scoped to the pre-checkpoint window; a checkpoint
+    record or an unreadable chapter also withholds cadence while counted inputs still succeed,
+    distinguishable from an evaluated `due: false`. The channel still validates policy input
+    and refuses renderer-supplied progress: the renderer may only choose the versioned policy
+    (Zod-validated before Library access); renderer-supplied progress refuses as `invalid`,
+    and the production no-coordinator `unsupported` refusal is unchanged. No UI change, no
+    coordinator session is fabricated, and T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
   - Partial evidence (seam 6d, measurement only): `apps/desktop/tests/continuation-checkin-measurement.test.tsx`
