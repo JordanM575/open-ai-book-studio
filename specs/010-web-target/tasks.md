@@ -58,7 +58,7 @@ Tasks are ordered. `[P]` means safe to do in parallel with another `[P]` task in
 - Phase 4 archive service can be developed after the port contract and tested against the in-memory adapter.
 - Spec 011 owns provider OAuth, browser credential UI and provider-specific direct access; spec 010 supplies the accepted storage policy and browser capability boundaries.
 - Spec 013 owns shared UI extraction, `apps/web` entry, Vite/static output, build metadata and deployment. Its web shell consumes the adapters produced here.
-- Spec 014 owns Capacitor native setup, safe areas, orientation and iOS Simulator checks after spec 013 produces the real renderer.
+- Spec 014 owns Capacitor native setup, safe areas, orientation, native iOS storage, protected credentials, lifecycle, permissions and capability/refusal integration; it consumes the shared port/capability contracts and the real renderer from spec 013. Native decisions and target evidence remain separate.
 
 ## MVP scope
 

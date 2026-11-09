@@ -7,6 +7,13 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Platform contract follow-through
+
+- Align the spec index and browser handoff with the mobile owner's remaining native iOS work and
+  separate Simulator, real-device and release evidence.
+- Carry the audiobook cost-mode and explicit failed-or-uncertain retry contract into its plan and
+  unchecked tasks, including validation and reuse of successful chapter assets.
+
 ### Native and audiobook contract clarity
 
 - Assign native iOS storage, protected credentials, lifecycle and capability/refusal integration to
