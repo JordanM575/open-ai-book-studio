@@ -42,6 +42,14 @@
       "types": "./src/markdown.ts",
       "default": "./src/markdown.ts"
     },
+    "./markdown-folder": {
+      "types": "./src/markdown-folder/index.ts",
+      "default": "./src/markdown-folder/index.ts"
+    },
+    "./markdown-folder/*": {
+      "types": "./src/markdown-folder/*.ts",
+      "default": "./src/markdown-folder/*.ts"
+    },
     "./manuscript-import": {
       "types": "./src/manuscript-import/index.ts",
       "default": "./src/manuscript-import/index.ts"

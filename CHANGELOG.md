@@ -7,6 +7,21 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Markdown folder pure planner
+
+- Add the pure Markdown folder planner in `packages/core/src/markdown-folder/` (T014-P): a trusted
+  bundle construction seam and `planMarkdownFolderExport` produce the complete deterministic plan
+  with exact inventory and file bytes, the reversible escape notation and its inverse, blank-title
+  annotations, exact parsed-body fidelity, D-202 legacy exclusion with the exact
+  `key.toLowerCase().replace(/[^a-z]/g, "")` classification, frozen warnings, and per-dimension
+  budget refusals including the 2 x code-units retained-input charge and a once-per-file retrieval
+  that must fit under all budgets together. Retrieval returns fresh copies and charges a plan for
+  its lifetime, and caller or output mutation cannot affect a plan. Export it as
+  `@ai-book-studio/core/markdown-folder` following the sibling core modules.
+- This is the pure planner only: no Library, host, capture, IPC, publication or interface change,
+  and the folder journey is not exposed. 035 T014, T014-P, T014-Q0, T014-Q, T014-U, T016, T017 and
+  T019 remain unchecked pending their own gates and independent review.
+
 ### Campaign continuation codec integration
 
 - Integrate the accepted pure campaign continuation codec and its boundary fixtures onto public
