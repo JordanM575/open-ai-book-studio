@@ -85,6 +85,18 @@ task is completed. T010 retains the independent correction gate. The policy amen
     the Library-level happy path and stale/partial/cross-book/future/not-found refusals plus
     IPC validation and bridge delivery. No coordinator execution, presenter surface or task
     box is completed by this slice; T018 stays unchecked.
+  - Partial evidence (seam 6c, presenter surface only): the workspace mounts a continuation
+    check-in panel (`packages/app/src/components/continuation-checkin/`) beside the saved
+    reviews and planning panels. The author names a campaign and presses Load check-in; the
+    panel shows only the counted inputs from the checked campaign record through the seam 6b
+    client (identity, revision, segment/stage tallies, checkpoint receipt tallies, report
+    tallies), counts nothing itself, and implies no live generation. Each typed refusal keeps
+    its own plain state, a partly present campaign never renders as a counted result, and the
+    production no-coordinator refusal reads as an understandable state with no invented data.
+    Focused synthetic component tests cover verbatim counts, every refusal state, and the
+    absence of any invented measure; the hidden smoke run covers the mounted panel and its
+    no-coordinator state. No coordinator execution or task box is completed by this slice;
+    T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
 

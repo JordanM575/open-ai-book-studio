@@ -371,6 +371,55 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       return "chapter rail and prose loaded";
     });
 
+    await check("the continuation check-in panel reads nothing until asked", async () => {
+      const panel = await evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="continuation-checkin-panel"]')`));
+      if (!panel) throw new Error("the continuation check-in panel is missing");
+      const status = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="continuation-checkin-status"]')?.textContent ?? ""`
+      );
+      if (!status.includes("Enter a campaign identity")) throw new Error(`panel status read: ${JSON.stringify(status)}`);
+      return "panel mounted, no check-in read on open";
+    });
+
+    await check("the continuation check-in shows the no-coordinator state plainly", async () => {
+      const filled = await evaluate<boolean>(
+        win,
+        `(() => {
+          const input = document.querySelector('[data-testid="continuation-checkin-campaign-input"]');
+          if (!input) return false;
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+          if (!setter) return false;
+          setter.call(input, "campaign-smoke-1");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        })()`
+      );
+      if (!filled) throw new Error("the campaign identity field is missing");
+      const clicked = await evaluate<boolean>(
+        win,
+        `(() => {
+          const button = document.querySelector('[data-testid="continuation-checkin-load"]');
+          if (!button || button.disabled) return false;
+          button.click();
+          return true;
+        })()`
+      );
+      if (!clicked) throw new Error("the load check-in button is missing or disabled");
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="continuation-checkin-no-coordinator"]')`)),
+        "the no-coordinator check-in state"
+      );
+      const notice = await evaluate<string>(
+        win,
+        `document.querySelector('[data-testid="continuation-checkin-no-coordinator"]')?.textContent ?? ""`
+      );
+      if (!notice.includes("active coordinator run")) throw new Error(`check-in notice read: ${JSON.stringify(notice)}`);
+      const counted = await evaluate<boolean>(win, inPage(`document.querySelector('[data-testid="continuation-checkin-counts"]')`));
+      if (counted) throw new Error("a refused check-in showed counted inputs");
+      return "no coordinator run, saved campaign unchanged";
+    });
+
     await check("the model picker opens without a connection", async () => {
       const clicked = await evaluate<boolean>(
         win,

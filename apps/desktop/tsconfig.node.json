@@ -47,6 +47,7 @@
     "tests/support/review-normalization.worker.ts",
     "tests/reader-review.test.tsx",
     "tests/saved-review-ui.test.tsx",
+    "tests/continuation-checkin-presenter.test.tsx",
     "tests/story-bible-dialog.test.tsx",
     "tests/settings-status.test.tsx",
     "tests/voice-settings.test.tsx",
