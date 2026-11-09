@@ -10,6 +10,11 @@ Update the `Unreleased` section before every commit.
 
 ### Manual planning records
 
+- Add validated exact-JSON-string editing and recovery representations for literal CR/CRLF/LF,
+  control characters and escapes. Retain incomplete encoded drafts behind the existing navigation
+  guard, measure decoded field limits, and expose the full verified copy without textarea line-ending
+  loss. Show stable identities within both order editors and describe them on move controls so
+  duplicate and archived records can be matched to inspected copies before a fresh checked save.
 - Extend verified recovery-copy inspection with decoded, labelled read-only timeline, beat, order
   and story-notes values alongside world details and goals. Explain the correct fresh editor for
   each kind and retain archived identities, literal text and the complete JSON. Test actual manual

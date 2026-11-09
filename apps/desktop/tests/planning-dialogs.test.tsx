@@ -372,10 +372,12 @@ describe("worldbuilding leaf", () => {
     const save = mock(async (): Promise<SidecarSave<Planning>> => ({ status: "unchanged", current: planning() }));
     testing.render(<WorldbuildingDialog {...basic} recordId={recordId} read={async () => planning()} save={save} />);
     await ready();
-    change(field, value);
+    const exact = (page().getByRole("checkbox", { name: `Use exact JSON string · ${field}` }) as HTMLInputElement).checked;
+    const text = exact ? JSON.stringify(value) : value;
+    change(field, text);
     click("Save changes");
     expect(page().getByRole("alert").textContent).toContain(message);
-    expect(input(field).value).toBe(value);
+    expect(input(field).value).toBe(text);
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -405,11 +407,13 @@ describe("worldbuilding leaf", () => {
     const save = mock(async (_request: PlanningSaveRequest): Promise<DraftSaveResult<Planning>> => ({ status: "refused", message: "The complete file exceeds 2,500,000 UTF-8 bytes, including unknown data." }));
     testing.render(<WorldbuildingDialog {...basic} recordId={recordId} read={async () => planning()} save={save} />);
     await ready();
-    change("Description", "界".repeat(20_000));
+    change("Description", JSON.stringify("界".repeat(20_000)));
     click("Save changes");
     await page().findByText(/Not saved. The complete file exceeds/);
-    expect(input("Description").value).toBe("界".repeat(20_000));
+    expect(JSON.parse(input("Description").value)).toBe("界".repeat(20_000));
     expect(save.mock.calls[0]?.[0].baselineJson).toBe(planning().baselineJson);
+    const submitted = save.mock.calls[0]?.[0].draft;
+    expect(submitted?.kind === "edit-worldbuilding" && submitted.fields.description).toBe("界".repeat(20_000));
   });
 
   test("conflict comparison never rebases; reload is explicit and a failed reload keeps the draft", async () => {

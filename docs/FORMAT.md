@@ -273,8 +273,18 @@ limit). Inspection verifies bounded raw bytes, hash, schema, owner and copy-only
 copy that cannot be verified stays unavailable. Recovery is explicit manual review: inspect the
 read-only document, reopen the appropriate current editor, enter the chosen fields and submit a new
 checked edit. There is no whole-document restore endpoint or automatic loading of copy metadata as
-active state. Newer active unknown fields remain owned by the current baseline. Native close and
-shell book/library navigation are blocked until the matching dialog resolves pending/dirty/uncertain
+active state. Every inspected text field also exposes its exact JSON-string representation for
+manual re-entry. The editors offer an explicit exact-JSON-string mode; saved values containing CR
+or null characters start in that mode. Only a valid decoded string can be submitted, and field
+limits apply to its decoded UTF-16 length. Incomplete/invalid encoded input remains in the guarded
+draft rather than falling back to an earlier valid value. Ordinary text areas support multiline
+short fields but normalize line endings to LF; exact mode preserves CR, CRLF, LF and literal escapes.
+The full-copy display has a separate JSON-string representation of the original raw JSON, which
+decodes once to the exact verified text, including legacy formatting. Displaying or recovering fields
+does not change the stored copy. Order editors show stable record IDs and associate them with move
+controls, including archived rows and duplicate titles. Newer active unknown fields remain owned by
+the current baseline. Native close and shell book/library navigation are blocked until the matching
+dialog resolves pending/dirty/uncertain
 state; after closing an editor, retry the navigation action. Abrupt process termination cannot retain
 an in-memory draft or cancel a publication already sent.
 

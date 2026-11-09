@@ -101,6 +101,159 @@ describe("mounted manual planning through real filesystem Library and handler", 
     expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(copy.rawJson);
   });
 
+  test.each(recoveryKinds)("$kind exact-string recovery preserves mixed line endings, control characters and literal escapes", async ({ kind, editor, group, fields }) => {
+    const f = await setup();
+    await open(editor);
+    const values = Object.fromEntries(fields.map(([label, key]) => [key, `${label}\r\nCR\rLF\n\t\0\\r "quoted" · e\u0301 界 😀 \ud800`]));
+    for (const [label, key] of fields) {
+      testing.fireEvent.click(page().getByRole("checkbox", { name: `Use exact JSON string · ${label}` }));
+      change(label, JSON.stringify(values[key]));
+    }
+    const before = await planningValue(f.api.read(f.book.id));
+    await planningValue(f.api.save({ bookId: before.bookId, source: before.source, baselineJson: before.baselineJson,
+      draft: { kind: "create-beat", fields: { title: "Competing winner", summary: "Retain exact winner", notes: "" } } }));
+    const winner = required((await planningValue(f.api.read(f.book.id))).data?.beats[0]);
+    click("Save changes"); await page().findByText(/Your submitted draft was kept in conflict copy/);
+    click("Close editor"); click("Discard draft and close");
+    const name = required((await planningValue(f.api.listCopies(f.book.id, 0))).names[0]);
+    const copy = await planningValue(f.api.readCopy(f.book.id, name));
+    testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect ${name}` }));
+    const inspected = await page().findByRole("group", { name: group });
+    const encoded = Object.fromEntries(fields.map(([label, key]) => {
+      const control = testing.within(inspected).getByRole("textbox", { name: `${label} · exact JSON string` }) as HTMLTextAreaElement;
+      expect(control.readOnly).toBe(true);
+      expect(JSON.parse(control.value)).toBe(values[key]);
+      return [label, control.value];
+    }));
+    expect(JSON.parse(input("Complete exact copy · JSON string").value)).toBe(copy.rawJson);
+    await open(editor);
+    for (const [label] of fields) {
+      testing.fireEvent.click(page().getByRole("checkbox", { name: `Use exact JSON string · ${label}` }));
+      change(label, required(encoded[label]));
+    }
+    click("Save changes"); await saved();
+    // Checked readback starts CR/null-containing values in exact mode, including after a save.
+    for (const [label, key] of fields) {
+      expect(JSON.parse(input(label).value)).toBe(values[key]);
+      expect((page().getByRole("checkbox", { name: `Use exact JSON string · ${label}` }) as HTMLInputElement).disabled).toBe(true);
+    }
+    click("Save changes"); await page().findByText("Already current · no file was written."); click("Close editor");
+    const current = required((await planningValue(f.api.read(f.book.id))).data);
+    const recovered = required(kind === "timeline" ? current.timeline[0] : kind === "beat" ? current.beats[1]
+      : kind === "world" ? current.worldbuilding[0] : current.storyNotes);
+    for (const [, key] of fields) expect(recovered[key]).toBe(values[key]);
+    expect(current.beats.find((record) => record.id === winner.id)).toEqual(winner);
+    expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(copy.rawJson);
+  });
+
+  test.each(recoveryKinds)("$kind incomplete/non-string exact input is guarded and never submits an older decoded value", async ({ editor, fields }) => {
+    const f = await setup();
+    const save = f.api.save;
+    let calls = 0;
+    f.api.save = (request) => { calls++; return save(request); };
+    await open(editor);
+    for (const [label] of fields) change(label, "Valid draft");
+    const label = fields[0][0];
+    testing.fireEvent.click(page().getByRole("checkbox", { name: `Use exact JSON string · ${label}` }));
+    for (const invalid of ['"unfinished', '"bad\\q"', "{}", "42", "null"]) {
+      change(label, invalid); click("Save changes");
+      await page().findByText(/Check the exact JSON string fields/);
+      expect(calls).toBe(0); expect(input(label).value).toBe(invalid);
+      expect(input(label).getAttribute("aria-invalid")).toBe("true");
+    }
+    testing.act(() => expect(f.navigation.allow()).toBe(false)); click("Keep editing");
+    expect(input(label).value).toBe("null");
+    change(label, '"Repaired\\r\\nvalue"'); click("Save changes"); await saved();
+    expect(calls).toBe(1);
+  });
+
+  test("exact input limits apply to decoded UTF-16 units and formatting never changes the publication", async () => {
+    const f = await setup();
+    const save = f.api.save;
+    let calls = 0;
+    f.api.save = (request) => { calls++; return save(request); };
+    await open("New timeline event");
+    testing.fireEvent.click(page().getByRole("checkbox", { name: "Use exact JSON string · Title" }));
+    const tooLong = `"${"\\u0058".repeat(201)}"`;
+    change("Title", tooLong); click("Save changes"); await page().findByText(/Check required titles and field limits/);
+    expect(input("Title").value).toBe(tooLong); expect(calls).toBe(0);
+    change("Title", `"${"\\u0058".repeat(200)}"`); click("Save changes"); await saved();
+    expect(calls).toBe(1);
+    expect((await planningValue(f.api.read(f.book.id))).data?.timeline[0]?.title).toBe("X".repeat(200));
+  });
+
+  test.each(["current", "legacy"])("%s full-copy representation decodes exact CR/CRLF/LF formatting without changing storage", async (format) => {
+    const f = await setup();
+    const before = await planningValue(f.api.read(f.book.id));
+    const envelope = { bookId: before.bookId, source: before.source, baselineJson: before.baselineJson };
+    await planningValue(f.api.save({ ...envelope, draft: { kind: "create-beat", fields: { title: "Winner", summary: "", notes: "" } } }));
+    const conflict = await planningValue(f.api.save({ ...envelope, draft: { kind: "create-timeline", fields: { title: "Draft", when: "", description: "\r\n\r\n", notes: "" } } }));
+    if (conflict.status !== "conflict") throw new Error("Expected synthetic conflict");
+    const document = JSON.parse(conflict.preserved.rawJson);
+    if (format === "legacy") { Reflect.deleteProperty(document.conflictMetadata, "requestHash"); Reflect.deleteProperty(document.conflictMetadata, "attempt"); }
+    const raw = JSON.stringify(document, null, 2).split("\n").map((line, index) => line + ["\r\n", "\r", "\n"][index % 3]).join("");
+    await writeFile(join(f.root, conflict.savedAs), raw);
+    const name = required(conflict.savedAs.split("/").at(-1));
+    click("Refresh planning"); testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect ${name}` }));
+    await page().findByRole("textbox", { name: "Complete exact copy · JSON string" });
+    const control = input("Complete exact copy · JSON string");
+    expect(control.readOnly).toBe(true);
+    expect(JSON.parse(control.value)).toBe(raw);
+    expect(Buffer.from(JSON.parse(control.value))).toEqual(await readFile(join(f.root, conflict.savedAs)));
+    expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(raw);
+    expect((await planningValue(f.api.read(f.book.id))).data?.beats[0]?.title).toBe("Winner");
+  });
+
+  test("duplicate-label order recovery maps displayed identities in both editors, including archived rows", async () => {
+    const f = await setup();
+    const save = async (draft: PlanningSaveRequest["draft"]) => {
+      const read = await planningValue(f.api.read(f.book.id));
+      return planningValue(f.api.save({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft }));
+    };
+    for (let index = 0; index < 3; index++) {
+      await save({ kind: "create-timeline", fields: { title: "Echo", when: "Dawn", description: "Same", notes: "Same" } });
+      await save({ kind: "create-beat", fields: { title: "Echo", summary: "Same", notes: "Same" } });
+    }
+    const first = required((await planningValue(f.api.read(f.book.id))).data);
+    await save({ kind: "archive-timeline", id: required(first.timeline[1]).id, archived: true });
+    await save({ kind: "archive-beat", id: required(first.beats[1]).id, archived: true });
+    const base = await planningValue(f.api.read(f.book.id));
+    await save({ kind: "order-timeline", ids: [...first.timelineOrder].reverse() });
+    await save({ kind: "order-beats", ids: [...first.beatOrder].reverse() });
+    const winner = required((await planningValue(f.api.read(f.book.id))).data);
+    const conflict = await planningValue(f.api.save({ bookId: base.bookId, source: base.source, baselineJson: base.baselineJson,
+      draft: { kind: "order-timeline", ids: first.timelineOrder } }));
+    if (conflict.status !== "conflict") throw new Error("Expected synthetic conflict");
+    const name = required(conflict.savedAs.split("/").at(-1));
+    click("Refresh planning"); testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect ${name}` }));
+    await page().findByRole("group", { name: "Timeline order · read-only" });
+    const desired = ["Timeline order", "Beat order"].map((label) => testing.within(page().getByRole("group", { name: `${label} · read-only` }))
+      .getAllByRole("listitem").map((item) => required(item.querySelectorAll("span")[1]?.textContent)));
+    for (const [index, editor] of ["Order timeline", "Order beats"].entries()) {
+      await open(editor);
+      const list = page().getByRole("list", { name: "Draft planning order" });
+      for (const [position, id] of required(desired[index]).entries()) {
+        const row = required([...list.children].find((item) => item.querySelector("code")?.textContent === id)) as HTMLElement;
+        for (const button of testing.within(row).getAllByRole("button")) {
+          expect(required(document.getElementById(required(button.getAttribute("aria-describedby")))).textContent).toBe(`Identity: ${id}`);
+        }
+        for (let move = 0; list.children[position] !== row && move < list.children.length; move++) {
+          testing.fireEvent.click(testing.within(row).getByRole("button", { name: /^Move up/ }));
+        }
+        expect(list.children[position]).toBe(row);
+      }
+      expect(list.textContent).toContain("archived");
+      click("Save changes"); await saved(); click("Close editor");
+    }
+    const recovered = required((await planningValue(f.api.read(f.book.id))).data);
+    expect(recovered.timelineOrder).toEqual(required(desired[0])); expect(recovered.beatOrder).toEqual(required(desired[1]));
+    expect(recovered.timeline).toEqual(winner.timeline); expect(recovered.beats).toEqual(winner.beats);
+    expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(conflict.preserved.rawJson);
+  });
+
   test("legacy decoded copies retain archived records, explicit order and empty story-note fields", async () => {
     const f = await setup();
     const save = async (draft: PlanningSaveRequest["draft"]) => {

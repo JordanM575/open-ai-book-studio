@@ -3,7 +3,8 @@ import type { Planning } from "@ai-book-studio/core/planning/schema";
 import { planningSaveSchema, type PlanningDraft, type PlanningSaveRequest } from "@ai-book-studio/core/planning/service";
 import type { SidecarRead } from "@ai-book-studio/core/planning/checked-sidecar";
 import { Button } from "@ai-book-studio/ui/button";
-import { CheckedDraftDialog, planningInputClass, type DraftDefinition } from "./CheckedDraftDialog";
+import { CheckedDraftDialog, type DraftDefinition } from "./CheckedDraftDialog";
+import { PlanningTextField, textFields, parseTextFields, type PlanningText, type TextFields } from "./PlanningTextField";
 import { viewKey, type PlanningDialogProps } from "./contracts";
 
 export type ManualEditor =
@@ -13,7 +14,9 @@ export type ManualEditor =
   | { kind: "order-timeline" }
   | { kind: "order-beats" }
   | { kind: "archive-worldbuilding" | "archive-timeline" | "archive-beat"; recordId: string; archived: boolean };
-type Draft = { intent: PlanningDraft; confirmed: boolean; labels: Record<string, string>; record: unknown };
+type EditingIntent<T> = T extends { fields: infer F extends Record<string, string> }
+  ? Omit<T, "fields"> & { fields: TextFields<F> } : T;
+type Draft = { intent: EditingIntent<PlanningDraft>; confirmed: boolean; labels: Record<string, string>; record: unknown };
 const emptyNotes = { workingNotes: "", styleNotes: "", synopsis: "" };
 const labels: Record<string, string> = { title: "Title", when: "When · literal label", description: "Description", notes: "Notes",
   summary: "Summary", workingNotes: "Working notes", styleNotes: "Style notes", synopsis: "Synopsis" };
@@ -55,7 +58,8 @@ function definition(editor: ManualEditor): DraftDefinition<Planning, Draft, Plan
       if (!record) throw new Error("This retained record is unavailable. Nothing can be archived or restored.");
       intent = { kind: editor.kind, id: editor.recordId, archived: editor.archived };
     }
-    return { intent, confirmed: false, labels: titles, record };
+    return { intent: "fields" in intent ? { ...intent, fields: textFields(intent.fields) } as Draft["intent"] : intent,
+      confirmed: false, labels: titles, record };
   };
   return {
     title: editor.kind === "timeline" ? "Timeline event" : editor.kind === "beat" ? "Outline beat" : editor.kind === "notes" ? "Story notes"
@@ -73,27 +77,42 @@ function definition(editor: ManualEditor): DraftDefinition<Planning, Draft, Plan
     },
     validate: (draft, read) => {
       if ("archived" in draft.intent && draft.intent.archived && !draft.confirmed) return "Confirm the archive action before saving. The record and its text will be retained.";
-      const parsed = planningSaveSchema.safeParse({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft: draft.intent });
+      const intent = savedIntent(draft.intent);
+      if (!intent) return "Check the exact JSON string fields. Each must contain one quoted JSON string. Your full draft is still here; nothing was submitted.";
+      const parsed = planningSaveSchema.safeParse({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft: intent });
       if (!parsed.success) return "Check required titles and field limits: short fields allow 200 UTF-16 units; prose allows 20,000. Your full draft is still here.";
       const key = draft.intent.kind === "create-timeline" ? "timeline" : draft.intent.kind === "create-beat" ? "beats" : null;
       if (key && (read.data?.[key].length ?? 0) >= 200) return "This book already has 200 retained records of this kind, including archived records. Your draft has not been submitted.";
       return null;
     },
-    request: (draft, read) => ({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft: draft.intent }),
+    request: (draft, read) => {
+      const intent = savedIntent(draft.intent);
+      if (!intent) throw new Error("The exact JSON string draft is invalid.");
+      return { bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft: intent };
+    },
     render: (draft, change) => <ManualFields draft={draft} change={change} />,
     preview: (read) => <pre className="whitespace-pre-wrap break-words">{JSON.stringify(read.data, null, 2) ?? "No saved planning data."}</pre>
   };
+}
+
+function savedIntent(intent: Draft["intent"]): PlanningDraft | null {
+  if (!("fields" in intent)) return intent;
+  const fields = parseTextFields(intent.fields);
+  return fields ? { ...intent, fields } as PlanningDraft : null;
 }
 
 function ManualFields({ draft, change }: { draft: Draft; change: (draft: Draft) => void }) {
   const id = useId();
   const intent = draft.intent;
   if ("ids" in intent) return <>
-    <p>Move records with the buttons, then choose Save changes. Archived records keep their positions. Chapter order is separate.</p>
+    <p>Match each stable identity to the recovery copy, move records with the buttons, then choose Save changes. Archived records keep their positions. Chapter order is separate.</p>
     {!intent.ids.length && <p>No records to order yet.</p>}
     <ol aria-label="Draft planning order" className="space-y-2">{intent.ids.map((recordId, index) => <li key={recordId} className="flex flex-wrap items-center gap-2">
-      <span className="break-words">{index + 1}. {draft.labels[recordId]}</span>
+      <div className="min-w-0 break-words"><span>{index + 1}. {draft.labels[recordId]}</span>
+        <p id={`${id}-${recordId}`} className="break-all text-muted-foreground">Identity: <code>{recordId}</code></p>
+      </div>
       {([-1, 1] as const).map((direction) => <Button key={direction} type="button" variant="secondary"
+        aria-describedby={`${id}-${recordId}`}
         aria-label={`Move ${direction < 0 ? "up" : "down"} · position ${index + 1} · ${draft.labels[recordId]}`} disabled={index + direction < 0 || index + direction >= intent.ids.length}
         onClick={() => {
           const ids = [...intent.ids];
@@ -110,22 +129,15 @@ function ManualFields({ draft, change }: { draft: Draft; change: (draft: Draft) 
     {intent.archived && <label className="flex items-center gap-2" htmlFor={id}><input id={id} type="checkbox" checked={draft.confirmed}
       onChange={(event) => change({ ...draft, confirmed: event.target.checked })} />Confirm archive · keep all content</label>}
   </>;
-  const fields: Record<string, string> = intent.kind === "clear-story-notes" ? emptyNotes : "fields" in intent ? intent.fields : {};
+  const fields: Record<string, PlanningText> = intent.kind === "clear-story-notes" ? textFields(emptyNotes) : "fields" in intent ? intent.fields : {};
   return <>
     <p>Short fields allow 200 UTF-16 units; prose allows 20,000. The full file must fit 2,500,000 UTF-8 bytes.</p>
     {(intent.kind === "create-timeline" || intent.kind === "edit-timeline") && <p>When is a literal story label. Events stay in your chosen order.</p>}
-    {Object.entries(fields).map(([key, value]) => {
+    {Object.entries(fields).map(([key, field]) => {
       const limit = key === "title" || key === "when" ? 200 : 20_000;
-      const update = (text: string) => change({ ...draft, intent: { ...(intent.kind === "clear-story-notes" ? { kind: "set-story-notes" as const } : intent),
-        fields: { ...fields, [key]: text } } as PlanningDraft });
-      return <div key={key} className="space-y-1.5">
-        <label htmlFor={`${id}-${key}`} className="block">{labels[key]}</label>
-        {limit === 200 ? <input id={`${id}-${key}`} className={planningInputClass} value={value} aria-invalid={value.length > limit}
-          aria-describedby={`${id}-${key}-count`} onChange={(event) => update(event.target.value)} />
-          : <textarea id={`${id}-${key}`} className={planningInputClass} rows={4} value={value} aria-invalid={value.length > limit}
-            aria-describedby={`${id}-${key}-count`} onChange={(event) => update(event.target.value)} />}
-        <p id={`${id}-${key}-count`} className="text-muted-foreground">{value.length.toLocaleString("en-US")} / {limit.toLocaleString("en-US")} UTF-16 units</p>
-      </div>;
+      return <PlanningTextField key={key} label={labels[key] ?? key} limit={limit} field={field}
+        onChange={(next) => change({ ...draft, intent: { ...(intent.kind === "clear-story-notes" ? { kind: "set-story-notes" as const } : intent),
+          fields: { ...fields, [key]: next } } as Draft["intent"] })} />;
     })}
     {(intent.kind === "set-story-notes" || intent.kind === "clear-story-notes") && <>
       <p>Notes are optional. Clearing blanks these three fields only after Save changes; the saved identity and unknown fields remain.</p>

@@ -46,7 +46,9 @@ export function PlanningCopies({ api, bookId, revision }: { api: PlanningApi; bo
         <p>Reopen Set saved-word goal or Edit saved-word goal to enter this target. Use Clear goal if you want to recover No goal.</p>
       </>}
       {inspected?.kind === "planning" && <PlanningCopyFields data={inspected.data} />}
+      <p>The display view below may show CR and CRLF line endings as LF. The exact representation encodes the entire original JSON text as one JSON string; decoding it once recovers the original text, including formatting and line endings.</p>
       <label className="block">Complete read-only copy<textarea readOnly value={copy.rawJson} rows={8} className="w-full font-mono" /></label>
+      <label className="block">Complete exact copy · JSON string<textarea readOnly value={JSON.stringify(copy.rawJson)} rows={8} className="w-full font-mono" /></label>
     </div>}
   </details>;
 }
@@ -57,6 +59,7 @@ function CopyFields({ label, fields }: { label: string; fields: [string, string]
     <dl className="space-y-2">{fields.map(([name, value]) => <div key={name}>
       <dt className="text-muted-foreground">{name}</dt>
       <dd className="whitespace-pre-wrap break-words">{value}</dd>
+      <dd><label className="block">{name} · exact JSON string<textarea readOnly value={JSON.stringify(value)} rows={2} className="w-full font-mono" /></label></dd>
     </div>)}</dl>
   </fieldset>;
 }
@@ -75,7 +78,7 @@ function CopyOrder({ label, order, records }: { label: string; order: string[]; 
 
 function PlanningCopyFields({ data }: { data: Planning }) {
   return <div className="space-y-4">
-    <p>These are the copy’s decoded values, including line breaks and literal punctuation. Match a record by its title and identity before editing the current version. Use its Restore control first if the current record is archived; use the New control if it does not exist. Inspect the complete JSON for any additional fields.</p>
+    <p>These are the copy’s decoded values, including line breaks and literal punctuation. For exact re-entry, select Use exact JSON string in the matching editor, then paste the field’s exact JSON string including its quotes. This preserves CR, CRLF and LF without browser line-ending normalization. Match a record by its title and identity before editing the current version. Use its Restore control first if the current record is archived; use the New control if it does not exist. Inspect the complete JSON for any additional fields.</p>
     <section className="space-y-2" aria-label="World details in copy">
       <p>For world details, reopen the matching world detail editor or New world detail.</p>
       {data.worldbuilding.map((record, index) => <CopyFields key={record.id} label={`World detail ${index + 1}`} fields={[
