@@ -7,6 +7,27 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation check-in host (039 T018 seam 6b)
+
+- Wire the accepted seam 6a contract through the desktop host as one
+  read-only channel, `continuation:checkin` (core `IPC`/`StudioApi`,
+  preload bridge, and an unmounted `must(...)` client helper for the later
+  presenter slice; no UI screen is added). The main process validates the
+  book and campaign ids with Zod before touching the Library, loads the
+  checked campaign through the existing `campaignContinuations` store
+  readers, and returns the counted check-in inputs from
+  `mapCampaignContinuationCheckin` through the `Result` envelope — data
+  only, never a path. Refusals keep the 6a codes as typed failures
+  (`conflict` stale, `uncertain` partial, `corrupt` cross-book,
+  `unsupported` future, `replan-required`, `too-large`, `not-found`).
+  The 037 run owner and current direction are host-supplied through a
+  `registerIpc` coordinator-identity seam; this build registers no 037
+  coordinator session in the main process, so the channel refuses
+  truthfully (`unsupported`) instead of inventing an owner until that
+  session exists. No word count, cadence or task role is derived, and
+  039 T018/T019 plus all 037/038 boxes remain unchecked pending the
+  presenter surface, measurement and independent review.
+
 ### Campaign continuation check-in contract (039 T018 seam 6a)
 
 - Add the pure integration contract leaf

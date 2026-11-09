@@ -80,6 +80,11 @@ import { isValidStoredVoicePreferences, voicePreferencesSchema } from "@ai-book-
 import type { ImageService } from "./images";
 import { MarkdownFolderCaptureError, MarkdownFolderHostService, MarkdownFolderPublishError, suggestMarkdownFolderName } from "./markdown-folder";
 import type { Library } from "./library/store";
+import { ContinuationStorageError } from "@ai-book-studio/core/review/campaign-continuation-store";
+import { recordIdSchema } from "@ai-book-studio/core/review/record-format";
+import {
+  ContinuationCheckinError, readContinuationCheckin, type CoordinatorIdentity
+} from "./continuation-checkin";
 
 const folderInput = z.string().min(1).max(4096);
 const contentInput = z.string().max(20_000_000);
@@ -93,6 +98,16 @@ const speakInput = z.object({
 }).strict();
 
 const ambientRequestSchema = z.object({ bookId: idSchema, chapterId: idSchema });
+
+/** One checked campaign's check-in lookup. Ids only; no path is ever accepted. */
+const continuationCheckinInput = z.strictObject({
+  bookId: idSchema,
+  campaignId: recordIdSchema.max(160),
+  expected: z.strictObject({
+    revision: z.number().int().min(1).optional(),
+    manifestHash: hashInput.optional()
+  }).optional()
+});
 
 /** The `book.json` fields the renderer may write. Identity, schema and dates are the main process's. */
 const BOOK_FIELDS = [
@@ -158,6 +173,10 @@ function fail(error: unknown): Result<never> {
       error.code === "not-found" ? "not-found" : error.code === "invalid-path" ? "invalid" : "io";
     return { ok: false, error: { code, message: error.message } };
   }
+  if (error instanceof ContinuationCheckinError || error instanceof ContinuationStorageError) {
+    // Truthful typed check-in refusals keep the 6a contract's own code.
+    return { ok: false, error: { code: error.code, message: error.message } };
+  }
   if (error instanceof MarkdownFolderCaptureError || error instanceof MarkdownFolderPublishError) {
     // Bounded author-readable host reasons; no renderer-supplied path or fault-injection seam is echoed.
     return { ok: false, error: { code: error.code, message: error.message } };
@@ -184,7 +203,13 @@ export function registerIpc(
   getBackend: () => LocalBackend | null = () => null,
   bridge: BridgeControl = { status: null, start: async () => undefined, stop: async () => undefined },
   /** Whether the agent is working on a book right now, for the ambient status and Stop. */
-  isWorking: (bookId: string) => boolean = () => false
+  isWorking: (bookId: string) => boolean = () => false,
+  /**
+   * The host's current 037 coordinator identity (run owner and direction),
+   * when one is active. This build registers none, so the default refuses
+   * truthfully rather than inventing an owner.
+   */
+  getCoordinatorIdentity: () => CoordinatorIdentity | null = () => null
 ): void {
   /** What the plugin folder currently provides, for the settings panel. */
   const pluginStatus = async (): Promise<PluginStatus> => {
@@ -222,6 +247,24 @@ export function registerIpc(
   for (const operation of Object.keys(planningChannels) as PlanningOperation[]) {
     ipcMain.handle(planningChannels[operation], (_event, payload: unknown) => handlePlanning(operation, payload));
   }
+
+  /* ------------------------------------------------------------- continuation */
+
+  handle(IPC.continuation.checkin, async (payload) => {
+    // Ids are validated before the Library is touched; no path is accepted.
+    const parsed = continuationCheckinInput.parse(payload);
+    const expected = parsed.expected
+      ? {
+          ...(parsed.expected.revision !== undefined ? { revision: parsed.expected.revision } : {}),
+          ...(parsed.expected.manifestHash !== undefined ? { manifestHash: parsed.expected.manifestHash } : {})
+        }
+      : undefined;
+    return readContinuationCheckin(
+      studio.requireLibrary(),
+      { bookId: parsed.bookId, campaignId: parsed.campaignId, ...(expected ? { expected } : {}) },
+      getCoordinatorIdentity()
+    );
+  });
 
   /* ---------------------------------------------------------------------- app */
 
