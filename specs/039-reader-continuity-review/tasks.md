@@ -92,6 +92,29 @@ provenance non-transfer. Storage publication/recovery, version-dispatching stora
 cross-book report resolution, host integration and independent exact-head review remain open.
 T014/T017/T018 stay unchecked; 038 T022 is unchanged.
 
+### November 9 — checked continuation storage publication and recovery (T014/T015 partial)
+
+`packages/core/src/review/campaign-continuation-store.ts` now supplies the storage seam the codec
+handoff ordered third, as `LibraryService.campaignContinuations`: a version-dispatching storage
+reader loads a retained continuation only through the codec wire readers plus the replan
+compatibility dispatch (current semantics served only through a locally provenanced plan,
+compatible labels returned as `replan-required`, otherwise refused, with no deserialized plan
+blessed by hash); intent-first publication writes the exact candidate intent, then immutable
+segments in manifest order, then the checked manifest last, verifying every reference by length,
+raw hash and semantic ID on fresh readback before reporting `published`; and per-intent recovery
+classifies interrupted publication as `already-published` (a byte observation),
+`prepared`, `incomplete-draft`, `conflict` or `uncertain` with missing and divergent segments
+named. Segments and intents are created only through a genuine no-replace seam
+(`LibraryPort.createImmutableFile`; the desktop filesystem adapter uses exclusive creation), and
+an adapter without it refuses before any write rather than using check-then-rename. Reads are
+owner-explicit and inventories are bounded and paged. Focused synthetic tests cover the happy
+path with readback, fault injection at each publication phase boundary, divergent and identical
+pre-existing segments, tampered manifest/segment refusal, wrong-owner reads, unknown-field
+survival and dispatch across current, compatible and future semantics, on both the in-memory
+port and the real desktop Library. Cross-book report resolution, group move/archive, host
+integration and independent exact-head review remain open. T014/T015/T017/T018 stay unchecked;
+038 T022 is unchanged.
+
 ### November 8 — D-201 conditional continuation specification (T014 partial)
 
 D-201 and the ADR 0020 amendment accept the conditional schema-2 campaign format; `docs/FORMAT.md`

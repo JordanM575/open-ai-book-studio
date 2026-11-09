@@ -7,6 +7,34 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation checked storage publication and recovery (039 T014/T015)
+
+- Add checked continuation storage as `LibraryService.campaignContinuations`
+  (`packages/core/src/review/campaign-continuation-store.ts`): a version-dispatching storage
+  reader loads a retained continuation only through the codec wire readers plus the replan
+  compatibility dispatch (current semantics served only through a locally provenanced plan,
+  compatible labels returned as `replan-required`, otherwise refused; hash agreement never
+  registers a deserialized plan), intent-first publication writes the exact candidate intent,
+  then immutable segments in manifest order, then the checked manifest last with fresh
+  readback of every reference (length, raw SHA-256 and semantic ID) before `published` is
+  reported, and explicit per-intent recovery classification (`already-published` as a byte
+  observation, `prepared`, `incomplete-draft`, `conflict` or `uncertain`) that never treats a
+  partial write as published. Reads are owner-explicit, inventories are bounded and paged, and
+  supported unknown fields survive byte for byte because candidate bytes are never re-encoded.
+- Add a genuine no-replace creation seam, `LibraryPort.createImmutableFile`: the desktop
+  filesystem adapter creates immutable files with exclusive creation and the in-memory test
+  port with an atomic check-and-set, while adapters without the seam (including the browser
+  directory adapter) refuse continuation publication before any write rather than degrading
+  segment creation to check-then-rename. Segment files that already exist with different bytes
+  refuse; identical bytes are the only tolerated pre-existence.
+- Correction on review: publication and recovery now enforce revision continuity (the
+  candidate base must name the immediate predecessor revision, so a revision-skipping
+  candidate refuses as a conflict with the active manifest preserved), and recovery
+  reports a present-but-unreadable manifest file as refused/uncertain instead of
+  treating it as absent.
+- This slice adds no IPC, UI, provider, group move/archive or cross-book report resolution,
+  and 039 T014/T015/T017/T018 remain unchecked pending independent review.
+
 ### Campaign continuation compatible replan and source validation (039 T014/T017)
 
 - Add the pure `packages/core/src/review/campaign-continuation-replan.ts` leaf (039 T014/T017 seam):

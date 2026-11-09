@@ -122,6 +122,21 @@ export class InMemoryLibraryPort implements LibraryPort, LibraryRuntime {
     return { status: "written", snapshot: cloneSnapshot(snapshot) };
   }
 
+  async createImmutableFile(path: LibraryPath, bytes: Uint8Array): Promise<CommitFileResult> {
+    const target = fileKey(path);
+    // Compute the digest before the check-and-set, which then runs without an await between
+    // the absence check and the insertion: that is this port's exclusive creation.
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const current = this.files.get(target) ?? null;
+    if (current) return { status: "changed", current: cloneSnapshot(current) };
+    const copy = new Uint8Array(bytes);
+    const now = this.now();
+    const snapshot: LibraryFileSnapshot = { bytes: copy, sha256: digest, createdAt: now, modifiedAt: now };
+    this.files.set(target, snapshot);
+    this.notify(target);
+    return { status: "written", snapshot: cloneSnapshot(snapshot) };
+  }
+
   async moveFile(from: LibraryPath, to: LibraryPath): Promise<void> {
     const source = fileKey(from);
     const destination = fileKey(to);
