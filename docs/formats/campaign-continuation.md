@@ -88,15 +88,25 @@ there is no campaign-stage task role and no derivation for `Brief.targetWords`; 
 therefore emits counted progress only and a host must not relabel scalar/byte counts as words
 or invent a cadence from them. The 037 authoring contracts now define a versioned check-in
 cadence policy and pure due evaluator (`CheckinCadencePolicy` in
-`packages/core/src/authoring/contracts.ts`, ADR 0019 defaults), but this leaf does not yet emit
-cadence: adapter wiring to the cadence contract is a later slice, so no check-in scheduling is
-derived here.
+`packages/core/src/authoring/contracts.ts`, ADR 0019 defaults), and this leaf now emits cadence
+when the caller supplies counted progress: an optional `cadence` request input carries
+`callerCountedProgress` (adopted chapters/saved words counted by the caller, first-adopted-chapter
+and irreversible-choice flags, field names exactly as the authoring contract names them) plus an
+optional policy. An omitted policy uses the ADR 0019 default as the documented adapter-level
+choice; a supplied malformed policy or progress refuses with the authoring vocabulary preserved
+and is never coerced. A supplied cadence emits the evaluator's `{ due, reasons }` verbatim plus
+the validated policy snapshot and validated caller-counted progress as `checkin.cadence`, so
+`savedWordsSinceCheckin` is caller-counted progress, never a word count derived from campaign
+prose. A campaign refusal (stale, partial, cross-book or future) wins and emits no cadence
+section, and an omitted cadence input emits no cadence section at all. No check-in scheduling is
+derived here; the leaf only evaluates the supplied counted progress.
 The desktop host (039 T018 seam 6b) exposes that mapping as one read-only
 `continuation:checkin` channel: ids are validated before the Library is touched, the checked
 campaign is loaded through the store readers above, and the counted inputs cross the `Result`
 envelope with the leaf's refusal codes preserved as typed failures. The 037 run owner and
 direction are host-supplied; this build registers no coordinator session in the main process,
-so the channel refuses truthfully until one exists rather than inventing an owner. Coordinator
+so the channel refuses truthfully until one exists rather than inventing an owner. The host does
+not yet supply cadence inputs, so the channel emits no cadence section yet. Coordinator
 execution, a presenter surface, a portable archive/export workflow and independent review
 remain separate work. These leaves and the storage slices have focused synthetic tests, not
 independent acceptance or a self-contained archive.

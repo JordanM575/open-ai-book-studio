@@ -1,6 +1,9 @@
 import {
-  AuthoringError, WORKFLOW_LIMITS, validateOwner, validateReference,
-  type Owner, type Reference
+  AuthoringError, DEFAULT_CHECKIN_CADENCE_POLICY, WORKFLOW_LIMITS,
+  evaluateCheckinCadence, validateCheckinCadencePolicy, validateCheckinCadenceProgress,
+  validateOwner, validateReference,
+  type CheckinCadencePolicy, type CheckinCadenceProgress, type CheckinCadenceReason,
+  type Immutable, type Owner, type Reference
 } from "../authoring";
 import { bookIdSchema, hashSchema } from "./contract";
 import { recordIdSchema, recordTimestampSchema } from "./record-format";
@@ -32,11 +35,28 @@ import type {
  * cannot admit keep their `AuthoringError` code (for example
  * `foreign-reference`); unknown shapes are refused, never coerced.
  *
- * Deliberate boundary: the codec retains no word count and the authoring
- * contracts define no check-in cadence type, no campaign-stage task role and
- * no way to derive `Brief.targetWords`, so this leaf emits counted scalar,
- * byte, stage and receipt progress only. A host must not relabel
- * `selectedUtf16`/`selectedUtf8` as words or invent a cadence from them.
+ * Deliberate boundary: the codec retains no word count, the authoring
+ * contracts define no campaign-stage task role and no way to derive
+ * `Brief.targetWords`, so this leaf emits counted scalar, byte, stage and
+ * receipt progress only. A host must not relabel `selectedUtf16`/
+ * `selectedUtf8` as words or invent a cadence from them.
+ *
+ * Cadence emission (adapter-level choice): the authoring contracts now
+ * define the versioned cadence policy and pure evaluator. When the caller
+ * supplies counted progress in `cadence`, this leaf validates the policy
+ * and progress with the authoring validators, evaluates with
+ * `evaluateCheckinCadence`, and emits that result verbatim plus the
+ * validated policy snapshot as `checkin.cadence`. When the supplied
+ * cadence omits its policy, the ADR 0019 default
+ * (`DEFAULT_CHECKIN_CADENCE_POLICY`) applies; this defaulting is the
+ * documented adapter-level choice for an omitted policy only and never
+ * coerces a supplied malformed policy. The leaf counts nothing itself:
+ * adopted chapters and saved words arrive caller-counted in
+ * `callerCountedProgress` (field names exactly as the authoring contract
+ * names them in `CheckinCadenceProgress`), so `savedWordsSinceCheckin` is
+ * never a word count derived from campaign prose. When `cadence` is
+ * omitted entirely, no cadence section is emitted. Host wiring that
+ * supplies counted progress is a later slice.
  */
 
 const MANIFEST_KEYS = ["schemaVersion", "kind", "owner", "id", "revision", "base", "createdAt",
@@ -53,6 +73,37 @@ export interface ContinuationCheckinCounts {
   sources: number; selectedSpans: number; stages: number; rangeStages: number;
   synthesisStages: number; dependencyEdges: number; selectedUtf16: number;
   selectedUtf8: number; resolvedPlanBytes: number; holes: number;
+}
+
+/**
+ * Optional cadence input for the check-in adapter. `policy` is validated by
+ * `validateCheckinCadencePolicy`; when omitted, the ADR 0019 default policy
+ * applies (documented adapter-level choice, not silent coercion of a supplied
+ * malformed policy). `callerCountedProgress` is counted by the caller: the
+ * adapter counts nothing itself and reads no prose. The caller owns counting
+ * saved words and adopted chapters, passes `firstAdoptedChapterOccurred`
+ * only until the first check-in is taken, and resets the since-check-in
+ * counters after a check-in.
+ */
+export interface ContinuationCheckinCadenceRequest {
+  policy?: CheckinCadencePolicy;
+  callerCountedProgress: CheckinCadenceProgress;
+}
+
+/**
+ * Emitted cadence section: the authoring evaluator's result verbatim
+ * (`due`, `reasons`), the validated policy snapshot it used, and the
+ * validated caller-counted progress. `callerCountedProgress` is named so
+ * its `savedWordsSinceCheckin` can never be mistaken for a word count
+ * derived from campaign prose; its fields keep the authoring contract's
+ * exact names (`adoptedChaptersSinceCheckin`, `savedWordsSinceCheckin`,
+ * `firstAdoptedChapterOccurred`, `irreversibleChoicePending`).
+ */
+export interface ContinuationCheckinCadence {
+  policy: Immutable<CheckinCadencePolicy>;
+  callerCountedProgress: Immutable<CheckinCadenceProgress>;
+  due: boolean;
+  reasons: CheckinCadenceReason[];
 }
 
 export interface ContinuationCheckinInput {
@@ -74,6 +125,8 @@ export interface ContinuationCheckinInput {
   } | null;
   reports: { owned: number; foreign: number; unavailable: number; total: number } | null;
   unknownFieldKeys: { manifest: string[]; counts: string[]; checkpoint: string[] };
+  /** Present only when the request supplied `cadence`; absent otherwise. */
+  cadence?: ContinuationCheckinCadence;
 }
 
 export interface ContinuationCheckinRequest {
@@ -84,6 +137,13 @@ export interface ContinuationCheckinRequest {
   direction: Reference<"direction">;
   /** Caller-held view of the checked campaign; any mismatch is stale. */
   expected?: { manifestHash?: string; revision?: number };
+  /**
+   * Optional cadence input: caller-counted progress plus an optional policy.
+   * When omitted entirely, no cadence section is emitted. When supplied, a
+   * malformed policy or progress refuses with the authoring error vocabulary
+   * preserved, but only after every campaign refusal has had precedence.
+   */
+  cadence?: ContinuationCheckinCadenceRequest;
 }
 
 export type ContinuationCheckinResult =
@@ -235,6 +295,34 @@ function mapChecked(request: ContinuationCheckinRequest): ContinuationCheckinRes
       receipts, completedStageIds };
   }
 
+  // Cadence is evaluated only after every campaign refusal above, so a
+  // stale/partial/cross-book/future campaign refusal always wins and no
+  // cadence section is emitted for it. A malformed supplied policy or
+  // progress throws AuthoringError here and is refused by the outer catch
+  // with its authoring code preserved, never collapsed to a generic code.
+  let cadence: ContinuationCheckinCadence | undefined;
+  if (request.cadence !== undefined) {
+    const cadenceInput = record(request.cadence);
+    if (!cadenceInput) throw new AuthoringError("invalid-cadence-progress");
+    if (!Object.hasOwn(cadenceInput, "callerCountedProgress") ||
+      cadenceInput.callerCountedProgress === undefined) {
+      throw new AuthoringError("invalid-cadence-progress");
+    }
+    // Adapter-level defaulting: an omitted policy uses the ADR 0019 default.
+    // A supplied policy is validated as-is; malformed values refuse, never coerce.
+    const policyInput = cadenceInput.policy === undefined
+      ? DEFAULT_CHECKIN_CADENCE_POLICY
+      : cadenceInput.policy as CheckinCadencePolicy;
+    const policy = validateCheckinCadencePolicy(policyInput);
+    const callerCountedProgress = validateCheckinCadenceProgress(
+      cadenceInput.callerCountedProgress as CheckinCadenceProgress);
+    const evaluation = evaluateCheckinCadence(policy, callerCountedProgress);
+    cadence = {
+      policy, callerCountedProgress,
+      due: evaluation.due, reasons: evaluation.reasons as CheckinCadenceReason[]
+    };
+  }
+
   const checkin: ContinuationCheckinInput = {
     campaignId, ownerBookId, revision,
     planDigest: manifest.planDigest as string,
@@ -252,7 +340,8 @@ function mapChecked(request: ContinuationCheckinRequest): ContinuationCheckinRes
       manifest: unknownKeys(manifest, MANIFEST_KEYS),
       counts: unknownKeys(rawCounts, COUNT_KEYS),
       checkpoint: checkpointUnknown
-    }
+    },
+    ...(cadence !== undefined ? { cadence } : {})
   };
   return { status: "mapped", checkin };
 }

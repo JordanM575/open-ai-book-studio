@@ -7,6 +7,32 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation check-in cadence emission (039 T018 partial)
+
+- Extend the pure continuation check-in adapter
+  (`packages/core/src/review/campaign-continuation-checkin.ts`) with an optional
+  cadence input: caller-counted progress (`callerCountedProgress`, field names
+  exactly as the authoring contract names them) plus an optional policy validated
+  by `validateCheckinCadencePolicy`. When the supplied cadence omits its policy,
+  the ADR 0019 default (`DEFAULT_CHECKIN_CADENCE_POLICY`) applies as the
+  documented adapter-level choice; a supplied malformed policy is never coerced.
+  When cadence input is supplied, the adapter emits the authoring evaluator's
+  result verbatim (`due`, `reasons`) plus the validated policy snapshot and the
+  validated caller-counted progress as `checkin.cadence`; it counts nothing
+  itself, so `savedWordsSinceCheckin` is never a word count derived from campaign
+  prose. Malformed policy/progress refuses with the authoring vocabulary preserved
+  (`unsupported-version`, `invalid-integer`, `invalid-cadence-policy`,
+  `invalid-cadence-progress`), a campaign refusal (stale/partial/cross-book/future)
+  wins and suppresses the cadence section, and omitted cadence input emits no
+  cadence key (byte-identical to the pre-change shape). Synthetic tests in
+  `packages/core/tests/review/campaign-continuation-checkin.test.ts` cover default
+  and edited policies, all-reasons emission, malformed refusals, suppression,
+  omission and deep-frozen inputs. Pure core adapter only: no Brief, graph, host
+  channel, preload or UI change; host wiring that supplies cadence inputs is a
+  later slice. The other two gaps stay open (`Brief.targetWords` has no campaign
+  word-count source, campaign stage kinds have no Role/TaskDefinition mapping),
+  and 039 T018 plus all 037/038 boxes remain unchecked.
+
 ### Authoring check-in cadence contract (037 T032 partial)
 
 - Add the pure versioned check-in cadence contract to `packages/core/src/authoring/contracts.ts`:
