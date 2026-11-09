@@ -99,6 +99,22 @@ task is completed. T010 retains the independent correction gate. The policy amen
     T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
+  - Partial evidence (seam 6d, measurement only): `apps/desktop/tests/continuation-checkin-measurement.test.tsx`
+    measures the mounted presenter at DOM level (structural axe rules per the repo's happy-dom
+    pattern, roles/labels/focus order/aria associations, token usage) across idle, counted,
+    no-checkpoint/no-reports, typed-refusal and the production no-coordinator states, and
+    renders a synthetic fidelity matrix (zero/large counts, unknown-bearing segments,
+    independent checkpoint/report absence, no-recount) byte-faithfully; counted states are
+    reachable only through the injectable reader in tests and are labelled as such. The
+    existing browser axe gate passes all 32 scans (workspace includes the idle panel) and
+    fails its editor focus check identically at pre-6c `f02fffd`, so that failure predates
+    the presenter. The existing perf gate's bundle check fails ×2.30 against its committed
+    baseline at this head and ×2.29 at pre-6c, so it also predates the presenter; the
+    presenter-attributable web bundle delta is +7,884 bytes (+0.45%), and the baseline was
+    left for its gate owner. Semantic usefulness is evaluated separately as human
+    judgement in the evidence report, with no model-quality or live-generation claim.
+    Full numbers: `W10-continuation-checkin-measurement.md` in the campaign evidence.
+    No task box is completed by this slice; T019 stays unchecked.
 
 ### November 8 — pure D-201 continuation candidate (T014/T017 partial)
 
