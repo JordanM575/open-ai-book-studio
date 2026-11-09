@@ -74,6 +74,11 @@ export class Library {
     return this.service.deviceName;
   }
 
+  /** The open library's storage port, for the Markdown folder host capture. */
+  get libraryPort() {
+    return this.service.libraryPort;
+  }
+
   watch(onChange: (path: string) => void): () => void {
     return this.service.watch(onChange);
   }

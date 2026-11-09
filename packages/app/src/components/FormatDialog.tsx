@@ -1,6 +1,10 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Trash2 } from "lucide-react";
-import type { Result } from "@ai-book-studio/core/ipc";
+import type {
+  MarkdownFolderCaptureResult,
+  MarkdownFolderWarningView,
+  Result
+} from "@ai-book-studio/core/ipc";
 import {
   MATTER_KINDS,
   MATTER_LIMITS,
@@ -42,24 +46,58 @@ import type { SaveStatus } from "./ManuscriptEditor";
  * back matter (D-169) is edited here and saves itself shortly after each
  * change, with the version and hash of the matter it started from.
  */
-export type FormatTarget = "DOCX" | "PDF" | "EPUB" | "Markdown";
+export type FormatTarget = "DOCX" | "PDF" | "EPUB" | "Markdown" | "Markdown folder";
 
-const TARGETS: FormatTarget[] = ["DOCX", "PDF", "EPUB", "Markdown"];
+const TARGETS: FormatTarget[] = ["DOCX", "PDF", "EPUB", "Markdown", "Markdown folder"];
 
 /** What each target is called on its Export button, and what it does with the settings below. */
 const TARGET_COPY: Record<FormatTarget, { name: string; note: string }> = {
   DOCX: { name: "Word document", note: "Uses the typography below. Word export does not add a table of contents yet." },
   PDF: { name: "PDF", note: "A4 pages with a title page and each chapter on a new page, in the typography below." },
   EPUB: { name: "EPUB", note: "An EPUB 3 e-book with one file per chapter. E-readers may change the font and size." },
-  Markdown: { name: "Markdown", note: "Plain text with chapter headings. The typography below does not apply." }
+  Markdown: { name: "Markdown", note: "Plain text with chapter headings. The typography below does not apply." },
+  "Markdown folder": {
+    name: "Markdown folder",
+    note: "A folder of Markdown files in book order, with copied images. The typography below does not apply."
+  }
 };
 
-const EXPORTS: Record<FormatTarget, (bookId: string) => Promise<Result<string | ManuscriptExportReceipt | null>>> = {
+type SingleFileTarget = Exclude<FormatTarget, "Markdown folder">;
+
+const EXPORTS: Record<SingleFileTarget, (bookId: string) => Promise<Result<string | ManuscriptExportReceipt | null>>> = {
   DOCX: (bookId) => window.studio.books.exportDocx(bookId),
   PDF: (bookId) => window.studio.books.exportPdf(bookId),
   EPUB: (bookId) => window.studio.books.exportEpub(bookId),
   Markdown: (bookId) => window.studio.books.exportMarkdown(bookId)
 };
+
+type ReadyFolderCapture = Extract<MarkdownFolderCaptureResult, { status: "ready" }>;
+
+type FolderPhase =
+  | { kind: "idle" }
+  | { kind: "capturing" }
+  | { kind: "consent"; capture: ReadyFolderCapture; superseded: boolean }
+  | { kind: "publishing"; capture: ReadyFolderCapture }
+  | { kind: "published"; capture: ReadyFolderCapture; destinationPath: string; files: string[]; warnings: MarkdownFolderWarningView[] }
+  | { kind: "cancelled"; message: string }
+  | { kind: "unknown"; message: string; destinationPath: string | null }
+  | { kind: "error"; message: string };
+
+function folderWarningText(warning: MarkdownFolderWarningView, chapters: Chapter[]): string {
+  if (warning.kind === "list") return "The image list could not be read, so attached images were not included.";
+  const chapter = chapters.find((item) => item.id === warning.chapterId);
+  const where = chapter ? `Chapter ${chapter.order}: ${chapter.title}` : "a chapter";
+  const position = warning.selectedPosition ? `, image ${warning.selectedPosition}` : "";
+  if (warning.code === "image-missing") return `An attached image was missing and was not included (${where}${position}).`;
+  if (warning.code === "image-unreadable") return `An attached image could not be read and was not included (${where}${position}).`;
+  return `An attached image did not match its record and was not included (${where}${position}).`;
+}
+
+function legacyReasonText(reason: ReadyFolderCapture["excludedLegacy"][number]["reason"]): string {
+  if (reason === "title-page-off") return "The title page is off, so this value has nowhere to appear.";
+  if (reason === "projected-value-not-emitted") return "The title page value it could match was not included.";
+  return "No included section or title page value matches it.";
+}
 
 
 
@@ -167,6 +205,9 @@ export function FormatDialog({
   const shownBookId = useRef(bookId);
   shownBookId.current = bookId;
   const [note, setNote] = useState<ExportNote | null>(null);
+  const [folder, setFolder] = useState<FolderPhase>({ kind: "idle" });
+  const folderPending = useRef<string | null>(null);
+  const [folderCancelling, setFolderCancelling] = useState(false);
   const [matter, setMatter] = useState<BookMatter | null>(() => readMatter(book).matter);
   const [kind, setKind] = useState<MatterKind>("copyright");
   const [removing, setRemoving] = useState<string | null>(null);
@@ -199,6 +240,9 @@ export function FormatDialog({
     exportPending.current = false;
     setExporting(false);
     setNote(null);
+    setFolder({ kind: "idle" });
+    folderPending.current = null;
+    setFolderCancelling(false);
     return () => { exportGeneration.current++; };
   }, [open, bookId]);
 
@@ -366,7 +410,117 @@ export function FormatDialog({
   // biome-ignore lint/correctness/useExhaustiveDependencies: prepareExport reads refs, never a captured save outcome
   useEffect(() => onExportPreflight?.(prepareExport), [onExportPreflight]);
 
+  /** Collect the saved book for a Markdown folder and show the consent bound to that collection. */
+  const startFolderCapture = async (): Promise<void> => {
+    if (exportPending.current || !canExport || !open) return;
+    const generation = ++exportGeneration.current;
+    const originId = bookId;
+    const currentExport = () => exportGeneration.current === generation && isOpen.current && shownBookId.current === originId;
+    const hadPending = folderPending.current;
+    exportPending.current = true;
+    setExporting(true);
+    setNote(null);
+    setFolderCancelling(false);
+    setFolder({ kind: "capturing" });
+    try {
+      await prepareExport();
+      if (!currentExport()) return;
+      let saved: SaveStatus | null;
+      try {
+        saved = await onFlush();
+      } catch {
+        saved = { kind: "error", message: "The chapter could not be saved." };
+      }
+      if (!currentExport()) return;
+      if (saved && saved.kind !== "saved") {
+        setFolder({ kind: "error", message: exportBlockedMessage(saved) });
+        return;
+      }
+      const capture = await must(window.studio.books.exportMarkdownFolderCapture(bookId));
+      if (!currentExport()) return;
+      if (capture.status === "refused") {
+        folderPending.current = null;
+        const detail = capture.dimension ? ` (${capture.dimension})` : "";
+        setFolder({ kind: "error", message: `Nothing was exported. The collection was refused${detail}. ${capture.message}` });
+        return;
+      }
+      const superseded = hadPending !== null && hadPending !== capture.attemptId;
+      folderPending.current = capture.attemptId;
+      setFolder({ kind: "consent", capture, superseded });
+    } catch (error) {
+      if (currentExport()) setFolder({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      if (currentExport()) {
+        exportPending.current = false;
+        setExporting(false);
+      }
+    }
+  };
+
+  /** Publish the consented collection. A cancelled picker returns to the same consent with nothing written. */
+  const publishFolder = async (capture: ReadyFolderCapture): Promise<void> => {
+    if (exportPending.current || !open) return;
+    const generation = ++exportGeneration.current;
+    const originId = bookId;
+    const currentExport = () => exportGeneration.current === generation && isOpen.current && shownBookId.current === originId;
+    exportPending.current = true;
+    setExporting(true);
+    setFolderCancelling(false);
+    setFolder({ kind: "publishing", capture });
+    try {
+      const outcome = await must(window.studio.books.exportMarkdownFolderPublish({ bookId, attemptId: capture.attemptId }));
+      if (!currentExport()) return;
+      if (outcome === null) {
+        setFolder({ kind: "consent", capture, superseded: false });
+        return;
+      }
+      if (outcome.status === "published") {
+        folderPending.current = null;
+        setFolder({ kind: "published", capture, destinationPath: outcome.destinationPath, files: outcome.files, warnings: outcome.warnings });
+      } else if (outcome.status === "cancelled") {
+        folderPending.current = null;
+        setFolder({ kind: "cancelled", message: outcome.message });
+      } else {
+        folderPending.current = null;
+        setFolder({ kind: "unknown", message: outcome.message, destinationPath: outcome.destinationPath });
+      }
+    } catch (error) {
+      if (currentExport()) setFolder({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      if (currentExport()) {
+        exportPending.current = false;
+        setExporting(false);
+      }
+    }
+  };
+
+  /** Cancel the consented collection before any destination is chosen. Nothing is published. */
+  const cancelFolderConsent = async (capture: ReadyFolderCapture): Promise<void> => {
+    try {
+      const result = await must(window.studio.books.exportMarkdownFolderCancel({ bookId, attemptId: capture.attemptId }));
+      folderPending.current = null;
+      if (result.status === "too-late") {
+        setFolder({ kind: "unknown", message: "Cancellation arrived after publication began, so the outcome could not be confirmed as cancelled. Check the destination folder before trying again.", destinationPath: null });
+        return;
+      }
+      setFolder({ kind: "cancelled", message: "The Markdown folder export was cancelled. Nothing was published." });
+    } catch (error) {
+      setFolder({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
+  /** Ask to stop a publishing folder before its commit begins. The publish reply settles the outcome. */
+  const cancelFolderPublishing = async (capture: ReadyFolderCapture): Promise<void> => {
+    setFolderCancelling(true);
+    try {
+      await must(window.studio.books.exportMarkdownFolderCancel({ bookId, attemptId: capture.attemptId }));
+    } catch {
+      // The publish reply that is still in flight reports the real settlement.
+    }
+  };
+
   const runExport = async (): Promise<void> => {
+    if (target === "Markdown folder") return startFolderCapture();
     if (exportPending.current || !canExport || !open) return;
     const generation = ++exportGeneration.current;
     const originId = bookId;
@@ -388,7 +542,7 @@ export function FormatDialog({
         setNote({ kind: "error", message: exportBlockedMessage(saved) });
         return;
       }
-      const receipt = exportReceipt(await must(EXPORTS[target](bookId)));
+      const receipt = exportReceipt(await must(EXPORTS[target as SingleFileTarget](bookId)));
       // A cancelled picker or a declined replacement wrote nothing, so there is nothing to say.
       if (currentExport() && receipt) setNote({ kind: "saved", message: `Saved ${receipt.path.split(/[\\/]/).pop() ?? receipt.path}`, ...receipt, target: TARGET_COPY[target].name });
     } catch (error) {
@@ -496,6 +650,135 @@ export function FormatDialog({
               {TARGET_COPY[target].note}
             </p>
           </fieldset>
+
+          {target === "Markdown folder" ? (
+            <section aria-label="Markdown folder export" data-testid="markdown-folder" className="space-y-3">
+              <p className={LEGEND}>Markdown folder</p>
+              {folder.kind === "idle" ? (
+                <p className={`${SMALL} text-muted-foreground`}>
+                  Use Export Markdown folder to collect the saved book. Nothing is written until you review the collection and choose a folder.
+                </p>
+              ) : null}
+              {folder.kind === "capturing" ? (
+                <p role="status" data-testid="markdown-folder-progress" className={SMALL}>
+                  Collecting the saved book…
+                </p>
+              ) : null}
+              {folder.kind === "consent" ? (
+                <div className={`${BOX} space-y-3`} data-testid="markdown-folder-consent">
+                  <p className="font-medium">Review this collection</p>
+                  <p data-testid="markdown-folder-disclosure" className={SMALL}>
+                    {folder.capture.consentDisclosure}
+                  </p>
+                  <p className={SMALL}>
+                    Collection {folder.capture.captureSequence} · {folder.capture.policyLabel} · {folder.capture.files.length}{" "}
+                    {folder.capture.files.length === 1 ? "file" : "files"}
+                  </p>
+                  {folder.superseded ? (
+                    <p role="status" data-testid="markdown-folder-superseded" className={SMALL}>
+                      A new collection replaced the previous one. The earlier choice no longer applies. Review this collection before continuing.
+                    </p>
+                  ) : null}
+                  {folder.capture.warnings.length > 0 ? (
+                    <div>
+                      <p className="font-medium">Warnings</p>
+                      <ul aria-label="Collection warnings" className="mt-1 list-disc space-y-1 pl-5">
+                        {folder.capture.warnings.map((warning) => (
+                          <li key={`${warning.kind}-${warning.code}-${warning.chapterId ?? "none"}-${warning.selectedPosition ?? "none"}-${warning.recordId ?? "none"}`} className={SMALL}>
+                            {folderWarningText(warning, chapters)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className={SMALL}>No warnings for this collection.</p>
+                  )}
+                  {folder.capture.excludedLegacy.length > 0 ? (
+                    <div data-testid="markdown-folder-excluded">
+                      <p className="font-medium">Older front matter not included</p>
+                      <ul aria-label="Excluded older front matter" className="mt-1 list-disc space-y-1 pl-5">
+                        {folder.capture.excludedLegacy.map((entry) => (
+                          <li key={entry.position} className={SMALL}>
+                            {entry.key}: {legacyReasonText(entry.reason)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="primary" data-testid="markdown-folder-continue" onClick={() => void publishFolder(folder.capture)}>
+                      {folder.capture.excludedLegacy.length > 0 ? "Continue without them" : "Continue"}
+                    </Button>
+                    <Button data-testid="markdown-folder-cancel" onClick={() => void cancelFolderConsent(folder.capture)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {folder.kind === "publishing" ? (
+                <div className={`${BOX} flex flex-wrap items-center gap-3`} data-testid="markdown-folder-progress">
+                  <p role="status" className={SMALL}>
+                    {folderCancelling ? "Cancelling the Markdown folder export…" : "Publishing the Markdown folder…"}
+                  </p>
+                  <Button data-testid="markdown-folder-cancel-export" disabled={folderCancelling} onClick={() => void cancelFolderPublishing(folder.capture)}>
+                    Cancel export
+                  </Button>
+                </div>
+              ) : null}
+              {folder.kind === "published" ? (
+                <div className={`${BOX} space-y-3`} data-testid="markdown-folder-result">
+                  <p role="status" className="font-medium">
+                    Markdown folder published
+                  </p>
+                  <p className={`${SMALL} break-words`} data-testid="markdown-folder-destination">
+                    {folder.destinationPath}
+                  </p>
+                  <p className={SMALL}>
+                    Saved data collected for this export. Changes made while collecting can mix observations, and edits after collection are not included.
+                  </p>
+                  <div>
+                    <p className="font-medium">Written files</p>
+                    <ul aria-label="Written files" data-testid="markdown-folder-files" className="mt-1 list-disc space-y-1 pl-5">
+                      {folder.files.map((file) => (
+                        <li key={file} className={SMALL}>
+                          {file}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {folder.warnings.length > 0 ? (
+                    <div>
+                      <p className="font-medium">Warnings</p>
+                      <ul aria-label="Export warnings" className="mt-1 list-disc space-y-1 pl-5">
+                        {folder.warnings.map((warning) => (
+                          <li key={`${warning.kind}-${warning.code}-${warning.chapterId ?? "none"}-${warning.selectedPosition ?? "none"}-${warning.recordId ?? "none"}`} className={SMALL}>
+                            {folderWarningText(warning, chapters)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {folder.kind === "cancelled" ? (
+                <p role="status" data-testid="markdown-folder-cancelled" className={SMALL}>
+                  {folder.message}
+                </p>
+              ) : null}
+              {folder.kind === "unknown" ? (
+                <div role="alert" data-testid="markdown-folder-unknown" className={BOX}>
+                  <p className="font-medium">Publication could not be confirmed</p>
+                  <p className={`mt-1 ${SMALL}`}>{folder.message}</p>
+                  {folder.destinationPath ? <p className={`mt-1 ${SMALL} break-words`}>{folder.destinationPath}</p> : null}
+                </div>
+              ) : null}
+              {folder.kind === "error" ? (
+                <p role="alert" data-testid="markdown-folder-error" className={ALERT}>
+                  {folder.message}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           <fieldset disabled={exporting}>
             <legend className={LEGEND}>Typography</legend>

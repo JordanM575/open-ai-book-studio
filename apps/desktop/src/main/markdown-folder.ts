@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rename, rm, open } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { bookSchema, SCHEMA_VERSION } from "@ai-book-studio/core/schema";
@@ -114,6 +114,8 @@ export type MarkdownFolderCaptureErrorCode =
   | "invalid-bundle-input"
   | "bundle-construction-failed"
   | "consent-superseded"
+  | "attempt-cancelled"
+  | "attempt-not-found"
   | "capture-failed";
 
 export class MarkdownFolderCaptureError extends Error {
@@ -234,6 +236,7 @@ export interface MarkdownFolderAcquisitionCounts {
 
 export interface MarkdownFolderCapture {
   bookId: string;
+  bookTitle: string;
   captureSequence: number;
   bundle: MarkdownFolderBundle;
   bookSha256: string;
@@ -277,11 +280,52 @@ function fallbackChapterMeta(fileName: string): { id: string; title: string; ord
   return { id: `ch_${sha256Hex(new TextEncoder().encode(fileName)).slice(0, 16)}`, title, order };
 }
 
+export type MarkdownFolderAttemptPhase = "captured" | "publishing" | "commit-started" | "published" | "cancelled" | "unknown";
+
+export interface MarkdownFolderAttempt {
+  attemptId: string;
+  bookId: string;
+  bookTitle: string;
+  capture: MarkdownFolderCapture;
+  plan: MarkdownFolderPlan;
+  consent: MarkdownFolderConsentBinding;
+  phase: MarkdownFolderAttemptPhase;
+  cancelRequested: boolean;
+  destinationPath: string | null;
+}
+
+/** Truthful settlement of one attempt. Known pre-commit refusals throw instead of settling here. */
+export type MarkdownFolderSettlement =
+  | { status: "published"; destinationPath: string; files: string[]; warnings: MarkdownFolderPlan["warnings"] }
+  | { status: "cancelled"; message: string }
+  | { status: "unknown"; message: string; destinationPath: string | null };
+
+/** A safe folder name for the destination picker, derived from the book title in the main process. */
+export function suggestMarkdownFolderName(title: string): string {
+  const slug = title
+    .normalize("NFC")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  let kept = "";
+  let bytes = 0;
+  const encoder = new TextEncoder();
+  for (const character of Array.from(slug).slice(0, 60)) {
+    bytes += encoder.encode(character).byteLength;
+    if (bytes > 180) break;
+    kept += character;
+  }
+  return `${kept.replace(/-+$/, "") || "untitled-book"}-markdown`;
+}
+
 export class MarkdownFolderHostService {
   private admittedSequences = new Map<string, number>();
   private latestAdmitted = new Map<string, number>();
   private captureStartEpochs = new Map<string, number>();
   private consentEpochs = new WeakMap<MarkdownFolderConsentBinding, number>();
+  private planForConsent = new WeakMap<MarkdownFolderConsentBinding, MarkdownFolderPlan>();
+  private attempts = new Map<string, MarkdownFolderAttempt>();
 
   constructor(private readonly host: { libraryRoot: string; storage: LibraryPort }) {}
 
@@ -595,6 +639,7 @@ export class MarkdownFolderHostService {
     const protocolFileReads = 2 * (1 + candidateNames.length + 1 + selectedCount);
     return {
       bookId,
+      bookTitle: book.title,
       captureSequence: sequence,
       bundle,
       bookSha256: bookSnapshot.sha256,
@@ -648,6 +693,7 @@ export class MarkdownFolderHostService {
       excludedLegacy: result.plan.excludedLegacy
     };
     this.consentEpochs.set(consent, this.captureStartEpochs.get(capture.bookId) ?? 0);
+    this.planForConsent.set(consent, result.plan);
     return { status: "planned", plan: result.plan, consent };
   }
 
@@ -672,11 +718,126 @@ export class MarkdownFolderHostService {
     overrides: MarkdownFolderPublishOverrides = {}
   ): Promise<MarkdownFolderPublishResult> {
     this.assertConsentCurrent(planned.consent);
+    const registered = this.planForConsent.get(planned.consent);
+    if (registered && registered !== planned.plan) {
+      captureRefusal("consent-superseded", "The saved book was collected again after this choice. Nothing was published.");
+    }
     return publishMarkdownFolder(planned.plan, destinationPath, {
       libraryRoot: this.host.libraryRoot,
       protectedPaths: [this.host.libraryRoot, join(this.host.libraryRoot, "books", planned.consent.bookId)],
       overrides
     });
+  }
+
+  /** Capture and plan one attempt for the mounted journey. A planner refusal creates no attempt. */
+  async captureAttempt(
+    bookId: string
+  ): Promise<
+    | { status: "ready"; attempt: MarkdownFolderAttempt }
+    | { status: "refused"; code: string; dimension: string | null; field: string | null; message: string }
+  > {
+    const capture = await this.capture(bookId);
+    const planned = this.planCapture(capture);
+    if (planned.status !== "planned") return planned;
+    const attempt: MarkdownFolderAttempt = {
+      attemptId: randomUUID(),
+      bookId,
+      bookTitle: capture.bookTitle,
+      capture,
+      plan: planned.plan,
+      consent: planned.consent,
+      phase: "captured",
+      cancelRequested: false,
+      destinationPath: null
+    };
+    this.attempts.set(attempt.attemptId, attempt);
+    return { status: "ready", attempt };
+  }
+
+  getAttempt(attemptId: string): MarkdownFolderAttempt | null {
+    return this.attempts.get(attemptId) ?? null;
+  }
+
+  /** Record a cancellation request. Accepted only before the commit begins; settlement stays with the publish call. */
+  requestCancel(attemptId: string): { status: "accepted" | "too-late" | "already-settled"; attemptId: string } {
+    const attempt = this.attempts.get(attemptId);
+    if (!attempt) return { status: "already-settled", attemptId };
+    if (attempt.phase === "captured") {
+      attempt.cancelRequested = true;
+      attempt.phase = "cancelled";
+      return { status: "accepted", attemptId };
+    }
+    if (attempt.phase === "publishing") {
+      attempt.cancelRequested = true;
+      return { status: "accepted", attemptId };
+    }
+    if (attempt.phase === "commit-started") return { status: "too-late", attemptId };
+    return { status: "already-settled", attemptId };
+  }
+
+  /**
+   * Publish one captured attempt to a destination the main process chose. The internal staging
+   * hook checks cancellation and consent currency before the commit; it is never an IPC input.
+   */
+  async publishAttempt(attemptId: string, destinationPath: string): Promise<MarkdownFolderSettlement> {
+    const attempt = this.attempts.get(attemptId);
+    if (!attempt) {
+      captureRefusal("attempt-not-found", "That collection is no longer available. Collect the book again before exporting.");
+    }
+    if (attempt.phase === "cancelled" || attempt.cancelRequested) {
+      captureRefusal("attempt-cancelled", "The Markdown folder export was cancelled. Nothing was published.");
+    }
+    if (attempt.phase !== "captured") {
+      captureRefusal("consent-superseded", "The saved book was collected again after this choice. Nothing was published.");
+    }
+    this.assertConsentCurrent(attempt.consent);
+    if (this.planForConsent.get(attempt.consent) !== attempt.plan) {
+      captureRefusal("consent-superseded", "The saved book was collected again after this choice. Nothing was published.");
+    }
+    attempt.phase = "publishing";
+    attempt.destinationPath = destinationPath;
+    try {
+      const result = await publishMarkdownFolder(attempt.plan, destinationPath, {
+        libraryRoot: this.host.libraryRoot,
+        protectedPaths: [this.host.libraryRoot, join(this.host.libraryRoot, "books", attempt.bookId)],
+        overrides: {
+          onStaging: async (event) => {
+            if (event.stage === "commit-started") attempt.phase = "commit-started";
+            if ((event.stage === "file-written" || event.stage === "staging-complete") && attempt.cancelRequested) {
+              throw new Error("Markdown folder publication cancelled by the author.");
+            }
+            if (event.stage === "staging-complete") this.assertConsentCurrent(attempt.consent);
+          }
+        }
+      });
+      attempt.phase = "published";
+      attempt.destinationPath = result.destinationPath;
+      return {
+        status: "published",
+        destinationPath: result.destinationPath,
+        files: [...result.files],
+        warnings: attempt.plan.warnings
+      };
+    } catch (error) {
+      const phaseAtCatch: string = attempt.phase;
+      if (attempt.cancelRequested && phaseAtCatch !== "commit-started") {
+        attempt.phase = "cancelled";
+        return { status: "cancelled", message: "The Markdown folder export was cancelled. Nothing was published." };
+      }
+      if (phaseAtCatch !== "commit-started" && !this.isConsentCurrent(attempt.consent)) {
+        captureRefusal("consent-superseded", "The saved book was collected again after this choice. Nothing was published.");
+      }
+      if (phaseAtCatch === "commit-started") {
+        attempt.phase = "unknown";
+        const detail = error instanceof Error ? error.message : "The Markdown folder publication could not be confirmed.";
+        return {
+          status: "unknown",
+          message: `${detail} Whether the folder was published could not be confirmed. Check the destination folder before trying again.`,
+          destinationPath: attempt.destinationPath
+        };
+      }
+      throw error;
+    }
   }
 }
 

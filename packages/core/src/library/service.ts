@@ -72,6 +72,7 @@ import type {
   LibraryDeviceInfo,
   LibraryEnvironment,
   LibraryFileSnapshot,
+  LibraryPort,
   LibraryWriteHost
 } from "./port";
 import { locationHealth, type LocationHealth } from "../sync/health";
@@ -199,6 +200,11 @@ export class LibraryService {
 
   get deviceName(): string {
     return this.device.name;
+  }
+
+  /** The storage port this service was opened with, for trusted host capture that must read through the same adapter. */
+  get libraryPort(): LibraryPort {
+    return this.env.storage;
   }
 
   /**

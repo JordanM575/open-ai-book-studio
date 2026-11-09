@@ -149,6 +149,9 @@ export const IPC = {
     exportPdf: "books:exportPdf",
     exportEpub: "books:exportEpub",
     exportImages: "books:exportImages",
+    exportMarkdownFolderCapture: "books:exportMarkdownFolderCapture",
+    exportMarkdownFolderPublish: "books:exportMarkdownFolderPublish",
+    exportMarkdownFolderCancel: "books:exportMarkdownFolderCancel",
     search: "books:search"
   },
   chapters: {
@@ -435,6 +438,52 @@ export type ImageExportResult =
   | { status: "unconverted"; skipped: ImageExportNote[] }
   | { status: "saved"; folder: string; files: string[]; skipped: ImageExportNote[] };
 
+/** One frozen planner warning for the Markdown folder, as the consent and settlement show it. */
+export interface MarkdownFolderWarningView {
+  kind: "list" | "image-omission";
+  code: string;
+  chapterId: string | null;
+  selectedPosition: number | null;
+  recordId: string | null;
+}
+
+/** One excluded legacy reference for the Markdown folder, identified safely by key. */
+export interface MarkdownFolderExcludedLegacyView {
+  position: number;
+  key: string;
+  keyIsFallback: boolean;
+  reason: "not-represented" | "title-page-off" | "projected-value-not-emitted";
+}
+
+/** A frozen Markdown folder collection ready for consent, or the planner's structured refusal. */
+export type MarkdownFolderCaptureResult =
+  | {
+      status: "ready";
+      attemptId: string;
+      bookId: string;
+      captureSequence: number;
+      consentDisclosure: string;
+      consentWording: string;
+      policyLabel: string;
+      warnings: MarkdownFolderWarningView[];
+      excludedLegacy: MarkdownFolderExcludedLegacyView[];
+      files: string[];
+      readingOrder: string[];
+    }
+  | { status: "refused"; code: string; dimension: string | null; field: string | null; message: string };
+
+/** Truthful settlement of a Markdown folder publication attempt. */
+export type MarkdownFolderPublishOutcome =
+  | { status: "published"; destinationPath: string; files: string[]; warnings: MarkdownFolderWarningView[] }
+  | { status: "cancelled"; message: string }
+  | { status: "unknown"; message: string; destinationPath: string | null };
+
+/** Whether a cancellation request was accepted before the commit began. */
+export interface MarkdownFolderCancelResult {
+  status: "accepted" | "too-late" | "already-settled";
+  attemptId: string;
+}
+
 export interface StudioApi {
   /** Absent on unsupported hosts; controls refuse before opening a draft. */
   planning?: PlanningApi;
@@ -503,6 +552,12 @@ export interface StudioApi {
     exportEpub(bookId: string): Promise<Result<ManuscriptExportReceipt | null>>;
     /** Save every image in the book as a JPEG in a new folder the author chooses. */
     exportImages(bookId: string): Promise<Result<ImageExportResult>>;
+    /** Collect the saved book into a frozen Markdown folder bundle and plan it. Desktop only. */
+    exportMarkdownFolderCapture(bookId: string): Promise<Result<MarkdownFolderCaptureResult>>;
+    /** Publish the frozen bundle for one attempt to a new folder chosen in the main process. Null when the picker is cancelled. */
+    exportMarkdownFolderPublish(input: { bookId: string; attemptId: string }): Promise<Result<MarkdownFolderPublishOutcome | null>>;
+    /** Ask to cancel one Markdown folder attempt before its commit begins. */
+    exportMarkdownFolderCancel(input: { bookId: string; attemptId: string }): Promise<Result<MarkdownFolderCancelResult>>;
     search(bookId: string, query: string): Promise<Result<SearchHit[]>>;
   };
   chapters: {

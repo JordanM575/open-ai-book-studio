@@ -52,6 +52,7 @@
     "tests/format-dialog.test.tsx",
     "tests/format-dialog-export.test.tsx",
     "tests/format-matter.test.tsx",
+    "tests/markdown-folder-format.test.tsx",
     "tests/docx-export-flush.test.tsx",
     "tests/book-actions-images.test.tsx",
     "tests/settings-about.test.tsx",
