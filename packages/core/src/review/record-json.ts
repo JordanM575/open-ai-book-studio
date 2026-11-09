@@ -389,6 +389,131 @@ export function canonicalJsonText(value: unknown, options: { maxDepth?: number }
   return visit(value, 0);
 }
 
+/**
+ * Visit the canonical UTF-8 spelling without first constructing the complete JSON text or byte
+ * array. The supplied limit is an operation budget, not a change to the saved-record limit. The
+ * visitor may receive a prefix before an invalid value or an overflow is detected; it must not
+ * publish that prefix or mutate the input. Each emitted byte array is independently owned.
+ *
+ * This is useful for measuring a larger virtual value before allocating its bounded full encoding,
+ * or for feeding an incremental digest. A consumer that needs an atomic result should discard its
+ * intermediate state when this function throws.
+ */
+export function visitCanonicalJsonBytes(
+  value: unknown,
+  maxBytes: number,
+  visit?: (bytes: Uint8Array) => void,
+  options: { maxDepth?: number } = {}
+): number {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new ReviewRecordError("invalid", "The canonical JSON size limit is not valid.");
+  }
+  const maxDepth = options.maxDepth ?? REVIEW_RECORD_DEPTH;
+  if (!Number.isSafeInteger(maxDepth) || maxDepth < 0) {
+    throw new ReviewRecordError("invalid", "The canonical JSON depth limit is not valid.");
+  }
+  const active = new Set<object>();
+  let total = 0;
+  const emit = (text: string): void => {
+    if (!text) return;
+    const bytes = encoder.encode(text);
+    // Subtraction avoids a potentially overflowing addition and refuses before delivering the chunk.
+    if (bytes.byteLength > maxBytes - total) {
+      throw new ReviewRecordError("too-large", "The canonical JSON value exceeds its operation byte limit.");
+    }
+    total += bytes.byteLength;
+    visit?.(bytes);
+  };
+  const quote = (text: string): void => {
+    emit('"');
+    let start = 0;
+    let index = 0;
+    while (index < text.length) {
+      const code = text.charCodeAt(index);
+      let escaped: string | undefined;
+      let width = 1;
+      if (code === 0x22) escaped = '\\"';
+      else if (code === 0x5c) escaped = "\\\\";
+      else if (code === 0x08) escaped = "\\b";
+      else if (code === 0x09) escaped = "\\t";
+      else if (code === 0x0a) escaped = "\\n";
+      else if (code === 0x0c) escaped = "\\f";
+      else if (code === 0x0d) escaped = "\\r";
+      else if (code < 0x20) escaped = `\\u${code.toString(16).padStart(4, "0")}`;
+      else if (code >= 0xd800 && code <= 0xdbff) {
+        const low = text.charCodeAt(index + 1);
+        requireValue(low >= 0xdc00 && low <= 0xdfff, "invalid-unicode");
+        width = 2;
+      } else requireValue(code < 0xdc00 || code > 0xdfff, "invalid-unicode");
+      if (escaped !== undefined) {
+        emit(text.slice(start, index));
+        emit(escaped);
+        start = index + width;
+      }
+      index += width;
+      // Keep UTF-8 encoding allocations bounded, without splitting a surrogate pair.
+      if (index - start >= 4096) {
+        emit(text.slice(start, index));
+        start = index;
+      }
+    }
+    emit(text.slice(start));
+    emit('"');
+  };
+  const walk = (input: unknown, depth: number): void => {
+    requireValue(depth <= maxDepth, "value-depth");
+    if (input === null) { emit("null"); return; }
+    if (typeof input === "boolean") { emit(input ? "true" : "false"); return; }
+    if (typeof input === "number") {
+      requireValue(Number.isFinite(input) && Math.abs(input) <= Number.MAX_SAFE_INTEGER && !Object.is(input, -0), "lossy-number");
+      emit(JSON.stringify(input));
+      return;
+    }
+    if (typeof input === "string") { quote(input); return; }
+    requireValue(typeof input === "object" && input !== null, "non-data-value");
+    const array = Array.isArray(input);
+    const prototype = Object.getPrototypeOf(input);
+    requireValue(prototype === (array ? Array.prototype : Object.prototype) || prototype === null, "non-plain-value");
+    requireValue(!active.has(input), "cyclic-value");
+    active.add(input);
+    const keys = Reflect.ownKeys(input);
+    if (array) {
+      const length = (input as unknown[]).length;
+      requireValue(keys.length === length + 1, "sparse-or-extended-array");
+      emit("[");
+      for (let index = 0; index < length; index++) {
+        if (index) emit(",");
+        const property = Object.getOwnPropertyDescriptor(input, String(index));
+        requireValue(property && "value" in property && property.enumerable, "non-data-property");
+        walk(property.value, depth + 1);
+      }
+      emit("]");
+    } else {
+      const names: string[] = [];
+      for (const key of keys) {
+        requireValue(typeof key === "string", "symbol-property");
+        names.push(key);
+      }
+      names.sort();
+      emit("{");
+      for (let index = 0; index < names.length; index++) {
+        const key = names[index];
+        requireValue(key !== undefined, "non-data-value");
+        const property = Object.getOwnPropertyDescriptor(input, key);
+        requireValue(property && "value" in property && property.enumerable, "non-data-property");
+        if (index) emit(",");
+        quote(key);
+        emit(":");
+        walk(property.value, depth + 1);
+      }
+      emit("}");
+    }
+    active.delete(input);
+  };
+  walk(value, 0);
+  return total;
+}
+
 /** Canonical bytes, bounded before anything touches storage. */
 export function encodeCanonicalJson(value: unknown, options: StrictJsonOptions = {}): Uint8Array {
   const limit = Math.min(options.maxBytes ?? REVIEW_RECORD_BYTES, REVIEW_RECORD_BYTES);

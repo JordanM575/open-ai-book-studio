@@ -1,7 +1,7 @@
 # ADR 0020: Exact-source inline editorial review
 
 **Status:** Accepted, November 7, 2026, under delegated feature-delivery authority.
-**Decisions:** D-197–D-199 and revised D-171. **Owners:** 033/034/039.
+**Decisions:** D-197–D-199, D-201 and revised D-171. **Owners:** 033/034/039.
 
 ## D-197: Interaction and editor
 
@@ -88,8 +88,9 @@ or files. No automatic 20-report eviction, direct unlink or impossible folder-sy
 Each document is at most 2,500,000 serialized UTF-8 bytes including unknown fields. Preserve lossless
 supported plain data, exact numeric values and owner identity; refuse future/corrupt/oversized data
 without rewrite. Same-ID/equal-bytes save is idempotent after verification; unequal bytes conflict.
-Detailed schemas, segmented occurrence/disposition/campaign continuation and related-file recovery
-must be added to FORMAT before those writers. A full document refuses with the draft retained; it
+Detailed schemas, segmented occurrence/disposition continuation and related-file recovery must be
+added to FORMAT before those writers. D-201 specifies, but does not implement, campaign continuation
+below. A full document refuses with the draft retained; it
 never trims history to fit. Reports and dependent files move recoverably to trash, never auto-prune.
 
 Archive/sync includes these ordinary author files and quotations; overflow refuses rather than omits.
@@ -98,6 +99,36 @@ require an explicitly selected valid 032 snapshot; saving a report creates no im
 Distinguish verified-at-capture from current snapshot verification. Copy/Markdown export includes
 scope/profile/model/rule attribution, quotes, captured revision, export-time freshness and dispositions,
 via the safe output path. No secrets/raw errors/credential-bearing URLs or hidden conversation data.
+
+## D-201: Conditional campaign continuation
+
+The accepted [campaign continuation format](../formats/campaign-continuation.md) uses a checked
+`review-campaign` schema-2 manifest, immutable schema-1 plan/checkpoint token segments and an
+immutable publication intent. It preserves the complete planner content except its digest; selected
+source text, generated stage prompts and prior-feedback arrays are external at four exact typed,
+path-bound, canonical length/digest-checked locations. Exact reconstruction and continuation depend
+on independently validated originals and compatible planner validation; otherwise the retained
+structure is inspectable but unavailable. It is not a self-contained or offline-availability promise.
+An explicit author-selected valid 032 snapshot may supply a historical body; saving does not capture
+history, conversations, summaries or provider payloads, and stored references grant no execution
+authority. A self-contained archive requires a separate retention/privacy decision.
+
+The format preserves the existing per-document, ordinary request and schema-1 limits and adds bounded
+operation-specific ceilings. No eviction, truncation, silent migration or loss of supported unknown
+fields is permitted. Known metadata and unknown fields can be sensitive: explicit Save requires a
+disclosure and a host-established non-secret opaque endpoint identity, never any URL or credential.
+Segment and intent publication precedes a last checked manifest; immutable readback and explicit
+recovery do not themselves prove cross-writer atomicity. Production mutation requires the format's
+independently proven conditional-write/immutable-create or exclusion capabilities. Three-component
+campaign group moves likewise require their specified directory/no-replace or exclusion guarantees;
+unsupported adapters refuse mutation. Reports and dispositions remain independently owned, and
+cross-book report references require a separately authorized read/identity seam.
+
+The detailed schema, canonical identities, limits and recovery classifications are normative in
+[FORMAT](../FORMAT.md#saved-campaign-continuation-manifest-schema-2-segment-and-intent-schema-1).
+The acceptance does not implement a codec, storage writer, compatible planner registry, group move,
+archive, host execution or adapter conformance. Those, independent review and the remaining 039 gates
+are still required.
 
 ## Evidence and alternatives
 

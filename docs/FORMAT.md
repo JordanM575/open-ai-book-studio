@@ -54,7 +54,8 @@ schema from these directory names or from an unchecked TypeScript object.
 | --- | --- |
 | `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers for `run`, `task`, `attempt`, `effect`, `question`, `artifact` and `context` exist, while command/admission writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer and saved-record IPC/UI exist, export and independent review remain open. |
-| `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records. Schema 1 and full-document writers are defined in [Saved review records](#saved-review-records-schema-1); segmented continuation remains unspecified and T015 stays partial. |
+| `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/<campaignId>.json` | Checked author-owned records. The existing schema-1 writer is defined in [Saved review records](#saved-review-records-schema-1). The same campaign path is also reserved for the distinct [schema-2 manifest](#saved-campaign-continuation-manifest-schema-2-segment-and-intent-schema-1), not implemented by that writer. |
+| `books/<bookId>/reviews/campaigns/<campaignId>.segments/`, `<campaignId>.intents/`, and `reviews/campaign-moves/` | D-201 [schema and recovery rules](formats/campaign-continuation.md); pure segment/intent candidate encoding and inspection exist, but no storage writer, recovery or group move is implemented. |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
 
@@ -62,7 +63,9 @@ The workflow row is now specified in [Workflow records (schema 1)](#workflow-rec
 the T023 checked record writers exist on `LibraryService.workflowRecords`, while command/admission
 writers and independent storage review remain open. The saved-review rows are now
 specified in [Saved review records (schema 1)](#saved-review-records-schema-1); their checked writer
-and saved-record IPC/UI exist but export/archive, segmented continuation and independent review remain
+and saved-record IPC/UI exist but export/archive and independent review remain open. D-201 has
+partial pure in-memory continuation codec leaves; its writer, compatible replan,
+occurrence/disposition continuation, export/archive and independent review remain
 open. The host-local workflow permission row remains a reservation.
 
 Each detailed format must name every field and optional/default rule; schema/kind/owner/host-issued ID;
@@ -749,6 +752,8 @@ is written unless the author explicitly saves one. The validated desktop/browser
 support inspection, checked dispositions and confirmed recovery. Provider wiring,
 export/archive mounting, campaign execution, suggestion application and
 independent exact-head review remain separate delivery work. T014 and T015 stay unchecked.
+This section and its writer/recovery rules apply to schema 1 only. Schema 2 is a distinct, accepted
+continuation format with partial pure codec leaves, specified [below](#saved-campaign-continuation-manifest-schema-2-segment-and-intent-schema-1).
 
 ### Layout and kinds
 
@@ -981,10 +986,29 @@ retries belong to 037.
 - **Listing.** `reviews/*.json` is listed newest `completedAt` first (compared as instants, since the
   original offset spelling is preserved), then by ID, with offset/limit paging (1–200). An unreadable, newer or unsupported file is reported as a named issue and left
   untouched. Nothing in a list or read writes.
-- **Continuation gap.** Segmented occurrence/disposition/campaign continuation is **not** specified
-  by this build. A document over any bound or count refuses with the draft retained; no writer trims
-  history to fit. T015 remains partial until continuation, export/archive and independent
-  review are delivered.
+- **Continuation gap.** Segmented occurrence/disposition continuation remains unspecified. The
+  accepted campaign format below has pure in-memory leaves but no storage or host integration. A
+  document over any bound or count refuses with the draft retained; no writer trims history to fit.
+  T015 remains partial until continuation, export/archive and independent review are delivered.
+
+## Saved campaign continuation (manifest schema 2; segment and intent schema 1)
+
+D-201 / [ADR 0020](adr/0020-inline-editorial-review.md#d-201-conditional-campaign-continuation)
+accepts the complete field-level [campaign continuation format](formats/campaign-continuation.md),
+including its canonical bytes, four external-hole paths, bounds, integrity, compatible-planner,
+publication and recovery rules. That linked document is normative. It reserves new immutable segment,
+publication-intent and group-intent records and a distinct `review-campaign` schema 2 at the existing
+campaign path. A schema-1 reader must refuse version 2, not reinterpret it; a future version-dispatching
+reader retains schema 1 under its own rules. Ordinary request, report, disposition, profile and 032
+history rules are unchanged.
+
+Pure in-memory leaves construct bounded candidates and inspect/reconstruct untrusted wire data. Exact
+comparison requires a separately supplied locally provenanced plan; no decoded object gains planner
+provenance. Structural reconstruction alone does not validate all plan semantics or source files.
+No schema-2 writer, compatible replan registry, host integration, archive or adapter qualification
+is implemented or independently accepted. Exact continuation remains conditional on matching external
+values and compatible planner provenance; missing values remain unavailable. 039 T014/T017/T018 and
+T015 remain open.
 
 ## `book.json`
 

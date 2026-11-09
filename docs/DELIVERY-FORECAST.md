@@ -13,15 +13,17 @@ retain every feature; a prerequisite here is a specific contract, not completion
 | Manual planning · [#44](https://github.com/JordanM575/open-book-studio/pull/44) | `ac345ea28dfede2f38e927672fd3ff878d0395b0` | Squash-merged as `6c94273`, including literal-value/full-copy recovery and order-identity corrections. Final-head automated review is public; no equivalent public independent final-head acceptance receipt was located. Built-adapter/native and full 030/033 acceptance remain. |
 | Workflow storage · [#43](https://github.com/JordanM575/open-book-studio/pull/43) | `5d80c543868a7ce9dee65de7fe18834653525775` | Merged as `d9b6b16` with [attributed exact-head acceptance and five gates](https://github.com/JordanM575/open-book-studio/pull/43#issuecomment-6732204100). Preserve pending receipt ownership and valid predecessors. Settlement clears entry roots; retained closures/unsettled receipts may retain state. Host execution/recovery remains. |
 | Repetition findings · [#45](https://github.com/JordanM575/open-book-studio/pull/45) | `7087a3fffd2c72106335e62c9b642f2f7f434a1d` | Merged as the base above with [attributed exact-head acceptance and five gates](https://github.com/JordanM575/open-book-studio/pull/45#issuecomment-6732818306). Lazy selected-passage verification leaves worker aggregates unverified; direct source-read failures remain distinct. Packaged/native, inline/retained and connected acceptance remain. |
-| Campaign continuation | Documentation candidate; implementation pending | D-201 identifies a separate contract/format candidate, not an accepted decision recorded in this snapshot. Codec, reconstruction/provenance, writer and host integration remain unimplemented. |
+| Campaign continuation | D-201 recorded; pure codec accepted | [D-201](DECISIONS.md#d-201--conditional-campaign-continuation) and [the continuation format](formats/campaign-continuation.md) are recorded; the pure in-memory codec is accepted. Storage writer, compatible-planner registry, publication/recovery and host/provider integration remain open. |
 
 PRs #46/#47's pure planner and saved-review controls precede #42 in first-parent history; #44 then
 precedes #43/#45. A missing public acceptance receipt does not establish that no review occurred.
 The [foundation register](FOUNDATION-EVIDENCE.md) records exact heads, merges, historical figures
 and scoped public attribution. A changed candidate needs assessment and gates on its new exact head.
 Tests from separate candidates overlap and are never summed.
-The continuation candidate must record its full decision and format and pass review before they
-are incorporated as writer prerequisites; a roadmap reference alone supplies no storage contract.
+The continuation decision and format are recorded in [D-201](DECISIONS.md#d-201--conditional-campaign-continuation)
+and [the continuation format](formats/campaign-continuation.md), and the pure codec is accepted;
+they are prerequisites for the pure layer only. A roadmap reference alone supplies no storage
+contract, and this recording authorizes no storage writer.
 
 ## Next dependency slices
 
@@ -35,7 +37,7 @@ prerequisites; a storage gate on one path does not suspend all foreground review
 | Volatile selected-source [039](../specs/039-reader-continuity-review/tasks.md) | No conversation/report writes. Selected-source bounds, provider/data-use disclosure, required consent, citations, read-only runtime enforcement and actual host/UI integration remain independent gates. It does not wait for 037 thread persistence or campaign continuation. |
 | Durable conversational [037](../specs/037-guided-autonomous-authoring/tasks.md) | The same selected-source/execution contracts plus disclosed retention through checked, recoverable shared threads and replay exclusion. Thread safety is this path's storage prerequisite. |
 | Explicit full-book campaigns [039/037](../specs/039-reader-continuity-review/spec.md#requirements) | Author-selected multi-stage planning/execution, per-call admission and attributed range/category/synthesis coverage. Ordinary overflow refuses; no silent extra calls. Pure planning does not authorize execution or prove storage. |
-| Retained campaign continuation [039 T014–T018](../specs/039-reader-continuity-review/tasks.md) | Reviewed public decision/format incorporation, exact codec/reconstruction and provenance, capability-qualified writers/recovery, then host/UI acceptance. A retained plan never grants execution authority. |
+| Retained campaign continuation [039 T014–T018](../specs/039-reader-continuity-review/tasks.md) | Recorded [D-201](DECISIONS.md#d-201--conditional-campaign-continuation) decision/format and accepted pure codec/reconstruction; compatible replan/provenance, capability-qualified writers/recovery, then host/UI acceptance remain. A retained plan never grants execution authority. |
 
 [U-039-04 / ADR 0018](adr/0018-scoped-review-contracts.md#reader-profiles-and-bounds) remains a gate
 on **both T003 and T006**, including a single oversized chapter. Explicit campaigns partition only
@@ -69,7 +71,7 @@ claim the combined capability until its additional contracts pass.
 | A · W04 / 037 T023 | Merged #43 storage foundation | Preserve later accepted/newer/uncertain decisions, separately owned pending receipts and legitimate unsuperseded predecessors during host integration. Unaccepted outside bytes stay reviewable; no fixed heap ceiling or whole-graph collection is claimed. |
 | B · W08 / 030/033 | Merged #44 manual recovery corrections | Qualify built-adapter and remaining planning journeys using fresh checked edits, exact literal/full-copy recovery and stable order IDs. Source-component Chromium evidence does not establish the built/native journey. |
 | C · W10 / 034 | Merged #45 scanner/navigation | Qualify packaged worker/CSP, native accessibility/IME/navigation and inline/retained integration. Maintain whole-token association, lazy selected-only checks, unverified aggregates and separate direct-read failures; 034 T016/T018/T019 remain open. |
-| D → V · W10 / 039 T014/T017 | D-201 contract/format recorded and reviewed; prepared dependencies | Pure exact segmented codec, typed external holes, complete bounds/tamper tests, then compatible replan/content equality. Hash agreement alone never grants planner provenance. |
+| D → V · W10 / 039 T014/T017 | D-201 contract/format recorded; pure codec accepted | Pure exact segmented codec, typed external holes and bounds/tamper tests are accepted; compatible replan/content equality remains. Hash agreement alone never grants planner provenance. 039 T014/T017 stay unchecked. |
 | S · W10 / 039 T014/T015 | Codec/provenance accepted; adapter capability demonstrated | Intent-first immutable segments and checked manifest, honest uncertain recovery, supported unknown fields, bounded inventories and owner-explicit report reads. Unsupported mutation refuses. |
 | H → P · W04 / 037 T020–T025/T029 | Accepted storage and pinned-host settlement contracts | Separate host permission, durable finite admission, one journal-aware checked publisher and event-driven scheduling. Prove revocation, competing edits and every publication crash window. |
 | O · W08/W04 / 030/033/037 | Exact planning recovery and canonical brief/Bible mapping | Small returnable onboarding retains direction and the existing saved-word goal. No duplicate progress counter or implicit execution grant. |
