@@ -9,8 +9,10 @@ export const SYNC_SCHEMA_VERSION = 1;
 export interface SyncFileRecord {
   /** Last hash observed on disk. */
   sha256: string;
-  /** Hash this device last wrote, when it differs from the observed hash. */
+  /** Hash of the last local write or unresolved planned write. */
   writtenSha256?: string | undefined;
+  /** Identity of the pending/recovery intent, never evidence that publication completed. */
+  plannedWriteId?: string | undefined;
   version?: number | undefined;
   size?: number | undefined;
   observedAt: string;

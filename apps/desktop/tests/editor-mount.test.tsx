@@ -370,22 +370,119 @@ describe("mounted editor surface", () => {
     expect(editor.getSnapshot().held).toBe(false);
   });
 
-  test("a host evidence selection moves the mounted selection on each new nonce", async () => {
+  test("a host evidence selection moves the mounted selection on each new request", async () => {
     const mounted = mount();
     const editor = mounted.editor();
     const start = CHAPTER.content.indexOf(SECOND);
     const end = start + SECOND.length;
-    mounted.rerender({ selection: { start, end, nonce: 1 } });
+    const selection = () => ({ start, end, source: editor.getSnapshot(), visit: mountedHandle(mounted).getEvidenceSnapshot(),
+      isCurrent: () => true, onResult: () => {} });
+    mounted.rerender({ selection: selection() });
     await testing.act(async () => {});
     expect(editor.getSnapshot().selection).toEqual({ anchor: start, head: end });
     expect(editor.getSnapshot().selectedText).toBe(SECOND);
 
-    // The same offsets with a new nonce still run: clicking the same finding twice refocuses it.
-    (mounted.surface() as HTMLElement & { selectionStart: number; selectionEnd: number }).selectionStart = 0;
-    (mounted.surface() as HTMLElement & { selectionStart: number; selectionEnd: number }).selectionEnd = 0;
-    mounted.rerender({ selection: { start, end, nonce: 2 } });
+    // A new request for the same offsets still refocuses the selection.
+    mounted.surface().blur();
+    expect(editor.setSelection({ anchor: 0, head: 0 })).toBe(true);
+    mounted.rerender({ selection: selection() });
     await testing.act(async () => {});
     expect(editor.getSnapshot().selection).toEqual({ anchor: start, head: end });
+  });
+
+  test.each(["libraryId", "bookId", "chapterId", "version", "rawHash", "savedBody"] as const)(
+    "evidence selection refuses a mismatched %s without changing the text", (field) => {
+      const mounted = mount();
+      const editor = mounted.editor();
+      const visit = mountedHandle(mounted).getEvidenceSnapshot();
+      if (!visit) throw new Error("Expected a clean mounted visit");
+      const source = { ...visit, [field]: field === "version" ? visit.version + 1 : "other" };
+      const onResult = mock((_applied: boolean) => {});
+      mounted.rerender({ selection: { start: 0, end: 3, source, visit, isCurrent: () => true, onResult } });
+      expect(onResult).toHaveBeenCalledWith(false);
+      expect(editor.getSnapshot().body).toBe(CHAPTER.content);
+      expect(editor.getSnapshot().selection).toEqual({ anchor: 0, head: 0 });
+    }
+  );
+
+  test("a dirty buffer and an edit-undo-save ABA both invalidate an earlier selection", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    const visit = mountedHandle(mounted).getEvidenceSnapshot();
+    if (!visit) throw new Error("Expected a clean mounted visit");
+    const onResult = mock((_applied: boolean) => {});
+    const selection = () => ({ start: 0, end: 3, source: visit, visit, isCurrent: () => true, onResult });
+    type(`${CHAPTER.content}unsaved words`);
+    mounted.rerender({ selection: selection() });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    expect(editorText()).toContain("unsaved words");
+    type(CHAPTER.content);
+    await testing.act(async () => { await mountedHandle(mounted).flush(); });
+    expect(mountedHandle(mounted).getStatus().kind).toBe("saved");
+    expect(mountedHandle(mounted).getEvidenceSnapshot()).not.toBeNull();
+    mounted.rerender({ selection: selection() });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    expect(editor.getSnapshot().body).toBe(CHAPTER.content);
+    expect(editor.getSnapshot().selection).toEqual({ anchor: 0, head: 0 });
+  });
+
+  test("composition and hold, including completed ABA transitions, invalidate a captured visit", async () => {
+    const mounted = mount();
+    const editor = mounted.editor();
+    const first = mountedHandle(mounted).getEvidenceSnapshot();
+    if (!first) throw new Error("Expected a clean mounted visit");
+    const onResult = mock((_applied: boolean) => {});
+    const request = (visit: typeof first) => ({ start: 0, end: 3, source: visit, visit, isCurrent: () => true, onResult });
+    testing.fireEvent.compositionStart(mounted.surface());
+    mounted.rerender({ selection: request(first) });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    testing.fireEvent.compositionEnd(mounted.surface(), { data: "" });
+    await testing.act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    mounted.rerender({ selection: request(first) });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    const second = mountedHandle(mounted).getEvidenceSnapshot();
+    if (!second) throw new Error("Expected a clean visit after composition");
+    let release!: () => void;
+    const held = mountedHandle(mounted).hold(() => new Promise<void>((resolve) => { release = resolve; }));
+    mounted.rerender({ selection: request(second) });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    await testing.act(async () => { await Promise.resolve(); release(); await held; });
+    mounted.rerender({ selection: request(second) });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    expect(editor.getSnapshot().body).toBe(CHAPTER.content);
+  });
+
+  test("saving and failed saves refuse evidence without replacing the live buffer", async () => {
+    let release!: (value: unknown) => void;
+    const pending = new Promise<unknown>((resolve) => { release = resolve; });
+    const mounted = mount({}, () => pending);
+    const visit = mountedHandle(mounted).getEvidenceSnapshot();
+    if (!visit) throw new Error("Expected a clean mounted visit");
+    const onResult = mock((_applied: boolean) => {});
+    const selection = () => ({ start: 0, end: 3, source: visit, visit, isCurrent: () => true, onResult });
+    type(`${CHAPTER.content}unsaved words`);
+    let save!: Promise<SaveStatus>;
+    await testing.act(async () => { save = mountedHandle(mounted).flush(); await Promise.resolve(); });
+    expect(mountedHandle(mounted).getStatus().kind).toBe("saving");
+    mounted.rerender({ selection: selection() });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    await testing.act(async () => { release({ ok: false, error: { message: "synthetic failure" } }); await save; });
+    expect(mountedHandle(mounted).getStatus().kind).toBe("error");
+    mounted.rerender({ selection: selection() });
+    expect(onResult).toHaveBeenLastCalledWith(false);
+    expect(editorText()).toContain("unsaved words");
+  });
+
+  test("a captured visit cannot select in a later mount of the same chapter", () => {
+    const first = mount();
+    const visit = mountedHandle(first).getEvidenceSnapshot();
+    if (!visit) throw new Error("Expected a clean mounted visit");
+    testing.cleanup();
+    const second = mount();
+    const onResult = mock((_applied: boolean) => {});
+    second.rerender({ selection: { start: 0, end: 3, source: visit, visit, isCurrent: () => true, onResult } });
+    expect(onResult).toHaveBeenCalledWith(false);
+    expect(second.editor().getSnapshot().body).toBe(CHAPTER.content);
   });
 
   test("a conflict keeps the author's words, reports it, and a second flush writes no new copy", async () => {

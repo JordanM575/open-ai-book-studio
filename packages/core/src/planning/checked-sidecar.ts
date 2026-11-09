@@ -28,9 +28,24 @@ export interface SidecarRead<T> {
   source: SidecarSource;
   baselineJson: string | null;
 }
-export type SidecarSave<T> =
+export const sidecarAttemptIdSchema = z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+export const sidecarAttemptSchema = z.strictObject({ requestId: sidecarAttemptIdSchema, publicationId: sidecarAttemptIdSchema });
+export type SidecarAttempt = z.infer<typeof sidecarAttemptSchema>;
+/** The handler issues a fresh publication identity even if a caller repeats its request token. */
+export function newSidecarAttempt(requestId: string = globalThis.crypto.randomUUID()): SidecarAttempt {
+  return sidecarAttemptSchema.parse({ requestId, publicationId: globalThis.crypto.randomUUID() });
+}
+export type SidecarSave<T> = (
   | { status: "saved" | "unchanged"; current: SidecarRead<T> }
-  | { status: "conflict"; bookId: string; reason: "external-edit" | "missing-file"; savedAs: string; observed: SidecarSource };
+  | { status: "conflict"; bookId: string; reason: "external-edit" | "missing-file"; savedAs: string; observed: SidecarSource;
+      /** Exact complete recovery bytes verified by the commit, not an echoed request token. */
+      preserved: { rawJson: string; hash: string } }) & { attempt?: SidecarAttempt };
+
+/** Constructed only in the deterministic preparation stage, before any publication attempt. */
+export class SidecarRefusalError extends LibraryError {
+  readonly outcome = "refused";
+  constructor(message: string) { super("invalid", message); }
+}
 
 /** An exception after publication is not proof that storage kept the old file. Never auto-replay. */
 export class SidecarWriteError extends LibraryError {
@@ -61,6 +76,11 @@ export function sidecarPath(bookId: string, kind: "planning" | "goals"): Library
 
 export function sameSource(a: SidecarSource, b: SidecarSource): boolean {
   return a.kind === b.kind && a.revision === b.revision && (a.kind === "absent" || (b.kind === "sha256" && a.value === b.value));
+}
+
+/** The exact baseline hash commits its raw bytes; the receipt also binds the scoped typed intent. */
+export function sidecarIntentBytes(request: { bookId: string; source: SidecarSource; draft: unknown }): Uint8Array {
+  return encoder.encode(JSON.stringify({ bookId: request.bookId, source: request.source, draft: request.draft }));
 }
 
 /** The general book guard alone tolerates missing/malformed books: this leaf must not. */
@@ -116,20 +136,30 @@ export class CheckedSidecar<T extends SidecarDocument> {
   }
 
   save(
-    request: { bookId: string; source: SidecarSource; baselineJson: string | null },
-    apply: (base: T | null) => { data: T; changed: boolean }
+    request: { bookId: string; source: SidecarSource; baselineJson: string | null; draft: unknown },
+    apply: (base: T | null) => { data: T; changed: boolean },
+    attempt?: SidecarAttempt
   ): Promise<SidecarSave<T>> {
+    const receipt = attempt ? { attempt: sidecarAttemptSchema.parse(attempt) } : {};
     return this.host.withBook(request.bookId, async () => {
       await assertSidecarOwner(this.host, request.bookId);
       const base = await this.baseline(request);
       const current = await this.readCurrent(request.bookId);
-      const proposed = apply(base);
-      if (proposed.changed) proposed.data = { ...proposed.data, revision: increment(base?.revision ?? 0) };
-      validateDocument(this.schema, proposed.data, request.bookId);
-      if (sameSource(request.source, current.source) && !proposed.changed) return { status: "unchanged", current };
-      // Bound the complete draft even for stale requests, before any layout/journal writes.
-      const bytes = serializeDocument(proposed.data);
-      if (!sameSource(request.source, current.source)) return this.preserve(request, bytes, current.source);
+      let proposed: { data: T; changed: boolean };
+      let bytes: Uint8Array;
+      try {
+        proposed = apply(base);
+        if (proposed.changed) proposed.data = { ...proposed.data, revision: increment(base?.revision ?? 0) };
+        validateDocument(this.schema, proposed.data, request.bookId);
+        if (sameSource(request.source, current.source) && !proposed.changed) return { status: "unchanged", current, ...receipt };
+        // Bound the complete draft even for stale requests, before any layout/journal writes.
+        bytes = serializeDocument(proposed.data);
+      } catch (error) {
+        // Only this pure preparation stage proves zero active/recovery publication attempts.
+        if (error instanceof LibraryError) throw new SidecarRefusalError(error.message);
+        throw error;
+      }
+      if (!sameSource(request.source, current.source)) return this.preserve(request, bytes, current.source, receipt);
       await assertSidecarOwner(this.host, request.bookId);
       let result: CommitFileResult;
       try {
@@ -142,10 +172,11 @@ export class CheckedSidecar<T extends SidecarDocument> {
       if (result.status === "changed") {
         // Revalidate supported data/ownership rather than trusting an arbitrary conflict snapshot.
         const observed = await this.readCurrent(request.bookId);
-        return this.preserve(request, bytes, observed.source);
+        return this.preserve(request, bytes, observed.source, receipt);
       }
       return {
         status: "saved",
+        ...receipt,
         current: { bookId: request.bookId, data: proposed.data, baselineJson: decoder.decode(bytes),
           source: { kind: "sha256", value: result.snapshot.sha256, revision: proposed.data.revision } }
       };
@@ -158,11 +189,13 @@ export class CheckedSidecar<T extends SidecarDocument> {
   }
 
   private async preserve(
-    request: { bookId: string; source: SidecarSource }, bytes: Uint8Array, observed: SidecarSource
+    request: { bookId: string; source: SidecarSource; draft: unknown }, bytes: Uint8Array, observed: SidecarSource,
+    receipt: { attempt?: SidecarAttempt }
   ): Promise<SidecarSave<T>> {
     const reason = observed.kind === "absent" && request.source.kind !== "absent" ? "missing-file" : "external-edit";
     const data = validateDocument(this.schema, parseJson(bytes), request.bookId);
-    const copy = serializeDocument({ ...data, conflictMetadata: { reason, baseline: request.source, observed } }, RECOVERY_BYTES);
+    const requestHash = await this.host.runtime.sha256(sidecarIntentBytes(request));
+    const copy = serializeDocument({ ...data, conflictMetadata: { reason, baseline: request.source, observed, requestHash, ...receipt } }, RECOVERY_BYTES);
     const device = this.host.deviceId;
     const stamp = this.host.runtime.now().replace(/[:.]/g, "-");
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(device) || !/^[0-9TZ-]{1,100}$/.test(stamp)) {
@@ -179,7 +212,9 @@ export class CheckedSidecar<T extends SidecarDocument> {
         if (result.status === "changed" && result.publication === "uncertain") throw new SidecarWriteError("uncertain", "recovery");
         if (result.status === "changed") continue;
         if (!await this.verifies(copy, result.snapshot)) throw new SidecarWriteError("uncertain", "recovery");
-        return { status: "conflict", bookId: request.bookId, reason, savedAs: libraryPathToArchivePath(path), observed };
+        return { status: "conflict", bookId: request.bookId, reason, savedAs: libraryPathToArchivePath(path), observed,
+          ...receipt,
+          preserved: { rawJson: decoder.decode(copy), hash: result.snapshot.sha256 } };
       }
       throw new SidecarWriteError("not-kept", "recovery");
     } catch (error) {

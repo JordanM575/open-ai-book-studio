@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BookOpen, Bot, ChevronLeft, Cpu, Download, FileSearch, FileText, Image as ImageIcon, List, MessageSquare, Monitor, Moon, MoreHorizontal, Plus, Search, Settings2, Sun, Type, type LucideIcon } from "lucide-react";
 import type {
   BookDetail,
@@ -25,7 +25,6 @@ import { FormatDialog, type FormatChange } from "../components/FormatDialog";
 import { ChatPanel } from "../components/ChatPanel";
 import { SettingsDialog, type SettingsSection } from "../components/SettingsDialog";
 import {
-  analyzeReviewCoverageAsync,
   buildReviewReport,
   revalidateReviewEvidence,
   reviewNoSourceResult,
@@ -44,8 +43,11 @@ import {
 import { RecoveryPanel } from "../components/RecoveryPanel";
 import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateDialog";
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
+import { reviewFailureCoverage } from "../lib/review-worker-validation";
 import { exportBlockedMessage, exportReceipt, type ManuscriptExportReceipt } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
+import { analyzeReviewInWorker, verifyRepetitionInWorker } from "../lib/review-worker";
+import { REPETITION_VERSION } from "@ai-book-studio/core/review/repetition";
 import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
 import { editBook, formatCount, formatWords, keptCopyText, must, pluralize } from "../lib/utils";
@@ -204,8 +206,33 @@ export function WorkspaceView({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewView, setReviewView] = useState<ReviewGateView | ReviewRunView>({ kind: "choice" });
   const [evidenceSelection, setEvidenceSelection] = useState<(EditorSelection & { chapterId: string }) | null>(null);
+  const [pendingEvidenceSwitch, setPendingEvidenceSwitch] = useState<{
+    origin: EditorHandle;
+    visit: NonNullable<ReturnType<EditorHandle["getEvidenceSnapshot"]>>;
+    chapter: Chapter;
+    selection: EditorSelection & { chapterId: string };
+    unavailable: () => void;
+  } | null>(null);
   const runController = useRef<AbortController | null>(null);
+  const reviewGeneration = useRef(0);
+  // A navigation supersedes another read, but does not replace the report that owns its pages.
+  const reportLifetime = useRef(0);
+  const identity = JSON.stringify([libraryRoot, bookId]);
+  const renderedIdentity = useRef(identity);
+  // Invalidate even before effect cleanup, including an A → B → A prop transition.
+  if (renderedIdentity.current !== identity) {
+    renderedIdentity.current = identity;
+    reviewGeneration.current++;
+    reportLifetime.current++;
+    loadGeneration.current++;
+  }
+  const detailIdentity = useRef<string | null>(null);
+  const shownLibraryRoot = useRef(libraryRoot);
+  shownLibraryRoot.current = libraryRoot;
   const editorRef = useRef<EditorHandle>(null);
+  const selected = detailIdentity.current === identity ? detail?.chapters.find((chapter) => chapter.id === selectedId) ?? null : null;
+  const committedVisit = useRef({ identity, chapterId: selected?.id ?? null, reloadKey });
+  const approvedEvidenceSwitch = useRef<{ identity: string; reloadKey: number; selection: EditorSelection & { chapterId: string } } | null>(null);
   const isMac = window.studio.platform === "darwin";
 
   const openSettings = useCallback((next?: SettingsSection) => {
@@ -224,15 +251,75 @@ export function WorkspaceView({
     setIssuesDismissed(false);
   }, [bookId]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bookId is the trigger, not a closure value — the run-local report discards in place on a book switch
-  useEffect(() => {
-    // The report is run-local: switching books discards it without writing anything anywhere.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: book/library identity invalidates run-local work even if the view stays mounted
+  useLayoutEffect(() => {
+    // Terminate owned work on book/library change and unmount (including Strict Mode cleanup).
+    reviewGeneration.current++;
+    reportLifetime.current++;
     runController.current?.abort();
     runController.current = null;
     setReviewOpen(false);
     setReviewView({ kind: "choice" });
     setEvidenceSelection(null);
-  }, [bookId]);
+    setPendingEvidenceSwitch(null);
+    return () => {
+      reviewGeneration.current++;
+      reportLifetime.current++;
+      runController.current?.abort();
+      runController.current = null;
+    };
+  }, [bookId, libraryRoot]);
+
+  const invalidateReview = useCallback((keepReportLifetime = false) => {
+    reviewGeneration.current++;
+    if (!keepReportLifetime) reportLifetime.current++;
+    const hadRun = runController.current !== null;
+    setReviewView((current) => {
+      if (current.kind === "report" && current.freshness.status === "checking") {
+        return { ...current, freshness: { status: "unavailable", reason: "read" } };
+      }
+      return hadRun && current.kind === "running" ? { kind: "stopped" } : current;
+    });
+    runController.current?.abort();
+    runController.current = null;
+    approvedEvidenceSwitch.current = null;
+    setEvidenceSelection(null);
+    setPendingEvidenceSwitch(null);
+  }, []);
+
+  // A queued React update may wait after the read. Recheck the still-mounted origin in a layout
+  // effect and schedule the switch from there: React commits layout-effect updates before paint,
+  // so input cannot land in the origin between this check and its replacement.
+  useLayoutEffect(() => {
+    if (!pendingEvidenceSwitch) return;
+    const { origin, visit, chapter, selection, unavailable } = pendingEvidenceSwitch;
+    setPendingEvidenceSwitch(null);
+    if (!selection.isCurrent()) return;
+    if (editorRef.current !== origin || !origin.isEvidenceCurrent(visit) ||
+        detailIdentity.current !== identity || !detail?.chapters.some((item) => item.id === chapter.id)) {
+      unavailable();
+      return;
+    }
+    approvedEvidenceSwitch.current = { identity, reloadKey, selection };
+    setDetail({ ...detail, chapters: detail.chapters.map((item) => item.id === chapter.id ? chapter : item) });
+    setSelectedId(chapter.id);
+    setEvidenceSelection(selection);
+  }, [pendingEvidenceSwitch, detail, identity, reloadKey]);
+
+  // A chapter/reload action can itself await a save or read. Invalidate again when its visit
+  // actually changes, even if a newer report read began while that earlier action was waiting.
+  // The guarded evidence switch above is the sole transition that carries its own selection on.
+  useLayoutEffect(() => {
+    const previous = committedVisit.current;
+    const chapterId = selected?.id ?? null;
+    if (previous.identity === identity && previous.chapterId === chapterId && previous.reloadKey === reloadKey) return;
+    committedVisit.current = { identity, chapterId, reloadKey };
+    const approved = approvedEvidenceSwitch.current;
+    approvedEvidenceSwitch.current = null;
+    if (approved && approved.identity === identity && approved.reloadKey === reloadKey &&
+        approved.selection === evidenceSelection && approved.selection.chapterId === chapterId && approved.selection.isCurrent()) return;
+    invalidateReview();
+  }, [identity, selected?.id, reloadKey, evidenceSelection, invalidateReview]);
 
   useEffect(() => {
     // New keystrokes supersede a highlighted evidence span.
@@ -245,6 +332,7 @@ export function WorkspaceView({
       try {
         const next = await mustCompatible(window.studio.books.open(bookId));
         if (generation !== loadGeneration.current) return null;
+        detailIdentity.current = identity;
         setDetail(next);
         const copies = await must(window.studio.conflicts.list(bookId));
         if (generation !== loadGeneration.current) return null;
@@ -266,7 +354,7 @@ export function WorkspaceView({
         return null;
       }
     },
-    [bookId, onNotice, onSchemaRefusal]
+    [bookId, identity, onNotice, onSchemaRefusal]
   );
 
   useEffect(() => {
@@ -307,7 +395,6 @@ export function WorkspaceView({
     return window.studio.library.onChange((change) => setExternalChange(change));
   }, []);
 
-  const selected = detail?.chapters.find((chapter) => chapter.id === selectedId) ?? null;
   const readIssues = detail?.chapterReadIssues ?? [];
   const ordinal = selected ? detail!.chapters.filter((chapter) => chapter.order <= selected.order).length : 0;
 
@@ -317,8 +404,8 @@ export function WorkspaceView({
     if (chapters.length === 0) return;
     const index = selected ? chapters.findIndex((chapter) => chapter.id === selected.id) : -1;
     const next = chapters[(index + 1) % chapters.length];
-    if (next) setSelectedId(next.id);
-  }, [detail, selected]);
+    if (next) { invalidateReview(); setSelectedId(next.id); }
+  }, [detail, selected, invalidateReview]);
 
   const loadIllustration = useCallback(
     async (chapterId: string | null) => {
@@ -352,6 +439,7 @@ export function WorkspaceView({
 
   const select = async (chapterId: string): Promise<void> => {
     if (chapterId === selectedId) return;
+    invalidateReview();
     await editorRef.current?.flush();
     setStatus(EMPTY_STATUS);
     setEvidenceSelection(null);
@@ -364,6 +452,7 @@ export function WorkspaceView({
   useEffect(() => {
     if (!chapterRequest || chapterRequest.bookId !== bookId) return;
     if (handledRequest.current === chapterRequest.nonce) return;
+    invalidateReview();
     handledRequest.current = chapterRequest.nonce;
     const { chapterId, revert } = chapterRequest;
     void (async () => {
@@ -402,6 +491,7 @@ export function WorkspaceView({
 
   const addChapter = async (): Promise<void> => {
     if (busy) return;
+    invalidateReview();
     setBusy(true);
     try {
       await editorRef.current?.flush();
@@ -428,6 +518,7 @@ export function WorkspaceView({
   const runMove = useCallback(
     async (chapter: Chapter, write: () => Promise<ReorderChapterResult>): Promise<void> => {
       if (busy) return;
+      invalidateReview();
       setBusy(true);
       try {
         const editor = editorRef.current;
@@ -456,7 +547,7 @@ export function WorkspaceView({
         setBusy(false);
       }
     },
-    [busy, load, onNotice]
+    [busy, load, onNotice, invalidateReview]
   );
 
   const moveChapter = useCallback(
@@ -474,6 +565,7 @@ export function WorkspaceView({
    * copy and the copies are listed after every write; words a copy already holds are not saved again.
    */
   const refreshFromDisk = async (): Promise<void> => {
+    invalidateReview();
     try {
       await editorRef.current?.flush();
       setExternalChange(null);
@@ -495,6 +587,7 @@ export function WorkspaceView({
    */
   const restoreRecovered = async (entry: RecoveredDraft): Promise<void> => {
     if (recovering) return;
+    invalidateReview();
     setRecovering(true);
     const title = detail?.chapters.find((chapter) => chapter.id === entry.chapterId)?.title.trim() || "the chapter";
     try {
@@ -542,6 +635,7 @@ export function WorkspaceView({
    * chapter and its old hash. A turn that changed no words keeps the caret and the undo history.
    */
   const reloadAfterAgent = useCallback(async () => {
+    invalidateReview();
     const editor = editorRef.current;
     const reload = async (): Promise<Chapter | null> => {
       const next = await load(selectedId ?? undefined);
@@ -553,7 +647,7 @@ export function WorkspaceView({
     if (!changed) return;
     clearEditorHistory(changed.id);
     setReloadKey((key) => key + 1);
-  }, [load, selectedId]);
+  }, [load, selectedId, invalidateReview]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -661,6 +755,7 @@ export function WorkspaceView({
 
   const confirmDelete = async (): Promise<void> => {
     if (!pendingDelete || busy) return;
+    invalidateReview();
     setBusy(true);
     try {
       await editorRef.current?.flush();
@@ -679,13 +774,14 @@ export function WorkspaceView({
   };
 
   const closeReview = useCallback(() => {
+    invalidateReview();
     setReviewOpen(false);
     setReviewView((current) =>
       current.kind === "report" || current.kind === "stopped" || current.kind === "failed"
         ? current
         : { kind: "choice" }
     );
-  }, []);
+  }, [invalidateReview]);
 
   /**
    * Spec 034 T011–T014: read the current saved chapters and analyze them in memory, keeping the
@@ -696,53 +792,90 @@ export function WorkspaceView({
   const startAnalysis = useCallback(
     async () => {
       const requestedAt = new Date().toISOString();
+      runController.current?.abort();
       const controller = new AbortController();
       runController.current = controller;
+      const generation = reviewGeneration.current;
+      const current = () => generation === reviewGeneration.current && runController.current === controller &&
+        shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       setReviewView({ kind: "running" });
       let snapshotDetail: BookDetail;
       try {
         snapshotDetail = await must(window.studio.books.open(bookId));
       } catch (error) {
+        if (!current()) return;
+        runController.current = null;
         onNotice(error);
         setReviewView({
           kind: "failed",
-          message: "The saved chapters could not be read. Your manuscript was not changed."
+          message: "The saved chapters could not be read. Your manuscript was not changed.",
+          guidance: "Check access to the library folder, then run again."
         });
         return;
       }
-      if (controller.signal.aborted) {
-        setReviewView({ kind: "stopped" });
-        return;
-      }
-      setDetail(snapshotDetail);
+      if (!current()) return;
       const snapshot = reviewSourceSnapshotFromBookDetail(snapshotDetail, requestedAt);
-      // Sliced analysis yields between chunks, so Cancel stays clickable on long books and
-      // an abort discards partial counts instead of finishing behind a blocked thread.
-      const analysisOutcome = await analyzeReviewCoverageAsync(snapshot, controller.signal);
-      if (analysisOutcome.status !== "complete" || controller.signal.aborted) {
+      // Native NFC may be non-cooperative. Cancel terminates this run's dedicated worker.
+      const analysisOutcome = await analyzeReviewInWorker(snapshot, controller.signal);
+      if (!current()) return;
+      if (analysisOutcome.status !== "complete") {
         runController.current = null;
-        setReviewView({ kind: "stopped" });
+        setReviewView(analysisOutcome.status === "failed"
+          ? { kind: "failed", message: analysisOutcome.message,
+            guidance: "Try running the review again. If it still fails, reopen the studio and try again.",
+            coverage: reviewFailureCoverage(snapshot) }
+          : { kind: "stopped" });
         return;
       }
       const analysis = analysisOutcome.value;
       if (analysis.status === "failed") {
+        runController.current = null;
         const failure = reviewNoSourceResult(snapshot.scope, requestedAt, analysis.coverage);
-        setReviewView({ kind: "failed", message: failure.message });
+        const coverage = reviewFailureCoverage(snapshot, analysis);
+        const workerClaims = coverage.some((entry) => entry.origin === "worker");
+        setReviewView({ kind: "failed", coverage,
+          message: workerClaims
+            ? "Unverified result · The local review worker reported every chapter skipped. This does not confirm that the saved chapters are unreadable. Your manuscript was not changed."
+            : failure.message,
+          guidance: workerClaims
+            ? "Check the listed source-read issues and saved text, then run again. If the worker keeps failing, reopen the studio and try again."
+            : "Check the file details below. Restore folder access or fix the indicated file problem, then run again."
+        });
         return;
       }
       const outcome = await runReviewWork({ requestedAt, source: snapshot }, controller.signal, async () =>
         buildReviewReport(snapshot, analysis, { requestedAt, completedAt: new Date().toISOString() })
       );
-      runController.current = null;
+      if (!current()) return;
       if (outcome.status === "complete") {
-        setReviewView({ kind: "report", report: outcome.value, freshness: { status: "current" } });
+        const report = outcome.value;
+        // The analysis used an earlier snapshot. Do not claim current until a new saved read
+        // has completed; keep the run cancellable and never replace the live editor from it.
+        setReviewView({ kind: "report", report, freshness: { status: "checking", cancellableRun: true } });
+        try {
+          const fresh = await must(window.studio.books.open(bookId));
+          if (!current()) return;
+          const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+          const freshness = reviewReportFreshness(report, snapshot);
+          runController.current = null;
+          setReviewView({ kind: "report", report, freshness });
+        } catch (error) {
+          if (!current()) return;
+          runController.current = null;
+          onNotice(error);
+          setReviewView({ kind: "report", report, freshness: { status: "unavailable", reason: "read" } });
+        }
       } else if (outcome.status === "cancelled") {
+        runController.current = null;
         setReviewView({ kind: "stopped" });
       } else {
-        setReviewView({ kind: "failed", message: outcome.message });
+        runController.current = null;
+        setReviewView({ kind: "failed", message: outcome.message,
+          guidance: "Try running the review again. If it still fails, reopen the studio and try again.",
+          coverage: reviewFailureCoverage(snapshot) });
       }
     },
-    [bookId, onNotice]
+    [bookId, libraryRoot, onNotice]
   );
 
   /**
@@ -756,7 +889,11 @@ export function WorkspaceView({
         closeReview();
         return;
       }
+      invalidateReview();
       setReviewView({ kind: "saving" });
+      const generation = reviewGeneration.current;
+      const current = () => generation === reviewGeneration.current &&
+        shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       try {
         // The gate confirms the save; the cancellable analysis reads its own fresh snapshot.
         const result = await runAfterReviewSave(
@@ -765,31 +902,46 @@ export function WorkspaceView({
           () => editorRef.current?.flush() ?? Promise.resolve(currentStatus),
           async () => {}
         );
+        if (!current()) return;
         if (result.status === "ready") await startAnalysis();
         else if (result.status === "blocked") setReviewView({ kind: "blocked", saveStatus: result.saveStatus });
         else closeReview();
       } catch (error) {
+        if (!current()) return;
         onNotice(error);
         closeReview();
       }
     },
-    [onNotice, closeReview, startAnalysis]
+    [bookId, libraryRoot, onNotice, closeReview, startAnalysis, invalidateReview]
   );
 
   const openReview = useCallback(() => {
+    invalidateReview();
     setReviewOpen(true);
     // Read the live buffer status: the mirrored state can lag a fast keystroke by an effect.
     const live = editorRef.current?.getStatus() ?? status;
     if (reviewView.kind === "report") {
+      // A source read cannot repair a worker's invalid occurrence. Keep the result unavailable
+      // until a new run, including across close/reopen.
+      if (reviewView.freshness.status === "unavailable" && reviewView.freshness.reason === "evidence") return;
+      const generation = reviewGeneration.current;
+      const current = () => generation === reviewGeneration.current &&
+        shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       // The report is run-local; re-check it against the current saved chapters on every open.
+      setReviewView({ kind: "report", report: reviewView.report, freshness: { status: "checking", cancellableRun: false } });
       void (async () => {
         try {
           const fresh = await must(window.studio.books.open(bookId));
-          setDetail(fresh);
+          if (!current()) return;
           const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
-          setReviewView({ kind: "report", report: reviewView.report, freshness: reviewReportFreshness(reviewView.report, snapshot) });
+          const freshness = reviewReportFreshness(reviewView.report, snapshot);
+          setReviewView((view) => current() && view.kind === "report" && view.report === reviewView.report
+            ? { kind: "report", report: view.report, freshness } : view);
         } catch (error) {
+          if (!current()) return;
           onNotice(error);
+          setReviewView((view) => current() && view.kind === "report" && view.report === reviewView.report
+            ? { kind: "report", report: view.report, freshness: { status: "unavailable", reason: "read" } } : view);
         }
       })();
       return;
@@ -797,18 +949,29 @@ export function WorkspaceView({
     // A clean buffer skips the choice and goes straight to the save confirmation.
     if (live.kind === "saved") void confirmReviewSave("save", live);
     else setReviewView({ kind: "choice" });
-  }, [status, reviewView, bookId, onNotice, confirmReviewSave]);
+  }, [status, reviewView, bookId, libraryRoot, onNotice, confirmReviewSave, invalidateReview]);
 
   /** Start over the current saved chapters, keeping the previous report until the new run lands. */
   const runAgain = useCallback(() => {
+    invalidateReview();
     const live = editorRef.current?.getStatus() ?? status;
     if (live.kind === "saved") void confirmReviewSave("save", live);
     else setReviewView({ kind: "choice" });
-  }, [status, confirmReviewSave]);
+  }, [status, confirmReviewSave, invalidateReview]);
 
   const cancelRun = useCallback(() => {
-    runController.current?.abort();
-  }, []);
+    invalidateReview();
+    setReviewView({ kind: "stopped" });
+  }, [invalidateReview]);
+
+  const malformedEvidence = useCallback((lifetime: number) => {
+    // A deferred effect from an old report must not hide a newer run's Cancel control.
+    if (lifetime !== reportLifetime.current) return;
+    invalidateReview();
+    setReviewView((current) => ({ kind: "failed", message: "The local review worker returned an invalid result. Your saved manuscript was not changed.",
+      guidance: "Try running the review again. If it still fails, reopen the studio and try again.",
+      coverage: current.kind === "report" ? reviewFailureCoverage(current.report.source) : [] }));
+  }, [invalidateReview]);
 
   /**
    * Spec 034 T012: open a finding's exact saved span only while the report is current. A
@@ -816,34 +979,91 @@ export function WorkspaceView({
    */
   const navigateToEvidence = useCallback(
     async (findingId: string, evidenceIndex: number) => {
-      if (reviewView.kind !== "report") return;
-      const current = reviewView.report;
+      if (reviewView.kind !== "report" || reviewView.freshness.status !== "current") return;
+      invalidateReview(true);
+      const controller = new AbortController();
+      const generation = reviewGeneration.current;
+      const isCurrent = () => !controller.signal.aborted && generation === reviewGeneration.current &&
+        shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
+      const report = reviewView.report;
+      const origin = editorRef.current;
+      const visit = origin?.getEvidenceSnapshot();
+      const unavailable = () => onNotice(new Error("That passage cannot be selected while the editor has unsaved changes or is busy. Save or finish editing and try again."));
+      if (!origin || !visit) { unavailable(); return; }
+      runController.current = controller;
+      setReviewView({ kind: "report", report, freshness: { status: "checking", cancellableRun: false } });
+      const evidenceUnavailable = () => {
+        setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+          ? { kind: "report", report, freshness: { status: "unavailable", reason: "evidence" } } : view);
+        onNotice(new Error("That passage could not be verified for this finding. Run the review again for current results."));
+      };
       try {
-        const fresh = await must(window.studio.books.open(bookId));
-        setDetail(fresh);
-        const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
-        const navigation = revalidateReviewEvidence(current, snapshot, findingId, evidenceIndex);
+        let fresh = await must(window.studio.books.open(bookId));
+        if (!isCurrent()) return;
+        let snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+        let navigation = revalidateReviewEvidence(report, snapshot, findingId, evidenceIndex);
         if (navigation.status === "ready") {
-          setSelectedId(navigation.evidence.chapterId);
-          setEvidenceSelection({
-            chapterId: navigation.evidence.chapterId,
+          const finding = report.findings.find((item) => item.id === findingId);
+          const span = navigation.evidence;
+          const source = snapshot.chapters.find((item) => item.status === "saved" && item.chapterId === span.chapterId);
+          if (!finding || finding.metricId !== REPETITION_VERSION || source?.status !== "saved") { evidenceUnavailable(); return; }
+          // Only this selected claim is normalized, in a disposable worker. No whole-report
+          // occurrence traversal or native NFC is allowed on the UI thread.
+          const verified = await verifyRepetitionInWorker({ body: source.body, label: finding.label,
+            startOffset: span.startOffset, endOffset: span.endOffset }, controller.signal);
+          if (!isCurrent()) return;
+          if (verified.status !== "complete" || !verified.value) { evidenceUnavailable(); return; }
+          // Normalization can take arbitrarily long. Re-read after it, before touching the editor;
+          // the worker's answer confers neither current saved-source nor live-editor authority.
+          fresh = await must(window.studio.books.open(bookId));
+          if (!isCurrent()) return;
+          snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+          navigation = revalidateReviewEvidence(report, snapshot, findingId, evidenceIndex);
+          if (navigation.status === "ready" && fresh.chapters.find((item) => item.id === span.chapterId)?.content !== source.body) {
+            evidenceUnavailable(); return;
+          }
+        }
+        if (navigation.status === "ready") {
+          setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+            ? { kind: "report", report, freshness: { status: "current" } } : view);
+          const chapter = fresh.chapters.find((item) => item.id === navigation.evidence.chapterId);
+          if (!chapter || editorRef.current !== origin || !origin.isEvidenceCurrent(visit)) { unavailable(); return; }
+          const sameChapter = visit.chapterId === chapter.id;
+          const selection: EditorSelection & { chapterId: string } = {
+            chapterId: chapter.id,
             start: navigation.evidence.startOffset,
             end: navigation.evidence.endOffset,
-            nonce: Date.now()
-          });
-          setReviewOpen(false);
+            source: { libraryId: libraryRoot, bookId, chapterId: chapter.id, version: chapter.version,
+              rawHash: chapter.hash, savedBody: chapter.content },
+            ...(sameChapter ? { visit } : {}),
+            isCurrent,
+            onResult: (applied) => {
+              if (!isCurrent()) return;
+              setEvidenceSelection(null);
+              if (applied) { setReviewOpen(false); reviewGeneration.current++; reportLifetime.current++; }
+              else unavailable();
+            }
+          };
+          if (sameChapter) setEvidenceSelection(selection);
+          else setPendingEvidenceSwitch({ origin, visit, chapter, selection, unavailable });
           return;
         }
         if (navigation.status === "stale") {
-          setReviewView({ kind: "report", report: current, freshness: navigation });
+          setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+            ? { kind: "report", report, freshness: navigation } : view);
           return;
         }
-        onNotice(new Error("That passage is no longer available. Run the review again for current results."));
+        evidenceUnavailable();
       } catch (error) {
+        if (!isCurrent()) return;
+        setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+          ? { kind: "report", report, freshness: { status: "unavailable", reason: "read" } } : view);
         onNotice(error);
+      } finally {
+        if (runController.current === controller) runController.current = null;
       }
     },
-    [reviewView, bookId, onNotice]
+    [reviewView, bookId, libraryRoot, onNotice, invalidateReview]
   );
 
   const onSaved = useCallback((saved: Chapter) => {
@@ -859,6 +1079,7 @@ export function WorkspaceView({
     );
   }, []);
 
+  const displayedReportLifetime = reportLifetime.current;
   const wordTotal = detail?.chapters.reduce((total, chapter) => total + chapter.wordCount, 0) ?? 0;
   const conflict = status.kind === "conflict" ? status.conflict : null;
 
@@ -866,7 +1087,7 @@ export function WorkspaceView({
     <div className="window-wash flex h-full flex-col" data-testid="workspace-view">
       <header className={`titlebar-drag flex h-14 shrink-0 items-center justify-between gap-3 pr-2 pl-3 min-[700px]:h-16 min-[700px]:gap-4 min-[700px]:pr-4 ${isMac ? "min-[700px]:pl-[92px]" : "min-[700px]:pl-5"}`}>
         <div className="flex min-w-0 items-center gap-1.5 min-[700px]:gap-2">
-          <Button variant="ghost" size="icon" onClick={() => { if (navigation.allow()) onBack(); }} aria-label="Back to library" title="Back to library" className="shrink-0">
+          <Button variant="ghost" size="icon" onClick={() => { if (navigation.allow()) { invalidateReview(); onBack(); } }} aria-label="Back to library" title="Back to library" className="shrink-0">
             <ChevronLeft size={18} />
           </Button>
           <div className="min-w-0">
@@ -1197,9 +1418,10 @@ export function WorkspaceView({
             </div>
           ) : selected ? (
             <ManuscriptEditor
-              key={`${selected.id}:${reloadKey}`}
+              key={JSON.stringify([libraryRoot, bookId, selected.id, reloadKey])}
               ref={editorRef}
               bookId={bookId}
+              libraryId={libraryRoot}
               chapter={selected}
               ordinal={ordinal}
               onSaved={onSaved}
@@ -1209,7 +1431,7 @@ export function WorkspaceView({
               voiceStatusRevision={voiceStatusRevision}
               selection={
                 evidenceSelection && evidenceSelection.chapterId === selected.id
-                  ? { start: evidenceSelection.start, end: evidenceSelection.end, nonce: evidenceSelection.nonce }
+                  ? evidenceSelection
                   : null
               }
             />
@@ -1300,6 +1522,7 @@ export function WorkspaceView({
             bookId={bookId}
             onClose={() => setSearchOpen(false)}
             onOpenChapter={(chapterId) => {
+              invalidateReview();
               setSelectedId(chapterId);
               setSearchOpen(false);
             }}
@@ -1482,7 +1705,7 @@ export function WorkspaceView({
               data-testid="more-back"
               onClick={() => {
                 setMoreOpen(false);
-                if (navigation.allow()) onBack();
+                if (navigation.allow()) { invalidateReview(); onBack(); }
               }}
             >
               <ChevronLeft size={16} />
@@ -1528,6 +1751,8 @@ export function WorkspaceView({
           onRunAgain={runAgain}
           onClose={closeReview}
           onNavigate={(findingId, evidenceIndex) => void navigateToEvidence(findingId, evidenceIndex)}
+          onMalformedEvidence={() => malformedEvidence(displayedReportLifetime)}
+          onRetryFreshness={openReview}
           onOpenChange={(open) => {
             if (!open) closeReview();
           }}

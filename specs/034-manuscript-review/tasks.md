@@ -50,11 +50,16 @@ no real manuscript, credential, live provider, paid service or device is in scop
 
 ## Phase 3 — Deterministic findings and honest run states
 
-- [ ] T008 Implement D-198/FR-005 repetition v1, now accepted after T001's historical deferral:
+- [x] T008 Implement D-198/FR-005 repetition v1, now accepted after T001's historical deferral:
   unify curly and straight apostrophes, keep original spans and combining marks, count every
   overlapping three-token window in pure core with deterministic occurrence ordering and exact source
   spans, covering punctuation/case normalization, repeated phrases, overlapping phrases and
   chapter-boundary behavior with synthetic fixtures.
+  November 8, wave 19: `core/review/repetition.ts` scans all overlapping three-token windows,
+  folds NFC/case/apostrophes only in comparison keys, retains literal UTF-16 evidence and rejects
+  malformed chapters with explicit skipped coverage. Sync and yielding async analysis share the
+  scanner. Dedicated synthetic tests cover Unicode, exact spans, overlap/chapter boundaries,
+  deterministic ordering, cancellation, immutable inputs and 120-chapter/250k-word books.
 - [x] T009 Produce coverage for every in-scope chapter: included with prose, included but empty, or
   skipped with a safe author-visible reason. Distinguish partial coverage, insufficient evidence,
   source failure and a complete report with no phrase findings.
@@ -121,5 +126,118 @@ no real manuscript, credential, live provider, paid service or device is in scop
 
 - [ ] T018 Connect real repetition findings to D-197's exact-current inline adapter/sidebar; test
   complete overlap/occurrence paging, long books, Unicode, dirty/stale suppression and no network.
+  November 8, wave 19 partial delivery: the explicit Review manuscript journey now receives actual
+  findings from async analysis. The dialog exposes repetition-v1's definition, complete coverage and
+  counts, five sequences per page and ten occurrences per sequence page; paging never trims results.
+  DOM tests traverse all occurrence/sequence pages and verify retained keyboard focus. The existing
+  Workspace callback selects an actual finding's exact saved span and refuses a changed revision;
+  synthetic spies observe no chapter/draft/metadata writes or provider sends. The local analyzer
+  also runs with immutable input and a refusing network spy. Wave 21 below adds final dirty/view
+  checks for this dialog navigation seam; inline-layer mounting, native accessibility and
+  remaining-host acceptance remain coordinator-owned.
 - [ ] T019 Complete 034 T016's real-finding navigation and retained-report adapter using 039's shared
   explicit-save/export contracts; keep analyzer/source version and actual coverage in every output.
+
+### Wave 19 evidence boundary
+
+T008's historical deferral in the dated T012/T015/T016 notes is now resolved by actual scanner
+output. T016, T018 and T019 remain open: this candidate's evidence is pure-core and synthetic DOM,
+not a new native/smoke, retained-review, provider-quality or release acceptance. Ordinary review
+remains volatile and read-only. Fixed-slice word counting preserves the shared whitespace counter
+even for unbroken tokens; scan/grouping and cross-chapter budgets yield for cancellation. Performance
+measurements are local Bun/macOS observations, not new cross-platform performance baselines.
+
+### Wave 20 runtime correction and evidence boundary
+
+Independent review reproduced R1 on wave 19: a valid token containing `a`, 65,536 U+0315 marks
+and 65,536 U+0300 marks blocked whole-token NFC for about 31 seconds. Scanner yields alone do
+not establish T010/FR-009 responsiveness; independently normalizing arbitrary chunks would change
+the accepted Unicode rule. The pure sync/cooperative entries retain their exact algorithm and now
+document this limit.
+
+Interactive Workspace analysis now uses one owned module worker per explicit run. Cancel terminates
+that worker, removes listeners and discards queued replies; a rerun gets a new worker. Startup,
+load/runtime/deserialization/send failures and missing startup acknowledgement fail honestly with
+no heavy inline fallback. The startup deadline does not cap analysis or omit valid text. Book/library
+changes, dialog dismissal and unmount abort owned work; old run-acquisition reads and worker replies
+cannot update a newer run. Independent wave 21 review found that separate reopen and navigation reads
+were not covered by that claim. No saved-review API, path, mount or writer is added by this correction.
+
+Focused synthetic evidence covers real native-NFC entry in an in-process Bun worker at the reproduced
+131,083-unit size, main-loop heartbeats, cancellation before NFC completion, actual Workspace Cancel
+and Run again, and a smaller adversarial completion with exact native-normalized keys and all original
+spans. Worker transport retains all 249,760 overlapping occurrences from 120 chapters / 250,000 words.
+Protocol doubles separately cover failures and queued late-reply isolation; they are not performance
+evidence. Existing core large-book/cancellation and report paging/navigation/save-gate tests pass.
+
+T016/T018/T019 stay open. Build/CSP paths were inspected, but coordinator-owned integrated builds,
+actual browser/Electron startup/cancel/performance and remaining-host/native accessibility checks
+were not executed here. Full occurrence transport still has structured-clone and memory costs; there
+is no arbitrary-input latency or memory ceiling. Explicit retention/continuation and inline mounting
+remain separately owned. Wave 21 below corrects the dialog's final editor navigation boundary; its
+native and remaining-host acceptance is still open. 038 T022 remains unchecked.
+
+### Wave 21 navigation lifetime correction and evidence boundary
+
+The report reopen, new-run and evidence-navigation paths now invalidate or reject obsolete reads,
+late failures and selections on supersession, dialog close, book/library or committed chapter/view
+change and unmount. Commit-time invalidation also covers an earlier chapter switch whose save finishes
+after a newer reopen. Cancel remains available during a newer worker run. Navigation revalidates the
+saved evidence and the mounted editor's visit, source epoch, version/hash/body and live clean state;
+dirty, saving, failed, composing or held buffers are refused without replacing them. Cross-chapter
+navigation checks the old visit at the switch and the new editor at selection. No fuzzy fallback is
+introduced.
+
+Malformed worker envelopes and required coverage/finding metadata fail closed, with incremental host
+validation and lazy checks of displayed occurrence pages rather than a full UI-thread span traversal.
+Focused synthetic tests and unchanged independent probes cover the reproduced races, both late read
+outcomes, editor state, malformed replies, Unicode, paging and all 249,760 transported spans. These
+are Bun/happy-dom observations, not native acceptance or an arbitrary latency/memory ceiling.
+
+T016/T018/T019 remain unchecked: inline-layer mounting, retained review/continuation, real native
+navigation and accessibility, browser/desktop worker URL/CSP/packaging, other hosts and release gates
+still need their owners. 038 T022 remains unchecked. A fresh independent review must inspect the
+corrected exact head; earlier broad gates applied to the previous head only.
+
+### Wave 24 visible evidence and display freshness boundary
+
+Each displayed excerpt is explicitly unverified until opening it checks its exact saved literal,
+bounds, UTF-16 surrogate boundaries and source identity. A span that cannot be verified leaves the
+report unavailable for evidence navigation until rerun. Bounded visible-page shape/metadata checks
+and two-level paging retain the complete result; they do not synchronously inspect every span or
+retain a second manuscript body in the report. Current-report malformed-page effects invalidate
+pending navigation independently of navigation generation; superseded reports cannot fail newer runs.
+
+The initial report and reopened reports check source freshness before enabling navigation; a report
+already invalidated by bad evidence stays unavailable across reopen until rerun. Checking and
+read-failure states are explicit; an author can cancel the initial check, retry a failed read or run
+again. Changed sources are labeled stale with affected chapters. Guarded reads do not replace the
+live editor. Synthetic tests cover malformed later pages, valid later-page selection, first-display
+and reopen success/failure races, cancellation, view and identity changes, and unchanged buffers.
+
+These are focused Bun/happy-dom observations, not independent exact-head, native, remaining-host,
+provider or release acceptance. T016/T018/T019 and 038 T022 remain unchecked; retained-review
+continuation, inline mounting, native accessibility and worker packaging/CSP remain separately gated.
+
+### Wave 26 selected finding association and navigation reads
+
+Opening an occurrence now verifies its association with the selected repetition-v1 comparison key
+and both complete source-token boundaries. The check uses the scanner's Unicode letter/number/mark
+and internal-apostrophe grammar, NFC, case folding and apostrophe normalization; it preserves the
+literal source. This selected-claim check runs in a disposable worker because native NFC can be
+non-cooperative. It checks neither other occurrences nor aggregate counts. Sequence names, counts
+and excerpts are explicitly unverified, with all results retained through paging.
+
+Navigation enters checking before its first saved-source read, disables evidence throughout
+verification and re-reads the saved source after the worker finishes. The final saved/live editor
+and visit guards still apply. Rejected reads produce a retryable read-unavailable state without
+claiming the source changed; an explicit retry checks freshness but does not itself select a passage.
+False associations stay evidence-unavailable across reopen until a new review. Dismissal, rerun,
+book/library changes and unmount abort owned verification and ignore late replies.
+
+Synthetic checks cover swapped evidence, forged labels, partial letter/mark/astral/apostrophe tokens,
+valid normalized Unicode and punctuation, an independent regex endpoint oracle, both navigation-read
+failures and explicit retry, source/live edits during verification, and obsolete replies. Real
+in-process Bun workers separately demonstrate heartbeat and cancellation during native NFC for
+both analysis and selected-evidence verification. These checks do not establish browser/Electron
+packaging, device or release acceptance. T016/T018/T019 and 038 T022 remain unchecked.

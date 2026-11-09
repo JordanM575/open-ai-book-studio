@@ -1,6 +1,7 @@
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { toLibraryPath, validateLibraryPath, type LibraryPath } from "@ai-book-studio/core/library/path";
 import { devicePath } from "@ai-book-studio/core/library/paths";
+import { effectiveReadLimit, moveReadLimit, readTooLarge } from "@ai-book-studio/core/library/read-limits";
 import type {
   CommitFileResult,
   FileExpectation,
@@ -35,11 +36,15 @@ export class DirectoryHandleLibraryPort implements LibraryPort {
     private readonly options: DirectoryPortOptions = {}
   ) {}
 
-  async readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null> {
+  async readFile(path: LibraryPath, options?: { maxBytes: number }): Promise<LibraryFileSnapshot | null> {
     try {
       const { handle } = await this.fileHandle(path, false);
       const file = await handle.getFile();
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const limit = effectiveReadLimit(path, options);
+      if (limit !== undefined && file.size > limit) throw readTooLarge();
+      // File is a snapshot, and slice is itself bounded even if the backing entry changes.
+      const bytes = new Uint8Array(await (limit === undefined ? file : file.slice(0, limit + 1)).arrayBuffer());
+      if (limit !== undefined && bytes.byteLength > limit) throw readTooLarge();
       return {
         bytes,
         sha256: await sha256(bytes),
@@ -97,7 +102,8 @@ export class DirectoryHandleLibraryPort implements LibraryPort {
   async moveFile(from: LibraryPath, to: LibraryPath): Promise<void> {
     const name = `move:${validateLibraryPath(from).join("/")}`;
     const work = async (): Promise<void> => {
-      const source = await this.readFile(from);
+      const limit = moveReadLimit(from, to);
+      const source = await this.readFile(from, limit === undefined ? undefined : { maxBytes: limit });
       if (!source) throw new LibraryPortError("not-found", "The library file was not found.");
       if (await this.readFile(to)) throw new LibraryPortError("already-exists", "The destination already exists.");
       const written = await this.commitFile(to, source.bytes, { kind: "absent" });
@@ -237,7 +243,8 @@ export class DirectoryHandleLibraryPort implements LibraryPort {
         await this.copyDirectory(childFrom, childTo);
         continue;
       }
-      const snapshot = await this.readFile(childFrom);
+      const limit = moveReadLimit(childFrom, childTo);
+      const snapshot = await this.readFile(childFrom, limit === undefined ? undefined : { maxBytes: limit });
       if (!snapshot) throw new LibraryPortError("not-found", "A library file disappeared during the move.");
       const written = await this.commitFile(childTo, snapshot.bytes, { kind: "absent" });
       if (written.status !== "written") throw new LibraryPortError("already-exists", "The destination already exists.");

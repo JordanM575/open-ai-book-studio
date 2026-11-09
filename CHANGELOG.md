@@ -61,6 +61,140 @@ Update the `Unreleased` section before every commit.
 - Keep broader history, planning, exports, media, native and release work explicitly assigned;
   implementation, automated, provider, device and release acceptance remain distinct.
 
+
+### Review and workflow storage integration
+
+- Integrate the accepted workflow storage, bounded reads and journal receipt ownership with the
+  repetition review, retaining both feature histories and their independent acceptance boundaries.
+- Remove inherited merge-label lines from the workflow records and mounted editor history.
+
+### Review failure details
+
+- Preserve fresh skipped filenames and reasons in run-local failure views, with source-read issues
+  distinguished from unverified worker classifications and all-skipped conclusions. Give worker
+  failures appropriate retry guidance while keeping the live manuscript and selected text intact.
+- Cover fresh read failures after a clean load, dirty-buffer preservation, complete and partial
+  all-skipped worker replies, startup failures and obsolete failure replies after cancellation.
+
+### Review metadata disclosure
+
+- Attribute worker-derived coverage, studio word counts and insufficient-text conclusions as
+  unverified. Keep skipped chapters explicit and distinguish insufficient text from zero findings.
+  Preserve cancellable off-thread selected-passage verification and read-only reports.
+- Integrate the accepted manual planning records and retain both feature histories.
+
+### Empty review result disclosure
+
+- Qualify a worker's zero-finding result as unverified for both complete and partial repetition
+  reports. Keep skipped-chapter and insufficient-text explanations distinct; preserve selected-passage
+  verification and read-only behavior. Cover genuine empty reports and controlled omitted results.
+
+### Review integration
+
+- Integrate the accepted hands-free controls with the selected-evidence verification changes,
+  preserving both feature histories and removing an inherited stray merge-label line.
+
+### Selected review evidence verification
+
+- Before opening a repetition passage, verify that it contains exactly three complete source tokens
+  with the selected sequence's normalized key. Share the scanner's Unicode/apostrophe rules and run
+  normalization in a disposable, cancellable worker. Re-read saved text afterward and retain the
+  live-editor and view-lifetime guards before selecting anything.
+- Disable evidence while navigation reads or verification are pending. A failed source read leaves
+  the report unavailable with an explicit retry; a false association requires a new review. Label
+  sequence names, counts and excerpts as unverified, and keep every occurrence in the paged report.
+- Add synthetic token-boundary, Unicode, worker cancellation, source-change, retry and lifetime
+  regressions. Native worker packaging, accessibility, retained-review and other-host acceptance
+  remain open.
+
+### Review evidence and display freshness
+
+- Label each displayed occurrence excerpt unverified until its exact saved passage is checked when
+  opened. Invalid evidence makes the report unavailable for navigation until a new run; all
+  findings and occurrences remain available in the paged result.
+- Check saved-source freshness on first display and reopen before enabling evidence, with disabled
+  navigation while checking, a retry on read failure, stale-source feedback and cancellation during
+  the initial check. These reads do not replace the live editor buffer.
+- Bind malformed-page failures to the report lifetime independently of individual navigation reads,
+  so current failures cancel pending navigation without affecting a replacement run. Synthetic
+  regressions cover these boundaries; independent review and native/host acceptance remain open.
+### Pending receipt retirement
+
+- Keep every pending journal receipt reachable for retirement even after a newer possible write
+  loses its active ownership following an intent-note failure. Remove registry roots on settlement
+  or retirement and release settled receipt references while preserving needed predecessor outcomes.
+- Cover three-service remove, move and accepted-deletion interleavings across before/after note and
+  author publication failures, equal/different intents and unchanged tombstones. Preserve legitimate
+  unsuperseded restoration and single-attempt author writes.
+
+### Workflow storage integration
+
+- Integrate the accepted manual planning records with workflow storage and journal-receipt retirement,
+  retaining both feature histories and their checked-publication contracts.
+
+### Retired journal receipts
+
+- Retire pending write-receipt predecessor chains even when a removal or move leaves an existing
+  tombstone unchanged. A later refused write cannot clear that tombstone through an older verified
+  result. Preserve verified-predecessor restoration for unsuperseded writes and best-effort journal
+  failure behavior; cover both settlement orders and equal-byte outside reappearance.
+
+### Verified journal note ownership
+
+- Settle verified saves through their initiating one-shot receipt so delayed snapshots cannot undo
+  later accepted drift baselines, newer verified or uncertain notes, removals or moves. Track missing
+  paths without inventing observed baselines, and restore verified predecessors after a newer
+  definitive refusal. Keep unaccepted outside changes reviewable and journal failures best effort.
+- Add synthetic workflow/shared-writer ordering and journal-failure regressions, including same-port
+  service instances and strict test compilation. Cross-process atomicity and live-host timing remain
+  separate evidence requirements; 037 T023 and 038 T022 stay unchecked.
+
+### Manual planning records
+
+- Show stable world identities beside active Edit/Archive and archived Restore controls and in the
+  matching editor, with accessible control descriptions. Recover duplicate names by copied identity
+  through explicit checked restore/edit while retaining other records and the original copy.
+- Avoid per-character regular-expression repetition when checking numbers around long JSON strings.
+  Retain exact numeric admission, syntax/byte limits and every checked-save boundary; keep the
+  existing near-limit save waits and add escaped-string/numeric-boundary controls.
+- Add validated exact-JSON-string editing and recovery representations for literal CR/CRLF/LF,
+  control characters and escapes. Retain incomplete encoded drafts behind the existing navigation
+  guard, measure decoded field limits, and expose the full verified copy without textarea line-ending
+  loss. Show stable identities within both order editors and describe them on move controls so
+  duplicate and archived records can be matched to inspected copies before a fresh checked save.
+- Extend verified recovery-copy inspection with decoded, labelled read-only timeline, beat, order
+  and story-notes values alongside world details and goals. Explain the correct fresh editor for
+  each kind and retain archived identities, literal text and the complete JSON. Test actual manual
+  recovery from displayed fields without replacing a newer saved document or changing the copy.
+- Bind every transported save to a fresh client request and independently issued host publication
+  identity. Derive created record IDs from that publication, verify the same binding in complete
+  recovery bytes, and keep handler validation snapshots separate from service submissions. Reject
+  identical stale-create receipt replay, including an old receipt returned after a later real write.
+- Prefix planning control names with kind, retained position and action before authored titles, and
+  prefix reorder names with direction and position. Action-like titles and literal generated labels
+  remain distinct while preserving visible text in the accessible name. Add pending-service,
+  four-kind replay and mounted collision regressions; native accessibility acceptance remains open.
+- Bind conflict receipts to the exact typed intent and complete byte-verified recovery document,
+  recheck the named copy in the handler, and reject replayed replies for another draft. Require
+  changed-save replies to match the writer's exact serialization while retaining valid compact
+  reads/no-ops and unknown own data; refuse sparse/non-JSON response arrays.
+- Surface deterministic output-budget/validation refusal only before any publication attempt, so
+  authors can shorten a retained draft and explicitly save again. Keep genuinely uncertain active
+  and recovery outcomes paused with no retry. Disambiguate duplicate planning edit/archive/restore
+  labels and keep move-control position names accurate after reorder. Add real Library/API and
+  mounted regressions; native accessibility and fresh independent acceptance remain separate gates.
+- Extend the existing checked planning save/API with timeline events, optional story notes, outline
+  beats, explicit author ordering and reversible worldbuilding/event/beat archive controls. Mount
+  these in the planning panel with literal fields, archive confirmation and the existing exact-draft
+  recovery/navigation guard. Confirmed creation keeps subsequent edits on the same host-assigned ID.
+- Verify full save-response correspondence and preserve unknown own `__proto__` data across reads
+  and edits. Clear notes keeps the singleton identity and unknown fields; empty optional notes and
+  current no-ops write nothing. Synthetic Library/handler and mounted filesystem journeys cover
+  ordering, retained limits, recovery, archive/restore and untouched Bible/chapter bytes.
+- Reconcile the complete typed-intent inventory in FORMAT and narrow existing worldbuilding test
+  assertions across the expanded save union. Independent review and integrated visual/host checks
+  remain acceptance gates.
+
 ### Saved-review receipt and draft recovery corrections
 
 - Verify complete intended report-conflict copies at the store, handler and receiver, including a
@@ -165,7 +299,81 @@ Update the `Unreleased` section before every commit.
   when its text is ignored; Continue retries a held capture and is offered when interrupted; and a
   StrictMode remount re-arms the store. 017 T017 remains unchecked.
 
-HEAD
+### Review navigation and worker reply safety
+
+- Guard report reopen, run and evidence-navigation continuations against superseding actions,
+  chapter/view visits, book/library changes, dismissal and unmount, including late read failures.
+  A delayed chapter switch also invalidates work when the switch actually commits.
+- Select evidence only after checking the mounted editor's current source and live buffer against
+  the exact saved passage. Refuse dirty, saving, failed, composing or held editors instead of
+  refreshing over their text; recheck both sides of a cross-chapter switch.
+- Fail invalid worker envelopes and required metadata safely, validating metadata incrementally
+  and occurrence spans as their pages become visible rather than scanning every span on the UI
+  thread. Focused synthetic regressions cover these guards; native and retained-review gates remain.
+
+### Cancellable deterministic review runtime
+
+- Move interactive repetition analysis into a dedicated, run-owned module worker. Native NFC on
+  valid descending-class combining marks can block for seconds despite character-scan yields;
+  cancellation now terminates the worker and discards late output without changing repetition-v1,
+  valid-source coverage, counts or original evidence spans. Worker startup/error/unavailable paths
+  fail visibly with no main-thread analysis fallback.
+- Clean up deterministic review work on cancellation, dialog dismissal, book/library change and
+  Workspace unmount. The run-acquisition reads and worker replies are isolated from a fresh run;
+  the separate reopen and navigation reads required the subsequent correction above.
+- Add synthetic Bun-worker and Workspace regressions reaching adversarial native normalization,
+  exact adversarial completion, retry, late replies, failure and lifetime cleanup, alongside complete
+  120-chapter/250k-word occurrence transport. Native browser/Electron performance, packaging and
+  remaining inline/retained-review acceptance remain separate gates.
+
+### Deterministic repetition review
+
+- Implement D-198 repetition-v1: all overlapping three-token windows, Unicode letter/number/mark
+  tokens, internal apostrophes, NFC/case/apostrophe comparison keys and exact original UTF-16
+  occurrences. Malformed Unicode chapters are explicitly skipped; no source text is repaired.
+- Feed actual findings into the existing volatile Review manuscript report with visible metric
+  version/definition, complete counts and bounded sequence/occurrence paging. Existing saved-source
+  navigation now verifies literal spans as well as versions/hashes. Cancellation yields through
+  scans/grouping and across chapters; fixed-slice shared word counting handles giant unbroken tokens.
+- Add focused synthetic coverage for real report-to-editor navigation, stale refusal, complete paging,
+  cancellation and 120-chapter/250k-word inputs. Inline review layers, retained-review mounting and
+  native/release acceptance remain open.
+
+### Workflow records
+- Reconcile only the exact planned journal attempt after a definitive prepublication refusal, so
+  equal outside bytes remain reviewable. Preserve prior and newer same-hash intents, concurrent
+  notes and uncertain-publication recovery; out-of-order refusals cannot resurrect a refused plan.
+  Add positive workflow/shared-writer race, overlap, note-failure and recovery regressions. Journal
+  reconciliation remains best effort and does not retry author-file publication.
+- Enforce workflow byte ceilings at desktop and browser read boundaries, including checked-commit
+  comparisons/readbacks, drift scans, journal observations, watcher checks and move-copy fallbacks.
+  Oversized replacements are refused without truncation; a possible post-publication failure stays
+  uncertain and is never replayed. Service journal notes now record only the exact verified intended
+  write, so a subsequent outside replacement remains reviewable for new and existing paths.
+- Classify missing or non-string workflow envelope kinds as corrupt on read and invalid on write;
+  future/foreign string kinds remain unavailable, with exact file bytes retained and no write.
+- Bind final artifact readback to the exact intended metadata/body on both creation and no-op;
+  changed, missing, corrupt or unreadable final pairs report uncertainty without replay. Distinguish
+  future string semantics from malformed known states in workflow record reads.
+- Refuse copy-only metadata before any active workflow publication and enforce the run header's
+  control-only format. Document bounded conflict names and baseline tokens; artifact recovery
+  metadata points to its verified retained body. Unknown artifact/target/accounting semantics stay
+  unavailable and read-only. An orphan artifact is refused, never guessed or silently completed.
+- Add checked schema-1 workflow storage behind `LibraryService.workflowRecords` (037 T023). Checked
+  `run`, `task`, `attempt`, `effect` and `question` records require the exact previous raw hash and
+  revision, are parsed by the same build's codec before publication, are committed through the
+  Library's per-book queue and journal, and are verified by exact-byte readback. Immutable absent-only
+  `artifact` metadata plus its bounded body (≤1 MiB, `.md`/`.json`) and `context` manifests use the
+  same writer; metadata and body must agree on the exact SHA-256 and size, and a partial or
+  mismatched pair refuses. Stale, missing and racing bases keep the complete intended document under
+  `workflows/<runId>/conflicts/` with bounded names and full identity inside; an unverified
+  publication is reported as uncertain and never replayed. Malformed, duplicate-key, lone-surrogate,
+  lossy-number and oversized records are refused without rewriting; supported unknown plain fields
+  (including own `__proto__`) survive read-modify-write and newer closed-union members stay read-only.
+  There is no scheduler, dispatch, provider call, publication/effect execution, command/admission
+  writer, IPC/UI, pruning or deletion. T023 remains unchecked pending independent storage review;
+  T020–T022, T024–T042 and 038 T022 stay open.
+
 ### Saved review records
 - Define schema 1 for explicit saved reviews under `books/<bookId>/reviews/`: immutable absent-only
   reader reports with analyzer/profile/source/coverage attribution, bounded quotations and no source
@@ -242,7 +450,6 @@ HEAD
   restore that requires an absent destination and an unchanged book/conversation identity. No
   automatic pruning, quota or expiry. 037 T019 remains partial; v2 semantic migration, restore
   UI/IPC and independent review are still open.
-HEAD
 ### Mounted editor
 
 - Mount the exact-current CodeMirror surface in the manuscript editor: the existing wrapper keeps

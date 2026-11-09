@@ -87,7 +87,14 @@ it does not change the existing count contract or manuscript format.
 - **FR-006 — Definitions and coverage.** The report MUST make each metric's definition available
   beside its result. It MUST show the number of chapters in scope, included, empty and skipped, and
   give a plain-language reason for every skipped chapter. It MUST distinguish a complete report
-  with no phrase matches from partial coverage and from insufficient evidence.
+  with no phrase matches from partial coverage and from insufficient evidence. When worker findings
+  are checked only as passages are opened, zero findings MUST also be labeled as an unverified
+  worker result, not confirmation that no repetitions exist. Saved-source freshness alone does not
+  verify aggregate completeness. Worker-derived studio word counts, coverage classifications and
+  insufficient-text conclusions MUST also be attributed and labeled unverified until checked against
+  saved text. This includes nonzero counts and empty classifications, not just zero findings.
+  Skipped chapters and insufficient text keep their own explanations; the report MUST NOT imply that
+  skipped chapters are empty. Opening one verified passage does not verify the remaining metadata.
 - **FR-007 — Exact evidence navigation.** Every phrase finding MUST be tied to its chapter identity,
   source version/hash and exact span in the saved body, and MUST show its chapter title/order and a
   short excerpt. Selecting a finding MUST open that chapter and highlight the exact span if the
@@ -104,7 +111,10 @@ it does not change the existing count contract or manuscript format.
   prose, show **Not enough saved text to review**, not a successful “no findings” result. If some
   chapters cannot be read or verified but others can, show a partial report with the omitted chapters
   and reasons. If no source can be verified, show a failure state with the next safe action; do not
-  display an empty report as success.
+  display an empty report as success. Keep the fresh run's available skipped filenames and reasons
+  in that failure view without replacing the live editor. Distinguish source-read issues from
+  unverified worker classifications, including an all-skipped conclusion. Infrastructure failures
+  give worker-appropriate retry guidance rather than assuming unreadable chapter files.
 - **FR-011 — Disposable report.** The first milestone MUST keep report data in volatile run-local
   state only. It MUST NOT write a report, excerpt, run history or retention metadata to the library,
   app profile, index, conversation store or usage log. A new run replaces the current report; changing

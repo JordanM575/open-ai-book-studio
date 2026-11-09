@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { Chapter, ChapterConflict } from "@ai-book-studio/core/schema";
 import type { ImageRecord } from "@ai-book-studio/core/images/schema";
 import { plainSaveReason } from "@ai-book-studio/core/library/errors";
@@ -9,10 +9,12 @@ import { countWords, formatCount, formatWords, pluralize, savedTime } from "../l
 import { VoiceButton } from "./VoiceButton";
 import { InlineReviewControls, InlineTextSurface } from "./inline-editor/InlineTextSurface";
 import type { InlineEditor } from "./inline-editor/editor";
+import { isExactCurrent } from "./inline-editor/contracts";
 import type {
   InlineChange,
   InlineEditorOptions,
   InlineInspection,
+  InlineSnapshot,
   InlineSource,
   ValidatedEvidencePort,
   ValidatedInlineLayer
@@ -39,6 +41,10 @@ export interface EditorHandle {
   getStatus: () => SaveStatus;
   /** The hash of the chapter file this editor last loaded or saved. */
   getBaseHash: () => string;
+  /** A live, clean visit token for a later exact evidence-selection check. */
+  getEvidenceSnapshot: () => InlineSnapshot | null;
+  /** Refuse even an ABA edit, composition or hold since the captured visit. */
+  isEvidenceCurrent: (snapshot: InlineSnapshot) => boolean;
   /**
    * Run `write`, such as a move, with this editor's saves held until it ends: saves already on their
    * way finish first, and one asked for meanwhile is checked against the base `write` leaves.
@@ -55,8 +61,12 @@ export interface EditorHandle {
 export interface EditorSelection {
   start: number;
   end: number;
-  /** Changes every time a new span is requested, even for the same offsets. */
-  nonce: number;
+  source: Pick<InlineSource, "libraryId" | "bookId" | "chapterId" | "version" | "rawHash" | "savedBody">;
+  /** Captured before the read when selecting in an already mounted editor. */
+  visit?: InlineSnapshot;
+  /** The owning report/navigation must still be current at the actual application boundary. */
+  isCurrent: () => boolean;
+  onResult: (applied: boolean) => void;
 }
 
 interface Props {
@@ -184,13 +194,28 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
   const readSourceRef = useRef(readSource);
   readSourceRef.current = readSource;
 
-  const selectionNonce = selection?.nonce;
-  const selectionStart = selection?.start;
-  const selectionEnd = selection?.end;
-  useEffect(() => {
-    if (!editor || selectionNonce === undefined || selectionStart === undefined || selectionEnd === undefined) return;
-    editor.setSelection({ anchor: selectionStart, head: selectionEnd }, true);
-  }, [editor, selectionNonce, selectionStart, selectionEnd]);
+  const evidenceSnapshot = useCallback((): InlineSnapshot | null => {
+    const snapshot = editorRef.current?.getSnapshot();
+    return snapshot && statusRef.current.kind === "saved" && isExactCurrent(snapshot, snapshot) ? snapshot : null;
+  }, []);
+  const evidenceCurrent = useCallback((expected: InlineSnapshot): boolean => {
+    const current = evidenceSnapshot();
+    return current !== null && current.revision === expected.revision && isExactCurrent(current, expected);
+  }, [evidenceSnapshot]);
+
+  useLayoutEffect(() => {
+    if (!editor || !selection?.isCurrent()) return;
+    // For a new chapter, capture its mounted visit only after it exists. For the already-open
+    // chapter, retain the token captured before the saved-source read, including its revision.
+    const expected = selection.visit ?? evidenceSnapshot();
+    const source = selection.source;
+    const applied = expected !== null && editorRef.current === editor && selection.isCurrent() &&
+      expected.libraryId === source.libraryId && expected.bookId === source.bookId &&
+      expected.chapterId === source.chapterId && expected.version === source.version &&
+      expected.rawHash === source.rawHash && expected.savedBody === source.savedBody &&
+      evidenceCurrent(expected) && editor.setSelection({ anchor: selection.start, head: selection.end }, true);
+    selection.onResult(applied);
+  }, [editor, selection, evidenceCurrent, evidenceSnapshot]);
 
   /** Nothing is left to write: drop the pending draft copy, here and in the main process. */
   const dropDraft = useCallback(() => {
@@ -298,6 +323,8 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
       flush: () => saveRef.current(latest.current),
       getStatus: () => statusRef.current,
       getBaseHash: () => base.current.hash,
+      getEvidenceSnapshot: evidenceSnapshot,
+      isEvidenceCurrent: evidenceCurrent,
       hold: <T,>(write: () => Promise<T>): Promise<T> => {
         const release = editorRef.current?.hold();
         const run = queue.current.then(write);
@@ -317,7 +344,7 @@ export const ManuscriptEditor = forwardRef<EditorHandle, Props>(function Manuscr
         return true;
       }
     }),
-    [chapterId, touchSource]
+    [chapterId, evidenceCurrent, evidenceSnapshot, touchSource]
   );
 
   // A close or quit asks for the newest text before the main process saves its drafts: the draft

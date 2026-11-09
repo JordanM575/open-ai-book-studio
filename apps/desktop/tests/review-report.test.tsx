@@ -7,10 +7,14 @@ import type { AmbientStatus } from "@ai-book-studio/core/agent/ambient";
 import {
   buildReviewReport,
   analyzeReviewCoverage,
+  analyzeReviewCoverageAsync,
+  type ReviewCoverageAnalysis,
   type ReviewReportResult,
   type ReviewSourceSnapshot
 } from "@ai-book-studio/core/review";
 import type { ReviewRunView } from "@ai-book-studio/app/components/ReviewReportDialog";
+import type { ReviewWorkerReply, ReviewWorkerRequest } from "@ai-book-studio/app/lib/review-worker-protocol";
+import { matchesRepetitionEvidence } from "@ai-book-studio/core/review/repetition";
 
 let testing!: typeof import("@testing-library/react/pure");
 // Loaded in beforeAll, once the DOM exists.
@@ -33,6 +37,12 @@ afterAll(async () => {
 afterEach(() => testing.cleanup());
 
 const NOW = "2026-11-03T12:00:00.000Z";
+
+function at<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`Missing synthetic fixture at index ${index}`);
+  return item;
+}
 
 const dialogSource: ReviewSourceSnapshot = {
   scope: { kind: "book", bookId: "book_dialog0001" },
@@ -105,7 +115,7 @@ describe("ReviewReportDialog", () => {
     expect(onRunAgain).toHaveBeenCalledTimes(1);
 
     testing.cleanup();
-    renderReport({ kind: "failed", message: "No saved chapter text could be verified." });
+    renderReport({ kind: "failed", message: "No saved chapter text could be verified.", guidance: "Check the file details, then run again." });
     expect(testing.within(document.body).getByTestId("review-status").textContent ?? "").toContain(
       "No saved chapter text could be verified"
     );
@@ -120,17 +130,24 @@ describe("ReviewReportDialog", () => {
     expect(meta).toContain("Fixture book");
     expect(meta).toContain("2 chapters");
     expect(meta).toContain("4 words");
+    expect(meta).toContain("unverified studio count");
 
     const coverage = testing.within(document.body).getByTestId("review-coverage").textContent ?? "";
     expect(coverage).toContain("Empty chapter");
     expect(coverage).toContain("Punctuation stays");
+    expect(coverage).toContain("Unverified coverage");
+    expect(coverage).toContain("Empty · unverified");
+    expect(coverage).toContain("4 words · unverified");
 
     const definitions = testing.within(document.body).getByTestId("review-definitions").textContent ?? "";
     expect(definitions).toContain("Studio word count");
-    expect(definitions).toContain("measures saved words and coverage only");
+    expect(definitions).toContain("repetition-v1");
+    expect(definitions).toContain("overlapping three-token");
 
     const findings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
-    expect(findings).toContain("No phrase findings to show");
+    expect(findings).toContain("Unverified result");
+    expect(findings).toContain("worker reported no repeated three-token sequences in the saved chapters");
+    expect(findings).toContain("This does not confirm that none exist");
   });
 
   test("partial and insufficient-evidence reports use their own copy, never a false success", () => {
@@ -149,6 +166,11 @@ describe("ReviewReportDialog", () => {
       freshness: { status: "current" }
     });
     expect(testing.within(document.body).getByTestId("review-status").textContent ?? "").toContain("Partial report");
+    const partialFindings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
+    expect(partialFindings).toContain("Unverified result");
+    expect(partialFindings).toContain("worker reported no repeated three-token sequences in the analyzed chapters");
+    expect(partialFindings).toContain("This does not confirm that none exist");
+    expect(partialFindings).toContain("Skipped chapters were not scanned");
 
     testing.cleanup();
     const emptySource: ReviewSourceSnapshot = { ...dialogSource, chapters: [dialogSource.chapters[0]!] };
@@ -162,6 +184,10 @@ describe("ReviewReportDialog", () => {
     expect(testing.within(document.body).getByTestId("review-status").textContent ?? "").toContain(
       "Not enough saved text to review"
     );
+    const emptyFindings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
+    expect(emptyFindings).toContain("Unverified result");
+    expect(emptyFindings).toContain("worker reported insufficient saved text for phrase findings");
+    expect(emptyFindings).not.toContain("reported no repeated");
   });
 
   test("a stale report names the changed chapter and disables evidence navigation", () => {
@@ -280,6 +306,105 @@ describe("ReviewReportDialog", () => {
     expect(testing.within(document.body).getByRole("button", { name: "Run again" })).toBeTruthy();
     expect(testing.within(document.body).getByTestId("review-status")).toBeTruthy();
   });
+
+  test("actual findings retain every overlap across occurrence pages, preserve focus and block stale navigation", async () => {
+    const source: ReviewSourceSnapshot = { ...dialogSource, chapters: [{
+      status: "saved", chapterId: "ch_paged", title: "Repeated fixture", order: 1,
+      body: Array(27).fill("word").join(" "), version: 1, hash: "a".repeat(64)
+    }] };
+    const outcome = await analyzeReviewCoverageAsync(source, new AbortController().signal);
+    if (outcome.status !== "complete") throw new Error("Synthetic scan must complete");
+    const report = buildReviewReport(source, outcome.value, { requestedAt: NOW, completedAt: NOW });
+    const onNavigate = mock((_findingId: string, _index: number) => {});
+    const props = { open: true, bookTitle: "Paging fixture", onNavigate, onCancelRun: () => {}, onRunAgain: () => {}, onClose: () => {} };
+    const rendered = testing.render(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report, freshness: { status: "current" } }
+    }));
+    const queries = testing.within(document.body);
+    expect(queries.getByTestId("review-findings").textContent).toContain("1 sequence · 25 occurrences");
+    for (const [page, count] of [[0, 10], [1, 10], [2, 5]] as const) {
+      const buttons = queries.getAllByTestId("review-evidence");
+      expect(buttons).toHaveLength(count);
+      for (const button of buttons) testing.fireEvent.click(button);
+      expect(queries.getByRole("group", { name: "Occurrences pages" }).textContent)
+        .toContain(`Occurrences ${page * 10 + 1}–${page * 10 + count} of 25`);
+      const next = queries.getByRole("button", { name: "Next occurrences" });
+      next.focus();
+      testing.fireEvent.click(next);
+      expect(document.activeElement).toBe(next);
+    }
+    const finding = report.findings[0];
+    if (!finding) throw new Error("Expected the completed repetition finding");
+    expect(onNavigate.mock.calls).toEqual(Array.from({ length: 25 }, (_, index) => [finding.id, index]));
+    expect(report.findings[0]?.evidence).toHaveLength(25);
+    rendered.rerender(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report, freshness: { status: "stale", changes: [{ kind: "changed", chapterId: "ch_paged" }] } }
+    }));
+    for (const button of queries.getAllByTestId("review-evidence")) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      testing.fireEvent.click(button);
+    }
+    expect(onNavigate).toHaveBeenCalledTimes(25);
+    testing.fireEvent.click(queries.getByRole("button", { name: "Previous occurrences" }));
+    expect(queries.getAllByTestId("review-evidence")).toHaveLength(10);
+    expect(onNavigate).toHaveBeenCalledTimes(25);
+  });
+
+  test("sequence paging is bounded, covers every generated finding and resets for a new run", () => {
+    const source: ReviewSourceSnapshot = { ...dialogSource, chapters: Array.from({ length: 12 }, (_, index) => ({
+      status: "saved", chapterId: `ch_sequence${index}`, title: `Sequence ${index}`, order: index + 1,
+      body: `word${index} repeats here. WORD${index} repeats here.`, version: 1, hash: "a".repeat(64)
+    })) };
+    const report = buildReviewReport(source, analyzeReviewCoverage(source), { requestedAt: NOW, completedAt: NOW });
+    expect(report.findings).toHaveLength(12);
+    const onNavigate = mock((_findingId: string, _index: number) => {});
+    const props = { open: true, bookTitle: "Sequence pages", onNavigate, onCancelRun: () => {}, onRunAgain: () => {}, onClose: () => {} };
+    const rendered = testing.render(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report, freshness: { status: "current" } }
+    }));
+    const queries = testing.within(document.body);
+    for (const count of [5, 5, 2]) {
+      expect(queries.getAllByTestId("review-finding")).toHaveLength(count);
+      for (const button of queries.getAllByTestId("review-evidence")) testing.fireEvent.click(button);
+      testing.fireEvent.click(queries.getByRole("button", { name: "Next sequences" }));
+    }
+    expect(onNavigate.mock.calls).toEqual(report.findings.flatMap((finding) => [[finding.id, 0], [finding.id, 1]]));
+    rendered.rerender(React.createElement(ReviewReportDialog, {
+      ...props, view: { kind: "report", report: { ...report, requestedAt: "2026-11-08T13:00:00.000Z" }, freshness: { status: "current" } }
+    }));
+    expect(queries.getByRole("group", { name: "Sequences pages" }).textContent).toContain("Sequences 1–5 of 12");
+  });
+
+  test.each(["hole", "invalid shape", "wrong source"] as const)(
+    "a %s on a later occurrence page fails safely when it becomes visible", (defect) => {
+      const source: ReviewSourceSnapshot = { ...dialogSource, chapters: [{
+        status: "saved", chapterId: "ch_paged", title: "Repeated fixture", order: 1,
+        body: Array(27).fill("word").join(" "), version: 1, hash: "a".repeat(64)
+      }] };
+      const report = buildReviewReport(source, analyzeReviewCoverage(source), { requestedAt: NOW, completedAt: NOW });
+      const finding = report.findings[0];
+      if (!finding) throw new Error("Expected a repetition finding");
+      const evidence = [...finding.evidence];
+      if (defect === "hole") delete evidence[12];
+      else if (defect === "invalid shape") evidence[12] = null as unknown as typeof evidence[number];
+      else evidence[12] = { ...at(evidence, 12), sourceHash: "wrong" };
+      const malformed = { ...report, findings: [{ ...finding, evidence }] };
+      const onMalformedEvidence = mock(() => {});
+      const onNavigate = mock(() => {});
+      testing.render(React.createElement(ReviewReportDialog, {
+        open: true, bookTitle: "Synthetic", view: { kind: "report", report: malformed, freshness: { status: "current" } },
+        onNavigate, onMalformedEvidence, onCancelRun: () => {}, onRunAgain: () => {}, onClose: () => {}
+      }));
+      const queries = testing.within(document.body);
+      expect(queries.getAllByTestId("review-evidence")).toHaveLength(10);
+      expect(onMalformedEvidence).not.toHaveBeenCalled();
+      testing.fireEvent.click(queries.getByRole("button", { name: "Next occurrences" }));
+      expect(queries.getByText(/worker returned an invalid result/)).toBeTruthy();
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      expect(onMalformedEvidence).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("ManuscriptEditor evidence selection", () => {
@@ -318,7 +443,9 @@ describe("ManuscriptEditor evidence selection", () => {
         ordinal: 2,
         onSaved: () => {},
         onStatus: () => {},
-        selection: { start: 0, end: 3, nonce: 1 }
+        selection: { start: 0, end: 3, source: { libraryId: "studio-local", bookId: "book_dialog0001",
+          chapterId: chapter.id, version: chapter.version, rawHash: chapter.hash, savedBody: chapter.content },
+          isCurrent: () => true, onResult: () => {} }
       })
     );
 
@@ -355,7 +482,7 @@ function integrationDetail(bookId: string, title: string, chapters: Chapter[]): 
 }
 
 const firstDetail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [
-  integrationChapter("ch_int000001", "The Light", 1, "one — two\n"),
+  integrationChapter("ch_int000001", "The Light", 1, "Salt and stone.\n"),
   integrationChapter("ch_int000002", "The Road", 2, "Salt and stone.\n")
 ]);
 const secondDetail = integrationDetail(INTEGRATION_BOOK_TWO, "Second Fixture", [
@@ -373,17 +500,1188 @@ const ambientStatus: AmbientStatus = {
   say: "Synthetic ambient status for the review integration fixture."
 };
 
+/** Synthetic read-only bridge for worker lifetime tests; any accidental writer/provider call fails. */
+function workerWorkspaceFixture(detail = firstDetail) {
+  const forbidden = mock(() => { throw new Error("No write/provider in local review"); });
+  const open = mock((bookId: string) => Promise.resolve({ ok: true as const, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : detail }));
+  (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
+    platform: "darwin", library: { onChange: () => () => {} }, books: { open },
+    conflicts: { list: () => Promise.resolve({ ok: true, data: [] }) },
+    images: { list: () => Promise.resolve({ ok: true, data: { manifest: { schemaVersion: 1, images: [] }, warning: null } }) },
+    drafts: { set: forbidden, clear: forbidden, onFlushRequest: () => () => {} },
+    recovery: { list: () => Promise.resolve({ ok: true, data: [] }) },
+    chapters: { save: forbidden, updateMeta: forbidden },
+    agent: { send: forbidden, ambient: () => Promise.resolve({ ok: true, data: ambientStatus }), onEvent: () => () => {} },
+    voice: {
+      speakers: () => Promise.resolve({ ok: true, data: { available: false, voices: [] } }),
+      connections: () => Promise.resolve({ ok: true, data: [] })
+    }
+  };
+  const props = {
+    bookId: INTEGRATION_BOOK, libraryRoot: "/synthetic/review-worker",
+    theme: { choice: "light" as const, set: (_choice: "light" | "dark" | "system") => {}, cycle: () => {} },
+    onBack: () => {}, onNotice: mock((_error: unknown) => {}), onSchemaRefusal: () => {}
+  };
+  return { props, open, forbidden };
+}
+
+function controlledReviewWorkers(holdEvidence = false) {
+  const original = globalThis.Worker;
+  const workers: ControlledWorker[] = [];
+  const checks: ControlledWorker[] = [];
+  class ControlledWorker extends EventTarget {
+    request: ReviewWorkerRequest | undefined;
+    terminate = mock(() => {});
+    constructor(_url: string | URL, _options?: WorkerOptions) {
+      super();
+      queueMicrotask(() => this.reply({ kind: "ready" }));
+    }
+    postMessage(request: ReviewWorkerRequest) {
+      this.request = request;
+      if (request.kind === "analyze") workers.push(this);
+      else {
+        checks.push(this);
+        // A small-fixture protocol double only; real off-thread normalization has separate tests.
+        if (!holdEvidence) queueMicrotask(() => this.verify());
+      }
+    }
+    reply(reply: ReviewWorkerReply) { this.dispatchEvent(new MessageEvent("message", { data: reply })); }
+    complete(change?: (analysis: ReviewCoverageAnalysis) => ReviewCoverageAnalysis) {
+      if (this.request?.kind !== "analyze") throw new Error("Worker has no saved snapshot");
+      const analysis = analyzeReviewCoverage(this.request.source);
+      this.reply({ kind: "complete", analysis: change ? change(analysis) : analysis });
+    }
+    verify() {
+      if (this.request?.kind !== "verify-evidence") throw new Error("Worker has no selected evidence");
+      this.reply({ kind: "verified-evidence", matches: matchesRepetitionEvidence(this.request.evidence) });
+    }
+  }
+  globalThis.Worker = ControlledWorker as unknown as typeof Worker;
+  return { workers, checks, restore: () => { globalThis.Worker = original; } };
+}
+
+function deferredRead() {
+  let resolve!: (result: { ok: true; data: BookDetail }) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<{ ok: true; data: BookDetail }>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+async function startControlledReport(
+  fixture: ReturnType<typeof workerWorkspaceFixture>, control: ReturnType<typeof controlledReviewWorkers>,
+  change?: (analysis: ReviewCoverageAnalysis) => ReviewCoverageAnalysis, expectedLabel = "salt and stone"
+) {
+  const rendered = testing.render(React.createElement(WorkspaceView, fixture.props));
+  const queries = testing.within(document.body);
+  await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+  testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+  await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+  await testing.act(async () => { control.workers[0]?.complete(change); });
+  await testing.waitFor(() => expect(queries.queryByTestId("review-findings")?.textContent?.includes(expectedLabel) ?? false).toBe(true), {
+    onTimeout: (error) => new Error(`${error.message}\nReview state: ${queries.queryByTestId("review-report")?.textContent?.slice(0, 1500) ?? "not mounted"}`)
+  });
+  await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-checking"))).toBe(false));
+  return { rendered, queries };
+}
+
+const repeatedBody = `😀 ${Array(25).fill("agate birch cloud").join(" ")}`;
+const repeatedDetail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [
+  integrationChapter("ch_int000001", "The Light", 1, repeatedBody)
+]);
+
+function changeLaterOccurrence(
+  analysis: ReviewCoverageAnalysis,
+  change: (evidence: Array<ReviewCoverageAnalysis["findings"][number]["evidence"][number]>) => void
+): ReviewCoverageAnalysis {
+  const finding = at(analysis.findings, 0);
+  const evidence = [...finding.evidence];
+  change(evidence);
+  return { ...analysis, findings: [{ ...finding, evidence }, ...analysis.findings.slice(1)] };
+}
+
 describe("workspace review entry to report", () => {
+  test.each([false, true])("fresh all-skipped failures name each source-read issue without replacing the editor (dirty=%s)", async (dirty) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    const failedDetail: BookDetail = { ...firstDetail, chapters: [], chapterReadIssues: [
+      { fileName: "0001-orchard.md", order: 1, reason: "permission-needed" },
+      { fileName: "0002-rain.md", order: 2, reason: "invalid-format" }
+    ] };
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: failedDetail }));
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      const original = editor.value;
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      if (dirty) testing.fireEvent.change(editor, { target: { value: "My newer unsaved words." } });
+      editor.selectionStart = 2;
+      editor.selectionEnd = 5;
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("No saved chapter text could be verified");
+      expect(status).toContain("Restore folder access or fix the indicated file problem");
+      expect(status).not.toContain("worker reported");
+      const first = queries.getByTestId("review-failure-row-0").textContent ?? "";
+      const second = queries.getByTestId("review-failure-row-1").textContent ?? "";
+      expect(first).toContain("0001-orchard.md");
+      expect(first).toContain("Source-read issue · The studio did not have permission to read this chapter file.");
+      expect(second).toContain("0002-rain.md");
+      expect(second).toContain("Source-read issue · The chapter file could not be read as a valid chapter.");
+      expect(first + second).not.toContain("unverified");
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      expect(queries.getByTestId("manuscript-text")).toBe(editor);
+      expect(editor.value).toBe(dirty ? "My newer unsaved words." : original);
+      expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 5]);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      if (!dirty) {
+        testing.fireEvent.click(queries.getByTestId("review-run-again"));
+        await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+        await testing.act(async () => { control.workers[1]?.complete(); });
+        expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+        expect(queries.queryByTestId("review-failure-coverage")).toBeNull();
+      }
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("forged all-skipped worker claims stay distinct from source-read evidence (partial=%s)", async (partial) => {
+    const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
+    const detail: BookDetail = {
+      ...integrationDetail(INTEGRATION_BOOK, "Failure metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+      chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+    };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[0]?.complete((analysis) => {
+        expect(analysis.status).toBe(partial ? "partial" : "complete");
+        expect(analysis.wordCounts.totalWordCount).toBe(10);
+        expect(analysis.findings).toHaveLength(3);
+        const chapters = analysis.coverage.chapters.map((entry) => entry.status === "skipped" ? entry : {
+          status: "skipped" as const, fileName: `${entry.title} (${entry.chapterId})`, order: entry.order,
+          reason: "The saved chapter contains malformed Unicode and could not be analyzed. Nothing was repaired or changed."
+        });
+        return { status: "failed", findings: [],
+          coverage: { inScope: chapters.length, included: 0, empty: 0, skipped: chapters.length, chapters },
+          wordCounts: { totalWordCount: 0, chapters: chapters.map((entry) => ({ ...entry, wordCount: null })) }
+        };
+      }); });
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("Unverified result");
+      expect(status).toContain("local review worker reported every chapter skipped");
+      expect(status).toContain("does not confirm that the saved chapters are unreadable");
+      expect(status).not.toContain("No saved chapter text could be verified");
+      const workerRow = queries.getByTestId("review-failure-row-0").textContent ?? "";
+      expect(workerRow).toContain("Saved prose (ch_int000001)");
+      expect(workerRow).toContain("Worker-reported skip · unverified");
+      expect(workerRow).toContain("malformed Unicode");
+      expect(workerRow).toContain("has not been checked against saved text");
+      if (partial) {
+        const sourceRow = queries.getByTestId("review-failure-row-1").textContent ?? "";
+        expect(sourceRow).toContain("0002-unreadable-fixture.md");
+        expect(sourceRow).toContain("Source-read issue · The studio could not read this chapter file.");
+        expect(sourceRow).not.toContain("unverified");
+      }
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(body);
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("a genuine synthetic malformed source retains its worker-classified failure reason", async () => {
+    const fixture = workerWorkspaceFixture();
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: integrationDetail(INTEGRATION_BOOK,
+      "Malformed fixture", [integrationChapter("ch_int000001", "Malformed source", 1, "\ud800")]) }));
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      expect(queries.getByTestId("review-status").textContent).toContain("Unverified result");
+      expect(queries.getByTestId("review-failure-coverage").textContent).toContain("malformed Unicode");
+      expect(queries.getByTestId("review-failure-coverage").textContent).toContain("Worker-reported skip · unverified");
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(at(firstDetail.chapters, 0).content);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("worker startup failures give infrastructure guidance and keep available read issues (partial=%s)", async (partial) => {
+    const fixture = workerWorkspaceFixture();
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: { ...firstDetail,
+      chapterReadIssues: partial ? [{ fileName: "0003-locked.md", order: 3, reason: "permission-needed" }] : [] } }));
+    const original = globalThis.Worker;
+    globalThis.Worker = class { constructor() { throw new Error("Synthetic worker startup failure"); } } as unknown as typeof Worker;
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(queries.getByTestId("review-status").textContent).toContain("worker could not complete"));
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("reopen the studio");
+      expect(status).not.toContain("when the chapter files are readable");
+      expect(status).not.toContain("every chapter skipped");
+      if (partial) {
+        const row = queries.getByTestId("review-failure-row-0").textContent ?? "";
+        expect(row).toContain("0003-locked.md");
+        expect(row).toContain("Source-read issue · The studio did not have permission");
+        expect(row).not.toContain("Worker-reported");
+      } else expect(queries.queryByTestId("review-failure-coverage")).toBeNull();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(at(firstDetail.chapters, 0).content);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); globalThis.Worker = original; }
+  });
+
+  test("a late all-skipped reply cannot replace the next run or leak its failure coverage", async () => {
+    const fixture = workerWorkspaceFixture();
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: { ...firstDetail, chapters: [],
+      chapterReadIssues: [{ fileName: "0001-obsolete.md", order: 1, reason: "invalid-format" }] } }));
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(queries.queryByTestId("review-failure-coverage")).toBeNull();
+      expect(control.workers[0]?.terminate).toHaveBeenCalledTimes(1);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("false-empty worker metadata stays explicitly unverified (partial=%s)", async (partial) => {
+    const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
+    const detail: BookDetail = {
+      ...integrationDetail(INTEGRATION_BOOK, "Metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+      chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+    };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) => {
+        expect(analysis.status).toBe(partial ? "partial" : "complete");
+        expect(analysis.wordCounts.totalWordCount).toBe(10);
+        expect(analysis.findings).toHaveLength(3);
+        return {
+          ...analysis, status: "insufficient-evidence", findings: [],
+          coverage: { ...analysis.coverage, included: 0, empty: analysis.coverage.empty + analysis.coverage.included,
+            chapters: analysis.coverage.chapters.map((entry) => entry.status === "included"
+              ? { ...entry, status: "empty" as const, wordCount: 0 as const } : entry) },
+          wordCounts: { totalWordCount: 0, chapters: analysis.wordCounts.chapters.map((entry) => entry.status === "included"
+            ? { ...entry, status: "empty" as const, wordCount: 0 as const } : entry) }
+        };
+      }, "worker reported insufficient saved text");
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("Unverified result");
+      expect(status).toContain("according to the local review worker");
+      expect(status).toContain("has not been checked against saved text");
+      expect(status).not.toContain("None of the chapters in scope contain readable saved prose");
+      expect(status.includes("Skipped chapters were not scanned; their contents are unknown")).toBe(partial);
+      const findings = queries.getByTestId("review-findings").textContent ?? "";
+      expect(findings).toContain("Unverified result");
+      expect(findings).toContain("does not confirm that the saved chapters contain no readable prose");
+      expect(findings).not.toContain("reported no repeated");
+      expect(queries.getByTestId("review-run-meta").textContent).toContain("0 words (unverified studio count)");
+      expect(queries.getByTestId("review-coverage").textContent).toContain("Unverified coverage");
+      expect(queries.getByTestId("review-coverage-row-0").textContent).toContain("Empty · unverified");
+      if (partial) {
+        expect(queries.getByTestId("review-coverage-row-1").textContent).toContain("0002-unreadable-fixture.md");
+        expect(queries.getByTestId("review-coverage-row-1").textContent).toContain("Skipped · The studio could not read this chapter file. · unverified coverage");
+      }
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(body);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("inaccurate nonzero worker counts remain qualified beside real findings (partial=%s)", async (partial) => {
+    const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
+    const detail: BookDetail = {
+      ...integrationDetail(INTEGRATION_BOOK, "Metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+      chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+    };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) => {
+        expect(analysis.wordCounts.totalWordCount).toBe(10);
+        expect(analysis.findings).toHaveLength(3);
+        return { ...analysis,
+          coverage: { ...analysis.coverage, chapters: analysis.coverage.chapters.map((entry) => entry.status === "included"
+            ? { ...entry, wordCount: 999 } : entry) },
+          wordCounts: { totalWordCount: 999, chapters: analysis.wordCounts.chapters.map((entry) => entry.status === "included"
+            ? { ...entry, wordCount: 999 } : entry) }
+        };
+      }, "café l'été pine");
+      expect(queries.getByTestId("review-run-meta").textContent).toContain("999 words (unverified studio count)");
+      expect(queries.getByTestId("review-coverage").textContent).toContain("Unverified coverage");
+      expect(queries.getByTestId("review-coverage-row-0").textContent).toContain("999 words · unverified");
+      expect(queries.getByTestId("review-findings").textContent).toContain("Unverified totals");
+      expect(queries.getAllByTestId("review-finding")).toHaveLength(3);
+      expect(queries.queryByTestId("review-status")?.textContent?.includes("Unverified coverage") ?? false).toBe(partial);
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(body);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([
+    { body: "one two three", words: 3, result: "zero" },
+    { body: " \n\t", words: 0, result: "insufficient" },
+    { body: "salt and stone salt and stone", words: 6, result: "nonempty" }
+  ].flatMap((item) => [false, true].map((partial) => ({ ...item, partial }))))(
+    "genuine $result results retain their distinct explanation (partial=$partial)", async ({ body, words, result, partial }) => {
+      const detail: BookDetail = {
+        ...integrationDetail(INTEGRATION_BOOK, "Genuine metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+        chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+      };
+      const fixture = workerWorkspaceFixture(detail);
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control, (analysis) => {
+          expect(analysis.wordCounts.totalWordCount).toBe(words);
+          expect(analysis.status).toBe(result === "insufficient" ? "insufficient-evidence" : partial ? "partial" : "complete");
+          expect(analysis.findings.length > 0).toBe(result === "nonempty");
+          return analysis;
+        }, result === "nonempty" ? "salt and stone" : "Unverified result");
+        expect(queries.getByTestId("review-run-meta").textContent).toContain(`${words} words (unverified studio count)`);
+        expect(queries.getByTestId("review-coverage").textContent).toContain("Unverified coverage");
+        const findings = queries.getByTestId("review-findings").textContent ?? "";
+        const status = queries.queryByTestId("review-status")?.textContent ?? "";
+        if (result === "insufficient") {
+          expect(status).toContain("Not enough saved text to review, according to the local review worker");
+          expect(status).toContain("Unverified result");
+          expect(status.includes("their contents are unknown")).toBe(partial);
+          expect(findings).toContain("worker reported insufficient saved text");
+          expect(findings).not.toContain("reported no repeated");
+          expect(queries.getByTestId("review-coverage-row-0").textContent).toContain("Empty · unverified");
+        } else {
+          expect(status.includes("Partial report · Unverified coverage")).toBe(partial);
+          expect(findings).toContain(result === "nonempty" ? "Unverified totals" : "worker reported no repeated three-token sequences");
+          if (result === "zero") expect(findings).toContain("This does not confirm that none exist");
+        }
+        expect(queries.getByTestId("review-coverage").textContent).toContain(`${partial ? 1 : 0} skipped`);
+        if (partial) expect(queries.getByTestId("review-coverage-row-1").textContent).toContain("Skipped · The studio could not read this chapter file.");
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value).toBe(body);
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        expect(control.checks).toHaveLength(0);
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+        expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test.each([false, true])("an omitted worker result discloses unverified zero findings (partial=%s)", async (partial) => {
+    const detail: BookDetail = { ...firstDetail, chapterReadIssues: partial
+      ? [{ fileName: "0003-unreadable-fixture.md", order: 3, reason: "unreadable" }] : [] };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) => {
+        expect(analysis.findings.length).toBeGreaterThan(0);
+        return { ...analysis, findings: [] };
+      }, "Unverified result");
+      const findings = queries.getByTestId("review-findings").textContent ?? "";
+      expect(findings).toContain("worker reported no repeated three-token sequences");
+      expect(findings).toContain("This does not confirm that none exist");
+      expect(findings.includes("Skipped chapters were not scanned")).toBe(partial);
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(at(detail.chapters, 0).content);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["swapped", "label", "token-start", "token-end", "apostrophe", "astral"] as const)(
+    "opening a %s claim refuses false finding association and retains the unavailable report", async (defect) => {
+      const prefix = defect === "token-start" ? "x" : defect === "apostrophe" ? "x’" : defect === "astral" ? "𐐀" : "";
+      const suffix = defect === "token-end" ? "\u0301" : "";
+      const body = `${prefix}agate birch cloud${suffix} agate birch cloud agate birch cloud`;
+      const detail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [integrationChapter("ch_int000001", "The Light", 1, body)]);
+      const fixture = workerWorkspaceFixture(detail);
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control, (analysis) => {
+          const finding = analysis.findings.find((item) => item.label === "agate birch cloud");
+          if (!finding) throw new Error("Fixture needs the repeated phrase");
+          const evidence = [...finding.evidence];
+          if (defect === "swapped") {
+            const other = analysis.findings.find((item) => item.label === "birch cloud agate");
+            if (!other) throw new Error("Fixture needs another sequence");
+            evidence[0] = at(other.evidence, 0);
+          }
+          else if (defect !== "label") evidence[0] = { ...at(evidence, 0), startOffset: prefix.length,
+            endOffset: prefix.length + "agate birch cloud".length, excerpt: "agate birch cloud" };
+          return { ...analysis, findings: [{ ...finding, id: "repetition-v1-1", label: defect === "label" ? "silver fir pine" : finding.label, evidence }] };
+        }, defect === "label" ? "silver fir pine" : "agate birch cloud");
+        expect(queries.getByTestId("review-findings").textContent).toContain("Unverified totals");
+        expect(queries.getByTestId("review-finding").textContent).toContain("Unverified sequence");
+        expect(queries.getByTestId("review-finding").textContent).toContain("unverified count");
+        testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+        await testing.waitFor(() => expect(queries.getByTestId("review-unavailable")).toBeTruthy());
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value).toBe(body);
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        testing.fireEvent.click(queries.getByTestId("review-close"));
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+        expect(queries.queryByTestId("review-retry-freshness")).toBeNull();
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test("valid normalized Unicode and punctuation evidence selects the original literal", async () => {
+    const literal = "CAFÉ, L’ÉTÉ 𐐀";
+    const body = `😀 ${literal}. Cafe\u0301—l'e\u0301te\u0301;𐐨!`;
+    const detail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [integrationChapter("ch_int000001", "The Light", 1, body)]);
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, undefined, "café l'été 𐐨");
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.selectionStart).toBe(3);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe(literal);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["initial", "after verification"] as const)("navigation read %s stays checking, rejects visibly, then retries explicitly", async (phase) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers(phase === "after verification");
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      const pending = deferredRead();
+      if (phase === "initial") fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      expect(queries.getByTestId("review-checking")).toBeTruthy();
+      expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+      if (phase === "after verification") {
+        await testing.waitFor(() => expect(control.checks[0]?.request).toBeTruthy());
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        await testing.act(async () => { control.checks[0]?.verify(); });
+      }
+      await testing.act(async () => { pending.reject(new Error("synthetic navigation read failure")); });
+      expect(queries.getByTestId("review-unavailable").textContent).toContain("saved chapters could not be checked");
+      expect(queries.queryByTestId("review-stale")).toBeNull();
+      expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(at(firstDetail.chapters, 0).content);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      const retry = deferredRead();
+      fixture.open.mockImplementationOnce(() => retry.promise);
+      testing.fireEvent.click(queries.getByTestId("review-retry-freshness"));
+      expect(queries.getByTestId("review-checking")).toBeTruthy();
+      await testing.act(async () => { retry.resolve({ ok: true, data: firstDetail }); });
+      expect(queries.queryByTestId("review-unavailable")).toBeNull();
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-checking"))).toBe(false));
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      const checkIndex = control.checks.length;
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      if (phase === "after verification") {
+        await testing.waitFor(() => expect(control.checks[checkIndex]?.request).toBeTruthy());
+        await testing.act(async () => { control.checks[checkIndex]?.verify(); });
+      }
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("Salt and stone");
+      expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["changed", "dirty"] as const)("source becoming %s during evidence normalization cannot be selected", async (change) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers(true);
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+      await testing.waitFor(() => expect(control.checks[0]?.request).toBeTruthy());
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      if (change === "dirty") testing.fireEvent.change(editor, { target: { value: "My live words" } });
+      else fixture.open.mockImplementationOnce(async () => ({ ok: true as const, data: { ...firstDetail,
+        chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: 2, hash: "f".repeat(64) })) } }));
+      await testing.act(async () => { control.checks[0]?.verify(); });
+      expect(queries.getByTestId("review-report")).toBeTruthy();
+      expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light");
+      if (change === "dirty") expect(editor.value).toBe("My live words");
+      else expect(queries.getByTestId("review-stale")).toBeTruthy();
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["close", "rerun", "book", "library", "ABA", "unmount"] as const)("%s cancels evidence normalization and old replies cannot poison a replacement", async (change) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers(true);
+    try {
+      const { rendered, queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      await testing.waitFor(() => expect(control.checks[0]?.request).toBeTruthy());
+      const check = at(control.checks, 0);
+      if (change === "unmount") rendered.unmount();
+      else if (change === "close") testing.fireEvent.click(queries.getByTestId("review-close"));
+      else if (change === "rerun") testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      else if (change === "library") rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, libraryRoot: "/synthetic/new" }));
+      else {
+        rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, bookId: INTEGRATION_BOOK_TWO }));
+        if (change === "ABA") rendered.rerender(React.createElement(WorkspaceView, fixture.props));
+      }
+      expect(check.terminate).toHaveBeenCalledTimes(1);
+      await testing.act(async () => {
+        check.reply({ kind: "verified-evidence", matches: false });
+        check.dispatchEvent(new Event("error"));
+      });
+      if (change === "rerun") {
+        await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+        expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+        await testing.act(async () => { control.workers[1]?.complete(); });
+        expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      } else expect(queries.queryByTestId("review-report")).toBeNull();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["literal", "bounds", "gap", "surrogate"] as const)(
+    "a later %s occurrence is explicitly unverified and an exact open makes the report unavailable", async (defect) => {
+      const fixture = workerWorkspaceFixture(repeatedDetail);
+      const control = controlledReviewWorkers();
+      try {
+        const change = (analysis: ReviewCoverageAnalysis) => changeLaterOccurrence(analysis, (evidence) => {
+          const span = at(evidence, 12);
+          if (defect === "literal") evidence[12] = { ...span, excerpt: "Q".repeat(span.excerpt.length) };
+          else if (defect === "bounds") evidence[12] = { ...span, startOffset: 10_000, endOffset: 10_000 + span.excerpt.length };
+          else if (defect === "gap") evidence[12] = { ...span, excerpt: span.excerpt.replace(" ", "-") };
+          else evidence[12] = { ...span, startOffset: 1, endOffset: 2, excerpt: repeatedBody.slice(1, 2) };
+        });
+        const { queries } = await startControlledReport(fixture, control, change, "agate birch cloud");
+        const finding = at(queries.getAllByTestId("review-finding"), 0);
+        const page = testing.within(finding);
+        testing.fireEvent.click(page.getByRole("button", { name: "Next occurrences" }));
+        expect(queries.getByTestId("review-findings").textContent).toContain("Sequence labels, counts and excerpts are unverified");
+        expect(finding.textContent).toContain("Unverified excerpt");
+        expect(page.getAllByTestId("review-evidence")).toHaveLength(10);
+        testing.fireEvent.click(at(page.getAllByTestId("review-evidence"), 2));
+        await testing.waitFor(() => expect(queries.getByTestId("review-unavailable").textContent).toContain("passage could not be verified"));
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        expect(queries.getByTestId("review-findings").textContent).toContain("25 occurrences");
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value).toBe(repeatedBody);
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+        testing.fireEvent.click(queries.getByTestId("review-close"));
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test("a valid later-page excerpt remains useful and selects its exact saved span", async () => {
+    const fixture = workerWorkspaceFixture(repeatedDetail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, undefined, "agate birch cloud");
+      const finding = testing.within(at(queries.getAllByTestId("review-finding"), 0));
+      testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
+      expect(finding.getAllByText(/Unverified excerpt/)).toHaveLength(10);
+      testing.fireEvent.click(at(finding.getAllByTestId("review-evidence"), 2));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      const expectedStart = 3 + 12 * "agate birch cloud ".length;
+      expect(editor.selectionStart).toBe(expectedStart);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("agate birch cloud");
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["resolve", "reject"] as const)(
+    "a current malformed page invalidates a pending navigation on late %s", async (outcome) => {
+      const fixture = workerWorkspaceFixture({ ...repeatedDetail,
+        chapterReadIssues: [{ fileName: "0002-locked.md", order: 2, reason: "permission-needed" }] });
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control, (analysis) =>
+          changeLaterOccurrence(analysis, (evidence) => { delete evidence[12]; }), "agate birch cloud");
+        const pending = deferredRead();
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        const finding = testing.within(at(queries.getAllByTestId("review-finding"), 0));
+        const before = fixture.open.mock.calls.length;
+        testing.fireEvent.click(at(finding.getAllByTestId("review-evidence"), 0));
+        expect(fixture.open.mock.calls.length).toBe(before + 1);
+        testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
+        expect(queries.getByTestId("review-status").textContent).toContain("invalid result");
+        expect(queries.getByTestId("review-failure-coverage").textContent).toContain("0002-locked.md");
+        expect(queries.getByTestId("review-failure-coverage").textContent).toContain("Source-read issue");
+        await testing.act(async () => {
+          if (outcome === "resolve") pending.resolve({ ok: true, data: repeatedDetail });
+          else pending.reject(new Error("obsolete synthetic navigation"));
+        });
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        expect(queries.getByTestId("review-status").textContent).toContain("invalid result");
+        expect(fixture.props.onNotice).not.toHaveBeenCalled();
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test("a superseded malformed page does not cancel the replacement worker", async () => {
+    const fixture = workerWorkspaceFixture(repeatedDetail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) =>
+        changeLaterOccurrence(analysis, (evidence) => { delete evidence[12]; }), "agate birch cloud");
+      await testing.act(async () => {
+        const finding = testing.within(at(queries.getAllByTestId("review-finding"), 0));
+        testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
+        testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      });
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+      expect(control.workers[1]?.terminate).not.toHaveBeenCalled();
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("agate birch cloud");
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["changed", "reject"] as const)(
+    "reopen stays checking and disabled until its saved read %s", async (outcome) => {
+      const fixture = workerWorkspaceFixture();
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control);
+        testing.fireEvent.click(queries.getByTestId("review-close"));
+        const pending = deferredRead();
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        expect(queries.getByTestId("review-checking").textContent).toContain("Checking the saved chapters");
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        testing.fireEvent.change(editor, { target: { value: "Unsaved live words remain here." } });
+        const changed = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "f".repeat(64), content: "Changed saved words." })) };
+        await testing.act(async () => {
+          if (outcome === "changed") pending.resolve({ ok: true, data: changed });
+          else pending.reject(new Error("synthetic saved read failed"));
+        });
+        expect(editor.value).toBe("Unsaved live words remain here.");
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        if (outcome === "changed") {
+          expect(queries.getByTestId("review-stale").textContent).toContain("The Light");
+          expect(queries.getByTestId("review-stale").textContent).toContain("The Road");
+          expect(fixture.props.onNotice).not.toHaveBeenCalled();
+        } else {
+          expect(queries.getByTestId("review-unavailable").textContent).toContain("saved chapters could not be checked");
+          expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+          const retry = deferredRead();
+          fixture.open.mockImplementationOnce(() => retry.promise);
+          testing.fireEvent.click(queries.getByTestId("review-retry-freshness"));
+          expect(queries.getByTestId("review-checking")).toBeTruthy();
+          expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+          await testing.act(async () => { retry.resolve({ ok: true, data: firstDetail }); });
+          expect(queries.queryByTestId("review-checking")).toBeNull();
+          expect(queries.queryByTestId("review-unavailable")).toBeNull();
+          expect(queries.getAllByTestId("review-evidence").every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+          expect(editor.value).toBe("Unsaved live words remain here.");
+        }
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  for (const action of ["cancel", "close", "rerun", "unmount", "chapter", "book ABA", "library ABA"] as const) {
+    for (const outcome of ["resolve", "reject"] as const) {
+      test(`an obsolete first-display ${outcome} cannot affect ${action}`, async () => {
+        const fixture = workerWorkspaceFixture();
+        const control = controlledReviewWorkers();
+        try {
+          const rendered = testing.render(React.createElement(WorkspaceView, fixture.props));
+          const queries = testing.within(document.body);
+          await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+          testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+          await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+          const pending = deferredRead();
+          fixture.open.mockImplementationOnce(() => pending.promise);
+          await testing.act(async () => { control.workers[0]?.complete(); });
+          expect(queries.getByTestId("review-checking")).toBeTruthy();
+
+          if (action === "cancel") testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+          else if (action === "close") testing.fireEvent.click(queries.getByTestId("review-close"));
+          else if (action === "rerun") {
+            testing.fireEvent.click(queries.getByTestId("review-run-again"));
+            await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+          } else if (action === "unmount") rendered.unmount();
+          else if (action === "chapter") {
+            rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props,
+              chapterRequest: { bookId: INTEGRATION_BOOK, chapterId: "ch_int000002", nonce: 1, revert: false } }));
+            await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road"));
+          } else {
+            const other = action === "book ABA" ? { bookId: INTEGRATION_BOOK_TWO } : { libraryRoot: "/synthetic/other-library" };
+            const oldEditor = queries.getByTestId("manuscript-text");
+            rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, ...other }));
+            await testing.waitFor(() => expect(queries.getByTestId("manuscript-text")).not.toBe(oldEditor));
+            rendered.rerender(React.createElement(WorkspaceView, fixture.props));
+            await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light"));
+            testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+            await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+          }
+
+          const changed = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "e".repeat(64) })) };
+          await testing.act(async () => {
+            if (outcome === "resolve") pending.resolve({ ok: true, data: changed });
+            else pending.reject(new Error("obsolete first-display read"));
+          });
+          if (action === "cancel") expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+          if (action === "close" || action === "unmount") expect(queries.queryByTestId("review-report")).toBeNull();
+          if (action === "chapter") {
+            expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+            expect(queries.queryByTestId("review-stale")).toBeNull();
+            expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road");
+          }
+          if (action === "rerun" || action === "book ABA" || action === "library ABA") {
+            expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+            expect(control.workers[1]?.terminate).not.toHaveBeenCalled();
+          }
+          expect(fixture.props.onNotice).not.toHaveBeenCalled();
+          expect(fixture.forbidden).not.toHaveBeenCalled();
+        } finally { testing.cleanup(); control.restore(); }
+      });
+    }
+  }
+
+  test.each(["changed", "reject"] as const)(
+    "the first display is unverified while the post-analysis read %s", async (outcome) => {
+      const fixture = workerWorkspaceFixture();
+      const control = controlledReviewWorkers();
+      try {
+        testing.render(React.createElement(WorkspaceView, fixture.props));
+        const queries = testing.within(document.body);
+        await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+        const pending = deferredRead();
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        await testing.act(async () => { control.workers[0]?.complete(); });
+        expect(queries.getByTestId("review-checking")).toBeTruthy();
+        expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        testing.fireEvent.change(editor, { target: { value: "Live editing during analysis." } });
+        const changed = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "e".repeat(64) })) };
+        await testing.act(async () => {
+          if (outcome === "changed") pending.resolve({ ok: true, data: changed });
+          else pending.reject(new Error("synthetic first-display read failed"));
+        });
+        expect(editor.value).toBe("Live editing during analysis.");
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        if (outcome === "changed") expect(queries.getByTestId("review-stale").textContent).toContain("The Light");
+        else {
+          expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+          expect(queries.getByTestId("review-retry-freshness")).toBeTruthy();
+        }
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test.each(["same", "different"] as const)("a current %s-chapter occurrence selects its exact saved text", async (target) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), target === "same" ? 0 : 1));
+      await testing.waitFor(() => {
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("Salt and stone");
+        expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe(target === "same" ? "The Light" : "The Road");
+        expect(queries.queryByTestId("review-report")).toBeNull();
+      });
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["resolve", "reject"] as const)("a late reopen %s cannot replace or hide a newer run", async (outcome) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(queries.getByTestId("review-close"));
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      const revised = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", firstDetail.chapters.map((chapter) => ({
+        ...chapter, content: "Fresh bright stars.\n", version: chapter.version + 1, hash: "f".repeat(64)
+      })));
+      fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: revised }));
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => {
+        if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });
+        else pending.reject(new Error("obsolete synthetic reopen failure"));
+      });
+      expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+      expect(control.workers[1]?.terminate).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("fresh bright stars");
+      expect(queries.getByTestId("review-findings").textContent).not.toContain("salt and stone");
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([
+    ["reopen", "close"], ["reopen", "book"], ["reopen", "library"], ["reopen", "book ABA"],
+    ["reopen", "chapter"], ["reopen", "unmount"],
+    ["navigation", "close"], ["navigation", "book"], ["navigation", "library"], ["navigation", "book ABA"],
+    ["navigation", "chapter"], ["navigation", "unmount"]
+  ] as const)("obsolete %s reads cannot affect a %s change, even on late failure", async (operation, change) => {
+    for (const outcome of ["resolve", "reject"] as const) {
+      const fixture = workerWorkspaceFixture();
+      const control = controlledReviewWorkers();
+      try {
+        const { rendered, queries } = await startControlledReport(fixture, control);
+        const pending = deferredRead();
+        if (operation === "reopen") testing.fireEvent.click(queries.getByTestId("review-close"));
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        if (operation === "reopen") testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        else testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+        const oldEditor = queries.getByTestId("manuscript-text");
+        if (change === "unmount") rendered.unmount();
+        else if (change === "close") testing.fireEvent.click(queries.getByTestId("review-close"));
+        else if (change === "chapter") {
+          rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props,
+            chapterRequest: { bookId: INTEGRATION_BOOK, chapterId: "ch_int000002", nonce: 1, revert: false } }));
+          await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road"));
+        } else if (change === "library") {
+          rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, libraryRoot: "/synthetic/other-library" }));
+          await testing.waitFor(() => expect(queries.getByTestId("manuscript-text")).not.toBe(oldEditor));
+        } else {
+          rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, bookId: INTEGRATION_BOOK_TWO }));
+          await testing.waitFor(() => expect(document.querySelector("h1")?.textContent).toBe("Second Fixture"));
+          if (change === "book ABA") {
+            rendered.rerender(React.createElement(WorkspaceView, fixture.props));
+            await testing.waitFor(() => expect(document.querySelector("h1")?.textContent).toBe("Integration Fixture"));
+          }
+        }
+        await testing.act(async () => {
+          if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });
+          else pending.reject(new Error("obsolete synthetic read failure"));
+        });
+        if (change === "unmount" || change === "close" || change === "book" || change === "library" || change === "book ABA") {
+          expect(queries.queryByTestId("review-report")).toBeNull();
+        }
+        if (change === "book") expect(document.querySelector("h1")?.textContent).toBe("Second Fixture");
+        if (change === "chapter") expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road");
+        if (change === "library" || change === "book ABA") {
+          expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light");
+        }
+        expect(fixture.props.onNotice).not.toHaveBeenCalled();
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  });
+
+  test.each(["resolve", "reject"] as const)("a superseded navigation %s cannot undo the newer selection", async (outcome) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      const buttons = queries.getAllByTestId("review-evidence");
+      const before = fixture.open.mock.calls.length;
+      testing.fireEvent.click(at(buttons, 0));
+      expect(fixture.open.mock.calls.length).toBe(before + 1);
+      expect(queries.getByTestId("review-checking")).toBeTruthy();
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+      expect(fixture.open.mock.calls.length).toBe(before + 1);
+      // A new explicit visit, rather than a disabled second click, supersedes the pending read.
+      testing.fireEvent.click(queries.getByTestId("review-close"));
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-checking"))).toBe(false));
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      await testing.act(async () => {
+        if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });
+        else pending.reject(new Error("obsolete synthetic navigation failure"));
+      });
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road");
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("Salt and stone");
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["resolve", "reject"] as const)("a chapter switch completing after a newer reopen invalidates its late %s", async (outcome) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    let finishSave!: (value: unknown) => void;
+    const saveResult = new Promise<unknown>((resolve) => { finishSave = resolve; });
+    const bridge = window.studio as unknown as {
+      chapters: { save: () => Promise<unknown> };
+      drafts: { set: () => Promise<unknown>; clear: () => Promise<unknown> };
+    };
+    bridge.chapters.save = mock(() => saveResult);
+    bridge.drafts.set = mock(async () => ({ ok: true, data: null }));
+    bridge.drafts.clear = mock(async () => ({ ok: true, data: null }));
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(queries.getByTestId("review-close"));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      const text = "Saved synthetic edit.";
+      testing.fireEvent.change(editor, { target: { value: text } });
+      testing.fireEvent.click(at(queries.getAllByTestId("chapter-row"), 1));
+      await testing.waitFor(() => expect(bridge.chapters.save).toHaveBeenCalledTimes(1));
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      const chapter = { ...at(firstDetail.chapters, 0), content: text, version: 2, hash: "f".repeat(64) };
+      await testing.act(async () => { finishSave({ ok: true, data: { status: "saved", chapter } }); });
+      await testing.waitFor(() => expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Road"));
+      await testing.act(async () => {
+        if (outcome === "resolve") pending.resolve({ ok: true, data: { ...firstDetail, chapters: [chapter, at(firstDetail.chapters, 1)] } });
+        else pending.reject(new Error("obsolete synthetic reopen failure"));
+      });
+      expect(queries.queryByTestId("review-stale")).toBeNull();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["same", "different"] as const)("%s-chapter navigation refuses an edit made while the saved read waits", async (target) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      const pending = deferredRead();
+      fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), target === "same" ? 0 : 1));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      testing.fireEvent.change(editor, { target: { value: "My unsaved synthetic words." } });
+      await testing.act(async () => { pending.resolve({ ok: true, data: firstDetail }); });
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe("My unsaved synthetic words.");
+      expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light");
+      expect(queries.getByTestId("review-report")).toBeTruthy();
+      expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("the actual worker reaches adversarial NFC while Workspace Cancel stays usable and Run again completes", async () => {
+    const { props, open, forbidden } = workerWorkspaceFixture();
+    const token = `a${"\u0315".repeat(65_536)}${"\u0300".repeat(65_536)}`;
+    const adversarial = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [
+      integrationChapter("ch_int000001", "Adversarial", 1, `${token} two three`)
+    ]);
+    // Load an ordinary editor; only the explicit saved-review read returns the adversarial fixture.
+    open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: adversarial }));
+    const OriginalWorker = globalThis.Worker;
+    let entered = false;
+    let finished = false;
+    const terminations = mock(() => {});
+    class ObservedWorker extends OriginalWorker {
+      constructor(_url: string | URL, options?: WorkerOptions) {
+        super(new URL("./support/review-normalization.worker.ts", import.meta.url), options);
+        this.addEventListener("message", (event: MessageEvent<{ kind: string; units: number }>) => {
+          if (!event.data.kind.startsWith("test-native-")) return;
+          event.stopImmediatePropagation();
+          if (event.data.units === token.length) {
+            if (event.data.kind === "test-native-enter") entered = true;
+            else finished = true;
+          }
+        });
+      }
+      override terminate() { terminations(); super.terminate(); }
+    }
+    globalThis.Worker = ObservedWorker;
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(entered).toBe(true));
+      const cancelAt = performance.now();
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+      expect(performance.now() - cancelAt).toBeLessThan(500);
+      expect(finished).toBe(false);
+      expect(terminations).toHaveBeenCalledTimes(1);
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone"));
+      expect(terminations).toHaveBeenCalledTimes(2);
+      expect(forbidden).not.toHaveBeenCalled();
+      expect(props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); globalThis.Worker = OriginalWorker; }
+  });
+
+  test("worker failure is visible and Run again uses a fresh worker", async () => {
+    const { props, forbidden } = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      const first = control.workers[0];
+      if (!first) throw new Error("Expected worker");
+      await testing.act(async () => { first.dispatchEvent(new Event("error")); });
+      expect(queries.getByTestId("review-status").textContent).toContain("local review worker");
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      expect(first.terminate).toHaveBeenCalledTimes(1);
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("cancel discards an active worker and late output cannot replace the next run", async () => {
+    const { props, forbidden } = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      const first = control.workers[0];
+      if (!first) throw new Error("Expected active worker");
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+      expect(first.terminate).toHaveBeenCalledTimes(1);
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => { first.complete(); });
+      expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(control.workers[1]?.terminate).toHaveBeenCalledTimes(1);
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["book", "library", "close", "unmount"] as const)("%s cleanup terminates owned work and ignores late completion", async (change) => {
+    const { props, forbidden } = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    try {
+      const rendered = testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      const first = control.workers[0];
+      if (!first) throw new Error("Expected active worker");
+      if (change === "unmount") rendered.unmount();
+      else if (change === "close") testing.fireEvent.click(queries.getAllByRole("button", { name: "Close" })[0] as HTMLElement);
+      else rendered.rerender(React.createElement(WorkspaceView, {
+        ...props, ...(change === "book" ? { bookId: INTEGRATION_BOOK_TWO } : { libraryRoot: "/synthetic/other-library" })
+      }));
+      expect(first.terminate).toHaveBeenCalledTimes(1);
+      await testing.act(async () => { first.complete(); });
+      expect(queries.queryByTestId("review-report")).toBeNull();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      if (change !== "unmount") {
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+        await testing.act(async () => { control.workers[1]?.complete(); });
+        expect(queries.getByTestId("review-run-meta").textContent).toContain(change === "book" ? "Second Fixture" : "Integration Fixture");
+      }
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("a cancelled pending read cannot overwrite a fresh completed report", async () => {
+    const { props, open, forbidden } = workerWorkspaceFixture();
+    let release!: (result: { ok: true; data: BookDetail }) => void;
+    const pending = new Promise<{ ok: true; data: BookDetail }>((resolve) => { release = resolve; });
+    open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    open.mockImplementationOnce(() => pending);
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(queries.getByTestId("review-cancel-run")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      expect(queries.getByTestId("review-status").textContent).toContain("Partial results are discarded");
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      await testing.act(async () => { release({ ok: true, data: secondDetail }); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(control.workers).toHaveLength(1);
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
   test("a clean buffer runs the report with no manuscript writes, and switching books discards it", async () => {
     const saves: unknown[] = [];
     const opens: string[] = [];
+    const draftWrites = mock(() => Promise.resolve({ ok: true, data: null }));
+    const metadataWrites = mock(() => Promise.resolve({ ok: true, data: null }));
+    let currentDetail = firstDetail;
+    const providerCall = mock(() => { throw new Error("Review must not call a provider"); });
     (globalThis as unknown as { window: { studio: unknown } }).window.studio = {
       platform: "darwin",
       library: { onChange: mock(() => () => {}) },
       books: {
         open: mock((bookId: string) => {
           opens.push(bookId);
-          return Promise.resolve({ ok: true, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : firstDetail });
+          return Promise.resolve({ ok: true, data: bookId === INTEGRATION_BOOK_TWO ? secondDetail : currentDetail });
         })
       },
       conflicts: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
@@ -393,8 +1691,8 @@ describe("workspace review entry to report", () => {
         )
       },
       drafts: {
-        set: mock(() => Promise.resolve({ ok: true, data: null })),
-        clear: mock(() => Promise.resolve({ ok: true, data: null })),
+        set: draftWrites,
+        clear: draftWrites,
         onFlushRequest: mock(() => () => {})
       },
       recovery: { list: mock(() => Promise.resolve({ ok: true, data: [] })) },
@@ -403,9 +1701,10 @@ describe("workspace review entry to report", () => {
           saves.push(input);
           return Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } });
         }),
-        updateMeta: mock(() => Promise.resolve({ ok: true, data: { status: "saved", chapter: firstDetail.chapters[0] } }))
+        updateMeta: metadataWrites
       },
       agent: {
+        send: providerCall,
         ambient: mock(() => Promise.resolve({ ok: true, data: ambientStatus })),
         onEvent: mock(() => () => {})
       },
@@ -444,6 +1743,20 @@ describe("workspace review entry to report", () => {
     // The run is read-only: nothing was saved, drafted or written.
     expect(saves).toEqual([]);
 
+    // Real scanner output, through the existing Workspace re-read/navigation callback to the editor.
+    expect(testing.within(document.body).getByTestId("review-findings").textContent).toContain("salt and stone");
+    const evidenceButtons = testing.within(document.body).getAllByTestId("review-evidence");
+    const secondEvidence = evidenceButtons[1];
+    if (!secondEvidence) throw new Error("Expected the second real occurrence");
+    testing.fireEvent.click(secondEvidence);
+    await testing.waitFor(() => {
+      const textarea = testing.within(document.body).getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)).toBe("Salt and stone");
+      expect(testing.within(document.body).queryByTestId("review-report")).toBeNull();
+    });
+    testing.fireEvent.click(testing.within(document.body).getByTestId("review-manuscript"));
+    await testing.waitFor(() => expect(testing.within(document.body).getByTestId("review-run-meta")).toBeTruthy());
+
     // A new run over the same saved chapters replaces the report in place.
     testing.fireEvent.click(testing.within(document.body).getByTestId("review-run-again"));
     await testing.waitFor(
@@ -453,6 +1766,18 @@ describe("workspace review entry to report", () => {
       },
       { timeout: 2000 }
     );
+
+    // A saved revision changes after the run: clicking a real finding must refuse navigation.
+    currentDetail = { ...firstDetail, chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: chapter.version + 1, hash: "f".repeat(64) })) };
+    const staleEvidence = testing.within(document.body).getAllByTestId("review-evidence")[0];
+    if (!staleEvidence) throw new Error("Expected a real finding before source revalidation");
+    testing.fireEvent.click(staleEvidence);
+    await testing.waitFor(() => expect(testing.within(document.body).getByTestId("review-stale")).toBeTruthy());
+    expect(testing.within(document.body).getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(providerCall).not.toHaveBeenCalled();
+    expect(draftWrites).not.toHaveBeenCalled();
+    expect(metadataWrites).not.toHaveBeenCalled();
+    expect(onNotice).not.toHaveBeenCalled();
 
     // Switching books discards the run-local report without touching the manuscript.
     rendered.rerender(React.createElement(WorkspaceView, { ...workspaceProps, bookId: INTEGRATION_BOOK_TWO }));

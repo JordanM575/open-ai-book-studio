@@ -428,7 +428,7 @@ function validateAccounting(value: unknown): void {
     integer(accounting.microUsd, 0);
   } else if (accounting.kind === 'unknown') {
     exactKeys(accounting, ['kind'], 'invalid-accounting');
-  } else fail('invalid-accounting');
+  } else fail(typeof accounting.kind === 'string' ? 'unknown-accounting-kind' : 'invalid-accounting');
 }
 
 const RECEIPT_OUTCOMES = new Set(['succeeded', 'failed', 'stopped']);
@@ -437,7 +437,7 @@ function validateReservationReceipt(value: unknown): void {
   exactKeys(receipt, ['id', 'outcome', 'accounting'], 'invalid-receipt');
   idValue(receipt.id);
   requireValue(typeof receipt.outcome === 'string' && RECEIPT_OUTCOMES.has(receipt.outcome),
-    'invalid-receipt-outcome');
+    typeof receipt.outcome === 'string' ? 'unknown-receipt-outcome' : 'invalid-receipt-outcome');
   validateAccounting(receipt.accounting);
 }
 
@@ -476,7 +476,11 @@ const LIMIT_MINIMUMS: Readonly<Record<typeof LIMIT_KEYS[number], number>> = Obje
 });
 
 function validateRun(record: Record<string, unknown>, owner: Owner): void {
-  requireValue(typeof record.mode === 'string' && RUN_MODES.has(record.mode), 'invalid-mode');
+  for (const key of ['attempts', 'effects', 'questions', 'commands', 'artifacts', 'snapshot']) {
+    requireValue(!Object.hasOwn(record, key), 'embedded-run-aggregate');
+  }
+  requireValue(typeof record.mode === 'string' && RUN_MODES.has(record.mode),
+    typeof record.mode === 'string' ? 'unknown-mode' : 'invalid-mode');
   referenceValue(record.phasePlan, 'phase-plan', owner);
   referenceValue(record.policy, 'policy', owner);
   referenceValue(record.direction, 'direction', owner);
@@ -562,7 +566,7 @@ function validatePhasePlan(record: Record<string, unknown>, owner: Owner): void 
 function validateDirection(record: Record<string, unknown>, owner: Owner): void {
   stringValue(record.exactText, 262_144, 262_144, 'invalid-text');
   requireValue(typeof record.origin === 'string' && DIRECTIONS.has(record.origin),
-    'invalid-direction-origin');
+    typeof record.origin === 'string' ? 'unknown-direction-origin' : 'invalid-direction-origin');
   if (record.previous === null) {
     requireValue(record.revision === 1, 'stale-direction-link');
   } else {
@@ -597,9 +601,9 @@ function validateTask(record: Record<string, unknown>, owner: Owner): void {
   integer(record.phase, 1);
   const definition = objectValue(record.definition, 'invalid-definition');
   requireValue(typeof definition.role === 'string' && ROLES.includes(definition.role as Role),
-    'unknown-role');
+    typeof definition.role === 'string' ? 'unknown-role' : 'invalid-role');
   requireValue(definition.completion === 'candidate' || definition.completion === 'adoption',
-    'unknown-completion');
+    typeof definition.completion === 'string' ? 'unknown-completion' : 'invalid-completion');
   const dependsOn = arrayValue(definition.dependsOn, 'invalid-definition');
   requireValue(dependsOn.length <= WORKFLOW_LIMITS.tasksPerPlan, 'record-count');
   const dependencies = new Set<string>();
@@ -616,7 +620,7 @@ function validateTask(record: Record<string, unknown>, owner: Owner): void {
   requireValue(typeof record.needsDirection === 'boolean', 'invalid-record');
   if (Object.hasOwn(record, 'status')) {
     requireValue(typeof record.status === 'string' && TASK_STATUSES.has(record.status),
-      'invalid-task-status');
+      typeof record.status === 'string' ? 'unknown-task-status' : 'invalid-task-status');
   }
   isoValue(record.createdAt);
   isoValue(record.updatedAt);
@@ -627,13 +631,14 @@ function validateCommand(record: Record<string, unknown>): void {
   integer(record.expectedRevision, 0);
   digestValue(record.payloadDigest);
   const action = objectValue(record.action, 'invalid-action');
-  requireValue(typeof action.type === 'string' && ACTION_TYPES.has(action.type), 'unknown-action');
+  requireValue(typeof action.type === 'string' && ACTION_TYPES.has(action.type),
+    typeof action.type === 'string' ? 'unknown-action' : 'invalid-action');
   isoValue(record.recordedAt);
 }
 
 function validateJournalPage(record: Record<string, unknown>, owner: Owner): void {
   requireValue(typeof record.journal === 'string' && JOURNAL_KINDS.has(record.journal),
-    'invalid-journal');
+    typeof record.journal === 'string' ? 'unknown-journal' : 'invalid-journal');
   const pageSize = integer(record.pageSize, 1, WORKFLOW_LIMITS.journalPageSize);
   const first = integer(record.firstSequence, 1);
   const last = integer(record.lastSequence, first);
@@ -663,7 +668,7 @@ function validateProviderReceipt(value: unknown, receiptIds: Set<string>): void 
   receiptIds.add(receiptId);
   idValue(receipt.reservationId);
   requireValue(typeof receipt.outcome === 'string' && RECEIPT_OUTCOMES.has(receipt.outcome),
-    'invalid-receipt-outcome');
+    typeof receipt.outcome === 'string' ? 'unknown-receipt-outcome' : 'invalid-receipt-outcome');
   validateAccounting(receipt.accounting);
 }
 
@@ -674,7 +679,7 @@ function validateAttempt(record: Record<string, unknown>, owner: Owner): void {
   digestValue(record.inputDigest);
   if (record.revisionOf !== null) referenceValue(record.revisionOf, 'artifact', owner);
   requireValue(typeof record.phase === 'string' && ATTEMPT_PHASES.has(record.phase),
-    'invalid-attempt-phase');
+    typeof record.phase === 'string' ? 'unknown-attempt-phase' : 'invalid-attempt-phase');
   requireValue(typeof record.historical === 'boolean', 'invalid-record');
   requireValue(typeof record.noProgress === 'boolean', 'invalid-record');
   const outputs = arrayValue(record.outputs, 'invalid-outputs');
@@ -694,6 +699,10 @@ function validateAttempt(record: Record<string, unknown>, owner: Owner): void {
     isoValue(dispatch.intentAt);
   }
   const accounting = objectValue(record.accounting, 'invalid-accounting');
+  for (const key of Object.keys(accounting)) {
+    requireValue(['calls', 'localReads', 'knownSubtotalMicroUsd', 'unknownCalls', 'partialCalls'].includes(key),
+      'unsupported-accounting');
+  }
   exactKeys(accounting, ['calls', 'localReads', 'knownSubtotalMicroUsd', 'unknownCalls',
     'partialCalls'], 'invalid-accounting');
   const calls = integer(accounting.calls, 0, WORKFLOW_LIMITS.attemptCalls);
@@ -731,7 +740,7 @@ function validateEffectReceipt(value: unknown): void {
   }
   requireValue(typeof receipt.outcome === 'string' &&
     ['confirmed', 'conflict', 'not-published', 'uncertain'].includes(receipt.outcome),
-    'invalid-receipt-outcome');
+    typeof receipt.outcome === 'string' ? 'unknown-receipt-outcome' : 'invalid-receipt-outcome');
   isoValue(receipt.at);
   if (Object.hasOwn(receipt, 'resultVersion')) {
     integer(receipt.resultVersion, 1);
@@ -751,11 +760,11 @@ function validateEffect(record: Record<string, unknown>, owner: Owner): void {
   referenceValue(record.attempt, 'attempt', owner);
   referenceValue(record.candidate, 'artifact', owner);
   requireValue(typeof record.phase === 'string' && EFFECT_PHASES.has(record.phase),
-    'invalid-effect-phase');
+    typeof record.phase === 'string' ? 'unknown-effect-phase' : 'invalid-effect-phase');
   const target = objectValue(record.target, 'invalid-target');
   exactKeys(target, ['kind', 'chapterId', 'path'], 'invalid-target');
   requireValue(target.kind === 'new-chapter' || target.kind === 'replace-chapter',
-    'invalid-target');
+    typeof target.kind === 'string' ? 'unknown-target-kind' : 'invalid-target');
   idValue(target.chapterId);
   relativePathValue(target.path, 'invalid-target');
   if (record.intent !== null) {
@@ -816,7 +825,7 @@ function validateQuestion(record: Record<string, unknown>, owner: Owner): void {
     referenceValue(reference, item.kind as WorkflowKind, owner);
   }
   requireValue(typeof record.state === 'string' && QUESTION_STATES.has(record.state),
-    'invalid-question-state');
+    typeof record.state === 'string' ? 'unknown-question-state' : 'invalid-question-state');
   const options = arrayValue(record.options, 'invalid-options');
   requireValue(options.length <= WORKFLOW_LIMITS.questionOptions, 'record-count');
   const optionIds = new Set<string>();
@@ -845,11 +854,11 @@ function validateQuestion(record: Record<string, unknown>, owner: Owner): void {
 
 function validateArtifact(record: Record<string, unknown>, owner: Owner): void {
   requireValue(record.mediaType === 'text/markdown' || record.mediaType === 'application/json',
-    'invalid-artifact');
+    typeof record.mediaType === 'string' ? 'unknown-artifact-media-type' : 'invalid-artifact');
   integer(record.bytes, 0, WORKFLOW_LIMITS.artifactBytes);
   digestValue(record.hash);
   requireValue(typeof record.role === 'string' && ROLES.includes(record.role as Role),
-    'unknown-role');
+    typeof record.role === 'string' ? 'unknown-role' : 'invalid-role');
   referenceValue(record.producedBy, 'attempt', owner);
   isoValue(record.createdAt);
 }
@@ -887,7 +896,7 @@ function validateReservation(record: Record<string, unknown>, owner: Owner): voi
   digestValue(request.policyDigest);
   referenceValue(request.attempt, 'attempt', owner);
   requireValue(typeof request.role === 'string' && ROLES.includes(request.role as Role),
-    'unknown-role');
+    typeof request.role === 'string' ? 'unknown-role' : 'invalid-role');
   const destination = objectValue(request.destination, 'invalid-destination');
   validateDestination(destination);
   digestValue(request.requestDigest);
@@ -931,7 +940,7 @@ function validateObservation(record: Record<string, unknown>, owner: Owner): voi
   integer(record.sequence, 1);
   referenceValue(record.reservation, 'reservation', owner);
   requireValue(typeof record.type === 'string' && OBSERVATION_KINDS.has(record.type),
-    'invalid-observation');
+    typeof record.type === 'string' ? 'unknown-observation' : 'invalid-observation');
   isoValue(record.at);
   if (record.facts !== null) {
     const facts = objectValue(record.facts, 'invalid-facts');
@@ -1097,6 +1106,7 @@ function checkRecord(record: Record<string, unknown>, spec: RecordSpec, expected
   const version = record.schemaVersion;
   requireValue(typeof version === 'number' && Number.isSafeInteger(version), 'invalid-record');
   requireValue(version === WORKFLOW_SCHEMA_VERSION, 'unsupported-schema');
+  requireValue(typeof record.kind === 'string', 'invalid-kind');
   requireValue(record.kind === expectedKind, 'foreign-kind');
   validateOwner(expectedOwner);
   validateOwner(record.owner as Owner);
@@ -1134,7 +1144,8 @@ export function decodeWorkflowRecord<K extends WorkflowKind>(bytes: Uint8Array,
 export function encodeWorkflowRecord(record: WorkflowRecord, maxBytes?: number): Uint8Array {
   const copy = copyValue(record, Number.MAX_SAFE_INTEGER) as unknown as Record<string, unknown>;
   const kind = copy.kind;
-  requireValue(typeof kind === 'string' && Object.hasOwn(RECORDS, kind), 'unknown-record-kind');
+  requireValue(typeof kind === 'string', 'invalid-kind');
+  requireValue(Object.hasOwn(RECORDS, kind), 'unknown-record-kind');
   const spec = RECORDS[kind as WorkflowKind];
   requireValue(spec, 'unknown-record-kind');
   checkRecord(copy, spec, kind as WorkflowKind, copy.owner as Owner);
