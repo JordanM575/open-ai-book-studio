@@ -66,9 +66,18 @@ the source, so a move that cannot preserve every checked reference refuses befor
 move and a later failure is uncertain with both locations retained; checkpoint reports are
 read only from their recorded owner's ordinary report path, the recorded owner wins, a verified
 foreign report is a bounded foreign reference that is never adopted, merged or dropped, and a
-missing or changed report stays unavailable. Host integration, a portable archive/export
-workflow and independent review remain separate work. These leaves and the storage slices
-have focused synthetic tests, not independent acceptance or a self-contained archive.
+missing or changed report stays unavailable. The same store, with the pure
+`campaign-continuation-fixed-history` leaf, now also implements §7.4 fixed-history
+trash/restore: the owner book's entire 032 `history/` tree moves with the campaign's segment
+directory, publication-intent directory and manifest (history first, manifest last) under an
+immutable fixed-history intent, after the same manifest dispatch (compatibly differing labels
+only through a local normalized comparison copy, stored bytes never altered) and wire
+verification plus per-record 032 dispatch and bounded inventory preflight, with the same
+refuse-before-first-move and uncertain-after-first-move guarantees and
+`active`/`archived`/`partial`/`absent` inspection that never reads partial as complete.
+Host integration, a portable archive/export workflow and independent review remain separate
+work. These leaves and the storage slices have focused synthetic tests, not independent
+acceptance or a self-contained archive.
 
 ## 1. Encoding and operation limits
 
@@ -121,6 +130,8 @@ supplied by a record.
 | `campaigns/<campaignId>.segments/<segmentId>.json` | Immutable `review-campaign-segment`, schema 1. |
 | `campaigns/<campaignId>.intents/<operationId>.json` | Immutable `review-campaign-publication-intent`, schema 1. |
 | `campaign-moves/<operationId>.json` | Immutable `review-campaign-group-intent`, schema 1, separately retained for recovery. |
+| `fixed-history-moves/<operationId>.json` | Immutable `review-campaign-fixed-history-intent`, schema 1, separately retained for recovery (§7.4). |
+| `../history/<chapterId>/<file>.md` (i.e. `books/<ownerBookId>/history/`) | Preserved 032 history tree moved with the fixed-history group (§7.4); its own 032 contract governs each record. |
 
 An old schema-1 reader must refuse a schema-2 `review-campaign`, not interpret it as schema 1. A
 new version-dispatching reader keeps schema 1 readable under its own rules, with no silent conversion.
@@ -493,3 +504,53 @@ own limits; refuse overflow or unreadable required data rather than omit it. The
 implements the trash/restore move and its `active`/`archived`/`partial`/`absent` inspection above
 without claiming the separately authorized archive/export workflow, cross-writer atomicity beyond
 the adapters' proven no-replace moves, or independent acceptance.
+
+### 7.4 Fixed-history group move, trash/restore
+
+The fixed-history group is the preserved history sidecar set belonging to a book's
+continuation: the owner book's entire 032 chapter-history tree (`books/<ownerBookId>/history/`,
+every `<chapterId>/` record file) together with the campaign's active manifest and entire
+segment and publication-intent directories. It is book-scoped in its history component and
+campaign-scoped in its other three; independently owned reports, dispositions, profiles and
+book-level conflict copies are still not swept up. Fixed-history move intents in
+`reviews/fixed-history-moves/` remain separately retained. Never automatically delete an old
+group, intent, conflict or orphan.
+
+This operation differs from §7.3 in membership, ordering and dispatch, and otherwise keeps
+§7.3's guarantees. Membership is four fixed components, not three: `history`,
+`segments`, `publication-intents`, `manifest`. Ordering is history first, then segments and
+publication-intents, then manifest last, so the manifest-last guarantee is preserved.
+Dispatch is two-level: the manifest dispatches on recorded schema/`plannerSemantics`
+exactly as §7.3 (current label movable, compatibly differing label movable only through a
+local normalized comparison copy with stored bytes never altered, future or unknown labels
+refused before any move), and every history record additionally dispatches on its own
+032 contract — schema 1 `snapshot`/`safety`/`intent` naming the caller owner and its
+directory chapter with a verifying `bodyHash` is movable byte-identically; a future schema,
+unknown kind, foreign identity or divergent body refuses before any move. History bytes are
+inspected, never re-encoded.
+
+Before the first move, absent-only write/read back this immutable intent:
+`{schemaVersion:1,kind:"review-campaign-fixed-history-intent",owner:{bookId},id:operationId,revision:1,campaignId,action:"trash"|"restore",groupId,createdAt,components:[...]}`.
+Exactly four ordered descriptors name `history`, `segments`, `publication-intents`,
+`manifest`, each `{name,type,sourceLocation,destinationLocation,entries,bytes,inventoryDigest}`
+with the same closed symbolic `active`/`trash` locations and opposite source/destination
+rule as §7.3. Resolve `active` history to `books/<ownerBookId>/history/` and `trash` history
+to `.studio/trash/<ownerBookId>/reviews/campaign-<groupId>/history/`; resolve the other
+three components exactly as §7.3. `groupId`, `operationId`, inventories, digests and §1 scan
+bounds (65,536 entries, 1,073,741,824 file bytes, 16,777,216 inventory bytes, 2,500,000 bytes
+per file, applied across all four components) follow §7.3, including unsupported-entry
+refusal without following links. The intent bounds at 1,048,576 bytes including unknowns.
+
+Preflight all four inventories, full wire verification and per-record history dispatch at
+the source, and all destination absences. Move history, segments and intents first, then
+manifest last, verifying location/inventory and journaling after each. Restore uses inverse
+locations and the same order. An empty history tree (no record files) is neutral for
+inspection: the continuation parts alone decide `active`/`archived`/`absent`, and history
+files alone never make a group. Partial trash or restore leaves files at both locations;
+inspection classifies `active`/`archived`/`partial`/`absent` and readers never show a
+partial group as complete. On error, race or uncertainty stop and retain both locations and
+the intent; do not label a post-move failure a preflight refusal, automatically roll back,
+overwrite or silently mark restored. The checked store implements this move and inspection
+without claiming the separately authorized archive/export workflow, cross-writer atomicity
+beyond the adapters' proven no-replace moves, or independent acceptance. Revision chains
+and ownership are preserved because retained bytes are moved, never re-encoded.

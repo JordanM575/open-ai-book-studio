@@ -92,6 +92,27 @@ provenance non-transfer. Storage publication/recovery, version-dispatching stora
 cross-book report resolution, host integration and independent exact-head review remain open.
 T014/T017/T018 stay unchecked; 038 T022 is unchanged.
 
+### November 9 — continuation fixed-history group trash/restore (T014/T015 partial)
+
+`packages/core/src/review/campaign-continuation-fixed-history.ts` with new
+`CampaignContinuationStore` fixed-history methods now supplies the seam ordered fifth: a
+version-dispatching trash/restore moves the preserved history sidecar set for a campaign —
+the owner book's entire 032 `history/` tree plus the campaign's segment directory,
+publication-intent directory and manifest — between the active locations and
+`.studio/trash/<owner>/reviews/campaign-<groupId>/` under an immutable fixed-history intent
+retained in `reviews/fixed-history-moves/`, after manifest dispatch (compatibly differing
+labels only through a local normalized comparison copy, stored bytes never altered), full
+wire verification, per-record 032 dispatch and bounded inventory preflight, moving history
+first with the manifest last; a move that cannot preserve every checked reference refuses
+before the first move with source bytes preserved, a later failure is uncertain with both
+locations retained, and fixed-history inspection classifies `active`/`archived`/`partial`/
+`absent` without ever reading partial as complete. Focused synthetic tests cover move
+chain/readback, archive/restore classification, divergent/occupied/future-label/wrong-owner
+refusals, compatible-label byte-identical moves, unknown-field survival and post-first-move
+uncertainty, in memory and on the real desktop filesystem. Host integration, portable
+archive/export, cross-book mutation and independent exact-head review remain open.
+T014/T015/T017/T018 stay unchecked; 038 T022 is unchanged.
+
 ### November 9 — continuation group trash/restore and cross-book report resolution (T014/T015 partial)
 
 `packages/core/src/review/campaign-continuation-group.ts` with new `CampaignContinuationStore`
