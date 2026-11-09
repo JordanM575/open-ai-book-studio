@@ -75,6 +75,18 @@ only through a local normalized comparison copy, stored bytes never altered) and
 verification plus per-record 032 dispatch and bounded inventory preflight, with the same
 refuse-before-first-move and uncertain-after-first-move guarantees and
 `active`/`archived`/`partial`/`absent` inspection that never reads partial as complete.
+The pure `campaign-continuation-checkin` leaf (039 T018 seam 6a) maps one checked campaign —
+the store readers' inspection, cross-book report resolution and group/fixed-history
+inspection results, plus a host-supplied 037 run owner and direction reference — into counted
+037 check-in inputs copied verbatim from the manifest and its codec `counts` (campaign and
+owner identity, revision, segment/token totals, selected scalar/byte counts and checkpoint
+receipt tallies). It refuses stale expectations, partial or non-active groups, cross-book
+artifacts, refused or compatibly differing semantics labels and campaigns too large for one
+037 context/phase, and it never recounts prose, re-encodes stored bytes or mutates its
+inputs, so supported unknown fields survive untouched. The codec retains no word count and
+the 037 authoring contracts define no check-in cadence type, no campaign-stage task role and
+no derivation for `Brief.targetWords`; the leaf therefore emits counted progress only and a
+host must not relabel scalar/byte counts as words or invent a cadence from them.
 Host integration, a portable archive/export workflow and independent review remain separate
 work. These leaves and the storage slices have focused synthetic tests, not independent
 acceptance or a self-contained archive.

@@ -64,6 +64,15 @@ task is completed. T010 retains the independent correction gate. The policy amen
     Positive interval/citation/ID-collision regressions accompany both review corrections. T017 and
     connected host/continuation/provider acceptance remain open pending fresh exact-head review.
 - [ ] T018 Integrate campaign/check-in artifacts into the separately authorized 037 coordinator.
+  - Partial evidence (seam 6a, pure contract only): `packages/core/src/review/campaign-continuation-checkin.ts`
+    maps one checked campaign (store inspection, cross-book report resolution and group
+    inspection results, plus a host-supplied 037 owner/direction) into counted 037 check-in
+    inputs copied verbatim from the codec manifest counters, refusing stale, partial,
+    cross-book, future/compatible-label and over-037-limit shapes without coercion; unknown
+    fields survive because stored bytes are never re-encoded. Focused synthetic tests cover
+    counted mapping, stale/partial/cross-book/future-label refusals, unknown-field survival
+    and inexpressible-shape refusal. No host wiring, coordinator execution or task box is
+    completed by this slice; T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
 
