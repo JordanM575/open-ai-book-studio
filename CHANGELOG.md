@@ -7,6 +7,15 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation codec integration
+
+- Integrate the accepted pure campaign continuation codec and its boundary fixtures onto public
+  main, record D-201 in `docs/DECISIONS.md` alongside D-202, and reconcile the delivery forecast
+  and completion map to describe D-201 as recorded with the pure codec accepted.
+- This integration accepts the pure codec only. Storage writer, compatible-planner registry,
+  publication/recovery and host/provider integration remain open, and 039 T014/T017/T018 and
+  038 T022 remain unchecked.
+
 ### Pure campaign continuation candidate
 
 - Add bounded in-memory campaign manifest, segment, checkpoint and publication-intent candidates,
