@@ -94,7 +94,8 @@ The evaluator counts nothing itself and reads no prose. It returns a frozen
 progress exactly at an interval threshold is due. The caller owns counting saved words and adopted
 chapters, supplying the first-chapter flag only until that first check-in is taken, and resetting the
 since-check-in counters after a check-in. The policy and evaluator perform no scheduling, persistence,
-inbox or host wiring; the campaign-continuation adapter does not yet emit cadence.
+inbox or host wiring; the campaign-continuation adapter now emits cadence when the caller supplies
+counted progress (host wiring that supplies it is a later slice).
 
 ## Admission and accounting
 

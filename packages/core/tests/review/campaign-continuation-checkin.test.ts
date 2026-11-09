@@ -10,7 +10,10 @@ import {
   CampaignContinuationStore, continuationManifestPath,
   type CampaignContinuationHost, type ContinuationCandidate
 } from "../../src/review/campaign-continuation-store";
-import type { Owner, Reference } from "../../src/authoring";
+import {
+  DEFAULT_CHECKIN_CADENCE_POLICY, type CheckinCadencePolicy, type CheckinCadenceProgress,
+  type Owner, type Reference
+} from "../../src/authoring";
 import { InMemoryLibraryPort } from "../support/in-memory-port";
 import { campaignInput, first, planned, withSynthesis } from "./campaign-fixtures";
 
@@ -270,5 +273,221 @@ describe("campaign continuation check-in adapter (039 T018 seam 6a)", () => {
     });
     expect(foreignDirection.status).toBe("refused");
     if (foreignDirection.status === "refused") expect(foreignDirection.code).toBe("foreign-reference");
+  });
+
+  const cadenceProgress = (overrides: Partial<CheckinCadenceProgress> = {}): CheckinCadenceProgress => ({
+    adoptedChaptersSinceCheckin: 0, savedWordsSinceCheckin: 0,
+    firstAdoptedChapterOccurred: false, irreversibleChoicePending: false, ...overrides
+  });
+
+  test("emits cadence with default policy when caller-counted progress supplied without policy", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const result = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: { callerCountedProgress: cadenceProgress({ adoptedChaptersSinceCheckin: 3 }) }
+    });
+    expect(result.status).toBe("mapped");
+    if (result.status !== "mapped") return;
+    expect(result.checkin.cadence).toBeDefined();
+    expect(result.checkin.cadence?.policy).toEqual(DEFAULT_CHECKIN_CADENCE_POLICY);
+    expect(result.checkin.cadence?.callerCountedProgress).toEqual(
+      cadenceProgress({ adoptedChaptersSinceCheckin: 3 }));
+    // Caller-counted saved words are labelled as such, never a prose-derived count.
+    expect(result.checkin.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(0);
+    expect(result.checkin.cadence?.due).toBe(true);
+    expect(result.checkin.cadence?.reasons).toEqual(["adopted-chapter-interval"]);
+    expect("targetWords" in result.checkin).toBe(false);
+    expect("wordCount" in result.checkin).toBe(false);
+  });
+
+  test("emits cadence with edited policy and validated snapshot", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const edited: CheckinCadencePolicy = {
+      version: 1, adoptedChapterInterval: 5, savedWordInterval: 5_000,
+      afterFirstChapter: false, onIrreversibleChoice: false
+    };
+    const result = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        policy: edited,
+        callerCountedProgress: cadenceProgress({ adoptedChaptersSinceCheckin: 5, savedWordsSinceCheckin: 100 })
+      }
+    });
+    expect(result.status).toBe("mapped");
+    if (result.status !== "mapped") return;
+    expect(result.checkin.cadence?.policy).toEqual(edited);
+    expect(result.checkin.cadence?.policy).not.toBe(edited);
+    expect(result.checkin.cadence?.callerCountedProgress).toEqual(
+      cadenceProgress({ adoptedChaptersSinceCheckin: 5, savedWordsSinceCheckin: 100 }));
+    expect(result.checkin.cadence?.due).toBe(true);
+    expect(result.checkin.cadence?.reasons).toEqual(["adopted-chapter-interval"]);
+    // Below the edited thresholds with disabled triggers is not due, but section is still emitted.
+    const notDue = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        policy: edited,
+        callerCountedProgress: cadenceProgress({
+          adoptedChaptersSinceCheckin: 1, firstAdoptedChapterOccurred: true, irreversibleChoicePending: true
+        })
+      }
+    });
+    expect(notDue.status).toBe("mapped");
+    if (notDue.status === "mapped") {
+      expect(notDue.checkin.cadence?.due).toBe(false);
+      expect(notDue.checkin.cadence?.reasons).toEqual([]);
+    }
+  });
+
+  test("emits all reasons at simultaneous triggers in authoring order", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const result = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        callerCountedProgress: cadenceProgress({
+          adoptedChaptersSinceCheckin: 3, savedWordsSinceCheckin: 10_000,
+          firstAdoptedChapterOccurred: true, irreversibleChoicePending: true
+        })
+      }
+    });
+    expect(result.status).toBe("mapped");
+    if (result.status !== "mapped") return;
+    expect(result.checkin.cadence?.due).toBe(true);
+    expect(result.checkin.cadence?.reasons).toEqual([
+      "first-adopted-chapter", "adopted-chapter-interval", "saved-word-interval", "irreversible-choice"
+    ]);
+  });
+
+  test("malformed supplied policy refuses with authoring vocabulary preserved", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const futureVersion = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        policy: { ...DEFAULT_CHECKIN_CADENCE_POLICY, version: 2 } as unknown as CheckinCadencePolicy,
+        callerCountedProgress: cadenceProgress()
+      }
+    });
+    expect(futureVersion).toEqual({ status: "refused", code: "unsupported-version" });
+    const outOfBounds = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        policy: { ...DEFAULT_CHECKIN_CADENCE_POLICY, adoptedChapterInterval: 0 },
+        callerCountedProgress: cadenceProgress()
+      }
+    });
+    expect(outOfBounds).toEqual({ status: "refused", code: "invalid-integer" });
+    const badTrigger = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        policy: { ...DEFAULT_CHECKIN_CADENCE_POLICY, afterFirstChapter: "yes" } as unknown as CheckinCadencePolicy,
+        callerCountedProgress: cadenceProgress()
+      }
+    });
+    expect(badTrigger).toEqual({ status: "refused", code: "invalid-cadence-policy" });
+  });
+
+  test("malformed caller-counted progress refuses with authoring vocabulary preserved", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const negative = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: { callerCountedProgress: cadenceProgress({ adoptedChaptersSinceCheckin: -1 }) }
+    });
+    expect(negative).toEqual({ status: "refused", code: "invalid-integer" });
+    const fractional = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: { callerCountedProgress: cadenceProgress({ savedWordsSinceCheckin: 1.5 }) }
+    });
+    expect(fractional).toEqual({ status: "refused", code: "invalid-integer" });
+    const badFlag = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: {
+        callerCountedProgress: {
+          adoptedChaptersSinceCheckin: 0, savedWordsSinceCheckin: 0,
+          firstAdoptedChapterOccurred: "yes", irreversibleChoicePending: false
+        } as unknown as CheckinCadenceProgress
+      }
+    });
+    expect(badFlag).toEqual({ status: "refused", code: "invalid-cadence-progress" });
+  });
+
+  test("campaign refusal wins and suppresses cadence section", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const stale = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      expected: { revision: 99 },
+      cadence: { callerCountedProgress: cadenceProgress({ adoptedChaptersSinceCheckin: 3 }) }
+    });
+    expect(stale).toEqual({ status: "refused", code: "conflict" });
+    expect("checkin" in stale).toBe(false);
+    // Even a malformed cadence does not replace the campaign refusal.
+    const staleMalformed = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      expected: { revision: 99 },
+      cadence: {
+        policy: { ...DEFAULT_CHECKIN_CADENCE_POLICY, version: 2 } as unknown as CheckinCadencePolicy,
+        callerCountedProgress: cadenceProgress({ adoptedChaptersSinceCheckin: -1 })
+      }
+    });
+    expect(staleMalformed).toEqual({ status: "refused", code: "conflict" });
+    const partial = mapCampaignContinuationCheckin({
+      inspection, reports,
+      group: { ...group, state: "partial" as const },
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: { callerCountedProgress: cadenceProgress({ adoptedChaptersSinceCheckin: 3 }) }
+    });
+    expect(partial).toEqual({ status: "refused", code: "uncertain" });
+  });
+
+  test("omitted cadence input produces output identical to pre-change shape", async () => {
+    const { inspection, reports, group } = await checkedCampaign();
+    const result = mapCampaignContinuationCheckin({
+      inspection, reports, group,
+      coordinatorOwner: coordinatorOwner(), direction: direction()
+    });
+    expect(result.status).toBe("mapped");
+    if (result.status !== "mapped") return;
+    expect("cadence" in result.checkin).toBe(false);
+    expect(Object.keys(result.checkin).sort()).toEqual([
+      "campaignId", "checkpoint", "coordinator", "counts", "manifestHash", "ownerBookId",
+      "planDigest", "plannedUnionDigest", "plannerSemantics", "reports", "revision",
+      "segments", "unknownFieldKeys"
+    ].sort());
+  });
+
+  test("deep-frozen cadence inputs are not mutated and snapshots do not alias them", async () => {
+    const { inspection, reports } = await checkedCampaign();
+    const policy: CheckinCadencePolicy = {
+      version: 1, adoptedChapterInterval: 2, savedWordInterval: 500,
+      afterFirstChapter: true, onIrreversibleChoice: true
+    };
+    const progressInput = cadenceProgress({ adoptedChaptersSinceCheckin: 2, savedWordsSinceCheckin: 10 });
+    const policyBefore = clone(policy);
+    const progressBefore = clone(progressInput);
+    const result = mapCampaignContinuationCheckin({
+      inspection: deepFreeze(clone(inspection)), reports: deepFreeze(clone(reports)), group: null,
+      coordinatorOwner: coordinatorOwner(), direction: direction(),
+      cadence: deepFreeze({ policy, callerCountedProgress: progressInput })
+    });
+    expect(result.status).toBe("mapped");
+    if (result.status !== "mapped") return;
+    expect(result.checkin.cadence?.policy).toEqual(policyBefore);
+    expect(result.checkin.cadence?.callerCountedProgress).toEqual(progressBefore);
+    expect(result.checkin.cadence?.policy).not.toBe(policy);
+    expect(result.checkin.cadence?.callerCountedProgress).not.toBe(progressInput);
+    expect(policy).toEqual(policyBefore);
+    expect(progressInput).toEqual(progressBefore);
+    expect(result.checkin.cadence?.due).toBe(true);
+    expect(result.checkin.cadence?.reasons).toEqual(["adopted-chapter-interval"]);
   });
 });

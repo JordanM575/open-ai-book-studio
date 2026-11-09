@@ -73,6 +73,19 @@ task is completed. T010 retains the independent correction gate. The policy amen
     counted mapping, stale/partial/cross-book/future-label refusals, unknown-field survival
     and inexpressible-shape refusal. No host wiring, coordinator execution or task box is
     completed by this slice; T018 stays unchecked.
+  - Partial evidence (seam 6a cadence emission, pure adapter only): the same leaf now accepts an
+    optional cadence input (caller-counted `callerCountedProgress` with the authoring contract's
+    exact field names, plus an optional policy) and, when supplied, emits the authoring
+    evaluator's `{ due, reasons }` verbatim plus the validated policy snapshot and validated
+    caller-counted progress as `checkin.cadence`. An omitted policy uses the ADR 0019 default as
+    the documented adapter-level choice; supplied malformed policy/progress refuses with the
+    authoring vocabulary preserved, campaign refusals win and suppress the section, and omitted
+    cadence input emits no cadence key. The adapter counts nothing itself, so
+    `savedWordsSinceCheckin` is never a prose-derived word count. Focused synthetic tests cover
+    default and edited policies, all-reasons emission, malformed refusals, suppression, omission
+    and deep-frozen inputs. No Brief, graph, host channel, preload or UI change; the host does not
+    yet supply cadence inputs, the other two gaps (`Brief.targetWords`, stage-kind task mapping)
+    stay open, and T018 stays unchecked.
   - Partial evidence (seam 6b, host integration only): the desktop host wires that contract
     through one read-only `continuation:checkin` channel (core `IPC`/`StudioApi`, Zod-validated
     book/campaign ids before any Library access, preload bridge, unmounted `must(...)` client
