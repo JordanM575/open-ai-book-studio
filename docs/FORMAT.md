@@ -1119,9 +1119,11 @@ saves. Only the matter save writes `matter`; a general book update never does. T
 ## Markdown folder export
 
 **Status: specified contract, not implemented output.** [D-202](DECISIONS.md#d-202--markdown-folder-export-pure-planner-contract-and-saved-source-bundle)
-accepts the contract and [the folder format](formats/markdown-folder.md) is normative. No planner,
-capture protocol, publisher or mounted journey exists yet, so the app does not offer this export and
-no folder found on disk was necessarily produced under these rules.
+accepts the contract and [the folder format](formats/markdown-folder.md) is normative; the host
+protocol and production policy are specified in [the host contract](formats/markdown-folder-host.md)
+under [D-203](DECISIONS.md#d-203--markdown-folder-host-protocol-and-production-policy). The pure
+planner exists; no capture, publisher or mounted journey exists yet, so the app does not offer this
+export and no folder found on disk was necessarily produced under these rules.
 
 The export writes a one-way reading copy: `README.md`, an `images/` directory (present even when
 empty) and dense uniformly numbered reading files in one order — the generated title page when matter

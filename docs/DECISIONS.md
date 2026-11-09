@@ -784,8 +784,11 @@ captured illustrations, then back sections. Reading files use dense uniform ordi
 `max(4, digits(N))`; an illustration's image file shares its ordinal. Generated text uses a two-stage
 reversible notation for metadata (escape, then Markdown-escape) while bodies keep their captured
 parsed bytes exactly. Blank titles use disclosed fallbacks and saved-title annotations, never an
-invented heading. The full inventory, templates, notation, counting and warning rules are normative
-in [the folder format](formats/markdown-folder.md).
+invented heading. Clarification, not a behavior change (2026-11-09): the blank-title annotation
+applies to every navigation link whose label uses a blank fallback — title page, chapter, matter,
+and illustration for a blank chapter title — as [the folder format](formats/markdown-folder.md) §4
+now states expressly; the accepted planner already behaves this way and its bytes do not change. The
+full inventory, templates, notation, counting and warning rules are normative in the folder format.
 
 **Source semantics.** After every required save succeeds, the host collects saved library data into
 one bundle. Collection takes time, so different files may be observed at different times and the
@@ -860,6 +863,67 @@ alone does not attribute publication. Typography, physical pagination, own-page 
 for paged targets, the all-images JPEG action, the portable archive and DOCX image captions keep
 their existing owners and are not closed by this folder. Browser, native, removable and synced-folder
 targets each need their own evidence. Spec 035 T014, T016, T017 and T019 stay unchecked.
+
+### D-203 · Markdown folder host protocol and production policy
+
+Accepted November 9 under delegated feature-delivery authority, for scoped contract recording.
+[The host contract](formats/markdown-folder-host.md) holds the operative protocol beside
+[the folder format](formats/markdown-folder.md); spec [035](../specs/035-book-formatting/spec.md)
+owns the journey. This entry accepts a specification, not an implementation: no capture, image
+verification, publisher, journey or target is implemented or qualified by this record, nothing has
+been captured from a real library, and no 035 task closes. No separate ADR is written, for the same
+reason as D-202: the register and the format documents carry the decision, and it creates no new
+storage, writer or execution authority.
+
+| | |
+| --- | --- |
+| **Status** | Accepted for scoped contract recording (2026-11-09, delegated authority); implementation and exposure remain gated below |
+| **Question** | How does a host build the frozen saved-source bundle from a real library (enumeration, completeness, change detection), hand it to the pure planner, with which production limits, and what can each target claim today? |
+| **Decision** | Specify one host capture protocol, one trusted-construction handoff, one labelled production policy (`Q0 production policy v1`) and a per-target capability matrix that claims no folder capability today. The accepted planner (`fe2d7a368bf0f7d34ac0964a62cd862625207e05`) is unchanged. Capture, publication and the mounted journey remain T014-Q and T014-U. |
+
+**Enumeration and observation.** Capture reads, in order: the single `book.json` snapshot (identity,
+title, description, contents setting, raw matter and legacy record together), the complete chapter
+candidate set, each chapter file once in ranked order, the single manifest snapshot, then each
+selected image file in per-chapter manifest order, followed by a closing observation repeating those
+hashes and name sets. Membership is admitted complete only with zero unreadable or duplicate-ID
+chapters, readable required matter, and a manifest classified as read, known-empty or unreadable
+(one bounded list warning, never a quietly empty list); ambiguous selection refuses. Opening and
+closing samples that agree are only samples: a change that leaves and returns to identical bytes is
+indistinguishable and is disclosed as a class, changes outside sampled intervals are outside the
+evidence, and the bundle is never described as a simultaneous snapshot. Each admitted capture gets a
+sequence number; consent binds to its digest tuple and policy label, and any new capture invalidates
+earlier consent even if every digest agrees.
+
+**Handoff.** Only trusted host capture code may call `createMarkdownFolderBundle`, with fresh
+plain values copied from validated saved data — never renderer, IPC, toolkit or agent data. Before
+handoff the capturing side binds each selected record to its private bytes against the single
+manifest snapshot: membership, identity, own-file location, byte length, SHA-256, detected header
+format, MIME agreement and positive matching dimensions; any disagreement is a bounded omission and
+the text still exports. Provenance, complete decoding, sanitization and reader support remain
+unverified, and copied image metadata is disclosed rather than stripped.
+
+**Production policy.** The planner has no defaults, so the host contract derives each of the twelve
+values from hard constraints (the 20 MiB stored-image maximum, the 40-section matter schema, the
+20,000,000-unit chapter-save channel), from the planner's counting definitions, and from synthetic
+planner measurements recorded in the host contract (representative, novel-scale, large and
+text-heavy bundles planned and fully retrieved under the policy). Text is admitted to
+26,214,400 code units and 128 MiB of images; inventory to 4,091 regular files; the accounted envelope
+at all maxima together is 769,654,784 bytes. Exceeding any dimension refuses the whole plan; nothing
+is trimmed to fit. The accounted payload remains a logical envelope, not measured memory: implemented
+acquisition counts and real host peaks at boundary books must still be measured per target before
+exposure, and changing a value requires a decision update with new measurements.
+
+**Targets.** Desktop local folders, desktop removable/network/synced folders, browser picked
+folders and browser origin storage can each claim no Q capability today: capture and verification
+are unimplemented, folder staging and genuine no-replace commit are unbuilt (an existence check
+followed by rename is expressly insufficient), replacement and truthful cancellation remain successor
+work, and no mounted journey exists. Existing single-file exports keep their current claims. Each
+destination and storage class needs its own qualification evidence, as does crash recovery.
+
+**Retained gates.** T014-Q implements capture, verification and publication against this contract
+with its paired positive and adversarial tests (including change-during-capture and substituted-record
+cases); T014-U mounts the journey only after the planner and host interfaces agree. Spec 035 T014,
+T014-Q0, T014-Q, T014-U, T016, T017 and T019 stay unchecked by this recording.
 
 ## Resolved browser decisions
 

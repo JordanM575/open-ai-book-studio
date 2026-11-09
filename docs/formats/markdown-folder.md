@@ -1,10 +1,11 @@
 # Markdown folder export
 
 **Status:** Accepted contract by [D-202](../DECISIONS.md#d-202--markdown-folder-export-pure-planner-contract-and-saved-source-bundle);
-summary in [FORMAT](../FORMAT.md#markdown-folder-export). This document specifies the output and the
-pure planning contract. It does **not** establish an implemented planner, capture protocol, publisher,
-host journey or qualified target. Those remain separately owned work in
-[spec 035](../../specs/035-book-formatting/spec.md).
+summary in [FORMAT](../FORMAT.md#markdown-folder-export); the host protocol and production policy are
+specified in [the host contract](markdown-folder-host.md) under D-203. This document specifies the
+output and the pure planning contract. The pure planner is implemented and accepted; it does **not**
+establish an implemented capture, publisher, host journey or qualified target. Those remain
+separately owned work in [spec 035](../../specs/035-book-formatting/spec.md).
 
 A Markdown folder export writes one ordinary folder of readable Markdown files in book order, plus
 exact copies of the selected attached images. It is a one-way reading copy. It is not a backup, not a
@@ -34,8 +35,9 @@ admission hold is clear. The host then collects saved library data into one bund
   outside a sampled interval, can remain undetected; that limit is disclosed, not denied.
 
 The collection protocol itself — enumeration, observation evidence, detectable-change rules and its
-paired positive and adversarial tests — must still be specified and qualified before the journey is
-exposed. Nothing here relaxes any other save, recovery or publication hold at the host.
+paired positive and adversarial tests — is specified in [the host contract](markdown-folder-host.md)
+and must still be implemented and qualified before the journey is exposed. Nothing here relaxes any
+other save, recovery or publication hold at the host.
 
 ## 2. Inventory, order and names
 
@@ -164,7 +166,10 @@ Blank means the value is empty after trimming whitespace. A nonblank title is ne
 book title displays as `Untitled book` and a blank chapter title as its chapter position. A blank
 matter title produces no heading, and its navigation link carries an annotation outside the link:
 ` — Saved title: (empty)` for an empty original, or the encoded original for nonempty whitespace.
-Illustration links for a blank chapter title carry the same annotation. These fallbacks are visibly
+Illustration links for a blank chapter title carry the same annotation. Clarification, not a
+behavior change: the annotation applies to every navigation link whose label uses a blank fallback —
+the title-page link, a chapter link, a matter link and an illustration link for a blank chapter
+title — in the README and, for chapters and back sections, in the contents. These fallbacks are visibly
 generated labels, not claims about the saved value. With the title page off, no book-title page, link
 or annotation is invented.
 

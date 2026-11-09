@@ -1,6 +1,6 @@
 # Book formatting and export
 
-**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). D-169 and D-170 are accepted (2026-11-04): ordered front and back matter (T007–T013) is edited in the Format dialog, previewed in order and exported by all four targets, and format settings persist per book. The Markdown folder export contract is recorded by D-202 (2026-11-09); its planner, capture, publication and journey implementation (T014) is not started.
+**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). D-169 and D-170 are accepted (2026-11-04): ordered front and back matter (T007–T013) is edited in the Format dialog, previewed in order and exported by all four targets, and format settings persist per book. The Markdown folder export contract is recorded by D-202 (2026-11-09); its pure planner is implemented and accepted, its host protocol and production policy are specified by D-203 (T014-Q0), and its capture, publication and journey implementation (T014-Q, T014-U) is not started.
 **Number:** 035
 **Depends on:** [002 — AI Book Studio v1](../002-studio-v1/spec.md), [019 — Illustrations](../019-illustrations/spec.md), and the public file-format contract in [`docs/FORMAT.md`](../../docs/FORMAT.md).
 
@@ -229,9 +229,15 @@ unresolved with D-108; this spec makes no claim about actual pagination.
   the frozen saved-source bundle above, the content-bound legacy preflight in FR-011 and the retained
   capture, publication, replacement, cancellation and target gates are recorded in
   [DECISIONS.md](../../docs/DECISIONS.md#d-202--markdown-folder-export-pure-planner-contract-and-saved-source-bundle)
-  and [the folder format](../../docs/formats/markdown-folder.md). Recording implements and qualifies
-  nothing: the planner, capture protocol, publisher and journey remain open work, and T014, T016,
-  T017 and T019 stay unchecked.
+  and [the folder format](../../docs/formats/markdown-folder.md). The pure planner is implemented and
+  accepted; recording the output contract itself implemented and qualified nothing.
+- **Markdown folder host protocol — D-203 Accepted for recording (2026-11-09, T014-Q0).** Enumeration
+  and observation for building the frozen bundle from a real library, the trusted-construction
+  handoff, `Q0 production policy v1` and the per-target capability matrix (no folder capability
+  claimed today) are specified in
+  [the host contract](../../docs/formats/markdown-folder-host.md). This implements and captures
+  nothing: capture, publication and the journey (T014-Q, T014-U) remain open work, and T014, T014-Q0,
+  T016, T017 and T019 stay unchecked.
 - **D-115 is about release signing and updates, not export.** It neither approves a renderer nor gates
   this export feature.
 
