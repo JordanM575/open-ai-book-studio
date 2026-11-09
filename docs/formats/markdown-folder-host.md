@@ -44,8 +44,11 @@ exceeding one refuses the capture whole, before bulk reads where the count is kn
    value. No field is reread from a second observation of the file.
 2. **Chapter membership.** List the chapters directory, and where the port offers inspected entries,
    require the complete-set check the library already defines: every candidate `.md` name must be a
-   readable regular file, with no online-only placeholder or unsupported entry. Conflict copies are
-   never candidates. If the candidate count exceeds the chapter maximum, refuse before reading bodies.
+   readable regular file, with no online-only placeholder or unsupported entry. On a port without
+   `inspectDirectory`, completeness must still be proven from listing kinds plus the closing
+   name-and-kind set — or the capture refuses — rather than the conditional acting as a waiver.
+   Conflict copies are never candidates. If the candidate count exceeds the chapter maximum, refuse
+   before reading bodies.
 3. **Chapter files.** Read each candidate file once as a bounded snapshot, in ranked file-name order
    (the library's `compareChapterFileNames` ranking). Parse each with the library's chapter parser:
    the parsed metadata (`id`, `title`, `order`, `version`) and the parsed body (canonical body text,
@@ -64,8 +67,8 @@ exceeding one refuses the capture whole, before bulk reads where the count is kn
    including ones that become omissions. Read each selected record's image file once as a bounded
    snapshot from the record's own file name, in selection order, and verify it under §3.
 6. **Closing observation.** Repeat the observations as a second sample: `book.json` hash, chapter
-   candidate name-and-kind set plus each chapter file's hash, manifest hash and state, and each
-   selected image file's hash, in the same order.
+   candidate name-and-kind set plus each chapter file's hash, manifest hash and state, the
+   `images/` directory name set, and each selected image file's hash, in the same order.
 7. **Freeze.** Only after §2.2 admits the membership complete and §2.3 finds the two samples in
    agreement are the projected values computed (`readMatter`/`matterPlan` semantics over the captured
    raw matter), legacy pairs taken in parsed-record enumeration order, warnings ordered (list-level
@@ -102,9 +105,9 @@ whole capture with a bounded host reason; there is no partial bundle and no subs
 
 Each file observation is the port snapshot's SHA-256 of the exact bytes read; parsed values are
 derived from those bytes and from no other read. The opening and closing samples are compared as
-hashes and name sets. If any compared value differs (a file changed, appeared or disappeared, or the
-manifest state changed), the capture is discarded whole, nothing freezes, and the author is told the
-source changed during collection and to try again.
+hashes and name sets. If any compared value differs (a compared file changed, appeared or
+disappeared, or the manifest state changed), the capture is discarded whole, nothing freezes, and
+the author is told the source changed during collection and to try again.
 
 Agreeing samples are only samples. The following remain undetected by design and must be disclosed,
 not denied, in the consent and completion wording the journey shows (T014-U owns the exact copy;
@@ -170,8 +173,8 @@ per-image manifest reread that could observe a different manifest):
 | Location | Bytes were read from that record's own manifest file name under this book's `images/`; no substituted record or file is admitted |
 | Length | Byte length equals the record's declared byte count and is non-zero |
 | Digest | SHA-256 of the exact bytes equals the record's declared digest |
-| Header and format | Header inspection detects a format; the detected format, mapped to the planner's `png`/`jpg`/`webp` (`jpeg` maps to `jpg`), equals the record's declared format |
-| MIME | The record's MIME type equals the detected format's MIME type (`image/png`, `image/jpeg`, `image/webp`) |
+| Header and format | Header inspection detects a format; the record has no separate format field, so the declared format is defined as both the format implied by the record's `mimeType` (`image/png` → `png`, `image/jpeg` → `jpg`, `image/webp` → `webp`) and the format implied by the record's `fileName` extension (`.png` → `png`, `.jpg` → `jpg`, `.webp` → `webp`) under the `jpeg` → `jpg` mapping; the detected format, mapped to the planner's `png`/`jpg`/`webp`, must equal both, and any other or missing extension is a disagreement |
+| MIME | The record's `mimeType` equals the detected format's MIME type (`image/png`, `image/jpeg`, `image/webp`); this check is defined from `mimeType` alone and is independently breakable from the `fileName`-extension format check (changing `mimeType` breaks MIME without renaming the file; renaming the extension breaks format without changing `mimeType`) |
 | Dimensions | Detected width and height are positive and equal the record's declared width and height |
 
 Any disagreement is the `image-mismatch` omission of §2.2, naming chapter and selected position;
@@ -206,7 +209,7 @@ to fit, and a larger legitimate book is future work under a revised policy, not 
 | `maxInputCollectionItems` | 4,096 | Component maxima below sum to 4,065 (2,000 chapters + 40 sections + 1,024 image outcomes + 1,000 legacy pairs + 1 list warning), with 31 of headroom; the planner counts chapters + parsed sections + legacy pairs + image outcomes + list warnings |
 | `maxPerImageBytes` | 20,971,520 (20 MiB) | The image store's hard admission maximum (`MAX_IMAGE_BYTES`); header inspection likewise accepts nothing larger, so no stored image can legitimately exceed it |
 | `maxTotalImageBytes` | 134,217,728 (128 MiB) | Bounded copied payload for one folder; identical bytes in distinct records count separately, as the planner counts. Roughly six maximum-size images, or 128 images of 1 MiB; beyond it the book refuses whole |
-| `maxGeneratedUtf8Bytes` | 104,857,600 (100 MiB) | Generated text re-emits at most the 75 MiB of admitted input bytes (bodies verbatim; only bounded titles are escape-expanded), plus generated syntax and repeated navigation labels, with headroom measured in §4.3 |
+| `maxGeneratedUtf8Bytes` | 104,857,600 (100 MiB) | Policy cap with prose overhead measured in §4.2: generated text re-emits admitted input bytes (bodies verbatim; titles and labels are escape-expanded), plus generated syntax and repeated navigation labels. Escape expansion and label repetition mean generated bytes can exceed input bytes — a control or punctuation title expands per emission and repeats across the README link, the contents link and the chapter heading (and illustration labels) — so an admitted book can exceed this cap while within the 75 MiB input envelope and then refuses on the generated dimension. Matter titles and names are per-field bounded; book and chapter titles are bounded only by the retained-text envelope |
 | `maxTotalOutputBytes` | 239,075,328 (228 MiB) | Exactly generated maximum + total-image maximum (100 MiB + 128 MiB), so the total-output dimension binds only after its two parts do |
 | `maxRegularFiles` | 4,091 | 1 README + at most 3,066 reading files (1 title + 40 sections + 1 contents + 2,000 chapters + 1,024 illustrations) + at most 1,024 copied images |
 | `maxDirectoryEntries` | 4,092 | Regular-file maximum + the single `images/` directory, the planner's counting definition |
@@ -258,8 +261,10 @@ and never a substitute for the accounted envelope or for host peak measurement i
 
 All four fixtures plan successfully under the production policy, and in each the generated bytes stay
 within a small overhead of the admitted body bytes (for example 6,035,524 generated from 6,007,759
-input units in the large fixture), which is the headroom the generated maximum formalizes. The
-accounted payload is a logical envelope, not measured heap or memory use (folder format §6): real
+input units in the large fixture). That small overhead is prose-fixture evidence only: it does not
+bound escape-expanded, repeatedly emitted titles, which can push generated bytes well beyond input
+bytes and refuse on the generated dimension (see §4). The accounted payload is a logical envelope,
+not measured heap or memory use (folder format §6): real
 acquisition bounds and host memory peaks at production-boundary synthetic books must still be
 measured on each admitted target before exposure, and changing any value above requires a decision
 update with new measurements, never an unrecorded host constant.
@@ -299,9 +304,10 @@ complete enumeration admitted (§2.2) and each completeness failure refused (pla
 unsupported chapter entry, unreadable chapter, duplicate-ID copy, unreadable matter, newer manifest);
 opening/closing disagreement discarded whole, with the change-and-change-back disclosure present in
 consent wording rather than denied; manifest read / known-empty / unreadable states, including image
-files with no readable manifest; each image binding of §3.2 broken in turn (length, digest, header,
-format, MIME, dimensions, substituted record) producing its omission while text still exports, and a
-record substituted after capture refusing; construction with anything but fresh validated data
+files with no readable manifest; each image binding of §3.2 broken in turn (length, digest, header
+(no detected format), file-name extension (format), MIME type, dimensions, substituted record)
+producing its omission while text still exports, and a record substituted after capture refusing;
+construction with anything but fresh validated data
 refused without fallback; each production dimension at its exact boundary accepted and one beyond
 refused under `Q0 production policy v1`, with implemented acquisition counts and measured host peaks
 reported against §4; and per-target qualification for whichever §5 target is first admitted, with
