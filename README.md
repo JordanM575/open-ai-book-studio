@@ -23,8 +23,8 @@ the dated baseline, Meta integration and what the demo actually verifies.
 
 ## Current state
 
-As of November 7, 2026, Open Book Studio is a working desktop writing studio; macOS is the reference
-environment. This summary reflects public `main` at `55b55b8`, after PRs #17–#29 merged. The feature
+As of November 9, 2026, Open Book Studio is a working desktop writing studio; macOS is the reference
+environment. This summary reflects public `main` at `c603095`, after PR #63 merged. The feature
 status table below says what is complete, in progress and planned.
 
 - **Name.** The product is Open Book Studio wherever an author or a tool sees it. The packaged
@@ -73,13 +73,14 @@ there is a working slice with remaining work; **planned** means it is not availa
 | Illustrations | Complete on desktop | Muse Image generation, chapter attachments and embedded Word illustrations; no SAM cutout claim |
 | Dedicated cover design | Planned | Image records can describe covers, but the current generation interface is for chapter illustrations |
 | Word, Markdown, PDF and EPUB export | Complete on desktop | Formatting and ordered front/back matter; an export refuses a book that has unreadable chapter files rather than leave them out; KDP, EPUBCheck and PDF/UA conformance remain unproven |
+| Markdown folder export | In progress; merged and usable on desktop | Ordered folder of Markdown files with matter and verified images from the saved book; broader publication checks remain open |
 | Manuscript and library import | In progress | TXT, Markdown and DOCX manuscript import on macOS; portable archives and earlier-studio migration; other platform conformance remains |
 | External-edit / sync review | In progress | Folder drift detection and conflict review; cloud storage supplies transport, while device trust and app lock remain planned |
 | CLI and MCP integration | Complete | Local `bookwriter`, loopback authentication, read-only defaults and explicit write permission |
 | Structured manuscript review | In progress | Saved-text report and evidence links; additional signals, report persistence and export remain planned |
 | Inline editorial critique | Contracts accepted; implementation pending | Exact-current underlines, accessible feedback, explicit suggestion application and saved reviews selected in ADR 0020 |
 | Hands-free authoring | Session controls mounted; capture and acoustic acceptance pending | Bound sessions, interruption, confirmation and spoken check-ins selected in ADR 0021. The Discuss panel mounts explicit start/transcript/correct/confirm/stop controls bound to the open book, chapter and conversation, but this build has no capture adapter or audio grant, so the bar says so instead of recording; integrated and acoustic acceptance remain |
-| Guided/autonomous authoring and task-aware routing | Contracts accepted; runtime pending | ADR 0019 selects short-brief onboarding, bounded asynchronous drafting toward ~70,000 saved words, revision and character check-ins; no full-book delivery claimed |
+| Guided/autonomous authoring and task-aware routing | Contracts accepted; continuation seams merged, coordinator runtime pending | ADR 0019 selects short-brief onboarding, bounded asynchronous drafting toward ~70,000 saved words, revision and character check-ins; continuation storage and counted check-in surface are merged, but no real coordinator session exists yet so check-ins refuse truthfully; no full-book delivery claimed |
 | Named chapter history and library organization | In progress | Core merged in PR #33; restore/UI correction accepted and merged in PR #34; planning/goal leaves accepted, host/API integration and remaining organization open |
 | Signed releases, online updates and store delivery | Planned | Packaging configuration exists; signing, distribution and device verification are separate gates |
 
@@ -132,8 +133,8 @@ App store and release-download links will be posted in this repository when read
 ### Illustrate and export
 
 - **Illustrations** with Muse Image 1.0, priced on the button (about $0.01) before you generate.
-- **Exports:** Word with illustrations embedded, plus Markdown, PDF and EPUB from the Format dialog.
-  No KDP, EPUBCheck or PDF/UA acceptance is claimed.
+- **Exports:** Word with illustrations embedded, plus Markdown, PDF and EPUB from the Format dialog,
+  and an ordered Markdown folder from the saved book. No KDP, EPUBCheck or PDF/UA acceptance is claimed.
 - **Images and archives:** every image in a book as a JPEG, or the whole library as an archive.
 
 ### Bring a book in
