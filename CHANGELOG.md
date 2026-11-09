@@ -7,6 +7,25 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Authoring check-in cadence contract (037 T032 partial)
+
+- Add the pure versioned check-in cadence contract to `packages/core/src/authoring/contracts.ts`:
+  `CheckinCadencePolicy` (`version: 1`, editable `adoptedChapterInterval`/`savedWordInterval`,
+  `afterFirstChapter` and `onIrreversibleChoice` triggers), the named ADR 0019 default
+  `DEFAULT_CHECKIN_CADENCE_POLICY` (first adopted chapter, then three more adopted chapters or
+  10,000 more saved words, whichever occurs first, plus irreversible choices), bounded
+  `CHECKIN_CADENCE_LIMITS` validation (`unsupported-version`/`invalid-integer` vocabulary, no
+  coercion or silent defaults), and the pure `evaluateCheckinCadence` due evaluation over
+  caller-counted progress that counts nothing, reads no prose, reports every fired reason and
+  treats exact thresholds as due. Synthetic tests in
+  `packages/core/tests/authoring/cadence.test.ts` cover the default and edited policies,
+  out-of-bounds/unknown-version/malformed refusals, each trigger, exact boundaries, multiple
+  reasons and zero/negative handling. Pure core only: no IPC, UI, host wiring, provider calls or
+  adapter changes; the continuation adapter does not yet emit cadence. This closes one of the
+  three recorded authoring-contract gaps; `Brief.targetWords` still has no campaign word-count
+  source and campaign stage kinds still have no Role/TaskDefinition mapping. 037 T032 and all
+  037/038/039 boxes remain unchecked.
+
 ### Delivery documentation reconciliation
 
 - Reconcile the public completion, concurrent-delivery, forecast, retained-delivery, spec-map and

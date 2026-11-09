@@ -84,9 +84,13 @@ receipt tallies). It refuses stale expectations, partial or non-active groups, c
 artifacts, refused or compatibly differing semantics labels and campaigns too large for one
 037 context/phase, and it never recounts prose, re-encodes stored bytes or mutates its
 inputs, so supported unknown fields survive untouched. The codec retains no word count and
-the 037 authoring contracts define no check-in cadence type, no campaign-stage task role and
-no derivation for `Brief.targetWords`; the leaf therefore emits counted progress only and a
-host must not relabel scalar/byte counts as words or invent a cadence from them.
+there is no campaign-stage task role and no derivation for `Brief.targetWords`; the leaf
+therefore emits counted progress only and a host must not relabel scalar/byte counts as words
+or invent a cadence from them. The 037 authoring contracts now define a versioned check-in
+cadence policy and pure due evaluator (`CheckinCadencePolicy` in
+`packages/core/src/authoring/contracts.ts`, ADR 0019 defaults), but this leaf does not yet emit
+cadence: adapter wiring to the cadence contract is a later slice, so no check-in scheduling is
+derived here.
 The desktop host (039 T018 seam 6b) exposes that mapping as one read-only
 `continuation:checkin` channel: ids are validated before the Library is touched, the checked
 campaign is loaded through the store readers above, and the counted inputs cross the `Result`
