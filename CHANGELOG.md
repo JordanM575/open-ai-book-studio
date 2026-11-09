@@ -7,6 +7,27 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation check-in presenter (039 T018 seam 6c)
+
+- Mount the presenter surface for continuation check-ins in the workspace
+  (`packages/app/src/components/continuation-checkin/`), beside the saved
+  reviews and planning panels. Opening the panel reads nothing; the author
+  names a campaign and presses Load check-in, and the panel shows only the
+  counted inputs from the checked campaign record through the seam 6b
+  client: campaign and book identity, revision, segment and stage tallies,
+  checkpoint receipt tallies, and report tallies, with scalar and byte
+  tallies labelled exactly as saved. The presenter counts nothing itself
+  and shows no live generation, only a stored record. Each typed refusal
+  keeps its own plain sentence-case state, a partly present campaign is
+  never shown as a counted result, and with no active coordinator run —
+  the state of this build — the panel says so plainly instead of showing
+  invented check-in data. The 6b renderer client now keeps the typed
+  refusal code so the presenter can show the state that happened. The
+  hidden smoke run covers the mounted panel and its no-coordinator state.
+  No new channel, preload, or Library change; 039 T018/T019 plus all
+  037/038 boxes remain unchecked pending measurement and independent
+  review.
+
 ### Campaign continuation check-in host (039 T018 seam 6b)
 
 - Wire the accepted seam 6a contract through the desktop host as one

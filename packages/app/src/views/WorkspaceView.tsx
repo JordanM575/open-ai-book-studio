@@ -55,6 +55,7 @@ import type { ThemeChoice } from "../hooks/use-theme";
 import { PlanningPanel } from "../components/planning/PlanningPanel";
 import { PlanningNavigation } from "../components/planning/navigation";
 import { SavedReviewsPanel } from "../components/saved-review/SavedReviewsPanel";
+import { ContinuationCheckinPanel } from "../components/continuation-checkin/ContinuationCheckinPanel";
 
 export interface ChapterRequest {
   bookId: string;
@@ -1327,6 +1328,7 @@ export function WorkspaceView({
             api={window.studio.planning} navigation={navigation}
             sourceGeneration={JSON.stringify([detail.chapters.map((chapter) => [chapter.id, chapter.path, chapter.version, chapter.hash]), detail.chapterReadIssues, externalChange])}
             manuscriptState={status.kind === "saved" ? "clean" : status.kind === "saving" ? "pending" : status.kind === "error" ? "failed" : status.kind} />}
+          <ContinuationCheckinPanel bookId={bookId} />
           <RecoveryPanel
             entries={recovered}
             chapters={detail?.chapters ?? []}
