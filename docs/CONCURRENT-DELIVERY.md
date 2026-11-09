@@ -1,7 +1,7 @@
 # Concurrent feature delivery
 
-**Updated:** November 8, 2026. **Goal:** finish every retained planned feature, with continuous
-independent verification. Current accepted source: public `main` at `19ea1c7` (PR #42).
+**Updated:** November 9, 2026. **Goal:** finish every retained planned feature, with continuous
+independent verification. Current accepted source: public `main` at `0fc19f3` (PR #45).
 The original `55b55b8` baseline and [PR #30](https://github.com/JordanM575/open-book-studio/pull/30)
 remain historical. The [dated forecast](DELIVERY-FORECAST.md) records the next dependency slices.
 
@@ -20,10 +20,14 @@ individual work; the completed research packets are reused rather than commissio
 
 **Delivered foundations:** saved history/restore leaves, worldbuilding/goal integration, pure
 workflow graph/admission, checked v1 threads, inline editor/evidence, voice transport, saved-review
-records/controls, the campaign planner and synthetic hands-free Discuss controls are merged through
-PRs #32–#42, #46 and #47. History host mounting, broader manual planning, repetition findings and
-workflow storage remain assigned. Expanded connected journeys remain open; candidate checks are
-reported per head and are never added together as a product total.
+records/controls, the campaign planner, synthetic hands-free Discuss controls, manual planning,
+checked workflow storage and repetition findings are merged through PRs #32–#47. First-parent order
+places #46/#47 before #42, then #44/#43/#45. The [foundation register](FOUNDATION-EVIDENCE.md)
+records exact heads, merge IDs and public acceptance attribution: #43/#45 have final-head independent
+acceptance receipts; #44's public final-head automated review is separate and no equivalent independent
+receipt was located. This does not prove no review occurred. History host mounting, built-adapter
+planning, packaged/native review and connected workflow journeys remain. Checks stay at their named
+heads and are never added together as a product total.
 
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
 [spec ownership map](SPEC-DAG.md). Its machine-readable work packages are in
@@ -124,9 +128,9 @@ decisions are coordinator work; no duplicate research assignment is needed.
 
 | Package | Next acceptance slice | Exclusive ownership |
 | --- | --- | --- |
-| W04 | Fresh review of PR #43's receipt-owned journal correction; then host permission, admission and publisher seams | Workflow storage candidate immutable during review; host/shared Library integration assigned after acceptance |
-| W08 | PR #44 literal-value recovery and stable identity in both order editors; then built-adapter recovery | Manual planning components/tests and explicit shared integration owner |
-| W10 | PR #45 association/token/read-state correction; D-201 exact continuation codec and provenance | Separate immutable review candidates and non-overlapping pure codec/planner seams |
+| W04 | Host permission, durable admission and publisher seams over merged #43 storage | Explicit host/shared Library integration owner; preserve pending receipts, active baselines and legitimate predecessors |
+| W08 | Built-adapter recovery and remaining manual planning over merged #44 corrections | Manual planning components/tests and explicit shared integration owner; built/native acceptance remains separate |
+| W10 | Packaged/native and inline/retained repetition acceptance; separately, D-201 continuation codec/provenance | Non-overlapping review/codec seams; reviewed public continuation contract/format incorporation precedes dependent writers |
 | W14 | Qualify a production capture/IPC owner after merged synthetic controls and cancellable transport | Host permission, capture lifetime, actual dispatch and accounting; native/audio checks remain separately gated |
 | W15 | Fresh-context documentation review, truthful requirement status and next-slice DAG | Read-only stage reviewers; coordinator owns document corrections and traceability |
 
@@ -181,9 +185,9 @@ claim-scoped edges retain the explanations in `SPEC-DAG.md`.
 
 ## Continuation loop
 
-A single new **30-minute** fallback continuation runs in the existing conversation while T3 is
+A single **30-minute** fallback continuation runs in the existing conversation while T3 is
 available. Child-completion notifications remain the primary wake-up. The older cutoff-bound loops
-stay disabled; their obsolete instructions and model choices do not govern this new campaign.
+stay disabled; their obsolete instructions and model choices do not govern this campaign.
 
 At each execution, read the latest coordination records and current public branch, consume delivered
 results once, preserve partial work, and advance or dispatch only unowned ready packages. Prioritize
@@ -192,11 +196,12 @@ Maintain at most five active children and one integrated full-suite owner. A tas
 access, provider quota or hardware availability parks only its dependent work. Routine design
 decisions are researched and resolved under delegated authority rather than parked for questions.
 
-Do not poll running children or use the schedule to poll PR checks. If waiting for a PR's checks or
-reviews is the only work, hand off to the PR watch mechanism and pause the fallback. After two
-executions with no new actionable work and no active child, disable the new loop and report the
-specific external blockers once. Routine decision questions are not a no-progress condition: make an
-evidenced recommendation, record it and proceed. Disable on completion or author cancellation as well. There is no inherited
+Do not poll running children or use the schedule to poll PR checks. Disable the sole fallback
+**immediately** on completion or author cancellation, or when only event- or author-gated work remains
+and there is no independent authorized work. Active children alone do not justify an idle fallback.
+Use the PR watch mechanism for check/review waits and report specific external blockers once.
+Routine decision questions are not a no-progress condition: make an evidenced recommendation,
+record it and proceed. There is no inherited
 November 5/7 deadline; any new deadline must come from the author. Quota/rate-limit errors stop the
 affected dispatch rather than triggering a retry storm or model switch.
 

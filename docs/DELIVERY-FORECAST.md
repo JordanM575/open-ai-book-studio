@@ -1,22 +1,25 @@
-# Delivery forecast — November 8, 2026
+# Delivery forecast — November 9, 2026
 
-**Accepted base:** `19ea1c791c586e64c957f2c43eb379b33d2056e9`, following PR #42.
+**Accepted base:** `0fc19f39189aab078c687178060cedf968b5359e`, following PR #45.
 This forecast orders the next testable slices. It is not a calendar promise or release acceptance.
 The [25-lane product graph](PRODUCT-COMPLETION.md) and [20-package execution graph](CONCURRENT-DELIVERY.md)
 retain every feature; a prerequisite here is a specific contract, not completion of an unrelated lane.
 
-## Current candidate decisions
+## Foundation snapshot and candidate decisions
 
-| Candidate | Exact head at this snapshot | Evidence and remaining work |
+| Foundation or candidate | Exact head at this snapshot | Evidence and remaining work |
 | --- | --- | --- |
-| Hands-free Discuss · PR #42 | `20685587867d7281530a6765b106d99998af432a` | Merged as the accepted base above after fresh independent acceptance, Codex, GitGuardian and five exact-head gates. Acceptance covers the synthetic single-realm host seam; production capture/IPC, audio and devices remain open. |
-| Workflow storage · PR #43 | `0ed733884a6d394a97634765c8d3c7d52e8f864e` | Corrected delayed verified-note ownership and integrated accepted main. Focused tests pass; fresh independent/Codex review and integrated gates are pending. |
-| Manual planning · PR #44 | `ae5a7f37c65b3ad68edf893d731cece3df89421d` | Independent review requires exact line-ending recovery, an exact full-copy representation and stable identities inside order editors. Five gates passed on an unchanged-head rerun; the initial failure remains recorded. |
-| Repetition navigation · PR #45 | `1cbe34e9fe50cd1d1e1dcc0e2b58df7deea7832a` | Five gates pass, but independent review requires finding association, complete source-token boundaries and checking/unavailable navigation-read states. |
+| Hands-free Discuss · [#42](https://github.com/JordanM575/open-book-studio/pull/42) | `20685587867d7281530a6765b106d99998af432a` | Merged as `19ea1c7`. The [public evidence register](FOUNDATION-EVIDENCE.md) links the later attribution of independent acceptance, automated/security review and five gates. Scope is the synthetic single-realm host seam; production capture/IPC, audio and devices remain open. |
+| Manual planning · [#44](https://github.com/JordanM575/open-book-studio/pull/44) | `ac345ea28dfede2f38e927672fd3ff878d0395b0` | Squash-merged as `6c94273`, including literal-value/full-copy recovery and order-identity corrections. Final-head automated review is public; no equivalent public independent final-head acceptance receipt was located. Built-adapter/native and full 030/033 acceptance remain. |
+| Workflow storage · [#43](https://github.com/JordanM575/open-book-studio/pull/43) | `5d80c543868a7ce9dee65de7fe18834653525775` | Merged as `d9b6b16` with [attributed exact-head acceptance and five gates](https://github.com/JordanM575/open-book-studio/pull/43#issuecomment-6732204100). Preserve pending receipt ownership and valid predecessors. Settlement clears entry roots; retained closures/unsettled receipts may retain state. Host execution/recovery remains. |
+| Repetition findings · [#45](https://github.com/JordanM575/open-book-studio/pull/45) | `7087a3fffd2c72106335e62c9b642f2f7f434a1d` | Merged as the base above with [attributed exact-head acceptance and five gates](https://github.com/JordanM575/open-book-studio/pull/45#issuecomment-6732818306). Lazy selected-passage verification leaves worker aggregates unverified; direct source-read failures remain distinct. Packaged/native, inline/retained and connected acceptance remain. |
 | Campaign continuation | Documentation candidate; implementation pending | D-201 identifies a separate contract/format candidate, not an accepted decision recorded in this snapshot. Codec, reconstruction/provenance, writer and host integration remain unimplemented. |
 
-PR numbers identify work under review, not shipped features. A changed candidate needs assessment
-and gates on its new exact head. Tests from separate candidates overlap and are never summed.
+PRs #46/#47's pure planner and saved-review controls precede #42 in first-parent history; #44 then
+precedes #43/#45. A missing public acceptance receipt does not establish that no review occurred.
+The [foundation register](FOUNDATION-EVIDENCE.md) records exact heads, merges, historical figures
+and scoped public attribution. A changed candidate needs assessment and gates on its new exact head.
+Tests from separate candidates overlap and are never summed.
 The continuation candidate must record its full decision and format and pass review before they
 are incorporated as writer prerequisites; a roadmap reference alone supplies no storage contract.
 
@@ -42,11 +45,11 @@ under their own per-call/coverage contracts; ordinary runs never silently clip, 
 
 ```mermaid
 flowchart TD
-  A[Correct and accept workflow storage] --> H[Host permission and durable admission]
+  A[Merged checked workflow storage] --> H[Host permission and durable admission]
   H --> P[One checked publisher and scheduler]
-  B[Exact manual planning recovery] --> O[Brief and Bible onboarding]
+  B[Qualify built-adapter planning recovery] --> O[Brief and Bible onboarding]
   O --> P
-  C[Exact repetition navigation] --> R[Connected scoped review and suggestion apply]
+  C[Merged selected-evidence repetition checks] --> R[Connected scoped review and suggestion apply]
   D[Continuation codec and structural validation] --> V[Compatible replan and exact provenance]
   V --> S[Capability-gated publication and recovery]
   S --> R
@@ -63,9 +66,9 @@ claim the combined capability until its additional contracts pass.
 
 | Slice / package | Start condition | Deliverable and acceptance boundary |
 | --- | --- | --- |
-| A · W04 / 037 T023 | Published corrected candidate | Preserve later accepted/newer/uncertain journal decisions while keeping unaccepted outside bytes reviewable. Fresh whole-candidate review and exact-head gates precede merge. |
-| B · W08 / 030/033 | Released PR #44 review target | Fresh checked edits recover every valid literal value; exact copies remain available; duplicate order labels map to stable IDs. Verify real browser controls and built adapter journeys. |
-| C · W10 / 034 | Released PR #45 review target | A selected occurrence matches its normalized finding and whole tokens. Pending/failed reads visibly disable actionable evidence; stale/live-editor and lifetime protections remain. |
+| A · W04 / 037 T023 | Merged #43 storage foundation | Preserve later accepted/newer/uncertain decisions, separately owned pending receipts and legitimate unsuperseded predecessors during host integration. Unaccepted outside bytes stay reviewable; no fixed heap ceiling or whole-graph collection is claimed. |
+| B · W08 / 030/033 | Merged #44 manual recovery corrections | Qualify built-adapter and remaining planning journeys using fresh checked edits, exact literal/full-copy recovery and stable order IDs. Source-component Chromium evidence does not establish the built/native journey. |
+| C · W10 / 034 | Merged #45 scanner/navigation | Qualify packaged worker/CSP, native accessibility/IME/navigation and inline/retained integration. Maintain whole-token association, lazy selected-only checks, unverified aggregates and separate direct-read failures; 034 T016/T018/T019 remain open. |
 | D → V · W10 / 039 T014/T017 | D-201 contract/format recorded and reviewed; prepared dependencies | Pure exact segmented codec, typed external holes, complete bounds/tamper tests, then compatible replan/content equality. Hash agreement alone never grants planner provenance. |
 | S · W10 / 039 T014/T015 | Codec/provenance accepted; adapter capability demonstrated | Intent-first immutable segments and checked manifest, honest uncertain recovery, supported unknown fields, bounded inventories and owner-explicit report reads. Unsupported mutation refuses. |
 | H → P · W04 / 037 T020–T025/T029 | Accepted storage and pinned-host settlement contracts | Separate host permission, durable finite admission, one journal-aware checked publisher and event-driven scheduling. Prove revocation, competing edits and every publication crash window. |
@@ -76,8 +79,9 @@ claim the combined capability until its additional contracts pass.
 
 ## Independent work that remains ready to assign
 
-- **W02 / 032:** mount saved-history list/compare/restore/undo through real host draft gates and
-  validated API. Core and isolated UI acceptance do not establish this journey.
+- **W02 / 032:** record reviewed host/editor and adapter-capability contracts before mounting
+  saved-history list/compare/restore/undo through real draft gates and validated API. Coordinate
+  overlapping public-file ownership first. Core and isolated UI acceptance do not establish this journey.
 - **W08 / 003/029/030/033:** canonical Bible fields, series ownership/templates/relationships,
   collections/recents/notes, remaining migration and import formats. Decide unresolved format and
   identity contracts before their writers; preserve all original requirements.

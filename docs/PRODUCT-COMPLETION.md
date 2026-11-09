@@ -1,11 +1,13 @@
 # Open Book Studio — product completion lanes
 
 Original review baseline: public `main` at `f3541f6750e60226ce8490e5ac192f10a1856dab`, November 4.
-Current-state reconciliation: November 8, 2026, public `main` at
-`19ea1c791c586e64c957f2c43eb379b33d2056e9` (PR #42), plus explicitly labelled candidate/decision
+Current-state reconciliation: November 9, 2026, public `main` at
+`0fc19f39189aab078c687178060cedf968b5359e` (PR #45), plus explicitly labelled candidate/decision
 follow-through. The JSON retains the original audit baseline. Merged changes
 and [dated automated results](TESTING.md#recorded-baseline) inform this update; it is not a fresh
-runtime audit, live-provider/device check or release sign-off.
+runtime audit, live-provider/device check or release sign-off. The
+[foundation evidence register](FOUNDATION-EVIDENCE.md) distinguishes final heads, merge commits,
+publicly attributed independent acceptance and automated review.
 This is a dependency map for remaining work, not a statement that every proposed capability is
 implemented or approved. The machine-readable graph is [product-completion.json](product-completion.json).
 The [requirements](completion-requirements.json) record stable IDs, current classifications
@@ -179,19 +181,29 @@ concrete acceptance slices before dispatch.
 
 ## Next work
 
-### What the November 8 baseline includes
+### What the November 9 baseline includes
 
-Display branding, damaged-book export refusal, safe chapter moves/restores, book-schema guards,
+Display branding, damaged-book export refusal, checked chapter moves/restores, book-schema guards,
 field-level metadata merging and conflict-copy presentation are merged. Spec 038's profile-local
 voice choices are integrated under D-192; it is no longer a reserved candidate. Linux e2e failures
-now fail the manual workflow. These completed slices leave wider safety/platform acceptance open.
+now fail the manually dispatched workflow; it is not an enforced PR merge gate. These completed
+slices leave wider concurrent-writer and platform acceptance open.
 
-Later accepted merges include checked v1 conversations, the plain-text editor/evidence adapter,
+Merged foundations include checked v1 conversations, the plain-text editor/evidence adapter,
 cancellable voice transport, saved-review records and controls, pure full-book campaign planning,
 and the synthetic hands-free Discuss seam. Their remaining host, provider, continuation and device
-gates are explicit in the owning tasks. PRs #43–#45 remain unmerged candidates with review findings.
+gates are explicit in the owning tasks. Workflow storage, manual planning and repetition findings
+merged in PRs #43–#45. Public final-head independent acceptance is attributed for #43/#45;
+no equivalent public receipt was located for #44, whose automated review is separate. That does not
+establish that no independent review occurred. PRs #46/#47 precede #42 in first-parent history.
 See the [dated delivery forecast](DELIVERY-FORECAST.md) for exact heads, prerequisites and next work;
 neither a merged leaf nor a passing test suite completes an entire lane.
+
+Workflow settlement releases receipt entry roots and registry entries; outstanding receipts or
+retained closures may still reference captured state. Independently owned pending receipts and
+legitimate unsuperseded predecessors retain their ownership rules. Saved-review quotations remain
+verified-at-capture; lazy selected-passage verification leaves worker aggregates unverified and does
+not establish report completeness. These limits accompany the linked exact-head evidence.
 
 The README uses [the current demo](https://youtu.be/0RsFzUq97xU); the
 [original submission](../hackathon/SUBMISSION.md) retains its original link and dated evidence.
@@ -207,9 +219,9 @@ features with independent contracts can advance without waiting for unrelated ro
 | Work / owner | First deliverable | Prerequisites and acceptance before broadening |
 | --- | --- | --- |
 | Voice acceptance · [038 tasks](../specs/038-voice-options/tasks.md), [017 tasks](../specs/017-voice-and-background/tasks.md) / L12 | Complete the author's review of T022's automated record; qualify production session/interrupt paths and inventory microphone/provider/playback gaps separately | T022 stays unchecked until the author closes it. Separately decide whether to add `marin` and `cedar` to the model-specific local catalogs described in [Voice](VOICE.md); neither is approved here, and local membership is not live availability. Paid checks need explicit scope/budget. |
-| Named history · [032 tasks](../specs/032-chapter-history/tasks.md) / L07 | API/Workspace mounting for accepted restore/UI correction `56c7b7d` | Saved-only core merged PR #33. Correction passed 2,580 tests, coverage and 12/12 e2e; fresh independent review accepted it and PR #34 merged it. Preserve original candidates; no repeat broad suite absent changes/concerns. |
-| Agent interaction · [031 tasks](../specs/031-agent-interaction/tasks.md), [037 tasks](../specs/037-guided-autonomous-authoring/tasks.md) / L05 | Accept corrected workflow storage, then integrate host permission/admission, execution and one checked publisher | Checked v1 threads and pure graph/admission are merged; backed-up v2 migration and real scheduling remain. PR #43 needs fresh review/gates. 037 T018–T042 own the full connected journey. [ADR 0019's alternatives](adr/0019-bounded-autonomous-authoring.md#alternatives-and-consequences) explain checked host publication, author control, recovery and its coordination costs. |
-| Planning and organization · [030 tasks](../specs/030-story-bible-extensions/tasks.md), [033 tasks](../specs/033-library-organization/tasks.md) / L06–L07 | Correct PR #44 exact-value recovery and order identity, then prove built-adapter recovery | Worldbuilding/goal integration is merged; the broader manual candidate remains unaccepted. D-163–D-168/ADR 0017 governs checked save/reopen, conflicts and bounds. Series/collections/anchors remain owned. |
+| Named history · [032 tasks](../specs/032-chapter-history/tasks.md) / L07 | Record reviewed host/editor and adapter-capability contracts, then qualify API/Workspace mounting | Saved-only core merged in #33; [#34's receipt](https://github.com/JordanM575/open-book-studio/pull/34) attributes independent acceptance and 2,580 verify/coverage/12 e2e to `56c7b7d`. This covers checked restore/undo core and isolated injected UI, not real draft gates, host mounting, confirmation/recovery or retention. Historical results stay at that head. |
+| Agent interaction · [031 tasks](../specs/031-agent-interaction/tasks.md), [037 tasks](../specs/037-guided-autonomous-authoring/tasks.md) / L05 | Integrate host permission/admission, execution and one checked publisher over merged workflow storage | [#43's acceptance](https://github.com/JordanM575/open-book-studio/pull/43#issuecomment-6732204100) covers `5d80c54`; checked v1 threads and pure graph/admission are also merged. Backed-up v2 migration and real scheduling remain. 037 T018–T042 own the connected journey. [ADR 0019's alternatives](adr/0019-bounded-autonomous-authoring.md#alternatives-and-consequences) explain checked host publication, author control, recovery and its coordination costs. |
+| Planning and organization · [030 tasks](../specs/030-story-bible-extensions/tasks.md), [033 tasks](../specs/033-library-organization/tasks.md) / L06–L07 | Qualify built-adapter recovery and the remaining manual planning journeys | Worldbuilding/goal integration and #44's literal-value/full-copy/order-identity corrections are merged. Its [public evidence limits](FOUNDATION-EVIDENCE.md#exact-heads-and-public-attribution) are explicit. D-163–D-168/ADR 0017 governs checked save/reopen, conflicts and bounds. Full Bible/series/collections/anchors and native accessibility remain owned. |
 | Formatting · [035 tasks](../specs/035-book-formatting/tasks.md) / L11 | T014 Markdown folder export from the saved ordered book, with failure-safe destination handling | Record the separate Markdown packaging contract before its writer. Keep existing exports usable. Physical layout, templates and named publishing rules remain separate; unknown measurements cannot pass KDP/EPUB/PDF readiness. |
 | Volatile selected-source review · [039 tasks](../specs/039-reader-continuity-review/tasks.md), [034 tasks](../specs/034-manuscript-review/tasks.md) / L08–L09 | Connect disclosed saved-source snapshots, verified citations and read-only generation to the actual host/UI | Independently enforce selected-source bounds, provider/data-use disclosure, required consent, zero-send cancel and runtime read-only scope. This path writes no conversations or reports and does not wait for 037 thread storage or retained campaign continuation. Editor/verifier leaves do not establish connected acceptance. |
 | Durable conversational review · [037 tasks](../specs/037-guided-autonomous-authoring/tasks.md) / L05 | Integrate disclosed review inputs/results into the checked conversation path | Shared thread safety, versioned parts, recovery and replay exclusion gate this persistence path under [ADR 0018](adr/0018-scoped-review-contracts.md#accepted-envelope-and-execution-boundary). Selected-source and consent/runtime gates still apply. It is distinct from volatile 039 reports. |

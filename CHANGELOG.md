@@ -7,6 +7,15 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Exact-head foundation and delivery status
+
+- Reconcile the November 9 merged foundations across the map, forecast, execution plan, JSON and
+  spec index; link a public register of exact heads, merges and attributed review/check evidence.
+- Preserve historical figure scopes, public-receipt limitations, receipt-lifetime and selected-only
+  verification qualifications, and the remaining connected, native, provider and release gates.
+- Correct next-work navigation and align the sole continuation fallback with immediate stop rules;
+  retain independent review paths and both oversized-source gates.
+
 ### Completion map owner and policy follow-through
 
 - Distinguish volatile review, durable conversations, explicit campaigns and retained continuation,
