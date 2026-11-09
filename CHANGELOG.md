@@ -7,6 +7,19 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Markdown folder export contract
+
+- Record D-202 in `docs/DECISIONS.md`, the Markdown folder section in `docs/FORMAT.md` and the full
+  contract in `docs/formats/markdown-folder.md`: a one-way reading folder planned purely from a frozen
+  saved-source bundle, with exact inventory, reversible metadata notation, content-bound legacy
+  exclusions and explicit resource limits. Update spec 035's requirements, plan and tasks to match.
+- This records a contract only. No planner, capture, publication or interface behavior is implemented
+  or qualified, the existing exports are unchanged, and 035 T014/T016/T017/T019 remain open.
+- Complete the folder contract leaf with the accepted exact escape ranges, file templates,
+  title-page projection and accounted-payload charge, and name the paired legacy fixtures in 035
+  T014-P. Documentation only; no task, gate or behavior changes, and 035 T014/T016/T017/T019 and
+  038 T022 remain open.
+
 ### Exact-head foundation and delivery status
 
 - Reconcile the November 9 merged foundations across the map, forecast, execution plan, JSON and

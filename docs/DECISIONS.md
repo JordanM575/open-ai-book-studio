@@ -737,6 +737,107 @@ D-125 memory-only audio and D-192 explicit routes remain. D-109 host/offline eng
 remains open; source implementation proceeds synthetically. A voice session cannot mint a workflow
 grant or change scope. 038 T022 stays unchecked; no microphone/device/live-spend authorization added.
 
+### D-202 · Markdown folder export: pure planner contract and saved-source bundle
+
+Accepted November 9 under delegated feature-delivery authority, for public contract recording.
+[The folder format](formats/markdown-folder.md) and [FORMAT](FORMAT.md#markdown-folder-export) hold
+the operative contract; spec [035](../specs/035-book-formatting/spec.md) owns the journey. This entry
+accepts a contract, not an implementation: no planner, capture protocol, publisher, host journey or
+target is implemented or qualified by this record, and no 035 task closes. Numbered to follow the
+accepted campaign-continuation decision (D-201) so the two records integrate without renumbering.
+No separate ADR is written: like D-169 and D-170, the decision is carried by this register and the
+format documents, and it creates no new storage, writer or execution authority.
+
+| | |
+| --- | --- |
+| **Status** | Accepted for scoped contract recording (2026-11-09, delegated authority); implementation and exposure remain gated below |
+| **Question** | What exactly does a Markdown folder export contain, from which saved state is it built, how are legacy values, images, text edge cases and resource limits handled, and which parts must still be proven before an author can use it? |
+| **Decision** | Add a distinct one-way Markdown folder export beside the existing single-file Markdown export, which stays unchanged. A pure, parameterized planner turns one frozen saved-source bundle into a complete deterministic plan — reading files, copied image files, frozen warnings and excluded-legacy references — or a structured refusal. It performs no I/O, capture, Library access or publication. Capture, verification, publication, cancellation and the mounted journey are separate owned work that must still be specified, implemented and qualified. |
+
+**Selected contract.** The folder always holds `README.md` and an `images/` directory. Reading files
+follow one order: the generated title page when matter enables it, front sections, the contents file
+when settings ask for it, chapters in captured Library order each followed by its successfully
+captured illustrations, then back sections. Reading files use dense uniform ordinals of width
+`max(4, digits(N))`; an illustration's image file shares its ordinal. Generated text uses a two-stage
+reversible notation for metadata (escape, then Markdown-escape) while bodies keep their captured
+parsed bytes exactly. Blank titles use disclosed fallbacks and saved-title annotations, never an
+invented heading. The full inventory, templates, notation, counting and warning rules are normative
+in [the folder format](formats/markdown-folder.md).
+
+**Source semantics.** After every required save succeeds, the host collects saved library data into
+one bundle. Collection takes time, so different files may be observed at different times and the
+bundle may never have existed at a single instant; it is never described as a simultaneous copy of
+the whole book. The bundle freezes only after its complete admitted membership, projected values,
+selected image outcomes and warnings are collected and validated. Rendering, consent and publication
+use only the frozen bundle; no later step rereads source to replace a frozen value. Edits after the
+freeze cannot change the export, and a new capture invalidates consent given for an old one. Known
+missing required content, duplicate or ambiguous identities and unsupported required schema stop the
+export. Agreeing start and end samples do not prove that nothing changed in between, and no stronger
+simultaneous-snapshot claim is made. The capture protocol itself, its observation evidence and its
+tests remain to be specified and qualified before exposure.
+
+**Legacy values.** D-169 conversion stays explicit and unchanged; this export adds a content-bound
+preflight for values the selected output does not represent. A nonempty legacy value counts as
+represented only when its raw string exactly equals the text of an included saved matter section, or
+when the narrow title-page rule applies. That rule uses the existing key classification, spelled
+exactly as the code performs it:
+
+```js
+key.toLowerCase().replace(/[^a-z]/g, "")
+```
+
+The key is lowercased first, then every character outside ASCII `a`–`z` is removed; no locale
+variant, Unicode normalization, prefix stripping or filter-first variant is substituted. A result of
+`author` or `authorname` identifies the author and `subtitle` identifies the subtitle; any other
+result cannot stand for either. The title-page exception additionally requires the title page to be
+enabled, the corresponding projected author or subtitle to be nonempty and actually emitted, and
+`raw.trim()` to equal that emitted value. An unrendered matching field alone proves nothing. Empty
+raw strings are ignored; whitespace-only nonempty values stay excluded unless an included section
+body matches exactly. Every other nonempty value is excluded: the author sees the excluded keys
+identified safely, without legacy values being printed, and chooses **Continue without them** or
+**Cancel**. Exclusions and consent bind to the frozen bundle and plan; the legacy record and every
+draft survive either choice. Nothing is converted automatically and the planner grants no consent.
+
+**Trust, ownership and limits.** The planner consumes only a narrow trusted projection built from
+validated saved data through a closed construction path with privately registered handles. It makes
+no claim to detect every possible proxy or to make an untrusted supplier authentic; if that boundary
+cannot be established for a caller, a separate isolation boundary is required first. Image bytes are
+admitted as fixed private copies with no mutable alias to the plan. Every plan dimension — input
+strings and collections, image bytes, generated text, output bytes, inventory, retrieval and a
+conservative accounted-payload envelope — has an explicit finite limit, counted per occurrence
+before materialization. A fresh plan must permit retrieving every file once under all limits at
+once; repeated retrieval is charged cumulatively and never refunded. The accounted payload is a
+logical envelope, not a measured memory ceiling; real acquisition bounds and host memory peaks must
+be measured before production exposure, and larger legitimate books remain supported future work
+rather than silently narrowed input.
+
+**Images.** Selection follows the existing chapter attachment relation in captured manifest order.
+Before planning, the host side binds each selected record's identity, attachment, format, dimensions,
+length and hash to its privately captured bytes; the planner consumes that trusted outcome and copies
+bytes exactly. A missing or mismatched optional image becomes a frozen omission warning and the text
+still exports; an ambiguous selection or unsupported schema refuses. A missing or corrupt manifest
+produces a prominent list-level warning, never a quietly empty one. Copied files are exact originals
+and may carry embedded metadata, which is disclosed; the generated placement text describes position,
+not the picture's content, and header or hash agreement is not a decoding or safety claim.
+
+**Alternatives rejected.** Describing the bundle as the book at one instant (no such read exists and
+the claim would mislead); reusing the single-file Markdown action as the folder (different packaging
+and journey, and the existing action must not change); a hidden manifest or re-import promise (the
+folder is a reading copy, not a backup, archive or second source); automatic legacy conversion or
+inclusion from unrendered fields (D-169 requires an explicit author choice); trusting caller-supplied
+image digests as authenticity (verification binds bytes before planning); and treating the logical
+payload envelope as measured memory (peaks must be observed on the host).
+
+**Retained gates.** Publication still needs a qualified no-replace commit with protected source and
+destination identities, owned staging and cleanup, and positive proof on each admitted target;
+replacing an existing folder and preserving later changes stay separately owned successor work, not
+a check followed by a rename. Cancellation still needs an attempt-bound protocol that actually
+prevents a commit when accepted in time and reports late or unknown outcomes truthfully; a readback
+alone does not attribute publication. Typography, physical pagination, own-page illustration rules
+for paged targets, the all-images JPEG action, the portable archive and DOCX image captions keep
+their existing owners and are not closed by this folder. Browser, native, removable and synced-folder
+targets each need their own evidence. Spec 035 T014, T016, T017 and T019 stay unchecked.
+
 ## Resolved browser decisions
 
 ### D-104 · OpenRouter OAuth redirect on desktop and web

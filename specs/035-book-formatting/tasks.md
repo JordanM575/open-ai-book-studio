@@ -3,7 +3,8 @@
 **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 **Status:** In progress. Phase 1 (T001–T005) is done; D-108 is accepted (T006) and PDF and EPUB export
 exist, so T015–T017 are partly done. D-169 and D-170 are accepted (T007, T008), and ordered matter is
-built and exported (T009–T013). The Markdown folder export (T014) is open.
+built and exported (T009–T013). The Markdown folder contract is recorded by D-202; the folder export
+(T014) is open.
 
 All tests in this plan use synthetic fixtures in isolated temporary libraries. Do not use real
 manuscripts, credentials, live providers, paid services or devices.
@@ -140,10 +141,39 @@ manuscripts, credentials, live providers, paid services or devices.
   Markdown text and the printed HTML with goldens rendered by the exporters at 3a234cc.
   `apps/desktop/tests/export-matter.test.ts` covers the matter in each format, empty matter and
   unreadable matter. Legacy values are never exported and the dialog lists them until converted.
-- [ ] **T014** Implement Markdown folder export from the saved snapshot after the matter and output
-  packaging contracts are accepted. Write ordinary ordered Markdown files and copy any required
-  attached image files to the export destination without changing the 019 source files. Test with
-  synthetic text and image fixtures.
+- [ ] **T014** Implement Markdown folder export from the frozen saved-source bundle under the D-202
+  contract recorded in [DECISIONS.md](../../docs/DECISIONS.md#d-202--markdown-folder-export-pure-planner-contract-and-saved-source-bundle),
+  [FORMAT.md](../../docs/FORMAT.md#markdown-folder-export) and
+  [the folder format](../../docs/formats/markdown-folder.md). Write ordinary ordered Markdown files
+  and copy verified attached image files to the export destination without changing the 019 source
+  files. Test with synthetic text and image fixtures. The subordinate gates below own acceptance;
+  this task stays unchecked until they and T016/T017/T019 close.
+  - [ ] **T014-C** Independent review of the recorded D-202 packet against its exact head. Owner:
+    independent reviewer. Evidence: scoped review accepting or revising the decision, format, spec,
+    plan and changelog wording at that head. This gate closes no implementation task.
+  - [ ] **T014-P** Pure planner under one owner. Owner: planner implementer. Evidence: focused tests
+    asserting complete inventories and exact bytes, the escape notation and its inverse, blank-title
+    annotations, parsed-body fidelity, legacy exclusion including the
+    `key.toLowerCase().replace(/[^a-z]/g, "")` author/subtitle classification with title-page-off and
+    whitespace controls and the paired D1 fixtures (Kelvin-sign `Kauthor` with initial U+212A
+    excluded, ordinary `authorname` represented, and `authorname` with title page off excluded),
+    per-dimension exact-boundary and plus-one refusals, a complete once-per-file retrieval under all
+    budgets, and caller/output mutation isolation. No Library, host or interface change is part of
+    this gate.
+  - [ ] **T014-Q0** Host protocol and production policy contract. Owner: shared host integration
+    owner. Evidence: specified enumeration and observation rules, trusted construction handoff,
+    measured acquisition and memory peaks, production limit values and per-target capability matrix,
+    including change-and-change-back cases that the bundle wording discloses rather than denies.
+  - [ ] **T014-Q** Capture, image verification and publication. Owner: shared host integration owner.
+    Evidence: selected records bound to verified private bytes, genuine no-replace publication with
+    protected identities and owned staging/cleanup, existing-folder replacement kept as named
+    successor work, and injected staging, write, close and permission failures preserving prior
+    output and source bytes.
+  - [ ] **T014-U** Mounted journey. Owner: interface integrator after P and Q interfaces agree.
+    Evidence: validated transport, bundle-bound **Continue without them** / **Cancel**, accessible
+    warnings and written-file lists, destination-picker cancel, accepted pre-commit cancellation
+    that actually prevents publication, and truthful late or unknown settlement, each exercised in
+    synthetic end-to-end journeys without exposing the folder target before this gate passes.
 - [ ] **T015** After T006, implement the selected PDF and EPUB renderer adapters. Validate structural
   output with synthetic books containing ordered matter, verse-like lines and attached synthetic
   images. Keep preview copy approximate and make no eligibility, pagination, measurement or publisher
@@ -188,6 +218,9 @@ manuscripts, credentials, live providers, paid services or devices.
 - [ ] **T018** Update `docs/FORMAT.md`, the public decision record and any required ADRs for accepted
   schema and renderer decisions. Keep D-115 separate from export. Update the changelog in the
   implementation change, not in this spec-authoring task.
+  D-202, the FORMAT folder section, the folder format and the changelog entry are recorded with this
+  packet; the task stays unchecked until the implementation changes complete the remaining format
+  and decision updates and T019 reviews them.
 - [ ] **T019** Review the final author-visible journey against spec 002 and spec 019: DOCX/PDF/EPUB/
   Markdown scope, ordered matter, canonical typography, approximate-preview disclosure, saved-source
   safety and image-store ownership. Record remaining gaps without claiming publisher readiness.

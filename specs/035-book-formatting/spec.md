@@ -1,6 +1,6 @@
 # Book formatting and export
 
-**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). D-169 and D-170 are accepted (2026-11-04): ordered front and back matter (T007–T013) is edited in the Format dialog, previewed in order and exported by all four targets, and format settings persist per book. The Markdown folder export (T014) is not started.
+**Status:** In progress — Phase 1 (T001–T005: Format journey design, approximate-preview surface, UI contract tests, the DOCX journey and its publication boundary) is implemented; D-108 is accepted, and the Format dialog exports DOCX, PDF, EPUB and Markdown (T015–T017 in part). D-169 and D-170 are accepted (2026-11-04): ordered front and back matter (T007–T013) is edited in the Format dialog, previewed in order and exported by all four targets, and format settings persist per book. The Markdown folder export contract is recorded by D-202 (2026-11-09); its planner, capture, publication and journey implementation (T014) is not started.
 **Number:** 035
 **Depends on:** [002 — AI Book Studio v1](../002-studio-v1/spec.md), [019 — Illustrations](../019-illustrations/spec.md), and the public file-format contract in [`docs/FORMAT.md`](../../docs/FORMAT.md).
 
@@ -59,9 +59,9 @@ not silently converted or discarded.
 ### 3. Export a saved version safely
 
 As an author, I choose DOCX, PDF, EPUB or a folder of Markdown and a destination. The export is made
-from a saved snapshot, leaves the library source untouched, and tells me what was written. If saving,
-rendering, writing or publishing fails—or I cancel—the studio explains what happened and does not
-replace a previous export with a partial one.
+from saved files collected into one frozen bundle, leaves the library source untouched, and tells me
+what was written. If saving, rendering, writing or publishing fails—or I cancel—the studio explains
+what happened and does not replace a previous export with a partial one.
 
 ## Requirements
 
@@ -101,10 +101,17 @@ replace a previous export with a partial one.
 - **FR-010** The studio MUST preserve the current `frontMatter` record as-is until a public legacy
   conversion decision is accepted. It MUST NOT enumerate that record as if it were an ordered list,
   infer front/back placement, or silently migrate or delete it.
-- **FR-011** Until a legacy conversion path is accepted and available, a book with a non-empty legacy
-  `frontMatter` record MUST receive an export preflight notice that the record is not included in the
-  ordered export. The author MUST be able to cancel or explicitly continue without those legacy
-  values. The stored record MUST remain unchanged.
+- **FR-011** A Markdown folder export MUST preflight the legacy `frontMatter` record by content, as a
+  strengthening after D-169's accepted conversion rather than the former pre-conversion notice. A
+  non-empty value counts as represented only when its raw string exactly equals the text of an
+  included saved matter section, or when its key identifies the author or subtitle under
+  `key.toLowerCase().replace(/[^a-z]/g, "")` (lowercase first, then remove characters outside ASCII
+  `a`–`z`; `author` and `authorname` identify the author), the title page is enabled, and the
+  corresponding projected value is non-empty, actually emitted and equal to `raw.trim()`. Every other
+  non-empty value MUST be listed by safely identified key for an explicit **Continue without them**
+  or **Cancel** choice bound to the frozen bundle; an unrendered field alone MUST NOT count as
+  inclusion. The stored record and every draft MUST remain unchanged either way, and nothing is
+  converted automatically.
 - **FR-012** Existing books without the additive matter value MUST continue to open. Adding ordered
   matter MUST be backward-compatible and MUST preserve unknown book fields.
 
@@ -113,9 +120,12 @@ replace a previous export with a partial one.
 - **FR-013** Before export, the workspace MUST flush pending editor input. If the save fails, conflicts
   with another writer, or is cancelled, export MUST not start; the author MUST see the save outcome and
   retain the draft for recovery or conflict review.
-- **FR-014** The main process MUST build an immutable export snapshot from saved library data after the
-  flush succeeds. A render MUST use that snapshot rather than rereading or mutating manuscript files
-  partway through the export.
+- **FR-014** After the flush succeeds, the main process MUST collect saved library data into one
+  immutable export bundle and freeze it before rendering. Collection may observe different files at
+  different times, so the bundle is a frozen observed set, never a claim that the whole book was read
+  at one instant. A render MUST use only the frozen bundle rather than rereading or mutating
+  manuscript files partway through the export, and known missing required content or inconsistent
+  identities MUST stop the export.
 - **FR-015** Export MUST leave `book.json`, chapter Markdown, the image manifest and stored image bytes
   unchanged. The main process MUST be the only writer to any export destination; the renderer MUST NOT
   supply an unchecked filesystem path.
@@ -132,9 +142,12 @@ replace a previous export with a partial one.
 - **FR-019** Cancelling the destination picker MUST leave the source and any prior export unchanged.
   Cancelling an active export MUST stop before publication, clean up staging output, and return the UI
   to an available state. A completed publication MUST be reported as complete, not as cancelled.
-- **FR-020** On success, the studio MUST identify the destination and target format. If the source
-  changes after the snapshot is captured, the export MUST still represent that snapshot and the success
-  notice MUST identify it as the saved version captured when export began.
+- **FR-020** Only on confirmed publication, the studio MUST identify the destination, target format
+  and every written file, describing the result as the saved-source bundle collected for this export.
+  The notice MUST explain that concurrent changes during collection can mix observations and that
+  edits after the bundle froze are not included. If the source changes after the freeze, the export
+  MUST still represent the frozen bundle. If publication cannot be confirmed, the studio MUST report
+  that uncertainty instead of success.
 - **FR-021** Markdown export MUST produce an ordinary folder of readable Markdown files in book order,
   including ordered matter once supported. It MUST not mutate or replace the source chapter files.
 - **FR-022** Export MUST work offline and MUST NOT send manuscript content or images to a studio
@@ -170,7 +183,7 @@ unresolved with D-108; this spec makes no claim about actual pagination.
 5. **Given** an unsaved editor draft, **when** the author starts export, **then** the workspace flushes
    first; a save failure or conflict prevents export and leaves the draft available.
 6. **Given** a synthetic book in an isolated temporary library, **when** export succeeds, **then** the
-   output reflects the captured saved snapshot and source hashes are unchanged.
+   output reflects the frozen saved-source bundle and source hashes are unchanged.
 7. **Given** a previous export at the chosen destination, **when** rendering or publication fails or is
    cancelled, **then** the previous bytes remain intact and the author sees a useful next step.
 8. **Given** an output path that aliases a book source path, **when** export begins, **then** no source
@@ -212,6 +225,13 @@ unresolved with D-108; this spec makes no claim about actual pagination.
   delegation).** Typography and matter persist per book in `book.json`; the export target stays a
   per-export choice; no target-specific profile persists (`formatProfiles` stays reserved at the
   top level) and no physical-layout control is modeled.
+- **Markdown folder contract — D-202 Accepted for recording (2026-11-09).** A pure planner contract,
+  the frozen saved-source bundle above, the content-bound legacy preflight in FR-011 and the retained
+  capture, publication, replacement, cancellation and target gates are recorded in
+  [DECISIONS.md](../../docs/DECISIONS.md#d-202--markdown-folder-export-pure-planner-contract-and-saved-source-bundle)
+  and [the folder format](../../docs/formats/markdown-folder.md). Recording implements and qualifies
+  nothing: the planner, capture protocol, publisher and journey remain open work, and T014, T016,
+  T017 and T019 stay unchecked.
 - **D-115 is about release signing and updates, not export.** It neither approves a renderer nor gates
   this export feature.
 
