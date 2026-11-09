@@ -159,28 +159,30 @@ describe("continuation check-in host reading (039 T018 seam 6b)", () => {
       .toEqual(Buffer.from(encodeCanonicalJson(manifest)));
   });
 
-  test("supplies cadence in the pre-checkpoint window with counts matching a countWords oracle", async () => {
+  test("withholds cadence in the pre-checkpoint window while adoption is not countable", async () => {
     const contents = ["Alpha beta gamma delta.", "Epsilon zeta\neta theta iota kappa lambda."];
     const { library, book, plan } = await checkedLibrary({ withCheckpoint: false, chapterContents: contents });
     const checkin = await readContinuationCheckin(
       library, { bookId: book.id, campaignId: plan.campaignId }, coordinator(book.id));
-    // Independent oracle: the canonical counter over the exact saved bodies.
+    // Adoption is not countable from recorded state in this build (no
+    // adoption receipts/provenance are recorded), so cadence is withheld
+    // in all cases: no cadence key, while counted inputs still succeed.
+    expect("cadence" in checkin).toBe(false);
+    expect(checkin.campaignId).toBe(plan.campaignId);
+    expect(checkin.counts.stages).toBeGreaterThan(0);
+    // The saved-word counting unit remains reachable at the Library level:
+    // the canonical counter over bodies loaded through readBook matches an
+    // independent oracle over the exact saved bodies. This proves the
+    // counting code path where it is still exercised; through the check-in
+    // channel it is withheld until adoption is countable (see handoff).
+    const detail = await library.readBook(book.id);
+    const fromLibrary = detail.chapters.reduce((total, chapter) => total + countWords(chapter.content), 0);
     const oracle = contents.reduce((total, content) => total + countWords(normalizeBody(content)), 0);
-    expect(checkin.cadence).toBeDefined();
-    expect(checkin.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(oracle);
-    // Chapters present in the book, counted from Library state (see handoff naming).
-    expect(checkin.cadence?.callerCountedProgress.adoptedChaptersSinceCheckin).toBe(2);
-    expect(checkin.cadence?.callerCountedProgress.firstAdoptedChapterOccurred).toBe(true);
-    expect(checkin.cadence?.callerCountedProgress.irreversibleChoicePending).toBe(false);
-    expect(checkin.cadence?.policy).toEqual({
-      version: 1, adoptedChapterInterval: 3, savedWordInterval: 10_000,
-      afterFirstChapter: true, onIrreversibleChoice: true
-    });
-    expect(checkin.cadence?.due).toBe(true);
-    expect(checkin.cadence?.reasons).toContain("first-adopted-chapter");
+    expect(fromLibrary).toBe(oracle);
+    expect(detail.chapters.length).toBe(2);
   });
 
-  test("supplies cadence with an author-edited policy and evaluates it verbatim", async () => {
+  test("withholds cadence with an author-edited policy while adoption is not countable", async () => {
     const { library, book, plan } = await checkedLibrary({
       withCheckpoint: false, chapterContents: ["One two three four five."]
     });
@@ -196,9 +198,20 @@ describe("continuation check-in host reading (039 T018 seam 6b)", () => {
         }
       },
       coordinator(book.id));
-    expect(checkin.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(5);
-    expect(checkin.cadence?.due).toBe(true);
-    expect(checkin.cadence?.reasons).toEqual(["adopted-chapter-interval", "saved-word-interval"]);
+    // Policy input is still accepted by the host reader, but cadence is
+    // withheld because adoption is not countable from recorded state.
+    expect("cadence" in checkin).toBe(false);
+    expect(checkin.campaignId).toBe(plan.campaignId);
+  });
+
+  test("countWords oracle counts saved words from Library state (counting unit)", async () => {
+    const contents = ["Alpha beta gamma delta.", "Epsilon zeta\neta theta iota kappa lambda."];
+    const { library, book } = await checkedLibrary({ withCheckpoint: false, chapterContents: contents });
+    const detail = await library.readBook(book.id);
+    const counted = detail.chapters.reduce((total, chapter) => total + countWords(chapter.content), 0);
+    const oracle = contents.reduce((total, content) => total + countWords(normalizeBody(content)), 0);
+    expect(counted).toBe(oracle);
+    expect(oracle).toBeGreaterThan(0);
   });
 
   test("withholds cadence once a checkpoint record exists, while counted inputs still succeed", async () => {

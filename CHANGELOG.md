@@ -9,30 +9,41 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Campaign continuation check-in cadence host supply (039 T018 partial)
 
-- Supply caller-counted cadence inputs from the desktop host through the
-  `continuation:checkin` channel. The host reader
-  (`apps/desktop/src/main/continuation-checkin.ts`) counts saved words only
-  with the canonical `countWords` over chapter bodies loaded through the
-  existing `Library.readBook` reader, and counts chapters present in that
-  same read into the authoring contract's fixed
-  `adoptedChaptersSinceCheckin` field (Library state records chapter
-  existence, not a distinct coordinator adoption event; the handoff names
-  it as chapters present). Supply is scoped to the pre-checkpoint window:
-  while the mapped campaign has no checkpoint record, totals are exactly
-  the since-check-in counters; once a checkpoint record exists, or any
-  chapter cannot be read, cadence is withheld and the counted check-in
-  inputs still succeed without a cadence section, which stays
-  distinguishable from an evaluated cadence with `due: false`. The
-  renderer may only choose the versioned cadence policy
-  (`ReadContinuationCheckinInput.cadence.policy`, bounds mirroring
-  `CHECKIN_CADENCE_LIMITS`, Zod-validated before any Library access);
-  renderer-supplied counted progress is refused as `invalid`. The
-  production no-coordinator `unsupported` refusal is unchanged, and no
-  coordinator session is fabricated. Synthetic tests cover the
-  countWords-oracle supply, edited-policy evaluation, checkpoint and
-  unreadable-chapter withholding, malformed cadence input and the
-  no-identity refusal. No UI change; presenter display of cadence is a
-  later slice, and 039 T018 plus all 037/038 boxes remain unchecked.
+- Host cadence supply through the `continuation:checkin` channel is
+  withheld until adoption is countable. The host reader
+  (`apps/desktop/src/main/continuation-checkin.ts`) would count saved
+  words only with the canonical `countWords` over chapter bodies loaded
+  through the existing `Library.readBook` reader, but adoption is not
+  countable from recorded state in this build: no adoption receipts or
+  provenance are recorded that distinguish a coordinator-adopted chapter
+  from any other saved chapter, so chapters present cannot be named
+  adopted chapters and `0` is also unverified. Cadence is therefore
+  withheld (no `cadence` key) in all cases until adoption is countable
+  from recorded receipts/provenance; the saved-word counting code is
+  retained as the honest subset that resumes then but is not emitted
+  today. The 037 question store primitive exists
+  (`WorkflowRecordStore.readQuestion`/`saveQuestion`), but there is no
+  durable question inbox, no irreversible classification, and no
+  host-readable pending-irreversible source, so when adoption becomes
+  countable `irreversibleChoicePending` must also be read from recorded
+  question state or supply stays withheld — supply must not resume on
+  adoption receipts alone. Supply remains scoped to the pre-checkpoint
+  window (a checkpoint record or an unreadable chapter also withholds),
+  and withheld cadence stays distinguishable from an evaluated cadence
+  with `due: false` while counted check-in inputs still succeed without
+  a cadence section. The channel still validates policy input and
+  refuses renderer-supplied progress: the renderer may only choose the
+  versioned cadence policy (`ReadContinuationCheckinInput.cadence.policy`,
+  bounds mirroring `CHECKIN_CADENCE_LIMITS`, Zod-validated before any
+  Library access); renderer-supplied counted progress is refused as
+  `invalid`. The production no-coordinator `unsupported` refusal is
+  unchanged, and no coordinator session is fabricated. Synthetic tests
+  cover withheld cadence in the pre-checkpoint window (default and
+  edited policy), the `countWords` oracle at the Library level where
+  the counting unit remains reachable, checkpoint and unreadable-chapter
+  withholding, malformed cadence input and the no-identity refusal. No
+  UI change; presenter display of cadence is a later slice, and 039
+  T018 plus all 037/038 boxes remain unchecked.
 
 ### Campaign continuation check-in cadence emission (039 T018 partial)
 

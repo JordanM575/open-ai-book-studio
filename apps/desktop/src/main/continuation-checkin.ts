@@ -26,20 +26,27 @@ import type { Library } from "./library/store";
  * returned verbatim; no task role is derived.
  *
  * Cadence supply (caller-counted, host-owned): when the campaign maps, this
- * host also tries to count the authoring cadence progress from checked
- * state it already loads for this request. Saved words are counted only
- * with the canonical `countWords` over chapter bodies loaded through the
- * existing `Library.readBook` reader; chapters are counted as chapters
- * present in that same read (Library state records chapter existence, not
- * a distinct coordinator adoption event). The supply is scoped to the
- * pre-checkpoint window: while the mapped campaign has no checkpoint
- * record, no check-in has been taken against stored state, so totals from
- * the book's saved chapters are exactly the since-check-in counters. Once
- * a checkpoint record exists, or any chapter cannot be read, the since
- * window is ambiguous and cadence is withheld (the counted check-in inputs
- * still succeed without a cadence section). Withheld cadence (no `cadence`
- * key) is therefore distinguishable from an evaluated cadence with
- * `due: false`.
+ * host would count the authoring cadence progress from checked state it
+ * already loads for this request, but adoption is not countable from
+ * recorded state in this build. No adoption receipts or provenance are
+ * recorded that distinguish a coordinator-adopted chapter from any other
+ * saved chapter, so chapters present cannot be named adopted chapters.
+ * Cadence is therefore withheld (no `cadence` key) in all cases until
+ * adoption is countable from recorded receipts/provenance. Saved words are
+ * counted only with the canonical `countWords` over chapter bodies loaded
+ * through the existing `Library.readBook` reader; that counting is the
+ * honest subset that resumes when adoption becomes countable, but it is
+ * not emitted today. The supply remains scoped to the pre-checkpoint
+ * window: while the mapped campaign has no checkpoint record, totals
+ * would be exactly the since-check-in counters; once a checkpoint record
+ * exists, or any chapter cannot be read, the since window is ambiguous
+ * and cadence is withheld (the counted check-in inputs still succeed
+ * without a cadence section). Withheld cadence (no `cadence` key) is
+ * therefore distinguishable from an evaluated cadence with `due: false`.
+ * When adoption becomes countable, supply must not resume on adoption
+ * receipts alone: `irreversibleChoicePending` must also be read from
+ * recorded question state or supply stays withheld (see
+ * `recordedIrreversibleChoicePending`).
  */
 
 /** The host-supplied 037 identity a check-in is mapped against. */
@@ -69,12 +76,23 @@ function refusal(code: string): ContinuationCheckinError {
 }
 
 /**
- * Whether recorded state holds a pending irreversible choice. No checked
- * record in this build stores one: the campaign checkpoint carries stage
- * receipts only, book and chapter records carry no such field, and the 037
- * durable question inbox has no store yet. The honest report of that
- * recorded state is `false`; when a question store exists it must feed
- * this instead of extending the constant.
+ * Whether recorded state holds a pending irreversible choice. The 037
+ * question store primitive exists (`WorkflowRecordStore.readQuestion` /
+ * `saveQuestion` over `questions/<questionId>.json`, validated by
+ * `validateQuestion`), but in this build there is no durable question
+ * inbox, no irreversible classification on the question record, and no
+ * host-readable pending-irreversible source: the record carries `keys`,
+ * `affected`, `characterId`, `evidence`, `options`, `state` and `answer`
+ * with no irreversible marker, the store offers no listing API, the
+ * desktop `Library` face does not expose workflow records, and no
+ * production path creates question records. The campaign checkpoint
+ * carries stage receipts only and book/chapter records carry no such
+ * field, so no recorded source can carry a pending irreversible choice
+ * as such that the host could read. The honest report of that recorded
+ * absence is `false`; it fabricates no positive trigger. When adoption
+ * becomes countable, this must be read from recorded question state or
+ * cadence supply stays withheld — supply must not resume on adoption
+ * receipts alone.
  */
 function recordedIrreversibleChoicePending(): boolean {
   return false;
@@ -85,6 +103,21 @@ function recordedIrreversibleChoicePending(): boolean {
  * `null` when any input cannot be counted truthfully for this request.
  * Read-only; prose is counted only from bodies the existing `readBook`
  * reader already loads, with the canonical `countWords`.
+ *
+ * Adoption is not countable from recorded state in this build: no
+ * adoption receipts or provenance are recorded that distinguish a
+ * coordinator-adopted chapter from any other saved chapter, so cadence
+ * is withheld (return `null`, hence no `cadence` key) in all cases until
+ * adoption is countable from recorded receipts/provenance. Do not
+ * substitute chapters present for adopted chapters, and do not substitute
+ * `0` — zero recorded adoptions is also unverified without reading
+ * publication/effect receipts. The saved-word counting below is the
+ * honest subset that resumes when adoption becomes countable, but it
+ * must not emit a cadence section today. When adoption becomes
+ * countable, supply must not resume on adoption receipts alone:
+ * `irreversibleChoicePending` must also be read from recorded question
+ * state (see `recordedIrreversibleChoicePending`) or supply stays
+ * withheld.
  */
 async function countCadenceProgress(
   library: Library,
@@ -109,12 +142,17 @@ async function countCadenceProgress(
     savedWords += countWords(chapter.content);
     if (!Number.isSafeInteger(savedWords)) return null;
   }
-  return {
-    adoptedChaptersSinceCheckin: detail.chapters.length,
-    savedWordsSinceCheckin: savedWords,
-    firstAdoptedChapterOccurred: detail.chapters.length > 0,
-    irreversibleChoicePending: recordedIrreversibleChoicePending()
-  };
+  // Adoption is not countable from recorded adoption receipts/provenance
+  // in this build, so the counted saved-word total cannot be combined
+  // into a truthful cadence progress. Withhold cadence in all cases
+  // until adoption is countable; the savedWords total above is retained
+  // as the honest subset that resumes then, but it is not emitted today.
+  // Resuming also requires reading irreversibleChoicePending from
+  // recorded question state, not the current constant, or supply stays
+  // withheld.
+  void savedWords;
+  void recordedIrreversibleChoicePending();
+  return null;
 }
 
 /**

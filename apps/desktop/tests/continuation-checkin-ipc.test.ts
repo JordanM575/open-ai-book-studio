@@ -161,17 +161,37 @@ describe("continuation check-in channel (039 T018 seam 6b)", () => {
     expect(foreign).toMatchObject({ ok: false, error: { code: "corrupt" } });
   });
 
-  test("returns the host-counted cadence through the channel with a countWords oracle", async () => {
+  test("withholds cadence through the channel while adoption is not countable (no cadence key)", async () => {
     const contents = ["Alpha beta gamma.", "Delta epsilon zeta eta."];
     const { library, book, plan } = await checkedLibrary(contents);
     register(library, coordinatorFor(book.id));
     const result = await call({ bookId: book.id, campaignId: plan.campaignId });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const data = result.data as { cadence?: { callerCountedProgress: { savedWordsSinceCheckin: number; adoptedChaptersSinceCheckin: number } } };
+    const data = result.data as { cadence?: unknown; campaignId: string };
+    // Adoption is not countable from recorded state in this build, so the
+    // channel withholds cadence entirely (no cadence key) while counted
+    // inputs still succeed. Through the channel the counting path is
+    // therefore not observable today; it remains covered at the Library
+    // level below (see handoff).
+    expect("cadence" in data).toBe(false);
+    expect(data.campaignId).toBe(plan.campaignId);
+    // Counting unit at the level it remains reachable: Library.readBook
+    // bodies counted with the canonical counter match the independent oracle.
+    const detail = await library.readBook(book.id);
+    const counted = detail.chapters.reduce((total, chapter) => total + countWords(chapter.content), 0);
     const oracle = contents.reduce((total, content) => total + countWords(normalizeBody(content)), 0);
-    expect(data.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(oracle);
-    expect(data.cadence?.callerCountedProgress.adoptedChaptersSinceCheckin).toBe(2);
+    expect(counted).toBe(oracle);
+  });
+
+  test("countWords oracle counts saved words from Library state (counting unit, channel fixture)", async () => {
+    const contents = ["Alpha beta gamma.", "Delta epsilon zeta eta."];
+    const { library, book } = await checkedLibrary(contents);
+    const detail = await library.readBook(book.id);
+    const counted = detail.chapters.reduce((total, chapter) => total + countWords(chapter.content), 0);
+    const oracle = contents.reduce((total, content) => total + countWords(normalizeBody(content)), 0);
+    expect(counted).toBe(oracle);
+    expect(counted).toBeGreaterThan(0);
   });
 
   test("malformed cadence input is invalid before the Library is touched", async () => {
