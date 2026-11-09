@@ -8,6 +8,15 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Pending receipt retirement
+
+- Keep every pending journal receipt reachable for retirement even after a newer possible write
+  loses its active ownership following an intent-note failure. Remove registry roots on settlement
+  or retirement and release settled receipt references while preserving needed predecessor outcomes.
+- Cover three-service remove, move and accepted-deletion interleavings across before/after note and
+  author publication failures, equal/different intents and unchanged tombstones. Preserve legitimate
+  unsuperseded restoration and single-attempt author writes.
+
 ### Workflow storage integration
 
 - Integrate the accepted manual planning records with workflow storage and journal-receipt retirement,

@@ -1513,8 +1513,12 @@ Live receipts retain predecessor outcomes so overlapping refusals settling out o
 an already-refused intent. If a predecessor verified while a newer intent owned the path, a definitive
 refusal of that newer intent can restore the predecessor's verified snapshot only while the chain
 has not been retired by a superseding decision. Settlement is one-shot.
-Completed predecessors remain reachable only while a pending descendant needs them; active ownership
-is retired on settlement or superseding decisions. That transient bookkeeping is not a second
+Every pending receipt remains reachable for retirement independently of active baseline ownership,
+including when a newer possible receipt settles after its intent note failed before publication.
+Pending registry roots are removed on settlement or retirement; a settled receipt releases its own
+references. Completed predecessors remain reachable only while a pending descendant needs them;
+active ownership is retired on settlement or superseding decisions. An indefinitely pending operation
+retains the receipt state it still needs. That transient bookkeeping is not a second
 source of truth. Exceptions, uncertain publication and unverified written readbacks retain the
 persisted intent for interrupted-write recovery. A known refusal never retracts a preexisting unresolved
 same-byte attempt. Journal notes remain best effort: a failed intent/post-write note can require review,

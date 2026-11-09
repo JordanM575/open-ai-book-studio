@@ -246,6 +246,8 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
       if (!previous) return;
       const active = plannedWrites.get(storage) ?? new Map<string, PlannedEntry>();
       plannedWrites.set(storage, active);
+      const pending = pendingWriteReceipts.get(storage) ?? new Set<PlannedEntry>();
+      pendingWriteReceipts.set(storage, pending);
       const id = globalThis.crypto.randomUUID();
       const files = { ...previous.files };
       for (const path of wanted) {
@@ -259,6 +261,7 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
         const entry: PlannedEntry = { key, path, before: old, after, prior,
           beforeGeneration: previous.generation, outcome: "pending" };
         entries.push(entry);
+        pending.add(entry);
         active.set(key, entry);
         if (after) files[path] = after;
       }
@@ -316,7 +319,9 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
       // author-file publication or substitute an outside observation for the baseline.
     } finally {
       const active = plannedWrites.get(storage);
+      const pending = pendingWriteReceipts.get(storage);
       for (const entry of entries) {
+        pending?.delete(entry);
         if (active?.get(entry.key) !== entry) continue;
         let prior = entry.prior;
         while (prior?.outcome === "not-published") prior = prior.prior;
@@ -324,6 +329,10 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
         else active.delete(entry.key);
       }
       if (active?.size === 0) plannedWrites.delete(storage);
+      if (pending?.size === 0) pendingWriteReceipts.delete(storage);
+      // A retained settled receipt no longer needs its roots. Newer pending entries still hold
+      // any predecessor outcomes they need through their own prior links.
+      entries.length = 0;
     }
   }) };
 }
@@ -347,9 +356,13 @@ interface PlannedEntry {
   outcome: "pending" | "not-published" | "possible";
 }
 
-// Only live receipts retain this chain; persisted hashes still support recovery after process loss.
-// Completed predecessors remain reachable only while a newer pending receipt needs their outcome.
+// Baseline ownership and retirement reachability are different. A possible descendant may lose
+// its active key after a failed intent note while an older pending receipt still owns disk bytes.
 const plannedWrites = new WeakMap<LibraryPort, Map<string, PlannedEntry>>();
+// Register every pending root until settlement or retirement, including disconnected chains.
+// Completed predecessors survive only through receipts that still need their outcomes. Neither
+// map owns the port; indefinitely pending operations retain their necessary receipt state.
+const pendingWriteReceipts = new WeakMap<LibraryPort, Set<PlannedEntry>>();
 
 function sameRecord(a: SyncFileRecord | undefined, b: SyncFileRecord | undefined): boolean {
   if (!a || !b) return a === b;
@@ -365,12 +378,18 @@ export function supersedePlannedWriteNotes(storage: LibraryPort, deviceId: strin
 }
 
 function retireWriteNotes(storage: LibraryPort, deviceId: string, matches: (path: string) => boolean): void {
+  const pending = pendingWriteReceipts.get(storage);
+  for (const entry of pending ?? []) {
+    if (!entry.key.startsWith(`${deviceId}\0`) || !matches(entry.path)) continue;
+    // Retirement must also reach older pending roots disconnected from the active baseline owner.
+    // Stop at an already-retired node: its complete predecessor chain was retired with it.
+    for (let prior: PlannedEntry | undefined = entry; prior && !prior.retired; prior = prior.prior) prior.retired = true;
+    pending?.delete(entry);
+  }
+  if (pending?.size === 0) pendingWriteReceipts.delete(storage);
   const active = plannedWrites.get(storage);
   for (const [key, entry] of active ?? []) {
     if (!key.startsWith(`${deviceId}\0`) || !matches(entry.path)) continue;
-    // An existing tombstone may remain byte-identical. Retire the whole receipt chain so a
-    // later refusal cannot restore a verified predecessor through that unchanged record.
-    for (let prior: PlannedEntry | undefined = entry; prior; prior = prior.prior) prior.retired = true;
     active?.delete(key);
   }
   if (active?.size === 0) plannedWrites.delete(storage);
