@@ -1,0 +1,549 @@
+import { describe, expect, test } from "bun:test";
+import { LibraryService } from "../../src/library/service";
+import { createPlanningApi, planningHandler, planningValue } from "../../src/library/planning-api";
+import { bookFilePath, chapterPath } from "../../src/library/paths";
+import { sidecarPath, type SidecarRead, type SidecarSave } from "../../src/planning/checked-sidecar";
+import { encoder, type Planning } from "../../src/planning/schema";
+import type { PlanningDraft, PlanningSaveRequest } from "../../src/planning/service";
+import { InMemoryLibraryPort } from "../support/in-memory-port";
+import { envelope, fields } from "./fixture";
+
+const timeline = { title: " Winter ", when: "the winter after the siege", description: "  Literal\r\n界 😀  ", notes: "e\u0301\n\n" };
+const beat = { title: " Return ", summary: "Literal summary\r\n", notes: "  notes  " };
+const notes = { workingNotes: "  Working\r\n", styleNotes: "e\u0301", synopsis: "界 😀" };
+function required<T>(value: T | null | undefined): T {
+  if (value == null) throw new Error("Missing synthetic value");
+  return value;
+}
+async function setup() {
+  const port = new InMemoryLibraryPort();
+  const library = await LibraryService.open({ storage: port, runtime: port });
+  const book = await library.createBook({ title: "Synthetic manual planning" });
+  const api = createPlanningApi(planningHandler(() => library));
+  const read = () => planningValue(api.read(book.id));
+  const save = async (draft: PlanningDraft, base?: SidecarRead<Planning>) => planningValue(api.save({ ...envelope(base ?? await read()), draft }));
+  const raw = () => port.readFile(sidecarPath(book.id, "planning"));
+  const seed = (value: unknown) => port.commitFile(sidecarPath(book.id, "planning"), encoder.encode(JSON.stringify(value)), { kind: "any" });
+  return { port, library, book, api, read, save, raw, seed };
+}
+
+describe("manual planning through real Library and validated handler", () => {
+  test("all kinds create, edit, reopen, reorder, archive and restore without touching Bible, chapters or other book", async () => {
+    const f = await setup();
+    await f.library.updateBook(f.book.id, { outline: "Existing free-text outline" });
+    const chapter = await f.library.createChapter(f.book.id, { content: "Synthetic chapter unchanged." });
+    const other = await f.library.createBook({ title: "Other synthetic book" });
+    const paths = [bookFilePath(f.book.id), chapterPath(f.book.id, chapter.path), bookFilePath(other.id)];
+    const before = await Promise.all(paths.map((path) => f.port.readFile(path)));
+    expect((await f.read()).data).toBeNull();
+    expect(await f.raw()).toBeNull();
+    await f.save({ kind: "create-worldbuilding", fields });
+    await f.save({ kind: "create-timeline", fields: timeline });
+    await f.save({ kind: "create-timeline", fields: { ...timeline, title: "Before" } });
+    await f.save({ kind: "create-beat", fields: beat });
+    await f.save({ kind: "create-beat", fields: { ...beat, title: "Departure" } });
+    await f.save({ kind: "set-story-notes", fields: notes });
+    const original = required((await f.read()).data);
+    const event = required(original.timeline[0]);
+    const outlineBeat = required(original.beats[0]);
+    const world = required(original.worldbuilding[0]);
+    expect(event.id.startsWith("tl_")).toBe(true);
+    expect(outlineBeat.id.startsWith("beat_")).toBe(true);
+    expect(original.storyNotes?.id.startsWith("sn_")).toBe(true);
+    await f.save({ kind: "edit-timeline", id: event.id, fields: { ...timeline, title: "Changed event" } });
+    await f.save({ kind: "edit-beat", id: outlineBeat.id, fields: { ...beat, summary: "Changed summary" } });
+    await f.save({ kind: "set-story-notes", fields: { ...notes, synopsis: "Changed synopsis" } });
+    const beforeOrder = required((await f.read()).data);
+    await f.save({ kind: "order-timeline", ids: [...original.timelineOrder].reverse() });
+    await f.save({ kind: "order-beats", ids: [...original.beatOrder].reverse() });
+    const afterOrder = required((await f.read()).data);
+    expect(afterOrder.timeline).toEqual(beforeOrder.timeline);
+    expect(afterOrder.beats).toEqual(beforeOrder.beats);
+    for (const [kind, id, key] of [
+      ["archive-worldbuilding", world.id, "worldbuilding"], ["archive-timeline", event.id, "timeline"], ["archive-beat", outlineBeat.id, "beats"]
+    ] as const) {
+      const prior = required((await f.read()).data?.[key].find((record) => record.id === id));
+      await f.save({ kind, id, archived: true });
+      const archived = required((await f.read()).data?.[key].find((record) => record.id === id));
+      expect(archived).toEqual({ ...prior, archived: true, revision: prior.revision + 1 });
+      expect((await f.save({ kind, id, archived: true })).status).toBe("unchanged");
+      await f.save({ kind, id, archived: false });
+      expect((await f.read()).data?.[key].find((record) => record.id === id)).toEqual({ ...prior, revision: prior.revision + 2 });
+    }
+    const reopen = await LibraryService.open({ storage: f.port, runtime: f.port });
+    const data = required((await reopen.planning.read(f.book.id)).data);
+    expect(data.timelineOrder).toEqual([...original.timelineOrder].reverse());
+    expect(data.beatOrder).toEqual([...original.beatOrder].reverse());
+    expect(data.timeline[0]).toMatchObject({ id: event.id, revision: 4, when: timeline.when, description: timeline.description });
+    expect(data.storyNotes).toMatchObject({ id: original.storyNotes?.id, revision: 2, synopsis: "Changed synopsis" });
+    expect(await Promise.all(paths.map((path) => f.port.readFile(path)))).toEqual(before);
+  });
+
+  test("notes clear retains identity and unknown own __proto__ at all depths; absent/empty clear has zero writes", async () => {
+    const f = await setup();
+    const commit = f.port.commitFile.bind(f.port);
+    let writes = 0;
+    f.port.commitFile = (...args) => { writes++; return commit(...args); };
+    expect((await f.save({ kind: "clear-story-notes" })).status).toBe("unchanged");
+    expect((await f.save({ kind: "set-story-notes", fields: { workingNotes: "", styleNotes: "", synopsis: "" } })).status).toBe("unchanged");
+    expect((await f.save({ kind: "order-timeline", ids: [] })).status).toBe("unchanged");
+    expect(writes).toBe(0);
+    await f.save({ kind: "set-story-notes", fields: notes });
+    await f.save({ kind: "create-timeline", fields: timeline });
+    const data = required((await f.read()).data);
+    const extension = JSON.parse('{"__proto__":{"literal":"  keep  ","nested":{"__proto__":{}}}}') as Record<string, unknown>;
+    await f.seed({ ...data, ...extension, storyNotes: { ...data.storyNotes, ...extension }, timeline: data.timeline.map((record) => ({ ...record, ...extension })) });
+    const before = required((await f.read()).data);
+    expect(Object.hasOwn(before, "__proto__")).toBe(true);
+    await f.save({ kind: "clear-story-notes" });
+    const cleared = required((await f.read()).data);
+    expect(cleared.storyNotes).toEqual({ ...required(before.storyNotes), workingNotes: "", styleNotes: "", synopsis: "", revision: 2 });
+    expect(Object.getOwnPropertyDescriptor(cleared, "__proto__")?.value).toEqual(Object.getOwnPropertyDescriptor(extension, "__proto__")?.value);
+    expect(cleared.timeline).toEqual(before.timeline);
+    const beforeNoop = await f.raw();
+    writes = 0;
+    expect((await f.save({ kind: "clear-story-notes" })).status).toBe("unchanged");
+    expect(writes).toBe(0);
+    expect(await f.raw()).toEqual(beforeNoop);
+    await f.save({ kind: "set-story-notes", fields: notes });
+    expect((await f.read()).data?.storyNotes).toMatchObject({ id: before.storyNotes?.id, revision: 3, ...notes });
+  });
+
+  test.each(["timeline", "beat"] as const)("%s retained limit includes archived; invalid identity/order/edit and overflow preserve bytes", async (kind) => {
+    const f = await setup();
+    await f.save(kind === "timeline" ? { kind: "create-timeline", fields: timeline } : { kind: "create-beat", fields: beat });
+    const data = required((await f.read()).data);
+    const key = kind === "timeline" ? "timeline" : "beats";
+    const orderKey = kind === "timeline" ? "timelineOrder" : "beatOrder";
+    const prefix = kind === "timeline" ? "tl" : "beat";
+    const template = required(data[key][0]);
+    const records = Array.from({ length: 200 }, (_, index) => ({ ...template, id: `${prefix}_${String(index).padStart(6, "0")}`, archived: true }));
+    await f.seed({ ...data, [key]: records, [orderKey]: records.map((record) => record.id) });
+    const before = await f.raw();
+    const id = required(records[0]).id;
+    const invalid: PlanningDraft[] = kind === "timeline" ? [
+      { kind: "create-timeline", fields: timeline }, { kind: "edit-timeline", id, fields: timeline },
+      { kind: "order-timeline", ids: [id, id] }, { kind: "archive-timeline", id: "tl_missing01", archived: false }
+    ] : [
+      { kind: "create-beat", fields: beat }, { kind: "edit-beat", id, fields: beat },
+      { kind: "order-beats", ids: [id, id] }, { kind: "archive-beat", id: "beat_missing01", archived: false }
+    ];
+    for (const draft of invalid) await expect(f.save(draft)).rejects.toThrow();
+    expect(await f.raw()).toEqual(before);
+    await f.seed({ ...data, [key]: [{ ...template, revision: Number.MAX_SAFE_INTEGER }], [orderKey]: [template.id] });
+    const overflow = await f.raw();
+    await expect(f.save({ kind: kind === "timeline" ? "archive-timeline" : "archive-beat", id: template.id, archived: true })).rejects.toThrow();
+    expect(await f.raw()).toEqual(overflow);
+  });
+
+  test("competing saves retain the complete exact draft in recovery and do not retry", async () => {
+    const f = await setup();
+    await f.save({ kind: "create-timeline", fields: timeline });
+    const base = await f.read();
+    const id = required(base.data?.timeline[0]).id;
+    const [first, second] = await Promise.all([
+      f.save({ kind: "edit-timeline", id, fields: { ...timeline, notes: "Winner" } }, base),
+      f.save({ kind: "edit-timeline", id, fields: { ...timeline, notes: "  Exact\r\nlosing draft  " } }, base)
+    ]);
+    expect(first.status).toBe("saved");
+    expect(second.status).toBe("conflict");
+    expect((await f.read()).data?.timeline[0]?.notes).toBe("Winner");
+    const list = await planningValue(f.api.listCopies(f.book.id, 0));
+    const copy = await planningValue(f.api.readCopy(f.book.id, required(list.names[0])));
+    expect(JSON.parse(copy.rawJson).timeline[0]).toMatchObject({ id, notes: "  Exact\r\nlosing draft  ", revision: 2 });
+    // Even a semantic no-op against the stale base remains stale.
+    expect((await f.save({ kind: "edit-timeline", id, fields: timeline }, base)).status).toBe("conflict");
+  });
+
+  test("unknown own data survives targeted edits and archive/order; every current semantic no-op writes no journal", async () => {
+    const f = await setup();
+    await f.save({ kind: "create-worldbuilding", fields });
+    await f.save({ kind: "create-timeline", fields: timeline });
+    await f.save({ kind: "create-beat", fields: beat });
+    const data = required((await f.read()).data);
+    const extra = JSON.parse('{"__proto__":{"literal":"keep"},"future":{"__proto__":{},"value":["  text  ",1.25]}}') as Record<string, unknown>;
+    await f.seed({ ...data, ...extra, worldbuilding: data.worldbuilding.map((record) => ({ ...record, ...extra })),
+      timeline: data.timeline.map((record) => ({ ...record, ...extra })), beats: data.beats.map((record) => ({ ...record, ...extra })) });
+    const world = required(data.worldbuilding[0]); const event = required(data.timeline[0]); const outlineBeat = required(data.beats[0]);
+    await f.save({ kind: "edit-worldbuilding", id: world.id, fields: { ...fields, notes: "Changed" } });
+    await f.save({ kind: "edit-timeline", id: event.id, fields: { ...timeline, notes: "Changed" } });
+    await f.save({ kind: "edit-beat", id: outlineBeat.id, fields: { ...beat, notes: "Changed" } });
+    await f.save({ kind: "archive-timeline", id: event.id, archived: true });
+    await f.save({ kind: "create-timeline", fields: { ...timeline, title: "New event" } });
+    const ordered = required((await f.read()).data);
+    await f.save({ kind: "order-timeline", ids: [...ordered.timelineOrder].reverse() });
+    expect((await f.read()).data?.timelineOrder).toEqual([...ordered.timelineOrder].reverse());
+    await f.save({ kind: "archive-timeline", id: event.id, archived: false });
+    const current = required((await f.read()).data);
+    for (const record of [current, current.worldbuilding[0], current.timeline[0], current.beats[0]]) {
+      expect(Object.getOwnPropertyDescriptor(record, "__proto__")?.value).toEqual({ literal: "keep" });
+      expect(record?.future).toEqual(extra.future);
+    }
+    const raw = await f.raw();
+    let writes = 0; const commit = f.port.commitFile.bind(f.port);
+    f.port.commitFile = (...args) => { writes++; return commit(...args); };
+    const noops: PlanningDraft[] = [
+      { kind: "edit-worldbuilding", id: world.id, fields: { ...fields, notes: "Changed" } },
+      { kind: "edit-timeline", id: event.id, fields: { ...timeline, notes: "Changed" } },
+      { kind: "edit-beat", id: outlineBeat.id, fields: { ...beat, notes: "Changed" } },
+      { kind: "archive-worldbuilding", id: world.id, archived: false },
+      { kind: "archive-timeline", id: event.id, archived: false }, { kind: "archive-beat", id: outlineBeat.id, archived: false },
+      { kind: "order-timeline", ids: current.timelineOrder }, { kind: "order-beats", ids: current.beatOrder }
+    ];
+    for (const draft of noops) expect((await f.save(draft)).status).toBe("unchanged");
+    expect(writes).toBe(0); expect(await f.raw()).toEqual(raw);
+  });
+
+  test("handler also rejects a self-consistent response for a different operation", async () => {
+    const f = await setup();
+    const base = await f.read();
+    const save = f.library.planning.save.bind(f.library.planning);
+    let calls = 0;
+    f.library.planning.save = async (_input, attempt) => {
+      calls++;
+      return save({ ...envelope(base), draft: { kind: "create-beat", fields: beat } }, attempt);
+    };
+    const handler = planningHandler(() => f.library);
+    expect(await handler("save", { ...envelope(base), draft: { kind: "create-timeline", fields: timeline } })).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(calls).toBe(1);
+  });
+
+  test.each(["corrupt", "future"] as const)("%s source is unavailable and never reset by new variants", async (scenario) => {
+    const f = await setup();
+    await f.save({ kind: "create-beat", fields: beat });
+    const base = await f.read();
+    await f.port.commitFile(sidecarPath(f.book.id, "planning"), encoder.encode(scenario === "corrupt" ? "{bad" : JSON.stringify({ ...base.data, schemaVersion: 2 })), { kind: "any" });
+    const raw = await f.raw();
+    await expect(f.read()).rejects.toThrow();
+    await expect(f.save({ kind: "set-story-notes", fields: notes }, base)).rejects.toThrow();
+    expect(await f.raw()).toEqual(raw);
+  });
+
+  test.each(["create", "edit", "notes", "clear", "order", "archive", "restore", "noop"] as const)("%s response must match entire intended operation, not merely hash/revision", async (operation) => {
+    const f = await setup();
+    await f.save({ kind: "create-timeline", fields: timeline });
+    await f.save({ kind: "create-timeline", fields: { ...timeline, title: "Other" } });
+    await f.save({ kind: "set-story-notes", fields: notes });
+    const initial = required((await f.read()).data);
+    const id = required(initial.timeline[0]).id;
+    if (operation === "restore") await f.save({ kind: "archive-timeline", id, archived: true });
+    const base = await f.read();
+    const draft: PlanningDraft = operation === "create" ? { kind: "create-beat", fields: beat }
+      : operation === "edit" ? { kind: "edit-timeline", id, fields: { ...timeline, notes: "Changed" } }
+      : operation === "notes" ? { kind: "set-story-notes", fields: { ...notes, synopsis: "Changed" } }
+      : operation === "clear" ? { kind: "clear-story-notes" }
+      : operation === "order" ? { kind: "order-timeline", ids: [...initial.timelineOrder].reverse() }
+      : operation === "noop" ? { kind: "edit-timeline", id, fields: timeline }
+      : { kind: "archive-timeline", id, archived: operation === "archive" };
+    const request = { ...envelope(base), draft };
+    let calls = 0;
+    const handler = planningHandler(() => f.library);
+    const foreign = createPlanningApi(async (kind, payload) => {
+      calls++;
+      const wrong = await planningValue(handler(kind, payload)) as SidecarSave<Planning>;
+      if (wrong.status === "conflict") throw new Error("Unexpected conflict");
+      const current = required(wrong.current.data);
+      // Keep this call's real binding and intent fields, but change unrelated data and self-hash it.
+      current.worldbuilding = [{ id: "wb_foreign01", bookId: f.book.id, revision: 1, archived: false, kind: "worldbuilding", ...fields }];
+      wrong.current.baselineJson = JSON.stringify(current);
+      wrong.current.source = { kind: "sha256", revision: current.revision, value: await f.port.sha256(encoder.encode(wrong.current.baselineJson)) };
+      return { ok: true, data: wrong };
+    });
+    await expect(foreign.save(request)).rejects.toThrow("exact intended operation");
+    expect(calls).toBe(1);
+  });
+
+  test("transport rejects dropped empty own __proto__, wrong fields, foreign kinds and strict extras", async () => {
+    const f = await setup();
+    await f.save({ kind: "create-beat", fields: beat });
+    const data = required((await f.read()).data);
+    await f.seed({ ...data, ...JSON.parse('{"__proto__":{}}') });
+    const base = await f.read();
+    const request = { ...envelope(base), draft: { kind: "clear-story-notes" as const } };
+    const handler = planningHandler(() => f.library);
+    const bad = createPlanningApi(async (kind, payload) => {
+      const reply = await planningValue(handler(kind, payload)) as SidecarSave<Planning>;
+      if (reply.status !== "unchanged") throw new Error("Expected unchanged");
+      Reflect.deleteProperty(required(reply.current.data), "__proto__");
+      return { ok: true, data: reply };
+    });
+    await expect(bad.save(request)).rejects.toThrow();
+    for (const draft of [
+      { kind: "edit-timeline", id: required(data.beats[0]).id, fields: timeline },
+      { kind: "create-beat", fields: { ...beat, extra: "not allowed" } },
+      { kind: "create-timeline", fields: { ...timeline, when: "😀".repeat(101) } },
+      { kind: "archive-beat", id: required(data.beats[0]).id, archived: true, path: "elsewhere" }
+    ]) expect(await handler("save", { ...envelope(base), draft })).toMatchObject({ ok: false, error: { outcome: "refused" } });
+  });
+
+  const operations = ["create-world", "edit-world", "create-timeline", "edit-timeline", "create-beat", "edit-beat",
+    "create-notes", "edit-notes", "clear-notes", "order-timeline", "order-beats", "archive-world", "restore-world",
+    "archive-timeline", "restore-timeline", "archive-beat", "restore-beat"] as const;
+  test.each(operations)("%s verifies canonical changed bytes and full request-bound recovery at both boundaries", async (operation) => {
+    const f = await setup();
+    await f.save({ kind: "create-worldbuilding", fields });
+    await f.save({ kind: "create-timeline", fields: timeline });
+    await f.save({ kind: "create-timeline", fields: { ...timeline, title: "Second event" } });
+    await f.save({ kind: "create-beat", fields: beat });
+    await f.save({ kind: "create-beat", fields: { ...beat, title: "Second beat" } });
+    if (operation !== "create-notes") await f.save({ kind: "set-story-notes", fields: notes });
+    const initial = required((await f.read()).data);
+    const worldId = required(initial.worldbuilding[0]).id;
+    const eventId = required(initial.timeline[0]).id;
+    const beatId = required(initial.beats[0]).id;
+    const archiveKind = operation.endsWith("world") ? "archive-worldbuilding" : operation.endsWith("timeline") ? "archive-timeline" : "archive-beat";
+    const archiveId = operation.endsWith("world") ? worldId : operation.endsWith("timeline") ? eventId : beatId;
+    if (operation.startsWith("restore")) await f.save({ kind: archiveKind, id: archiveId, archived: true });
+    await f.seed({ ...required((await f.read()).data), ...JSON.parse('{"__proto__":{"keep":[]},"future":{"__proto__":{"nested":"retained"}}}') });
+    const base = await f.read();
+    const draft: PlanningDraft = operation === "create-world" ? { kind: "create-worldbuilding", fields }
+      : operation === "edit-world" ? { kind: "edit-worldbuilding", id: worldId, fields: { ...fields, notes: "Changed" } }
+      : operation === "create-timeline" ? { kind: "create-timeline", fields: timeline }
+      : operation === "edit-timeline" ? { kind: "edit-timeline", id: eventId, fields: { ...timeline, notes: "Changed" } }
+      : operation === "create-beat" ? { kind: "create-beat", fields: beat }
+      : operation === "edit-beat" ? { kind: "edit-beat", id: beatId, fields: { ...beat, notes: "Changed" } }
+      : operation === "create-notes" || operation === "edit-notes" ? { kind: "set-story-notes", fields: { ...notes, synopsis: "Changed" } }
+      : operation === "clear-notes" ? { kind: "clear-story-notes" }
+      : operation === "order-timeline" ? { kind: "order-timeline", ids: [...initial.timelineOrder].reverse() }
+      : operation === "order-beats" ? { kind: "order-beats", ids: [...initial.beatOrder].reverse() }
+      : { kind: archiveKind, id: archiveId, archived: operation.startsWith("archive") };
+    const request = { ...envelope(base), draft };
+    const result = await planningValue(f.api.save(request));
+    if (result.status !== "saved") throw new Error("Expected a real changed save.");
+    expect(result.current.baselineJson).toBe(`${JSON.stringify(result.current.data, null, 2)}\n`);
+    const originalSave = f.library.planning.save.bind(f.library.planning);
+    for (const format of ["compact", "reordered"] as const) {
+      const changeSerialization = async (forged: SidecarSave<Planning>) => {
+        if (forged.status !== "saved") throw new Error("Expected a real changed save");
+        const data = required(forged.current.data);
+        forged.current.baselineJson = format === "compact" ? JSON.stringify(data)
+          : `${JSON.stringify(Object.fromEntries(Object.entries(data).reverse()), null, 2)}\n`;
+        forged.current.source = { kind: "sha256", revision: data.revision, value: await f.port.sha256(encoder.encode(forged.current.baselineJson)) };
+        return forged;
+      };
+      await f.seed(base.data);
+      let calls = 0;
+      f.library.planning.save = async (input, attempt) => {
+        calls++;
+        return changeSerialization(await originalSave(input, attempt));
+      };
+      expect(await planningHandler(() => f.library)("save", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+      expect(calls).toBe(1);
+      f.library.planning.save = originalSave;
+      await f.seed(base.data);
+      const handler = planningHandler(() => f.library);
+      const transport = createPlanningApi(async (kind, payload) => ({ ok: true,
+        data: await changeSerialization(await planningValue(handler(kind, payload)) as SidecarSave<Planning>) }));
+      await expect(transport.save(request)).rejects.toThrow("serialization");
+    }
+    f.library.planning.save = originalSave;
+    const conflict = await planningValue(f.api.save(request));
+    if (conflict.status !== "conflict") throw new Error("Expected the stale original request to preserve a copy.");
+    const copy = await planningValue(f.api.readCopy(f.book.id, required(conflict.savedAs.split("/").at(-1))));
+    expect(copy.rawJson).toBe(conflict.preserved.rawJson);
+    expect(copy.hash).toBe(conflict.preserved.hash);
+    expect(Object.hasOwn(JSON.parse(copy.rawJson), "__proto__")).toBe(true);
+    const replay = createPlanningApi(async () => ({ ok: true, data: conflict }));
+    await expect(replay.save(request)).rejects.toThrow("different save attempt");
+    const different = { ...envelope(base), draft: { kind: "create-beat" as const, fields: { ...beat, title: "Different submitted draft" } } };
+    await expect(replay.save(different)).rejects.toThrow();
+    // Match the fresh token while substituting an authentic receipt for a different intent.
+    const handler = planningHandler(() => f.library);
+    await expect(createPlanningApi(async (kind, payload) => {
+      Object.assign(payload as object, request);
+      return handler(kind, payload);
+    }).save(different)).rejects.toThrow("exact intended operation");
+    let replayCalls = 0;
+    f.library.planning.save = async (_input, attempt) => { replayCalls++; return originalSave(request, attempt); };
+    expect(await planningHandler(() => f.library)("save", different)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(replayCalls).toBe(1);
+  });
+
+  test("conflict intent digest does not replace complete copy verification, and named-copy replacement stays uncertain", async () => {
+    const f = await setup();
+    const base = await f.read();
+    await f.save({ kind: "create-beat", fields: beat });
+    const request = { ...envelope(base), draft: { kind: "create-timeline" as const, fields: timeline } };
+    const handler = planningHandler(() => f.library);
+    const alter = async (rawJson: string) => {
+      const parsed = JSON.parse(rawJson);
+      parsed.timeline[0].notes = "Different copy content despite unchanged request digest and attempt";
+      const raw = `${JSON.stringify(parsed, null, 2)}\n`;
+      return { rawJson: raw, hash: await f.port.sha256(encoder.encode(raw)) };
+    };
+    await expect(createPlanningApi(async (kind, payload) => {
+      const reply = await planningValue(handler(kind, payload)) as SidecarSave<Planning>;
+      if (reply.status !== "conflict") throw new Error("Expected conflict");
+      reply.preserved = await alter(reply.preserved.rawJson);
+      return { ok: true, data: reply };
+    }).save(request)).rejects.toThrow("exact intended operation");
+    const readCopy = f.library.planningRecovery.read.bind(f.library.planningRecovery);
+    let copyReads = 0;
+    f.library.planningRecovery.read = async (input) => {
+      copyReads++;
+      const copy = await readCopy(input);
+      return { ...copy, ...await alter(copy.rawJson) };
+    };
+    expect(await planningHandler(() => f.library)("save", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(copyReads).toBe(1);
+  });
+
+  test("equivalent clear and set intents cannot replay a recovery receipt even when their projected documents match", async () => {
+    const f = await setup();
+    await f.save({ kind: "set-story-notes", fields: notes });
+    const base = await f.read();
+    await f.save({ kind: "create-beat", fields: beat });
+    const request = { ...envelope(base), draft: { kind: "set-story-notes" as const, fields: { workingNotes: "", styleNotes: "", synopsis: "" } } };
+    const handler = planningHandler(() => f.library);
+    await expect(createPlanningApi(async (kind, payload) => handler(kind, { ...payload as object, draft: { kind: "clear-story-notes" } }))
+      .save(request)).rejects.toThrow("exact intended operation");
+  });
+
+  test("pre-publication output overflow refuses with zero commits and permits a shortened explicit save", async () => {
+    const f = await setup();
+    await f.save({ kind: "create-timeline", fields: { ...timeline, description: "" } });
+    await f.seed({ ...required((await f.read()).data), futurePayload: "x".repeat(2_499_000) });
+    const base = await f.read(); const before = await f.raw();
+    const id = required(base.data?.timeline[0]).id;
+    let commits = 0; const commit = f.port.commitFile.bind(f.port);
+    f.port.commitFile = (...args) => { commits++; return commit(...args); };
+    const request = { ...envelope(base), draft: { kind: "edit-timeline" as const, id, fields: { ...timeline, description: "Y".repeat(2_000) } } };
+    expect(await f.api.save(request)).toMatchObject({ ok: false, error: { code: "invalid", outcome: "refused", message: expect.stringContaining("2,500,000") } });
+    expect(commits).toBe(0); expect(await f.raw()).toEqual(before);
+    expect((await planningValue(f.api.save({ ...request, draft: { ...request.draft, fields: { ...request.draft.fields, description: "Short" } } }))).status).toBe("saved");
+    expect((await f.read()).data?.timeline[0]?.description).toBe("Short");
+  });
+
+  const creations: { prefix: string; draft: PlanningDraft }[] = [
+    { prefix: "wb", draft: { kind: "create-worldbuilding", fields } },
+    { prefix: "tl", draft: { kind: "create-timeline", fields: timeline } },
+    { prefix: "beat", draft: { kind: "create-beat", fields: beat } },
+    { prefix: "sn", draft: { kind: "set-story-notes", fields: notes } }
+  ];
+  test.each(creations)("$prefix identical stale creates cannot replay an earlier durable publication", async ({ prefix, draft }) => {
+    const f = await setup();
+    const base = await f.read();
+    await f.save({ kind: "create-beat", fields: beat });
+    const request = { ...envelope(base), draft };
+    const first = await planningValue(f.api.save(request));
+    const second = await planningValue(f.api.save(request));
+    if (first.status !== "conflict" || second.status !== "conflict") throw new Error("Expected stale copies");
+    const document = (result: typeof first) => JSON.parse(result.preserved.rawJson) as Planning;
+    const createdId = (data: Planning) => prefix === "wb" ? data.worldbuilding[0]?.id
+      : prefix === "tl" ? data.timeline[0]?.id : prefix === "beat" ? data.beats[0]?.id : data.storyNotes?.id;
+    expect(first.attempt?.requestId).not.toBe(second.attempt?.requestId);
+    expect(first.attempt?.publicationId).not.toBe(second.attempt?.publicationId);
+    expect(createdId(document(first))).toBe(`${prefix}_${required(first.attempt).publicationId}`);
+    expect(createdId(document(second))).not.toBe(createdId(document(first)));
+    for (const receipt of [first, second]) {
+      const copy = await planningValue(f.api.readCopy(f.book.id, required(receipt.savedAs.split("/").at(-1))));
+      expect(copy.rawJson).toBe(receipt.preserved.rawJson);
+      expect(JSON.parse(copy.rawJson).conflictMetadata.attempt).toEqual(receipt.attempt);
+    }
+    await expect(createPlanningApi(async () => ({ ok: true, data: first })).save(request)).rejects.toThrow("different save attempt");
+
+    // A real later write happens, but the service returns the older authentic copy instead.
+    const save = f.library.planning.save.bind(f.library.planning);
+    const later: SidecarSave<Planning>[] = [];
+    f.library.planning.save = async (input, attempt) => { later.push(await save(input, attempt)); return first; };
+    const handler = planningHandler(() => f.library);
+    // Reusing the client token does not reuse the host's independently issued publication identity.
+    expect(await handler("save", { ...request, attemptId: required(first.attempt).requestId }))
+      .toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(later).toHaveLength(1);
+    const third = required(later[0]);
+    if (third.status !== "conflict") throw new Error("Expected third durable copy");
+    expect(third.attempt?.requestId).toBe(first.attempt?.requestId);
+    expect(third.attempt?.publicationId).not.toBe(first.attempt?.publicationId);
+    expect(createdId(document(third))).not.toBe(createdId(document(first)));
+    expect((await planningValue(f.api.readCopy(f.book.id, required(third.savedAs.split("/").at(-1))))).rawJson).toBe(third.preserved.rawJson);
+    expect((await f.read()).data?.beats).toHaveLength(1);
+
+    // Echoing the new binding cannot make the old created identity match this invocation.
+    let copyReads = 0;
+    const readCopy = f.library.planningRecovery.read.bind(f.library.planningRecovery);
+    f.library.planningRecovery.read = async (input) => { copyReads++; return readCopy(input); };
+    f.library.planning.save = async (_input, attempt) => {
+      const replay = structuredClone(first);
+      replay.attempt = required(attempt);
+      const old = JSON.parse(replay.preserved.rawJson);
+      old.conflictMetadata.attempt = attempt;
+      replay.preserved.rawJson = `${JSON.stringify(old, null, 2)}\n`;
+      replay.preserved.hash = await f.port.sha256(encoder.encode(replay.preserved.rawJson));
+      return replay;
+    };
+    expect(await handler("save", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(copyReads).toBe(0);
+    f.library.planning.save = save;
+    await expect(createPlanningApi(async (operation, payload) => {
+      const reply = await planningValue(handler(operation, payload)) as SidecarSave<Planning>;
+      if (reply.status !== "conflict") throw new Error("Expected current conflict");
+      const id = required(createdId(document(reply)));
+      // Keep metadata/binding valid and update every order reference as well as the record ID.
+      reply.preserved.rawJson = reply.preserved.rawJson.replaceAll(id, `${prefix}_${globalThis.crypto.randomUUID()}`);
+      reply.preserved.hash = await f.port.sha256(encoder.encode(reply.preserved.rawJson));
+      return { ok: true, data: reply };
+    }).save(request)).rejects.toThrow("exact intended operation");
+  });
+
+  test.each(["draft", "binding"] as const)("handler pins validation state while a service mutates its pending %s", async (scenario) => {
+    const f = await setup();
+    const base = await f.read();
+    const request = { ...envelope(base), draft: { kind: "create-timeline" as const, fields: timeline } };
+    const save = f.library.planning.save.bind(f.library.planning);
+    let entered!: () => void;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { entered = resolve; });
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    let mutate!: () => void;
+    let calls = 0;
+    f.library.planning.save = async (input, attempt) => {
+      calls++;
+      const submitted = input as PlanningSaveRequest;
+      mutate = () => {
+        if (scenario === "binding") required(attempt).publicationId = globalThis.crypto.randomUUID();
+        else submitted.draft = { kind: "create-timeline", fields: { ...timeline, title: "Different pending intent" } };
+      };
+      entered();
+      await wait;
+      return save(submitted, attempt);
+    };
+    const response = planningHandler(() => f.library)("save", request);
+    await pending;
+    mutate();
+    expect(request.draft.fields.title).toBe(timeline.title);
+    release();
+    expect(await response).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(calls).toBe(1);
+    expect((await f.read()).data?.timeline).toHaveLength(1);
+  });
+
+  test("goal receipts use fresh bindings and a pending service cannot change the validated target", async () => {
+    const f = await setup();
+    const base = await planningValue(f.api.readGoal(f.book.id));
+    const request = { ...envelope(base), draft: { kind: "set-goal" as const, targetWords: 100 } };
+    const first = await planningValue(f.api.saveGoal(request));
+    await expect(createPlanningApi(async () => ({ ok: true, data: first })).saveGoal(request)).rejects.toThrow("different save attempt");
+    const save = f.library.goals.save.bind(f.library.goals);
+    f.library.goals.save = async (input, attempt) => {
+      await Promise.resolve();
+      const submitted = input as typeof request;
+      submitted.draft.targetWords = 200;
+      return save(submitted, attempt);
+    };
+    expect(await planningHandler(() => f.library)("saveGoal", request)).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+    expect(request.draft.targetWords).toBe(100);
+  });
+
+  test.each([1, 1_000_000_000])("sparse unknown transport arrays of length %s are refused before serialization", async (length) => {
+    const f = await setup();
+    await f.save({ kind: "create-beat", fields: beat });
+    await f.seed({ ...required((await f.read()).data), future: [] });
+    const base = await f.read();
+    const malformed = structuredClone(base);
+    required(malformed.data).future = Array(length);
+    await expect(createPlanningApi(async () => ({ ok: true, data: malformed })).read(f.book.id)).rejects.toThrow();
+    f.library.planning.read = async () => malformed;
+    expect(await planningHandler(() => f.library)("read", { bookId: f.book.id })).toMatchObject({ ok: false, error: { outcome: "uncertain" } });
+  });
+});

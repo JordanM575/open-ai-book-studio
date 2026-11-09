@@ -22,6 +22,51 @@ a renderer write path. Preserve the unchecked task states until those complete j
 
 ## Phase 1 — Resolve public format and save decisions
 
+### W08 manual planning candidate — November 8, 2026 (wave 19)
+
+The existing checked `PlanningService.save` union and `PlanningApi.save` now support timeline
+create/edit, notes set/edit/clear, beats create/edit, explicit retained-ID ordering and reversible
+worldbuilding/timeline/beat archive/restore. `PlanningPanel` mounts these controls through the same
+generic host wiring and checked editor/navigation guard. Archive requires confirmation. Confirmed
+creation keeps the open editor attached to its new identity. Notes clear blanks the known fields,
+retaining identity and unknown data; absent clear remains a no-write operation. API correspondence
+checks the complete intended document, including unknown own `__proto__` data and unrelated records.
+
+Dedicated synthetic evidence lives in `packages/core/tests/planning/manual-planning.test.ts` and
+`apps/desktop/tests/manual-planning.test.tsx`: real Library/handler/filesystem mounted journeys,
+save/reopen/reorder/archive/restore, exact fields on stale/uncertain/validation failure, retained
+limits, no-op/no-journal, corrupt/future refusal, book/view ABA, and unchanged Bible/chapter bytes.
+This is implementation and automated synthetic evidence only. The coordinator narrowed the three
+older worldbuilding-only assertions and reconciled the FORMAT intent inventory/notes-clear semantics;
+workspace and strict core integration typechecks now pass. The original focused set passed 197 tests
+across nine files (816 assertions). The review follow-through adds complete intent-bound recovery
+receipts with named-copy verification, canonical changed-save correspondence, proven pre-publication
+output refusal with shorten-and-save recovery, dense-array response validation and distinguishable
+duplicate record/control labels. The expanded planning/goal regression set passes 251 tests across
+ten files (1,187 assertions), including real Library/handler and synthetic mounted paths.
+
+The subsequent review correction binds transported saves to independent client-request and host-
+publication UUIDs, reconstructs created identities, retains complete named-copy verification and
+separates handler validation snapshots from service submissions. Identical stale creates across all
+four generated kinds reject old receipts, including after an actual later write. Structural
+kind/position/action prefixes disambiguate authored action-like and generated-label titles. The
+expanded focused set passes **260 tests / 1,502 assertions**, with workspace, strict core and strict
+desktop typechecks and touched-file lint passing. Prior original probes/reports remain historical
+evidence; this correction still requires fresh independent review and exact-head broad gates.
+
+The later recovery-panel correction adds accurate fresh-editor instructions and decoded read-only
+fields for timeline events, outline beats, explicit orders and story notes, retaining world details,
+goals, archived identities and the complete verified JSON. Mounted filesystem tests actually re-enter
+the inspected fields and restore inspected orders through new checked edits, preserving a competing
+saved record and the original recovery copy. Historical copies remain inspectable. Fresh independent
+and exact-head gates, built new-intent adapter journeys and native accessibility remain required.
+
+No task checkbox is closed by this candidate: fresh exact-head independent review, integrated broad
+gates, native theme/viewport/keyboard/accessibility acceptance and integrated host/adapter gates remain. The new mounted
+tests exercise the existing handler directly; native IPC/preload acceptance for the new intents
+remains with the coordinator. RF-01/RF-02 still retain series, relationships, templates, complete
+Bible fields and generated planning. No provider-quality, device or release evidence is claimed.
+
 ### W08 bounded vertical integration — November 7, 2026
 
 Worldbuilding create/edit/reopen is now mounted in the workspace through validated desktop IPC and

@@ -6,6 +6,7 @@
   },
   "include": [
     "./integration.test.ts",
+    "./manual-planning.test.ts",
     "../../../../apps/web/tests/storage/planning-integration.test.ts",
     "../../../../apps/web/tests/storage/fake-indexeddb.d.ts"
   ],

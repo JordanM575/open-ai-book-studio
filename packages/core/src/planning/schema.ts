@@ -18,19 +18,22 @@ export const recordIdSchema = (prefix: "wb" | "tl" | "sn" | "beat" | "ann" | "co
 
 const recordFields = { bookId: bookIdSchema, revision: revisionSchema, archived: z.boolean() };
 export const worldbuildingFields = { name, category: shortText, description: prose, notes: prose };
+export const timelineFields = { title: name, when: shortText, description: prose, notes: prose };
+export const beatFields = { title: name, summary: prose, notes: prose };
+export const storyNotesFields = { workingNotes: prose, styleNotes: prose, synopsis: prose };
 export const worldbuildingSchema = z.looseObject({
   ...recordFields, id: recordIdSchema("wb"), kind: z.literal("worldbuilding"), ...worldbuildingFields
 });
 export const timelineSchema = z.looseObject({
   ...recordFields, id: recordIdSchema("tl"), kind: z.literal("timeline"),
-  title: name, when: shortText, description: prose, notes: prose
+  ...timelineFields
 });
 export const beatSchema = z.looseObject({
-  ...recordFields, id: recordIdSchema("beat"), kind: z.literal("beat"), title: name, summary: prose, notes: prose
+  ...recordFields, id: recordIdSchema("beat"), kind: z.literal("beat"), ...beatFields
 });
 export const storyNotesSchema = z.looseObject({
   ...recordFields, id: recordIdSchema("sn"), kind: z.literal("story-notes"),
-  workingNotes: prose, styleNotes: prose, synopsis: prose
+  ...storyNotesFields
 });
 
 export const planningSchema = z.looseObject({
@@ -83,11 +86,24 @@ export function serializeDocument(data: SidecarDocument, limit = SIDECAR_BYTES):
 export function parseJson(bytes: Uint8Array, limit = SIDECAR_BYTES): unknown {
   try {
     const text = decoder.decode(checkBytes(bytes, limit));
-    // Walk string literals as whole tokens, so numeric-looking authored text is never interpreted.
-    // This is portable to hosts without JSON.parse's newer reviver source-context argument.
-    for (const match of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g)) {
+    // Skip strings with native quote searches rather than a per-character regexp repetition.
+    // Large unknown string fields still get every byte/number check at each trust boundary.
+    // JSON.parse below owns syntax validation, including malformed escapes/unterminated strings.
+    const tokens = /"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+    for (let match = tokens.exec(text); match !== null; match = tokens.exec(text)) {
       const token = match[1];
-      if (token === undefined) continue;
+      if (token === undefined) {
+        let quote = text.indexOf('"', tokens.lastIndex);
+        while (quote !== -1) {
+          let before = quote - 1;
+          while (text.charCodeAt(before) === 92) before--;
+          if ((quote - 1 - before) % 2 === 0) break;
+          quote = text.indexOf('"', quote + 1);
+        }
+        if (quote === -1) break;
+        tokens.lastIndex = quote + 1;
+        continue;
+      }
       const value = Number(token);
       if (!Number.isFinite(value) || Object.is(value, -0) || decimalValue(token) !== decimalValue(String(value))) {
         throw new LibraryError("format", "The sidecar contains a JSON number this version cannot preserve. Nothing was written.");
