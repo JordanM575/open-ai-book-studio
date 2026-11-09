@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { aggregateCampaignCoverage } from "../../src/review/campaign-coverage";
 import { requireCampaignPlan, type CampaignPlan } from "../../src/review/campaign-planner";
 import { canonicalJson } from "../../src/review/contract";
@@ -186,6 +187,43 @@ describe("conditional continuation token grammar", () => {
     expect((parsed.root as unknown[]).length).toBe(CONTINUATION_TOKEN_LIMITS.tokens - 2);
     tokens.push({ t: "]" });
     expect(() => inspectContinuationTokens(tokens, "checkpoint")).toThrow(ContinuationTokenError);
+  }, 60_000);
+
+  test("resolves a real expanded original at exactly 134,217,728 bytes and refuses plus one before any resolver call", async () => {
+    const limit = CONTINUATION_TOKEN_LIMITS.expandedBytes;
+    expect(limit).toBe(134_217_728);
+    const digestOf = (value: string) => createHash("sha256").update('"').update(value).update('"').digest("hex");
+    const tokensFor = (value: string): ContinuationToken[] => [
+      { t: "O" }, { t: "K", value: "stages" }, { t: "A" }, { t: "O" },
+      { t: "K", value: "envelope" }, { t: "O" }, { t: "K", value: "prompt" },
+      { t: "H", kind: "stage-prompt", bytes: value.length + 2, digest: digestOf(value) },
+      { t: "}" }, { t: "}" }, { t: "]" }, { t: "}" }
+    ];
+    {
+      // Reviewer-sized hole: a 134,217,689-character string has canonical length 134,217,691;
+      // with the 37-byte plan wrapper the resolved content is exactly the 128 MiB limit.
+      const exactValue = "x".repeat(134_217_689);
+      expect(exactValue.length + 2).toBe(134_217_691);
+      let exactCalls = 0;
+      const resolved = await resolveContinuationTokens(tokensFor(exactValue), "plan", () => { exactCalls++; return exactValue; });
+      expect(exactCalls).toBe(1);
+      expect(resolved.contentBytes).toBe(limit);
+      expect(resolved.holeBytes).toBe(134_217_691);
+      expect(resolved.holes).toBe(1);
+    }
+    {
+      const plusValue = "x".repeat(134_217_690);
+      expect(plusValue.length + 2).toBe(134_217_692);
+      let plusCalls = 0;
+      let plusCode = "accepted";
+      try {
+        await resolveContinuationTokens(tokensFor(plusValue), "plan", () => { plusCalls++; return plusValue; });
+      } catch (error) {
+        plusCode = error instanceof ContinuationTokenError ? error.code : (error as Error).name;
+      }
+      expect(plusCode).toBe("too-large");
+      expect(plusCalls).toBe(0);
+    }
   }, 60_000);
 
   test("refuses a projected expanded plan before requesting any external value", async () => {

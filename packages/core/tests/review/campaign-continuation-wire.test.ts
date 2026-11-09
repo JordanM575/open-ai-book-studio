@@ -300,6 +300,45 @@ describe("continuation wire inspection and structural resolution", () => {
     }
   });
 
+  test("enforces the combined 64-segment manifest limit across plan and checkpoint streams", () => {
+    const ownerBookId = "book_123456";
+    const campaignId = "campaign-synthetic";
+    const planDigest = "a".repeat(64);
+    const expected = { ownerBookId, campaignId };
+    const refs = (count: number, offset: number) => Array.from({ length: count }, (_, index) => ({
+      sequence: index, firstToken: index, tokenCount: 1,
+      id: `s-${(offset + index).toString(16).padStart(64, "0")}`, revision: 1, bytes: 100, sha256: "c".repeat(64)
+    }));
+    const descriptorFor = (stream: "plan" | "checkpoint", count: number, offset: number, contentDigest: string) => ({
+      stream, tokenCount: count, segmentBytes: count * 100, contentDigest, segments: refs(count, offset)
+    });
+    const manifestFor = (planCount: number, checkpointCount: number) => ({
+      schemaVersion: 2, kind: "review-campaign", owner: { bookId: ownerBookId }, id: campaignId,
+      revision: 1, base: { kind: "absent", revision: 0 }, createdAt: timestamp, updatedAt: timestamp,
+      publicationId: "op-synthetic", plannerSemantics: "review-campaign-planner-v1", planDigest,
+      plan: descriptorFor("plan", planCount, 0, planDigest),
+      checkpoint: checkpointCount === 0 ? null : descriptorFor("checkpoint", checkpointCount, planCount, "d".repeat(64)),
+      counts: { sources: 0, selectedSpans: 0, stages: 0, rangeStages: 0, synthesisStages: 0,
+        dependencyEdges: 0, selectedUtf16: 0, selectedUtf8: 0, resolvedPlanBytes: 0, holes: 0 },
+      plannedUnionDigest: "b".repeat(64),
+      segmentCount: planCount + checkpointCount, segmentBytes: (planCount + checkpointCount) * 100,
+      tokenCount: planCount + checkpointCount
+    });
+    const code = (planCount: number, checkpointCount: number): string => {
+      try {
+        const result = readContinuationManifest(encoded(manifestFor(planCount, checkpointCount)), expected);
+        expect(result.plan.segments.length + (result.checkpoint?.segments.length ?? 0)).toBe(planCount + checkpointCount);
+        return "accepted";
+      } catch (error) {
+        return error instanceof ContinuationTokenError ? error.code : (error as Error).name;
+      }
+    };
+    expect(code(64, 0)).toBe("accepted");
+    expect(code(65, 0)).not.toBe("accepted");
+    expect(code(32, 32)).toBe("accepted");
+    expect(code(32, 33)).toBe("too-large");
+  });
+
   test("enforces real manifest and complete intent byte boundaries, including unknown fields", async () => {
     const f = await fixture();
     const empty = { ...f.manifest, note: "" };

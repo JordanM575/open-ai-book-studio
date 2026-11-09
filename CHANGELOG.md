@@ -17,6 +17,11 @@ Update the `Unreleased` section before every commit.
   partial pure codec work: source validation, compatible replanning, checked storage/recovery, host
   integration, adapter qualification and independent review remain open. 039 T014/T017/T018 and
   038 T022 stay unchecked.
+- Add committed boundary fixtures for the combined 64-segment manifest limit (64 accepted, 65
+  refused, including 32+32 and 32+33 plan/checkpoint splits through `readContinuationManifest`)
+  and for a real expanded original at exactly 134,217,728 bytes with plus one refused before any
+  resolver call. This is test-only evidence; no production code changed and 039 T014/T017/T018
+  and 038 T022 stay unchecked.
 
 ### Markdown folder export contract
 
