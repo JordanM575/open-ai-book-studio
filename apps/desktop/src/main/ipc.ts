@@ -78,6 +78,8 @@ import { ttsCapability, ttsModels } from "@ai-book-studio/core/providers/tts";
 import { speechModels } from "@ai-book-studio/core/providers/speech";
 import { isValidStoredVoicePreferences, voicePreferencesSchema } from "@ai-book-studio/core/providers/voice-preferences";
 import type { ImageService } from "./images";
+import { MarkdownFolderCaptureError, MarkdownFolderHostService, MarkdownFolderPublishError, suggestMarkdownFolderName } from "./markdown-folder";
+import type { Library } from "./library/store";
 
 const folderInput = z.string().min(1).max(4096);
 const contentInput = z.string().max(20_000_000);
@@ -155,6 +157,10 @@ function fail(error: unknown): Result<never> {
     const code: StudioError["code"] =
       error.code === "not-found" ? "not-found" : error.code === "invalid-path" ? "invalid" : "io";
     return { ok: false, error: { code, message: error.message } };
+  }
+  if (error instanceof MarkdownFolderCaptureError || error instanceof MarkdownFolderPublishError) {
+    // Bounded author-readable host reasons; no renderer-supplied path or fault-injection seam is echoed.
+    return { ok: false, error: { code: error.code, message: error.message } };
   }
   if (error instanceof ProviderError) {
     return { ok: false, error: { code: error.code, message: redact(error.message) } };
@@ -599,6 +605,110 @@ export function registerIpc(
         return image.isEmpty() ? null : image.toJPEG(90);
       }
     });
+  });
+
+  /* ------------------------------------------------------- Markdown folder (T014-U) */
+
+  // One host service per open library, so capture sequences and consent currency survive across calls.
+  const folderHosts = new WeakMap<Library, MarkdownFolderHostService>();
+  const folderHostFor = (library: Library): MarkdownFolderHostService => {
+    let host = folderHosts.get(library);
+    if (!host) {
+      host = new MarkdownFolderHostService({ libraryRoot: library.root, storage: library.libraryPort });
+      folderHosts.set(library, host);
+    }
+    return host;
+  };
+  // Strict input: a renderer-supplied destination or publication override is refused, never forwarded.
+  const folderAttemptInput = z.object({ bookId: idSchema, attemptId: z.string().uuid() }).strict();
+  const folderWarnings = (warnings: ReadonlyArray<{ kind: "list" | "image-omission"; code: string; chapterId: string | null; selectedPosition: number | null; recordId: string | null }>) =>
+    warnings.map((warning) => ({
+      kind: warning.kind,
+      code: warning.code,
+      chapterId: warning.chapterId,
+      selectedPosition: warning.selectedPosition,
+      recordId: warning.recordId
+    }));
+
+  handle(IPC.books.exportMarkdownFolderCapture, async (payload) => {
+    const bookId = idSchema.parse(payload);
+    const host = folderHostFor(studio.requireLibrary());
+    const result = await host.captureAttempt(bookId);
+    if (result.status === "refused") return result;
+    const { attempt } = result;
+    return {
+      status: "ready" as const,
+      attemptId: attempt.attemptId,
+      bookId: attempt.bookId,
+      captureSequence: attempt.capture.captureSequence,
+      consentDisclosure: attempt.capture.consentDisclosure,
+      consentWording: attempt.capture.consentWording,
+      policyLabel: attempt.capture.policyLabel,
+      warnings: folderWarnings(attempt.plan.warnings),
+      excludedLegacy: attempt.plan.excludedLegacy.map((entry) => ({
+        position: entry.position,
+        key: entry.key,
+        keyIsFallback: entry.keyIsFallback,
+        reason: entry.reason
+      })),
+      files: attempt.plan.files.map((file) => file.path),
+      readingOrder: [...attempt.plan.readingOrder]
+    };
+  });
+
+  handle(IPC.books.exportMarkdownFolderPublish, async (payload) => {
+    const input = folderAttemptInput.parse(payload);
+    const host = folderHostFor(studio.requireLibrary());
+    const attempt = host.getAttempt(input.attemptId);
+    if (!attempt || attempt.bookId !== input.bookId) {
+      throw new MarkdownFolderCaptureError(
+        "attempt-not-found",
+        "That collection is no longer available. Collect the book again before exporting."
+      );
+    }
+    // The destination comes from the native picker in the main process, never from the renderer.
+    const folderName = suggestMarkdownFolderName(attempt.bookTitle);
+    let destination: string;
+    const forced = process.env.STUDIO_EXPORT_PATH;
+    if (forced) {
+      // A headless run cannot answer a dialog; it names the parent folder instead.
+      destination = join(forced, folderName);
+    } else {
+      const options = {
+        title: "Choose where to put the Markdown folder",
+        buttonLabel: "Put folder here",
+        message: `The folder “${folderName}” will be created in the folder you choose.`,
+        properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">
+      };
+      const window = getWindow();
+      const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+      const parent = picked.filePaths[0];
+      if (picked.canceled || !parent) return null;
+      destination = join(parent, folderName);
+    }
+    const settlement = await host.publishAttempt(input.attemptId, destination);
+    if (settlement.status === "published") {
+      return {
+        status: "published" as const,
+        destinationPath: settlement.destinationPath,
+        files: settlement.files,
+        warnings: folderWarnings(settlement.warnings)
+      };
+    }
+    return settlement;
+  });
+
+  handle(IPC.books.exportMarkdownFolderCancel, async (payload) => {
+    const input = folderAttemptInput.parse(payload);
+    const host = folderHostFor(studio.requireLibrary());
+    const attempt = host.getAttempt(input.attemptId);
+    if (!attempt || attempt.bookId !== input.bookId) {
+      throw new MarkdownFolderCaptureError(
+        "attempt-not-found",
+        "That collection is no longer available. Collect the book again before exporting."
+      );
+    }
+    return host.requestCancel(input.attemptId);
   });
 
   /* ----------------------------------------------------------------- chapters */

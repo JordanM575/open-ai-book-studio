@@ -1577,6 +1577,84 @@ export async function runSmoke(win: BrowserWindow, studio: Studio): Promise<void
       }
     });
 
+    await check("the format dialog exports a Markdown folder", async () => {
+      const folder = process.env.STUDIO_EXPORT_PATH;
+      if (!folder) throw new Error("STUDIO_EXPORT_PATH is not set");
+      const book = (await studio.requireLibrary().listBooks())[0];
+      if (!book) throw new Error("the smoke book disappeared");
+      const sourcePaths = [
+        join(studio.requireLibrary().root, "books", book.id, "book.json"),
+        ...(await studio.requireLibrary().readBook(book.id)).chapters.map((chapter) =>
+          join(studio.requireLibrary().root, "books", book.id, "chapters", chapter.path)
+        )
+      ];
+      const sourceBefore = await Promise.all(sourcePaths.map((path) => readFile(path)));
+      await evaluate(win, `document.querySelector('[data-testid="format-book"]').click()`);
+      await waitUntil(
+        () => evaluate<boolean>(win, inPage(`!!document.querySelector('[data-testid="format-preview"]')`)),
+        "the format preview"
+      );
+      try {
+        const chosen = await evaluate<boolean>(
+          win,
+          `(() => { const radio = document.querySelector('input[name="format-target"][value="Markdown folder"]'); if (!radio) return false; radio.click(); return true; })()`
+        );
+        if (!chosen) throw new Error("the Markdown folder target was not on screen");
+        await evaluate(win, `document.querySelector('[data-testid="format-export"]').click()`);
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`!!document.querySelector('[data-testid="markdown-folder-consent"]')`)),
+          "the Markdown folder consent",
+          30_000
+        );
+        const disclosure = await evaluate<string>(
+          win,
+          `document.querySelector('[data-testid="markdown-folder-disclosure"]')?.innerText ?? ""`
+        );
+        if (!disclosure.includes("not a simultaneous snapshot") || !disclosure.includes("returned to identical bytes")) {
+          throw new Error(`disclosure read: ${JSON.stringify(disclosure)}`);
+        }
+        await evaluate(win, `document.querySelector('[data-testid="markdown-folder-continue"]').click()`);
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`!!document.querySelector('[data-testid="markdown-folder-result"]')`)),
+          "the Markdown folder result",
+          30_000
+        );
+        const destination = join(folder, "smoke-test-book-markdown");
+        const names = await readdir(destination);
+        if (!names.includes("README.md")) throw new Error(`folder holds: ${names.join(", ")}`);
+        const readme = await readFile(join(destination, "README.md"), "utf8");
+        if (!readme.includes("Reading order")) throw new Error("the README has no reading order");
+        const chapters = names.filter((name) => name.endsWith("-chapter.md"));
+        if (chapters.length === 0) throw new Error("the folder has no chapter file");
+        const listed = await evaluate<string>(
+          win,
+          `document.querySelector('[data-testid="markdown-folder-destination"]')?.innerText ?? ""`
+        );
+        if (!listed.endsWith("smoke-test-book-markdown")) throw new Error(`destination read: ${JSON.stringify(listed)}`);
+        const files = await evaluate<string>(
+          win,
+          `document.querySelector('[data-testid="markdown-folder-files"]')?.innerText ?? ""`
+        );
+        if (!files.includes("README.md")) throw new Error("the written files are not listed");
+        const sourceAfter = await Promise.all(sourcePaths.map((path) => readFile(path)));
+        if (sourceAfter.some((bytes, index) => !bytes.equals(sourceBefore[index] ?? Buffer.alloc(0)))) {
+          throw new Error("a source file changed during the folder export");
+        }
+        return `${names.length} files · ${chapters.length} chapter file${chapters.length === 1 ? "" : "s"}, source unchanged`;
+      } finally {
+        // Later checks snapshot the exports folder file by file, so the exported folder goes away here.
+        await rm(join(folder, "smoke-test-book-markdown"), { recursive: true, force: true });
+        await evaluate<boolean>(
+          win,
+          `(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); return true; })()`
+        );
+        await waitUntil(
+          () => evaluate<boolean>(win, inPage(`!document.querySelector('[data-testid="format-preview"]')`)),
+          "the format dialog to close"
+        );
+      }
+    });
+
     await check("the PDF window answers every request itself", async () => {
       // A page with no content policy asks a loopback server for a picture and a stylesheet. The
       // export session answers both itself, so the server must see nothing.

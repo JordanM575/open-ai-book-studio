@@ -87,6 +87,9 @@ const api: StudioApi = {
     exportPdf: (bookId) => invoke(IPC.books.exportPdf, bookId),
     exportEpub: (bookId) => invoke(IPC.books.exportEpub, bookId),
     exportImages: (bookId) => invoke(IPC.books.exportImages, bookId),
+    exportMarkdownFolderCapture: (bookId) => invoke(IPC.books.exportMarkdownFolderCapture, bookId),
+    exportMarkdownFolderPublish: (input) => invoke(IPC.books.exportMarkdownFolderPublish, input),
+    exportMarkdownFolderCancel: (input) => invoke(IPC.books.exportMarkdownFolderCancel, input),
     importManuscript: (input) => invoke(IPC.books.importManuscript, input),
     pickImportSource: () => invoke(IPC.books.pickImportSource)
   },

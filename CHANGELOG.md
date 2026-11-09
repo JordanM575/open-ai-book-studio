@@ -7,6 +7,26 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Markdown folder mounted journey (T014-U)
+
+- Mount the Markdown folder journey in the Format dialog on desktop (T014-U): a new
+  **Markdown folder** target collects the saved book through three validated channels
+  (`books:exportMarkdownFolderCapture`, `books:exportMarkdownFolderPublish`,
+  `books:exportMarkdownFolderCancel`), shows the bundle-bound consent with the exact
+  change-and-change-back disclosure, the planner's frozen warnings and the excluded
+  legacy references, and offers **Continue without them** / **Cancel** for that frozen
+  collection only; a new collection supersedes the earlier choice and says so. The
+  destination comes from the native picker in the main process (a cancelled picker is
+  a clean no-op that returns to the same consent), cancellation accepted before the
+  commit prevents publication, and settlement is truthful: the written-file list and
+  warnings on confirmed publication, and an unconfirmed outcome stated as unknown,
+  never as success. The publication fault-injection seam is never forwarded from an
+  IPC payload, and a plan can no longer publish under another capture's consent.
+  Synthetic evidence covers the attempt lifecycle, the IPC boundary and the dialog
+  journey, and the hidden smoke run exports a Markdown folder from the real UI.
+- This slice exposes the desktop journey only: T014-U and every other 035 task remain
+  unchecked pending their own gates and independent review.
+
 ### Markdown folder capture, verification and desktop publication (T014-Q)
 
 - Add the main-process Markdown folder host service in `apps/desktop/src/main/markdown-folder.ts`

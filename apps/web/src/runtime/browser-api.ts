@@ -173,6 +173,18 @@ export function createBrowserStudioApi(libraries: BrowserLibraries): StudioApi {
         Promise.resolve(
           failure("invalid", "Image export is available in the desktop app. Export the library archive instead.")
         ),
+      exportMarkdownFolderCapture: () =>
+        Promise.resolve(
+          failure("invalid", "Markdown folder export is available in the desktop app. Export the library archive instead.")
+        ),
+      exportMarkdownFolderPublish: () =>
+        Promise.resolve(
+          failure("invalid", "Markdown folder export is available in the desktop app. Export the library archive instead.")
+        ),
+      exportMarkdownFolderCancel: () =>
+        Promise.resolve(
+          failure("invalid", "Markdown folder export is available in the desktop app. Export the library archive instead.")
+        ),
       // Staged publication needs the desktop atomic rename; the browser profile stays read-only for imports (T016).
       importManuscript: () => Promise.resolve(failure("invalid", MANUSCRIPT_IMPORT_DESKTOP_ONLY)),
       pickImportSource: () => Promise.resolve(failure("invalid", MANUSCRIPT_IMPORT_DESKTOP_ONLY)),
