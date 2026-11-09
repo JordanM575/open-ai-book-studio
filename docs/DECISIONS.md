@@ -737,6 +737,29 @@ D-125 memory-only audio and D-192 explicit routes remain. D-109 host/offline eng
 remains open; source implementation proceeds synthetically. A voice session cannot mint a workflow
 grant or change scope. 038 T022 stays unchecked; no microphone/device/live-spend authorization added.
 
+### D-201 · Conditional campaign continuation
+
+Accepted November 8 under delegated feature-delivery authority. [ADR 0020](adr/0020-inline-editorial-review.md#d-201-conditional-campaign-continuation)
+and the [continuation format](formats/campaign-continuation.md) specify a checked schema-2 campaign
+manifest and ordered immutable plan/checkpoint segments. They represent the complete planner result
+except its digest, with four path-owned, typed, length-and-digest-bound external values for source
+text, generated stage prompts and prior feedback. Exact reconstruction and continuation require those
+originals and compatible planner validation; without them the retained structure is inspectable, not
+an available self-contained archive. No implicit history capture, provider retry or execution authority
+follows. Preserved metadata may be sensitive and requires disclosure; endpoint identities must be
+non-secret opaque identifiers, never URLs or credentials.
+
+The existing 2,500,000-byte document ceiling and ordinary request/schema-1 limits remain; the linked
+format sets additional conservative per-operation bounds. Preserve supported unknown data, author
+drafts and recovery files without pruning or truncation. Publication is intent-first, with immutable
+segments and a checked manifest last; recovery is explicit. Cross-writer mutation and group moves need
+independently proven conditional-write/immutable-create or exclusion capabilities as applicable;
+preflight and readback alone do not prove a transaction. Reports and dispositions remain independently
+owned, and cross-book report resolution needs a separately authorized read/identity seam. Reject
+schema-1 projection as a reversible archive and unapproved storage of full bodies or conversations.
+This is a format decision, not an implemented codec, writer, adapter qualification or task completion;
+039 T014/T017/T018 remain open.
+
 ### D-202 · Markdown folder export: pure planner contract and saved-source bundle
 
 Accepted November 9 under delegated feature-delivery authority, for public contract recording.

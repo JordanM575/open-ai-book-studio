@@ -67,6 +67,28 @@ task is completed. T010 retains the independent correction gate. The policy amen
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
 
+### November 8 — pure D-201 continuation candidate (T014/T017 partial)
+
+`packages/core/src/review/campaign-continuation-*` now supplies pure in-memory manifest, segment,
+checkpoint and publication-intent candidate/inspection primitives. Encoding requires a locally
+provenanced plan; hole reconstruction remains untrusted, and complete comparison with a separately
+supplied local plan does not register the decoded object. Focused synthetic tests cover large real
+planner fixtures, exact content/union, token and byte boundaries, unknown data and tampering. The
+standalone resolver does not independently establish all plan semantics, source-file identity or
+verified reports. Compatible replanning, storage publication/recovery, adapter qualification,
+cross-book report resolution, host integration and independent exact-head review remain open.
+T014/T017/T018 stay unchecked; 038 T022 is unchanged.
+
+### November 8 — D-201 conditional continuation specification (T014 partial)
+
+D-201 and the ADR 0020 amendment accept the conditional schema-2 campaign format; `docs/FORMAT.md`
+links its field-level schema, bounds, external holes, provenance and recovery rules in
+`docs/formats/campaign-continuation.md`. This is a documentation/decision slice only: no continuation
+codec, compatible-replan seam, writer, adapter capability, group move or 037 host integration was
+implemented or validated here. The focused planner baseline could not load `zod` because prepared
+workspace dependencies were absent. Independent implementation/review and the remaining format,
+execution and integration gates stay open. T014/T017/T018 remain unchecked; 038 T022 is unchanged.
+
 ### November 8 — saved review records, schema 1 (T014/T015 partial)
 
 `packages/core/src/review/record-json.ts` and `record-format.ts` define the field-level schema-1

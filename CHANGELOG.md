@@ -7,6 +7,17 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Pure campaign continuation candidate
+
+- Add bounded in-memory campaign manifest, segment, checkpoint and publication-intent candidates,
+  typed external holes, structural inspection and exact comparison with a separately provenanced
+  local plan. Preserve supported mapped unknown fields and refuse unsafe rewrites; decoded data never
+  gains planner provenance. Add a bounded canonical-byte visitor without raising record limits.
+- Exercise synthetic large planner round-trips, real token/byte boundaries and tampering. This is
+  partial pure codec work: source validation, compatible replanning, checked storage/recovery, host
+  integration, adapter qualification and independent review remain open. 039 T014/T017/T018 and
+  038 T022 stay unchecked.
+
 ### Markdown folder export contract
 
 - Record D-202 in `docs/DECISIONS.md`, the Markdown folder section in `docs/FORMAT.md` and the full
