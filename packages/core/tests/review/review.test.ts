@@ -235,9 +235,33 @@ describe("manuscript review core contracts", () => {
     };
     const freshness = reviewReportFreshness(report, edited);
     expect(freshness).toEqual({ status: "stale", changes: [{ kind: "changed", chapterId: "chapter-prose" }] });
+    if (freshness.status !== "stale") throw new Error("Expected the changed fixture source to be stale.");
     const navigation = revalidateReviewEvidence(report, edited, "finding-fixture", 0);
     expect(navigation).toEqual(freshness);
     expect(navigation).not.toHaveProperty("evidence");
+  });
+
+  test("exact evidence revalidation checks literal gaps, bounds, surrogate boundaries and location metadata", () => {
+    const snapshot: ReviewSourceSnapshot = {
+      scope: { kind: "book", bookId: "exact-evidence" }, capturedAt: "2026-11-02T12:00:00.000Z",
+      chapters: [{ status: "saved", chapterId: "ch-exact", title: "Exact", order: 1,
+        body: "😀 alpha\nbeta gamma", version: 2, hash: "a".repeat(64) }]
+    };
+    const report = buildReviewReport(snapshot, analyzeReviewCoverage(snapshot), { requestedAt: snapshot.capturedAt, completedAt: snapshot.capturedAt });
+    const span = { chapterId: "ch-exact", title: "Exact", order: 1, sourceVersion: 2, sourceHash: "a".repeat(64),
+      startOffset: 3, endOffset: 19, excerpt: "alpha\nbeta gamma" };
+    const check = (evidence: typeof span) => revalidateReviewEvidence({ ...report, findings: [{
+      id: "exact", metricId: "fixture", label: "Fixture", evidence: [evidence]
+    }] }, snapshot, "exact", 0);
+    expect(check(span).status).toBe("ready");
+    expect(check({ ...span, excerpt: "alpha beta gamma" }).status).toBe("unavailable");
+    expect(check({ ...span, startOffset: 100, endOffset: 116 }).status).toBe("unavailable");
+    expect(check({ ...span, startOffset: -1, endOffset: 2 }).status).toBe("unavailable");
+    expect(check({ ...span, startOffset: 1, endOffset: 2, excerpt: "\ude00" }).status).toBe("unavailable");
+    expect(check({ ...span, startOffset: 0, endOffset: 1, excerpt: "\ud83d" }).status).toBe("unavailable");
+    expect(check({ ...span, startOffset: 0, endOffset: 2, excerpt: "😀" }).status).toBe("ready");
+    expect(check({ ...span, title: "Invented title" }).status).toBe("unavailable");
+    expect(check({ ...span, order: 2 }).status).toBe("unavailable");
   });
 
   test("chunked cancellable analysis matches the sync word counts exactly", async () => {
@@ -266,7 +290,7 @@ describe("manuscript review core contracts", () => {
     expect(outcome.status).toBe("complete");
     if (outcome.status !== "complete") throw new Error("The uncancelled chunked analysis must complete.");
     const expected = analyzeReviewCoverage(chunked);
-    expect(outcome.value).toEqual({ status: expected.status, wordCounts: expected.wordCounts, coverage: expected.coverage });
+    expect(outcome.value).toEqual(expected);
   });
 
   test("aborting mid-analysis discards partial counts and never completes", async () => {
@@ -373,9 +397,10 @@ describe("review report composition", () => {
         id: "studio-word-count",
         label: "Studio word count",
         definition: expect.stringContaining("whitespace-separated token")
-      }
+      },
+      expect.objectContaining({ id: "repetition-v1", definition: expect.stringContaining("overlapping three-token") })
     ]);
-    // The repeated-phrase signal is deferred by decision 1, so no phrase findings are claimed.
+    // This fixture has fewer than three repetition tokens, distinct from its studio word count.
     expect(report.findings).toEqual([]);
     expect(report.source.chapters).toHaveLength(3);
     expect(report.source.chapters[1]).toMatchObject({

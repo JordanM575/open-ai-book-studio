@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../apps/desktop/tsconfig.node.json",
+  "compilerOptions": {
+    "typeRoots": ["../../../../apps/desktop/node_modules/@types", "../../../../node_modules/@types"]
+  },
+  "include": ["repetition.test.ts", "review.test.ts"],
+  "exclude": []
+}
