@@ -1441,7 +1441,10 @@ journal record gets a new ID, even when the intended hash is unchanged. Absent r
 by intent notes. A verified post-write record no longer carries a planned ID. Live receipt ownership
 is scoped to the storage-port object, device and path, including paths with no journal record. This
 coordinates service instances sharing that port; it does not coordinate separate ports or processes.
-Accepted scans, removal notes and moves retire affected live claims. A failed intent note permits a
+Accepted scans, removal notes and moves retire affected live claims and their predecessor chains,
+even when an existing tombstone's record stays unchanged. A later refusal cannot restore a retired
+predecessor. Retirement remains effective in the running process if the journal update fails; this
+does not claim that the failed update was persisted. A failed intent note permits a
 verified update only while its exact initiating record/generation and live ownership still match.
 
 If the adapter definitively returns `changed` without `publication: "uncertain"`, the service retracts
@@ -1450,7 +1453,8 @@ the outside file as the observed baseline. Reconciliation shares the existing pe
 newer same-hash intents, verified writes, accepted scans and changes to other paths are preserved.
 Live receipts retain predecessor outcomes so overlapping refusals settling out of order cannot restore
 an already-refused intent. If a predecessor verified while a newer intent owned the path, a definitive
-refusal of that newer intent can restore the predecessor's verified snapshot. Settlement is one-shot.
+refusal of that newer intent can restore the predecessor's verified snapshot only while the chain
+has not been retired by a superseding decision. Settlement is one-shot.
 Completed predecessors remain reachable only while a pending descendant needs them; active ownership
 is retired on settlement or superseding decisions. That transient bookkeeping is not a second
 source of truth. Exceptions, uncertain publication and unverified written readbacks retain the

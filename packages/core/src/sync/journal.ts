@@ -292,7 +292,7 @@ export async function notePlannedWrite({ storage, deviceId, paths, sha256, now }
       for (const entry of entries) {
         // Restore only this exact attempt's unchanged record. Other paths, newer same-hash notes,
         // accepted scans, removals and verified writes are not ours to undo.
-        if (!sameRecord(files[entry.path], entry.after) ||
+        if (entry.retired || !sameRecord(files[entry.path], entry.after) ||
             (!entry.after && plannedWrites.get(storage)?.get(entry.key) !== entry)) continue;
         let before = entry.before;
         let prior = entry.prior;
@@ -342,6 +342,7 @@ interface PlannedEntry {
   after: SyncFileRecord | undefined;
   beforeGeneration: number;
   verified?: SyncFileRecord;
+  retired?: true;
   prior: PlannedEntry | undefined;
   outcome: "pending" | "not-published" | "possible";
 }
@@ -366,7 +367,11 @@ export function supersedePlannedWriteNotes(storage: LibraryPort, deviceId: strin
 function retireWriteNotes(storage: LibraryPort, deviceId: string, matches: (path: string) => boolean): void {
   const active = plannedWrites.get(storage);
   for (const [key, entry] of active ?? []) {
-    if (key.startsWith(`${deviceId}\0`) && matches(entry.path)) active?.delete(key);
+    if (!key.startsWith(`${deviceId}\0`) || !matches(entry.path)) continue;
+    // An existing tombstone may remain byte-identical. Retire the whole receipt chain so a
+    // later refusal cannot restore a verified predecessor through that unchanged record.
+    for (let prior: PlannedEntry | undefined = entry; prior; prior = prior.prior) prior.retired = true;
+    active?.delete(key);
   }
   if (active?.size === 0) plannedWrites.delete(storage);
 }

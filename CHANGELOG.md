@@ -7,6 +7,14 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+
+### Retired journal receipts
+
+- Retire pending write-receipt predecessor chains even when a removal or move leaves an existing
+  tombstone unchanged. A later refused write cannot clear that tombstone through an older verified
+  result. Preserve verified-predecessor restoration for unsuperseded writes and best-effort journal
+  failure behavior; cover both settlement orders and equal-byte outside reappearance.
+
 ### Verified journal note ownership
 
 - Settle verified saves through their initiating one-shot receipt so delayed snapshots cannot undo
