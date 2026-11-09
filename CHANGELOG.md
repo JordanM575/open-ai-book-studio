@@ -7,6 +7,27 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation compatible replan and source validation (039 T014/T017)
+
+- Add the pure `packages/core/src/review/campaign-continuation-replan.ts` leaf (039 T014/T017 seam):
+  a version-dispatching compatibility layer decides from the recorded schema version and
+  `plannerSemantics` whether a retained continuation may be served by the current planner
+  unchanged, must be replanned, or must refuse; bounded source validation checks explicitly
+  chosen current chapter files (raw-file hash, chapter/version, canonical full body, line maps)
+  or historical 032 records (metadata identity, `sourceVersion`/`sourceHash`, body hash, full
+  body) against the retained identities within the format's 33,554,432-byte per-file and
+  134,217,728-byte total read bounds before any planning; compatible replan runs the real
+  planner from the validated bodies and the explicitly supplied base prompt/prior feedback,
+  then requires the codec's complete canonical content and digest match, returning
+  `matched-local-plan-only` with the freshly provenanced plan or a bounded refusal. A
+  self-consistently rehashed continuation still cannot pass the match, differing compatible
+  semantics are never served unchanged, and no deserialized object gains planner provenance.
+  Focused synthetic tests cover same-semantics serving, compatible replan, historical sources,
+  multi-source/checkpoint replan, incompatible, forged, substituted and oversized refusals, and
+  provenance non-transfer.
+- This is a pure core leaf only: no storage writer, version-dispatching storage reader, host,
+  IPC or UI is added, and 039 T014/T017/T018 remain unchecked pending independent review.
+
 ### Markdown folder subordinate gates closed (T014-C/P/Q0/Q/U)
 
 - Close the five T014 subordinate gates in `specs/035-book-formatting/tasks.md` on accepted
