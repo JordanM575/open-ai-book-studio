@@ -52,14 +52,15 @@ schema from these directory names or from an unchecked TypeScript object.
 
 | Reserved location | Accepted ownership / prerequisite |
 | --- | --- |
-| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers and independent storage review remain separate. |
+| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers for `run`, `task`, `attempt`, `effect`, `question`, `artifact` and `context` exist, while command/admission writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer and saved-record IPC/UI exist, export and independent review remain open. |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/` | Checked author-owned records. Schema 1 and full-document writers are defined in [Saved review records](#saved-review-records-schema-1); segmented continuation remains unspecified and T015 stays partial. |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
 
 The workflow row is now specified in [Workflow records (schema 1)](#workflow-records-schema-1);
-its checked writers and independent storage review remain open. The saved-review rows are now
+the T023 checked record writers exist on `LibraryService.workflowRecords`, while command/admission
+writers and independent storage review remain open. The saved-review rows are now
 specified in [Saved review records (schema 1)](#saved-review-records-schema-1); their checked writer
 and saved-record IPC/UI exist but export/archive, segmented continuation and independent review remain
 open. The host-local workflow permission row remains a reservation.
@@ -297,9 +298,11 @@ part of this first slice; their accepted contracts remain in ADR 0017.
 D-194–D-196 / [ADR 0019](adr/0019-bounded-autonomous-authoring.md) define the only full-book workflow
 authority. This section specifies the durable schema-1 records under
 `books/<bookId>/workflows/<runId>/` that the pure graph, lifecycle and admission contracts need. It
-does **not** authorize a writer, scheduler, provider call, publication or host permission. T019,
-T022–T025, T029 and independent storage review remain prerequisites. The pure host-neutral raw codec
-is `packages/core/src/authoring/wire.ts`; it performs no I/O.
+does **not** authorize a scheduler, provider call, publication or host permission. The checked writer
+for the T023 record kinds is `packages/core/src/workflow/record-store.ts`, constructed as
+`LibraryService.workflowRecords`; command/receipt pages, admission records, scheduling, provider
+calls, publication and independent storage review remain open. The pure host-neutral raw codec is
+`packages/core/src/authoring/wire.ts`; it performs no I/O.
 
 ### Layout
 
@@ -585,7 +588,12 @@ invalidated. Provably independent work may keep its captured direction.
 The body is `artifacts/<artifactId>.md` for Markdown or `artifacts/<artifactId>.json` for JSON. A JSON
 body is an ordinary candidate document, not a workflow record and not an envelope. Artifact references
 hash the body bytes, not the metadata file. Both files are immutable. Missing, unreadable or
-metadata/body hash-mismatched artifacts are unavailable; they are never rewritten or guessed.
+metadata/body hash-mismatched artifacts cannot be used; they are never rewritten or guessed.
+Standalone reads distinguish `unavailable` (missing components or unknown semantics) from `corrupt`
+(malformed known values or mismatching bytes/hashes). Creation and current no-op confirmation require
+the final metadata and body bytes/hashes to match the intended pair exactly. A different internally
+valid pair, missing/corrupt components or an I/O failure at that final read is `uncertain`, never
+successful or automatically retried. Keep the intended candidate and inspect the artifact files.
 
 ### `contexts/<contextId>.json` — immutable captured-source manifest
 
@@ -680,8 +688,15 @@ prose.
 | Question options | 16 |
 | Journal page size | 256 |
 
-All intersecting limits apply. Reads and streams are bounded before allocating the whole value.
-Overflow preserves existing durable data; it never truncates or deletes a record.
+All intersecting limits apply. The desktop and browser Library adapters enforce workflow-path byte
+ceilings during the actual read, including checked-commit comparisons and readbacks; an earlier
+size check alone is not sufficient. Drift scans, write notes, the desktop watcher and copy fallbacks
+also use the applicable limit, including for workflow files under whole-book trash. The tighter of a
+caller's bound and the path's bound applies. The adapter refuses an over-limit value without returning
+partial bytes; it never truncates or deletes the file. A readback failure after a possible publication
+is uncertain, not proof that no write occurred, and is not automatically replayed. The 2,500,000-byte
+context-envelope limit above is a format/host requirement; storing or verifying the separate envelope
+is not implemented by the T023 context-manifest store.
 
 ### Ordering, retention and related-file recovery
 
@@ -695,12 +710,25 @@ Overflow preserves existing durable data; it never truncates or deletes a record
 - A checked write validates the actual owning book/run, the complete intended bytes, the exact
   absence/base hash **and** revision, then commits one file. Only a current semantic no-op writes
   nothing. A stale, missing or racing base preserves the complete intended record under
-  `books/<bookId>/workflows/<runId>/conflicts/<relative-name>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
-  The copy adds a reserved `conflictMetadata` object (`reason`, baseline token, observed token) and is
-  bounded to 5,000,000 bytes. Colliding names use absent-only suffix attempts. A recovery copy cannot
-  be loaded as an active record; explicit recovery must remove its copy-only context and create a
-  fresh reviewed edit. A copy or active write can be uncertain after an adapter error or mismatching
-  readback: report `uncertain`, keep the draft, reread storage and never replay automatically.
+  `books/<bookId>/workflows/<runId>/conflicts/<kind>.<id>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
+  This kind/identity convention replaces the earlier unspecified relative-name flattening. Full
+  owner and record identity remain inside the copy. ASCII filenames are at most 200 bytes, reserving
+  room for the atomic writer's temporary suffix; a longer name becomes
+  `<kind>.conflict-<reason>.<first-12-hex-SHA256-of-id>[-N].json`. Up to 100 absent-only names are tried
+  (no suffix, then `-2` through `-100`), never replacing an existing copy.
+  The copy adds reserved `conflictMetadata`: `reason` is `external-edit` or `missing-file`;
+  `baseline` is the original `{kind:"sha256",value,revision}` or `{kind:"absent",revision:0}`;
+  `observed` is `{kind:"sha256",value}` or `{kind:"absent"}`. The whole copy is bounded to
+  5,000,000 bytes. An active write or read refuses any own `conflictMetadata` field; explicit recovery
+  must remove its copy-only context and create a fresh reviewed edit.
+  Artifact conflicts retain an exact body first under `artifact.<id>.body.conflict-<reason>.<deviceId>.<timestamp>[-N].md|json`
+  (or `artifact.body.conflict-<reason>.<id-digest>[-N].md|json` under the same name limit), then metadata.
+  Metadata `conflictMetadata.bodyCopy` names that body's library-relative conflict path; its original
+  artifact `bytes`, `hash` and `mediaType` verify the body independently of either filename. The
+  reported `savedAs` is the metadata copy. If metadata fails, the body copy remains for recovery;
+  partial copies are never automatically completed or deleted. A copy or active write can be
+  uncertain after an adapter error or mismatching readback: report `uncertain`, keep the draft,
+  reread storage and never replay automatically.
 - Cross-file changes are recoverable sequences, not transactions. A missing, foreign, stale or
   unavailable related plan/task/attempt/effect/question/artifact/context/permission makes the
   dependent record unavailable; it never silently drops, rewrites, prunes or replays it. Persist
@@ -1450,13 +1478,52 @@ its `book.json`, chapters, conflicts and checkpoints, so restoring is a move bac
 each author-owned file, the hash this device last wrote, and tombstones for deletions. It is written
 after a reviewed scan, never during one. The chapters, conversations, images and agent checkpoints
 the studio writes or removes are noted in it as this device's own, so a scan does not list them. For
-an existing file, the intended save hash is recorded before the atomic file commit as well as the
-observed hash after it. If the process stops between those writes, a later scan still recognizes the
-exact committed bytes; a different on-disk hash remains an outside change for review. A
+an existing file, the intended save hash is recorded before the atomic file commit. After a service
+commit, the baseline advances only when the adapter's returned snapshot has the exact intended bytes
+and hash and its initiating receipt still owns that path's journal note. The verified intended hash,
+not a later path observation, is recorded for both new and existing paths. An unaccepted outside
+replacement or removal remains reviewable; a later accepted scan, verified note, uncertain intent or
+removal cannot be undone by the older snapshot. Explicit notes from other
+existing writers retain their observation-based behavior. If the process stops between the intent and
+the verified note, a later scan still recognizes exact intended bytes on an existing path; a different
+on-disk hash remains an outside change for review. A
 conflict copy is not, because the save that made it still needs the author's review. Notes take
 turns, so two made at once both land. It contains no prose or credentials, is excluded from portable
 archives, and is safe to delete; the next scan rebuilds it by comparing the files and warns that it had
 no baseline. A journal copied from another device is ignored by its device id.
+
+Schema 1 file records may additionally carry `plannedWriteId`, a fresh UUID identifying the particular
+intent that set `writtenSha256`; legacy records without it remain readable. This is bookkeeping, not
+evidence that the file was published or permission to write it. Every planned call on an existing
+journal record gets a new ID, even when the intended hash is unchanged. Absent records are not added
+by intent notes. A verified post-write record no longer carries a planned ID. Live receipt ownership
+is scoped to the storage-port object, device and path, including paths with no journal record. This
+coordinates service instances sharing that port; it does not coordinate separate ports or processes.
+Accepted scans, removal notes and moves retire affected live claims and their predecessor chains,
+even when an existing tombstone's record stays unchanged. A later refusal cannot restore a retired
+predecessor. Retirement remains effective in the running process if the journal update fails; this
+does not claim that the failed update was persisted. A failed intent note permits a
+verified update only while its exact initiating record/generation and live ownership still match.
+
+If the adapter definitively returns `changed` without `publication: "uncertain"`, the service retracts
+only that attempt's still-identical journal record and restores its prior intent, without accepting
+the outside file as the observed baseline. Reconciliation shares the existing per-port journal queue;
+newer same-hash intents, verified writes, accepted scans and changes to other paths are preserved.
+Live receipts retain predecessor outcomes so overlapping refusals settling out of order cannot restore
+an already-refused intent. If a predecessor verified while a newer intent owned the path, a definitive
+refusal of that newer intent can restore the predecessor's verified snapshot only while the chain
+has not been retired by a superseding decision. Settlement is one-shot.
+Every pending receipt remains reachable for retirement independently of active baseline ownership,
+including when a newer possible receipt settles after its intent note failed before publication.
+Pending registry roots are removed on settlement or retirement; a settled receipt releases its own
+references. Completed predecessors remain reachable only while a pending descendant needs them;
+active ownership is retired on settlement or superseding decisions. An indefinitely pending operation
+retains the receipt state it still needs. That transient bookkeeping is not a second
+source of truth. Exceptions, uncertain publication and unverified written readbacks retain the
+persisted intent for interrupted-write recovery. A known refusal never retracts a preexisting unresolved
+same-byte attempt. Journal notes remain best effort: a failed intent/post-write note can require review,
+and failed reconciliation can leave the recovery intent. No author-file retry, cross-process CAS or
+cross-file transaction is implied.
 
 ## Migration record
 

@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, watch as watchFiles, type Stats } from "node:fs";
-import { lstat, mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rename, rm, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, sep } from "node:path";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
 import { devicePath } from "@ai-book-studio/core/library/paths";
 import { toLibraryPath, type LibraryPath } from "@ai-book-studio/core/library/path";
+import { effectiveReadLimit, moveReadLimit } from "@ai-book-studio/core/library/read-limits";
 import type {
   CommitFileResult,
   FileExpectation,
@@ -17,6 +18,8 @@ import type {
   LibraryPort
 } from "@ai-book-studio/core/library/port";
 import { writeFileAtomic } from "./atomic";
+import { readBoundedSnapshot } from "./bounded-read";
+import { renameAcrossDevices } from "./move-file";
 import { noteOwnFile, noteOwnRemoval } from "./own-writes";
 import { isoNow, safeJoin } from "./paths";
 
@@ -70,10 +73,13 @@ export class FileSystemLibraryPort implements LibraryPort {
     return this.absolute(path);
   }
 
-  async readFile(path: LibraryPath): Promise<LibraryFileSnapshot | null> {
+  async readFile(path: LibraryPath, options?: { maxBytes: number }): Promise<LibraryFileSnapshot | null> {
     const absolute = await this.checkedAbsolute(path);
     try {
-      const [bytes, info] = await Promise.all([readFile(absolute), stat(absolute)]);
+      const limit = effectiveReadLimit(path, options);
+      const { bytes, info } = limit === undefined
+        ? await unboundedSnapshot(absolute)
+        : await readBoundedSnapshot(absolute, limit);
       return {
         bytes,
         sha256: createHash("sha256").update(bytes).digest("hex"),
@@ -158,10 +164,11 @@ export class FileSystemLibraryPort implements LibraryPort {
     if (await this.readFile(to)) {
       throw new LibraryPortError("already-exists", "The destination already exists.");
     }
-    const moving = await this.readFile(from);
+    const limit = moveReadLimit(from, to);
+    const moving = await this.readFile(from, limit === undefined ? undefined : { maxBytes: limit });
     try {
       await mkdir(dirname(destination), { recursive: true });
-      await renameAcrossDevices(source, destination);
+      await renameAcrossDevices(source, destination, limit);
     } catch (error) {
       throw toPortError(error);
     }
@@ -299,23 +306,17 @@ export function createFileSystemEnvironment(root: string): LibraryEnvironment {
 
 /* -------------------------------------------------------------------- helpers */
 
+async function unboundedSnapshot(absolute: string): Promise<{ bytes: Uint8Array; info: Stats }> {
+  const [bytes, info] = await Promise.all([readFile(absolute), stat(absolute)]);
+  return { bytes, info };
+}
+
 function assertSupportedEntry(info: Stats, parent: boolean): void {
   if (!info.isFile() && !info.isDirectory()) {
     throw new LibraryPortError("unsupported", "Symbolic links and special files are not supported inside a library.");
   }
   if (parent && !info.isDirectory()) {
     throw new LibraryPortError("io", "A library path component is not a directory.");
-  }
-}
-
-async function renameAcrossDevices(from: string, to: string): Promise<void> {
-  try {
-    await rename(from, to);
-  } catch (error) {
-    if (errorCode(error) !== "EXDEV") throw error;
-    const content = await readFile(from);
-    await writeFile(to, content);
-    await unlink(from);
   }
 }
 

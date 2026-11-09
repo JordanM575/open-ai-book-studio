@@ -1,6 +1,7 @@
 import { isConflictCopyName, parseChapterFile } from "../markdown";
 import { booksPath, trashPath } from "../library/paths";
 import { toLibraryPath, type LibraryPath } from "../library/path";
+import { workflowReadLimit } from "../library/read-limits";
 import type { LibraryEntry, LibraryFileSnapshot, LibraryPort } from "../library/port";
 import type { ChapterMeta } from "../schema";
 import type { SyncFile } from "./types";
@@ -118,7 +119,9 @@ async function observe(
 
   let snapshot: LibraryFileSnapshot | null;
   try {
-    snapshot = await storage.readFile(toLibraryPath(segments));
+    const libraryPath = toLibraryPath(segments);
+    const limit = workflowReadLimit(libraryPath);
+    snapshot = await storage.readFile(libraryPath, limit === undefined ? undefined : { maxBytes: limit });
   } catch {
     return {
       ...base,

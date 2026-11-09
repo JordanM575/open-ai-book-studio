@@ -83,8 +83,10 @@ import {
   noteRemovedFiles,
   noteWrittenFiles,
   readSyncJournal,
+  supersedePlannedWriteNotes,
   updateSyncJournal,
-  writeSyncJournal
+  writeSyncJournal,
+  type PlannedWriteOutcome
 } from "../sync/journal";
 import { scanLibrary } from "../sync/scan";
 import { detectDrift } from "../sync/detector";
@@ -94,6 +96,7 @@ import { ChapterHistoryRestore, type HistoryChapterWrite, type HistoryMutationRe
 import { PlanningService } from "../planning/service";
 import { PlanningRecovery } from "./planning-recovery";
 import { ReviewRecordStore } from "../review/record-store";
+import { WorkflowRecordStore } from "../workflow/record-store";
 import { GoalService, type GoalHost } from "../organization/goals";
 import {
   HistoryError,
@@ -145,6 +148,8 @@ export class LibraryService {
   readonly planningRecovery: PlanningRecovery;
   /** Explicit saved review records (039 T014). Leaf APIs only; no IPC/UI mounting here. */
   readonly reviewRecords: ReviewRecordStore;
+  /** Checked workflow records (037 T023). Leaf APIs only; no scheduler/execution/publication here. */
+  readonly workflowRecords: WorkflowRecordStore;
 
   private constructor(
     private readonly env: LibraryEnvironment,
@@ -167,6 +172,12 @@ export class LibraryService {
     this.goals = new GoalService(host);
     this.planningRecovery = new PlanningRecovery(host, env.storage);
     this.reviewRecords = new ReviewRecordStore({
+      ...this.writeHost,
+      storage: env.storage,
+      runtime: env.runtime,
+      deviceId: device.id
+    });
+    this.workflowRecords = new WorkflowRecordStore({
       ...this.writeHost,
       storage: env.storage,
       runtime: env.runtime,
@@ -252,6 +263,7 @@ export class LibraryService {
       if (existing) return false;
       const { files } = await scanLibrary(storage);
       const now = this.env.runtime.now();
+      supersedePlannedWriteNotes(storage, this.device.id);
       await writeSyncJournal(
         storage,
         journalForScan({ deviceId: this.device.id, previous: null, files, now })
@@ -279,6 +291,7 @@ export class LibraryService {
       const previous = await readSyncJournal(this.env.storage, this.device.id);
       const now = this.env.runtime.now();
       const next = acceptDriftPaths({ deviceId: this.device.id, previous, files, accept: paths, now });
+      supersedePlannedWriteNotes(this.env.storage, this.device.id, previous ? paths : undefined);
       await writeSyncJournal(this.env.storage, next);
       return detectDrift({ journal: next, files, now });
     });
@@ -1298,26 +1311,29 @@ export class LibraryService {
   }
 
   private async commitBytes(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> {
-    await notePlannedWrite({
+    const intendedHash = await this.env.runtime.sha256(bytes);
+    const planned = await notePlannedWrite({
       storage: this.env.storage,
       deviceId: this.device.id,
       paths: [libraryPathToArchivePath(path)],
-      sha256: await this.env.runtime.sha256(bytes),
+      sha256: intendedHash,
       now: this.env.runtime.now()
     });
-    const result = await this.env.storage.commitFile(path, bytes, expected);
-    if (result.status === "written") {
-      // The journal records what this device wrote, so the next scan reads it as local, not
-      // remote. After the prose commit, never before; best-effort so a note failure cannot fail
-      // the save it follows.
-      await noteWrittenFiles({
-        storage: this.env.storage,
-        deviceId: this.device.id,
-        paths: [libraryPathToArchivePath(path)],
-        now: this.env.runtime.now()
-      });
+    let publication: PlannedWriteOutcome = "possible";
+    try {
+      const result = await this.env.storage.commitFile(path, bytes, expected);
+      if (result.status === "changed" && result.publication !== "uncertain") publication = "not-published";
+      if (result.status === "written" && result.snapshot.sha256 === intendedHash &&
+          result.snapshot.bytes.byteLength === bytes.byteLength &&
+          result.snapshot.bytes.every((byte, index) => byte === bytes[index])) {
+        // Only this exact adapter readback is attributable to our commit. A later journal
+        // observation may already be another writer's bytes; it must not become the baseline.
+        publication = { kind: "verified", size: bytes.byteLength, now: this.env.runtime.now() };
+      }
+      return result;
+    } finally {
+      await planned.settle(publication);
     }
-    return result;
   }
 
   /**

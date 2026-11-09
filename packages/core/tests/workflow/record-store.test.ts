@@ -1,0 +1,865 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { encodeWorkflowRecord, type WorkflowRecord } from "../../src/authoring/wire";
+import type { CommitFileResult, FileExpectation, LibraryPath, LibraryPort } from "../../src/library/port";
+import { readSyncJournal } from "../../src/sync/journal";
+import { WorkflowRecordError } from "../../src/workflow/record-error";
+import {
+  artifactBodyPath,
+  artifactMetaPath,
+  attemptPath,
+  contextPath,
+  effectPath,
+  questionPath,
+  runHeaderPath,
+  taskPath,
+  workflowConflictPath,
+  workflowConflictsPath
+} from "../../src/workflow/paths";
+import { WorkflowRecordStore } from "../../src/workflow/record-store";
+import {
+  artifactMetadata,
+  at,
+  attemptRecord,
+  clockAt,
+  contextRecord,
+  effectRecord,
+  makeBook,
+  questionRecord,
+  runId,
+  runRecord,
+  sha256Hex,
+  taskRecord
+} from "./record-fixtures";
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+interface TestLibrary {
+  port: LibraryPort & { sha256(bytes: Uint8Array): Promise<string> };
+  library: Awaited<ReturnType<typeof makeBook>>["library"];
+  book: { id: string };
+  clock: { value: string };
+}
+
+function key(path: LibraryPath): string {
+  return path.join("/");
+}
+
+async function readText(port: LibraryPort, path: LibraryPath): Promise<string> {
+  const snapshot = await port.readFile(path);
+  if (!snapshot) throw new Error(`Missing synthetic fixture file ${key(path)}`);
+  return decoder.decode(snapshot.bytes);
+}
+
+async function seed(port: LibraryPort, path: LibraryPath, value: string | Uint8Array) {
+  const bytes = typeof value === "string" ? encoder.encode(value) : value;
+  const result = await port.commitFile(path, bytes, { kind: "absent" });
+  if (result.status !== "written") throw new Error(`Could not seed ${key(path)}`);
+  return result.snapshot;
+}
+
+async function refusal(run: Promise<unknown>): Promise<WorkflowRecordError> {
+  try {
+    await run;
+  } catch (error) {
+    if (error instanceof WorkflowRecordError) return error;
+    throw error;
+  }
+  throw new Error("Expected a WorkflowRecordError refusal");
+}
+
+async function conflictNames(port: LibraryPort, bookId: string): Promise<string[]> {
+  return (await port.listDirectory(workflowConflictsPath(bookId, runId)))
+    .filter((entry) => entry.kind === "file")
+    .map((entry) => entry.name);
+}
+
+function revisionTwo(record: Record<string, unknown>, baseHash: string, id = "task_00000001") {
+  return {
+    ...record,
+    id,
+    revision: 2,
+    base: { kind: "sha256", value: baseHash, revision: 1 },
+    updatedAt: "2026-11-07T12:05:00.000Z"
+  };
+}
+
+describe("checked workflow record store", () => {
+  test("copy-only metadata is refused for every active writer before any commit", async () => {
+    const { library, book, port } = await makeBook();
+    const records = library.workflowRecords;
+    const body = encoder.encode("Synthetic retained candidate.");
+    let commits = 0;
+    const original = port.commitFile.bind(port);
+    port.commitFile = async (path, bytes, expected) => {
+      commits += 1;
+      return original(path, bytes, expected);
+    };
+    for (const conflictMetadata of [null, { reason: "external-edit" }]) {
+      const extension = { conflictMetadata };
+      const writes = [
+        () => records.saveRun(book.id, runId, runRecord(book.id, extension)),
+        () => records.saveTask(book.id, runId, taskRecord(book.id, extension)),
+        () => records.saveAttempt(book.id, runId, attemptRecord(book.id, extension)),
+        () => records.saveEffect(book.id, runId, effectRecord(book.id, extension)),
+        () => records.saveQuestion(book.id, runId, questionRecord(book.id, extension)),
+        () => records.createContext(book.id, runId, contextRecord(book.id, extension)),
+        () => records.createArtifact(book.id, runId, artifactMetadata(book.id, body, extension), body)
+      ];
+      for (const write of writes) expect((await refusal(write())).code).toBe("invalid");
+    }
+    expect(commits).toBe(0);
+    expect(await records.readRun(book.id, runId)).toBeNull();
+    expect(await records.readArtifact(book.id, runId, "artifact_00000001")).toBeNull();
+
+    const first = await records.saveTask(book.id, runId, taskRecord(book.id));
+    const before = commits;
+    const error = await refusal(records.saveTask(book.id, runId, {
+      ...revisionTwo(taskRecord(book.id), first.record.hash), conflictMetadata: { reason: "external-edit" }
+    }));
+    expect(error.code).toBe("invalid");
+    expect(commits).toBe(before);
+    expect((await records.readTask(book.id, runId, "task_00000001"))?.hash).toBe(first.record.hash);
+  });
+
+  test("run control headers refuse embedded aggregate fields on both read and write", async () => {
+    const { library, book, port } = await makeBook();
+    for (const field of ["attempts", "effects", "questions", "commands", "artifacts", "snapshot"]) {
+      const error = await refusal(library.workflowRecords.saveRun(book.id, runId,
+        runRecord(book.id, { [field]: field === "snapshot" ? { mode: "running" } : [] })));
+      expect(error.code).toBe("invalid");
+      expect(await port.readFile(runHeaderPath(book.id, runId))).toBeNull();
+      expect(await conflictNames(port, book.id)).toHaveLength(0);
+    }
+    const path = runHeaderPath(book.id, runId);
+    const invalid = await seed(port, path, JSON.stringify(runRecord(book.id, { attempts: [] })));
+    expect((await refusal(library.workflowRecords.readRun(book.id, runId))).code).toBe("corrupt");
+    expect((await port.readFile(path))?.sha256).toBe(invalid.sha256);
+  });
+
+  test("future artifact, effect and accounting semantics are unavailable without rewriting", async () => {
+    const { library, book, port } = await makeBook();
+    const artifact = artifactMetaPath(book.id, runId, "artifact_00000001");
+    const effect = effectPath(book.id, runId, "effect_00000001");
+    const attempt = attemptPath(book.id, runId, "attempt_00000001");
+    const cases = [
+      { path: artifact, value: artifactMetadata(book.id, new Uint8Array(), { mediaType: "text/html" }),
+        read: () => library.workflowRecords.readArtifact(book.id, runId, "artifact_00000001") },
+      { path: effect, value: effectRecord(book.id, {
+        target: { kind: "future-kind", chapterId: "ch_00000001", path: "chapters/0001-scene.md" }
+      }), read: () => library.workflowRecords.readEffect(book.id, runId, "effect_00000001") },
+      { path: attempt, value: attemptRecord(book.id, { accounting: { kind: "future-accounting" } }),
+        read: () => library.workflowRecords.readAttempt(book.id, runId, "attempt_00000001") }
+    ];
+    for (const item of cases) {
+      const before = await seed(port, item.path, JSON.stringify(item.value));
+      expect((await refusal(item.read())).code).toBe("unavailable");
+      expect((await port.readFile(item.path))?.sha256).toBe(before.sha256);
+    }
+    expect(await conflictNames(port, book.id)).toHaveLength(0);
+  });
+
+  test("unknown enum strings are unavailable but malformed values and known-state contradictions are corrupt", async () => {
+    const cases = [
+      { value: (book: string, mode: unknown) => runRecord(book, { mode }),
+        path: (book: string) => runHeaderPath(book, runId),
+        read: (store: WorkflowRecordStore, book: string) => store.readRun(book, runId) },
+      { value: (book: string, status: unknown) => taskRecord(book, { status }),
+        path: (book: string) => taskPath(book, runId, "task_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readTask(book, runId, "task_00000001") },
+      { value: (book: string, phase: unknown) => attemptRecord(book, { phase }),
+        path: (book: string) => attemptPath(book, runId, "attempt_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readAttempt(book, runId, "attempt_00000001") },
+      { value: (book: string, phase: unknown) => effectRecord(book, { phase }),
+        path: (book: string) => effectPath(book, runId, "effect_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readEffect(book, runId, "effect_00000001") },
+      { value: (book: string, state: unknown) => questionRecord(book, { state }),
+        path: (book: string) => questionPath(book, runId, "question_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readQuestion(book, runId, "question_00000001") },
+      { value: (book: string, role: unknown) => artifactMetadata(book, new Uint8Array(), { role }),
+        path: (book: string) => artifactMetaPath(book, runId, "artifact_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readArtifact(book, runId, "artifact_00000001") },
+      { value: (book: string, completion: unknown) => taskRecord(book, {
+          definition: { ...taskRecord(book).definition, completion }
+        }),
+        path: (book: string) => taskPath(book, runId, "task_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readTask(book, runId, "task_00000001") },
+      { value: (book: string, outcome: unknown) => effectRecord(book, {
+          phase: "uncertain", receipt: { outcome, at }
+        }),
+        path: (book: string) => effectPath(book, runId, "effect_00000001"),
+        read: (store: WorkflowRecordStore, book: string) => store.readEffect(book, runId, "effect_00000001") },
+    ];
+    for (const item of cases) {
+      for (const value of ["future-semantic", null, 42, [], {}]) {
+        const { library, book, port } = await makeBook();
+        const path = item.path(book.id);
+        const before = await seed(port, path, JSON.stringify(item.value(book.id, value)));
+        expect((await refusal(item.read(library.workflowRecords, book.id))).code)
+          .toBe(typeof value === "string" ? "unavailable" : "corrupt");
+        expect((await port.readFile(path))?.sha256).toBe(before.sha256);
+        expect(await conflictNames(port, book.id)).toHaveLength(0);
+      }
+    }
+    const { library, book, port } = await makeBook();
+    const path = questionPath(book.id, runId, "question_00000001");
+    const before = await seed(port, path, JSON.stringify(questionRecord(book.id, { state: "answered", answer: null })));
+    expect((await refusal(library.workflowRecords.readQuestion(book.id, runId, "question_00000001"))).code).toBe("corrupt");
+    expect((await port.readFile(path))?.sha256).toBe(before.sha256);
+  });
+
+  test.each(["future-kind", "grant", null, 42, false, [], {}, undefined])(
+    "every workflow reader distinguishes malformed envelope kind %j without writing", async (kind) => {
+      const { library, book, port } = await makeBook();
+      const records = library.workflowRecords;
+      const body = encoder.encode("Synthetic artifact.");
+      const cases = [
+        { value: runRecord(book.id), path: runHeaderPath(book.id, runId),
+          read: () => records.readRun(book.id, runId),
+          write: (value: unknown) => records.saveRun(book.id, runId, value) },
+        { value: taskRecord(book.id), path: taskPath(book.id, runId, "task_00000001"),
+          read: () => records.readTask(book.id, runId, "task_00000001"),
+          write: (value: unknown) => records.saveTask(book.id, runId, value) },
+        { value: attemptRecord(book.id), path: attemptPath(book.id, runId, "attempt_00000001"),
+          read: () => records.readAttempt(book.id, runId, "attempt_00000001"),
+          write: (value: unknown) => records.saveAttempt(book.id, runId, value) },
+        { value: effectRecord(book.id), path: effectPath(book.id, runId, "effect_00000001"),
+          read: () => records.readEffect(book.id, runId, "effect_00000001"),
+          write: (value: unknown) => records.saveEffect(book.id, runId, value) },
+        { value: questionRecord(book.id), path: questionPath(book.id, runId, "question_00000001"),
+          read: () => records.readQuestion(book.id, runId, "question_00000001"),
+          write: (value: unknown) => records.saveQuestion(book.id, runId, value) },
+        { value: contextRecord(book.id), path: contextPath(book.id, runId, "context_00000001"),
+          read: () => records.readContext(book.id, runId, "context_00000001"),
+          write: (value: unknown) => records.createContext(book.id, runId, value) },
+        { value: artifactMetadata(book.id, body), path: artifactMetaPath(book.id, runId, "artifact_00000001"),
+          read: () => records.readArtifact(book.id, runId, "artifact_00000001"),
+          write: (value: unknown) => records.createArtifact(book.id, runId, value, body) }
+      ];
+      let commits = 0;
+      const original = port.commitFile.bind(port);
+      port.commitFile = async (path, bytes, expected) => {
+        commits += 1;
+        return original(path, bytes, expected);
+      };
+      for (const item of cases) {
+        const value: Record<string, unknown> = { ...item.value, kind };
+        if (kind === undefined) delete value.kind;
+        const before = await seed(port, item.path, JSON.stringify(value));
+        const afterSeed = commits;
+        expect((await refusal(item.read())).code).toBe(typeof kind === "string" ? "unavailable" : "corrupt");
+        expect((await refusal(item.write(value))).code).toBe("invalid");
+        expect(commits).toBe(afterSeed);
+        expect((await port.readFile(item.path))?.bytes).toEqual(before.bytes);
+        expect((await port.readFile(item.path))?.sha256).toBe(before.sha256);
+        expect(await conflictNames(port, book.id)).toHaveLength(0);
+      }
+    }
+  );
+
+  test("saves and reads every T023 record kind through the Library queue and journal", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const records = library.workflowRecords;
+    expect(records).toBeInstanceOf(WorkflowRecordStore);
+
+    const run = await records.saveRun(book.id, runId, runRecord(book.id));
+    expect(run.status).toBe("saved");
+    expect(run.record.record.revision).toBe(1);
+
+    const task = await records.saveTask(book.id, runId, taskRecord(book.id));
+    expect(task.status).toBe("saved");
+
+    const attempt = await records.saveAttempt(book.id, runId, attemptRecord(book.id));
+    expect(attempt.status).toBe("saved");
+
+    const effect = await records.saveEffect(book.id, runId, effectRecord(book.id));
+    expect(effect.status).toBe("saved");
+
+    const question = await records.saveQuestion(book.id, runId, questionRecord(book.id));
+    expect(question.status).toBe("saved");
+
+    expect((await records.readRun(book.id, runId))?.hash).toBe(run.record.hash);
+    expect((await records.readTask(book.id, runId, "task_00000001"))?.hash).toBe(task.record.hash);
+    expect((await records.readAttempt(book.id, runId, "attempt_00000001"))?.hash).toBe(attempt.record.hash);
+    expect((await records.readEffect(book.id, runId, "effect_00000001"))?.hash).toBe(effect.record.hash);
+    expect((await records.readQuestion(book.id, runId, "question_00000001"))?.hash).toBe(question.record.hash);
+
+    const journal = await readSyncJournal(port, "device_fixture01");
+    expect(journal?.files[key(runHeaderPath(book.id, runId))]?.sha256).toBe(run.record.hash);
+    expect(journal?.files[key(taskPath(book.id, runId, "task_00000001"))]?.sha256).toBe(task.record.hash);
+
+    // The active file is canonical: compact, sorted keys, no trailing newline.
+    const stored = await readText(port, taskPath(book.id, runId, "task_00000001"));
+    expect(stored.endsWith("\n")).toBe(false);
+    expect(stored).toBe(JSON.stringify(JSON.parse(stored)));
+    expect(stored.startsWith('{"base":')).toBe(true);
+  });
+
+  test("a stale base keeps the complete intended task as a conflict copy", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const first = await library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id));
+    const activeBefore = await readText(port, taskPath(book.id, runId, "task_00000001"));
+
+    const stale = revisionTwo(taskRecord(book.id), "b".repeat(64));
+    const error = await refusal(library.workflowRecords.saveTask(book.id, runId, stale));
+    expect(error.code).toBe("conflict");
+    expect(error.savedAs).toContain("/conflicts/");
+    expect(await readText(port, taskPath(book.id, runId, "task_00000001"))).toBe(activeBefore);
+
+    const names = await conflictNames(port, book.id);
+    expect(names).toHaveLength(1);
+    expect(names[0]).toMatch(/^task\.task_00000001\.conflict-external-edit\./);
+    const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, names[0] as string)));
+    expect(copy).toMatchObject({
+      id: "task_00000001",
+      revision: 2,
+      base: { kind: "sha256", value: "b".repeat(64), revision: 1 },
+      conflictMetadata: {
+        reason: "external-edit",
+        baseline: { kind: "sha256", value: "b".repeat(64), revision: 1 },
+        observed: { kind: "sha256", value: first.record.hash }
+      }
+    });
+
+    const correct = revisionTwo(taskRecord(book.id), first.record.hash);
+    const saved = await library.workflowRecords.saveTask(book.id, runId, correct);
+    expect(saved.status).toBe("saved");
+    expect(saved.record.record.revision).toBe(2);
+
+    const recreated = await refusal(library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id)));
+    expect(recreated.code).toBe("conflict");
+  });
+
+  test("a racing writer leaves the active record and keeps the intended copy", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const first = await library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id));
+    const target = key(taskPath(book.id, runId, "task_00000001"));
+    const external = revisionTwo(taskRecord(book.id), first.record.hash);
+    const externalBytes = encodeWorkflowRecord(external as unknown as WorkflowRecord);
+    let raced = false;
+    let targetCommits = 0;
+
+    const original = port.commitFile.bind(port);
+    port.commitFile = async (path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> => {
+      if (key(path) === target) {
+        targetCommits += 1;
+        if (!raced) {
+          raced = true;
+          const written = await original(path, externalBytes, { kind: "sha256", value: first.record.hash });
+          if (written.status !== "written") throw new Error("Synthetic race could not publish");
+        }
+      }
+      return original(path, bytes, expected);
+    };
+
+    const intended = {
+      ...revisionTwo(taskRecord(book.id), first.record.hash),
+      updatedAt: "2026-11-07T12:06:00.000Z"
+    };
+    const error = await refusal(library.workflowRecords.saveTask(book.id, runId, intended));
+    expect(error.code).toBe("conflict");
+    expect(targetCommits).toBe(1);
+
+    const active = await port.readFile(taskPath(book.id, runId, "task_00000001"));
+    expect(active?.sha256).toBe(sha256Hex(externalBytes));
+    expect(decoder.decode(active?.bytes)).toContain("2026-11-07T12:05:00.000Z");
+
+    const names = await conflictNames(port, book.id);
+    expect(names).toHaveLength(1);
+    const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, names[0] as string)));
+    expect(copy.updatedAt).toBe("2026-11-07T12:06:00.000Z");
+    expect(copy.conflictMetadata.observed.value).toBe(sha256Hex(externalBytes));
+  });
+
+  test("an equal task is a semantic no-op and writes nothing", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const target = key(taskPath(book.id, runId, "task_00000001"));
+    let targetCommits = 0;
+    const original = port.commitFile.bind(port);
+    port.commitFile = async (path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> => {
+      if (key(path) === target) targetCommits += 1;
+      return original(path, bytes, expected);
+    };
+
+    const first = await library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id));
+    expect(targetCommits).toBe(1);
+
+    const again = await library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id));
+    expect(again.status).toBe("unchanged");
+    expect(again.record.hash).toBe(first.record.hash);
+    expect(targetCommits).toBe(1);
+
+    // Key order is not canonical identity: the same values must not trigger a rewrite.
+    const { updatedAt, createdAt, ...otherFields } = taskRecord(book.id);
+    const reordered = { updatedAt, createdAt, ...otherFields };
+    const third = await library.workflowRecords.saveTask(book.id, runId, reordered);
+    expect(third.status).toBe("unchanged");
+    expect(targetCommits).toBe(1);
+    expect(await conflictNames(port, book.id)).toHaveLength(0);
+  });
+
+  test("refuses malformed, duplicate-key, lone-surrogate, lossy-number and oversized files untouched", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const valid = JSON.stringify(taskRecord(book.id));
+    const cases: Array<{ id: string; bytes: string | Uint8Array; code: WorkflowRecordError["code"] }> = [
+      { id: "task_00000002", bytes: new Uint8Array([0x7b, 0xff, 0x7d]), code: "corrupt" },
+      {
+        id: "task_00000003",
+        bytes: valid.replace('"kind":"task"', '"kind":"task","kind":"task"'),
+        code: "corrupt"
+      },
+      {
+        id: "task_00000004",
+        bytes: `{"zz":"\\ud800",${valid.slice(1)}`,
+        code: "corrupt"
+      },
+      {
+        id: "task_00000005",
+        bytes: `{"zz":9007199254740993,${valid.slice(1)}`,
+        code: "corrupt"
+      },
+      {
+        id: "task_00000006",
+        bytes: `${valid}${" ".repeat(300_000)}`,
+        code: "too-large"
+      }
+    ];
+
+    for (const item of cases) {
+      const path = taskPath(book.id, runId, item.id);
+      const seeded = await seed(port, path, item.bytes);
+      const error = await refusal(library.workflowRecords.readTask(book.id, runId, item.id));
+      expect(error.code).toBe(item.code);
+      const after = await port.readFile(path);
+      expect(after?.sha256).toBe(seeded.sha256);
+    }
+
+    const invalidWrite = await refusal(
+      library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id, {
+        definition: {
+          role: "future-specialist",
+          completion: "candidate",
+          dependsOn: [],
+          impact: { complete: true, keys: ["mara"] }
+        }
+      }))
+    );
+    expect(invalidWrite.code).toBe("invalid");
+    expect(await port.readFile(taskPath(book.id, runId, "task_00000001"))).toBeNull();
+  });
+
+  test("unknown plain fields, including own __proto__, survive read-modify-write", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const plain = JSON.stringify(taskRecord(book.id));
+    const withProto = JSON.parse(`{"__proto__":{"kept":true},${plain.slice(1)}`) as Record<string, unknown>;
+    withProto.future = { nested: ["kept", 2], enabled: true };
+
+    const first = await library.workflowRecords.saveTask(book.id, runId, withProto);
+    const firstRaw = JSON.parse(await readText(port, taskPath(book.id, runId, "task_00000001")));
+    expect(Object.hasOwn(firstRaw, "__proto__")).toBe(true);
+    expect(Reflect.get(firstRaw, "__proto__")).toEqual({ kept: true });
+    expect(firstRaw.future).toEqual({ nested: ["kept", 2], enabled: true });
+
+    const next = {
+      ...first.record.record,
+      revision: 2,
+      base: { kind: "sha256", value: first.record.hash, revision: 1 },
+      updatedAt: "2026-11-07T12:07:00.000Z"
+    };
+    const saved = await library.workflowRecords.saveTask(book.id, runId, next);
+    expect(saved.record.record.revision).toBe(2);
+
+    const secondRaw = JSON.parse(await readText(port, taskPath(book.id, runId, "task_00000001")));
+    expect(Object.hasOwn(secondRaw, "__proto__")).toBe(true);
+    expect(Reflect.get(secondRaw, "__proto__")).toEqual({ kept: true });
+    expect(secondRaw.future).toEqual({ nested: ["kept", 2], enabled: true });
+  });
+
+  test("a newer closed-union member stays read-only and is never overwritten", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const path = taskPath(book.id, runId, "task_00000007");
+    const seeded = await seed(port, path, JSON.stringify(taskRecord(book.id, {
+      id: "task_00000007",
+      status: "future-status"
+    })));
+
+    const error = await refusal(library.workflowRecords.readTask(book.id, runId, "task_00000007"));
+    expect(error.code).toBe("unavailable");
+
+    const write = await refusal(library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id, {
+      id: "task_00000007"
+    })));
+    expect(write.code).toBe("conflict");
+    const after = await port.readFile(path);
+    expect(after?.sha256).toBe(seeded.sha256);
+    expect(await conflictNames(port, book.id)).toHaveLength(1);
+  });
+
+  test("checked run updates use the exact previous hash and keep the run identity", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const first = await library.workflowRecords.saveRun(book.id, runId, runRecord(book.id));
+    expect(first.status).toBe("saved");
+
+    const next = {
+      ...runRecord(book.id),
+      revision: 2,
+      base: { kind: "sha256", value: first.record.hash, revision: 1 },
+      mode: "paused",
+      updatedAt: "2026-11-07T12:09:00.000Z"
+    };
+    const saved = await library.workflowRecords.saveRun(book.id, runId, next);
+    expect(saved.status).toBe("saved");
+    expect((await library.workflowRecords.readRun(book.id, runId))?.record.mode).toBe("paused");
+
+    const wrongIdentity = await refusal(library.workflowRecords.saveRun(book.id, runId, runRecord(book.id, {
+      id: "run_00000002"
+    })));
+    expect(wrongIdentity.code).toBe("invalid");
+    expect((await port.readFile(runHeaderPath(book.id, runId)))?.sha256).toBe(saved.record.hash);
+  });
+
+  test("a checked update whose previous file is missing keeps a missing-file copy", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const error = await refusal(library.workflowRecords.saveTask(
+      book.id,
+      runId,
+      revisionTwo(taskRecord(book.id), "c".repeat(64))
+    ));
+    expect(error.code).toBe("conflict");
+    const names = await conflictNames(port, book.id);
+    expect(names).toHaveLength(1);
+    const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, names[0] as string)));
+    expect(copy.conflictMetadata).toMatchObject({
+      reason: "missing-file",
+      baseline: { kind: "sha256", value: "c".repeat(64), revision: 1 },
+      observed: { kind: "absent" }
+    });
+    expect(await port.readFile(taskPath(book.id, runId, "task_00000001"))).toBeNull();
+  });
+
+  test("a valid non-canonical spelling is read and left alone by a semantic no-op", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const id = "task_00000008";
+    const pretty = JSON.stringify(taskRecord(book.id, { id }), null, 2);
+    const seeded = await seed(port, taskPath(book.id, runId, id), pretty);
+
+    const snapshot = await library.workflowRecords.readTask(book.id, runId, id);
+    expect(snapshot?.record.id).toBe(id);
+
+    const noop = await library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id, { id }));
+    expect(noop.status).toBe("unchanged");
+    expect((await port.readFile(taskPath(book.id, runId, id)))?.sha256).toBe(seeded.sha256);
+    expect(await conflictNames(port, book.id)).toHaveLength(0);
+  });
+
+  test("a zero-byte artifact body is a valid bounded pair", async () => {
+    const { library, book } = await makeBook();
+    const empty = new Uint8Array(0);
+    const created = await library.workflowRecords.createArtifact(
+      book.id,
+      runId,
+      artifactMetadata(book.id, empty, { id: "artifact_00000005" }),
+      empty
+    );
+    expect(created.status).toBe("created");
+    expect(created.artifact.body.bytes.byteLength).toBe(0);
+    const read = await library.workflowRecords.readArtifact(book.id, runId, "artifact_00000005");
+    expect(read?.record.bytes).toBe(0);
+  });
+
+  test.each([false, true].flatMap((noop) =>
+    ["valid-pair", "metadata-only", "wrong-body", "missing-body", "corrupt-metadata", "missing-metadata", "io"]
+      .map((fault) => ({ noop, fault }))))("final artifact readback refuses %j", async ({ noop, fault }) => {
+        const { library, book, port } = await makeBook();
+        const body = encoder.encode("Intended candidate.");
+        const metadata = artifactMetadata(book.id, body);
+        const metaPath = artifactMetaPath(book.id, runId, metadata.id);
+        const bodyPath = artifactBodyPath(book.id, runId, metadata.id, "md");
+        if (noop) await library.workflowRecords.createArtifact(book.id, runId, metadata, body);
+        const originalRead = port.readFile.bind(port);
+        const originalCommit = port.commitFile.bind(port);
+        let metadataPublished = false;
+        let metadataReads = 0;
+        let activeCommits = 0;
+        let faulted = false;
+        port.commitFile = async (path, bytes, expected) => {
+          if (key(path) === key(metaPath) || key(path) === key(bodyPath)) activeCommits += 1;
+          const result = await originalCommit(path, bytes, expected);
+          if (key(path) === key(metaPath) && result.status === "written") metadataPublished = true;
+          return result;
+        };
+        const replace = async (path: LibraryPath, bytes: Uint8Array) => {
+          const current = await originalRead(path);
+          if (!current) throw new Error("Synthetic race needs an existing file");
+          const replaced = await originalCommit(path, bytes, { kind: "sha256", value: current.sha256 });
+          expect(replaced.status).toBe("written");
+        };
+        port.readFile = async (path) => {
+          if (key(path) === key(metaPath)) {
+            if (fault === "io" && faulted) throw new Error("Synthetic final read failed");
+            metadataReads += 1;
+            if (!faulted && (noop ? metadataReads === 2 : metadataPublished)) {
+              faulted = true;
+              if (fault === "io") throw new Error("Synthetic final read failed");
+              if (fault === "missing-body") await port.removeFile(bodyPath);
+              else if (fault === "missing-metadata") await port.removeFile(metaPath);
+              else if (fault === "corrupt-metadata") await replace(metaPath, encoder.encode("{invalid"));
+              else if (fault === "wrong-body") await replace(bodyPath, encoder.encode("Different body."));
+              else {
+                const other = fault === "metadata-only" ? body : encoder.encode("Different valid pair.");
+                if (fault === "valid-pair") await replace(bodyPath, other);
+                const changed = artifactMetadata(book.id, other, {
+                  producedBy: { ...metadata.producedBy, id: "attempt_00000002" }
+                });
+                await replace(metaPath, encodeWorkflowRecord(changed as unknown as WorkflowRecord));
+              }
+            }
+          }
+          return originalRead(path);
+        };
+        const error = await refusal(library.workflowRecords.createArtifact(book.id, runId, metadata, body));
+        expect(faulted).toBe(true);
+        expect(error.code).toBe("uncertain");
+        expect(error.message).toContain(key(metaPath));
+        expect(activeCommits).toBe(noop ? 0 : 2);
+        expect(await conflictNames(port, book.id)).toHaveLength(0);
+        // Recovery observes the external state; the failed operation never replays or rolls back.
+        const saved = await originalRead(metaPath);
+        const savedBody = await originalRead(bodyPath);
+        if (fault === "valid-pair" || fault === "metadata-only") {
+          const read = await library.workflowRecords.readArtifact(book.id, runId, metadata.id);
+          expect(read?.record.producedBy).toMatchObject({ id: "attempt_00000002" });
+          expect(read?.hash).toBe(saved?.sha256);
+        } else if (fault !== "io") {
+          const readError = await refusal(library.workflowRecords.readArtifact(book.id, runId, metadata.id));
+          expect(readError.code).toBe(fault.startsWith("missing") ? "unavailable" : "corrupt");
+        } else {
+          expect(savedBody?.bytes).toEqual(body);
+        }
+        expect((await originalRead(metaPath))?.sha256).toBe(saved?.sha256);
+        expect((await originalRead(bodyPath))?.sha256).toBe(savedBody?.sha256);
+  });
+
+  test("artifacts are absent-only pairs with exact metadata/body agreement", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const body = encoder.encode("Synthetic candidate text.");
+    const metadata = artifactMetadata(book.id, body);
+
+    const created = await library.workflowRecords.createArtifact(book.id, runId, metadata, body);
+    expect(created.status).toBe("created");
+    expect(created.artifact.record.hash).toBe(sha256Hex(body));
+    expect(decoder.decode(created.artifact.body.bytes)).toBe("Synthetic candidate text.");
+
+    const metaSnapshot = await port.readFile(artifactMetaPath(book.id, runId, "artifact_00000001"));
+    const bodySnapshot = await port.readFile(artifactBodyPath(book.id, runId, "artifact_00000001", "md"));
+    expect(metaSnapshot).not.toBeNull();
+    expect(bodySnapshot?.sha256).toBe(sha256Hex(body));
+
+    const again = await library.workflowRecords.createArtifact(book.id, runId, metadata, body);
+    expect(again.status).toBe("unchanged");
+
+    const mismatch = await refusal(library.workflowRecords.createArtifact(book.id, runId, artifactMetadata(book.id, body, {
+      hash: "c".repeat(64)
+    }), body));
+    expect(mismatch.code).toBe("invalid");
+    expect(await port.readFile(artifactMetaPath(book.id, runId, "artifact_00000001"))).not.toBeNull();
+
+    const oversized = await refusal(library.workflowRecords.createArtifact(
+      book.id,
+      runId,
+      artifactMetadata(book.id, new Uint8Array(0)),
+      new Uint8Array(1_048_577)
+    ));
+    expect(oversized.code).toBe("too-large");
+
+    const different = encoder.encode("A different synthetic candidate.");
+    const conflict = await refusal(library.workflowRecords.createArtifact(
+      book.id,
+      runId,
+      artifactMetadata(book.id, different),
+      different
+    ));
+    expect(conflict.code).toBe("conflict");
+    expect(await readText(port, artifactBodyPath(book.id, runId, "artifact_00000001", "md"))).toBe(
+      "Synthetic candidate text."
+    );
+    const names = await conflictNames(port, book.id);
+    expect(names).toHaveLength(2);
+    const metadataName = conflict.savedAs?.split("/").pop();
+    if (!metadataName) throw new Error("Expected the conflict metadata path");
+    const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, metadataName)));
+    const bodyName = copy.conflictMetadata.bodyCopy.split("/").pop();
+    expect(bodyName).toMatch(/^artifact\.artifact_00000001\.body\.conflict-external-edit\./);
+    expect(copy.conflictMetadata.bodyCopy).toBe(key(workflowConflictPath(book.id, runId, bodyName)));
+    const bodyCopy = await port.readFile(workflowConflictPath(book.id, runId, bodyName));
+    expect(bodyCopy?.bytes).toEqual(different);
+    expect(bodyCopy?.sha256).toBe(copy.hash);
+    expect(bodyCopy?.bytes.byteLength).toBe(copy.bytes);
+
+    const another = encoder.encode("Another retained candidate at the same timestamp.");
+    const collided = await refusal(library.workflowRecords.createArtifact(
+      book.id, runId, artifactMetadata(book.id, another), another
+    ));
+    const nextName = collided.savedAs?.split("/").pop();
+    if (!nextName) throw new Error("Expected the second conflict metadata path");
+    const nextCopy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, nextName)));
+    expect(nextCopy.conflictMetadata.bodyCopy).not.toBe(copy.conflictMetadata.bodyCopy);
+    const nextBody = await port.readFile(workflowConflictPath(book.id, runId,
+      nextCopy.conflictMetadata.bodyCopy.split("/").pop()));
+    expect(nextBody?.bytes).toEqual(another);
+    expect(nextBody?.sha256).toBe(nextCopy.hash);
+  });
+
+  test("a partial or mismatched artifact pair refuses without rewriting either file", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const body = encoder.encode("Synthetic JSON candidate.");
+    const metadata = artifactMetadata(book.id, body, { mediaType: "application/json" });
+    const metaBytes = encodeWorkflowRecord(metadata as unknown as WorkflowRecord);
+
+    await seed(port, artifactMetaPath(book.id, runId, "artifact_00000001"), metaBytes);
+    const partial = await refusal(library.workflowRecords.readArtifact(book.id, runId, "artifact_00000001"));
+    expect(partial.code).toBe("unavailable");
+
+    await seed(port, artifactBodyPath(book.id, runId, "artifact_00000001", "json"), body);
+    const matched = await library.workflowRecords.readArtifact(book.id, runId, "artifact_00000001");
+    expect(matched?.body.hash).toBe(sha256Hex(body));
+
+    await seed(port, artifactBodyPath(book.id, runId, "artifact_00000001", "md"), encoder.encode("another body"));
+    const mismatched = await refusal(library.workflowRecords.readArtifact(book.id, runId, "artifact_00000001"));
+    expect(mismatched.code).toBe("corrupt");
+
+    const bodyOnly = artifactBodyPath(book.id, runId, "artifact_00000009", "md");
+    await seed(port, bodyOnly, body);
+    const orphan = await refusal(library.workflowRecords.readArtifact(book.id, runId, "artifact_00000009"));
+    expect(orphan.code).toBe("unavailable");
+    expect((await port.readFile(bodyOnly))?.sha256).toBe(sha256Hex(body));
+
+    // A create over a metadata-only pair refuses instead of guessing the missing body.
+    const partialBody = encoder.encode("Synthetic partial candidate.");
+    await seed(
+      port,
+      artifactMetaPath(book.id, runId, "artifact_00000010"),
+      encodeWorkflowRecord(artifactMetadata(book.id, partialBody, { id: "artifact_00000010" }) as unknown as WorkflowRecord)
+    );
+    const partialWrite = await refusal(library.workflowRecords.createArtifact(
+      book.id,
+      runId,
+      artifactMetadata(book.id, partialBody, { id: "artifact_00000010" }),
+      partialBody
+    ));
+    expect(partialWrite.code).toBe("conflict");
+    expect(await port.readFile(artifactBodyPath(book.id, runId, "artifact_00000010", "md"))).toBeNull();
+
+    // Metadata that disagrees with its only body is refused on read.
+    const mismatchBody = encoder.encode("Synthetic mismatch candidate.");
+    await seed(
+      port,
+      artifactMetaPath(book.id, runId, "artifact_00000011"),
+      encodeWorkflowRecord(artifactMetadata(book.id, mismatchBody, {
+        id: "artifact_00000011",
+        hash: "d".repeat(64)
+      }) as unknown as WorkflowRecord)
+    );
+    await seed(port, artifactBodyPath(book.id, runId, "artifact_00000011", "md"), mismatchBody);
+    const disagreement = await refusal(library.workflowRecords.readArtifact(book.id, runId, "artifact_00000011"));
+    expect(disagreement.code).toBe("corrupt");
+  });
+
+  test("contexts are immutable and absent-only", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const created = await library.workflowRecords.createContext(book.id, runId, contextRecord(book.id));
+    expect(created.status).toBe("created");
+    expect((await library.workflowRecords.readContext(book.id, runId, "context_00000001"))?.hash).toBe(created.record.hash);
+
+    const again = await library.workflowRecords.createContext(book.id, runId, contextRecord(book.id));
+    expect(again.status).toBe("unchanged");
+
+    const conflict = await refusal(library.workflowRecords.createContext(book.id, runId, contextRecord(book.id, {
+      bytes: 129
+    })));
+    expect(conflict.code).toBe("conflict");
+    expect((await port.readFile(contextPath(book.id, runId, "context_00000001")))?.sha256).toBe(created.record.hash);
+    expect(await conflictNames(port, book.id)).toHaveLength(1);
+  });
+
+  test("refuses a foreign book, run, kind or unsafe ID before writing", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const records = library.workflowRecords;
+
+    const foreignBook = await refusal(records.saveTask(book.id, runId, taskRecord("book_00000099")));
+    expect(foreignBook.code).toBe("invalid");
+
+    const foreignRun = await refusal(records.saveTask(book.id, "run_00000002", taskRecord(book.id)));
+    expect(foreignRun.code).toBe("invalid");
+    expect(await port.readFile(taskPath(book.id, "run_00000002", "task_00000001"))).toBeNull();
+
+    const foreignKind = await refusal(records.saveEffect(book.id, runId, taskRecord(book.id)));
+    expect(foreignKind.code).toBe("invalid");
+
+    const unsafeId = await refusal(records.readTask(book.id, runId, "../task_00000001"));
+    expect(unsafeId.code).toBe("invalid");
+
+    const missingBook = await refusal(records.saveTask("book_00000099", runId, taskRecord("book_00000099")));
+    expect(missingBook.code).toBe("not-found");
+  });
+
+  test("an uncertain publication is reported as uncertain and never replayed", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const target = key(runHeaderPath(book.id, runId));
+    const original = port.commitFile.bind(port);
+    let targetCommits = 0;
+    port.commitFile = async (path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult> => {
+      if (key(path) === target) targetCommits += 1;
+      const result = await original(path, bytes, expected);
+      if (key(path) === target && result.status === "written") {
+        return { status: "changed", current: result.snapshot, publication: "uncertain" };
+      }
+      return result;
+    };
+
+    const error = await refusal(library.workflowRecords.saveRun(book.id, runId, runRecord(book.id)));
+    expect(error.code).toBe("uncertain");
+    expect(targetCommits).toBe(1);
+    expect(await conflictNames(port, book.id)).toHaveLength(0);
+    expect(await port.readFile(runHeaderPath(book.id, runId))).not.toBeNull();
+
+    // A fresh explicit save is a read of the published bytes, not an automatic retry.
+    const fresh = await library.workflowRecords.saveRun(book.id, runId, runRecord(book.id));
+    expect(fresh.status).toBe("unchanged");
+    expect(targetCommits).toBe(1);
+  });
+
+  test("conflict copy names stay bounded with a long record and device ID", async () => {
+    const { library, book, port } = await makeBook(clockAt(at), "d".repeat(100));
+    const longId = `task_${"a".repeat(123)}`;
+    const first = await library.workflowRecords.saveTask(book.id, runId, taskRecord(book.id, { id: longId }));
+    const stale = revisionTwo(taskRecord(book.id, { id: longId }), "b".repeat(64), longId);
+    const error = await refusal(library.workflowRecords.saveTask(book.id, runId, stale));
+    expect(error.code).toBe("conflict");
+    const name = error.savedAs?.split("/").pop() ?? "";
+    expect(name.length).toBeLessThanOrEqual(200);
+    expect(name.endsWith(".json")).toBe(true);
+    const copy = JSON.parse(await readText(port, workflowConflictPath(book.id, runId, name)));
+    expect(copy.id).toBe(longId);
+    expect(first.record.record.id).toBe(longId);
+  });
+
+  test("there is one checked workflow writer and no unchecked or deleting path", () => {
+    const store = readFileSync(new URL("../../src/workflow/record-store.ts", import.meta.url), "utf8");
+    expect(store).not.toContain("storage.commitFile");
+    expect(store).not.toContain("removeFile");
+    expect(store).not.toContain("removeDirectory");
+    expect(store).not.toMatch(/from "node:fs"/);
+    expect(store).toContain("this.host.commitFile");
+
+    const service = readFileSync(new URL("../../src/library/service.ts", import.meta.url), "utf8");
+    expect(service).toContain("new WorkflowRecordStore(");
+
+    const root = new URL("../../src/", import.meta.url);
+    const sources = readdirSync(root, { recursive: true })
+      .filter((file): file is string => typeof file === "string" && file.endsWith(".ts"))
+      .map((file) => readFileSync(new URL(file, root), "utf8"));
+    expect(sources.join("\n").match(/new WorkflowRecordStore\(/g) ?? []).toHaveLength(1);
+  });
+});
