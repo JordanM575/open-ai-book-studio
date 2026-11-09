@@ -1,7 +1,7 @@
 # Plan: book formatting and export
 
 **Spec:** [spec.md](spec.md) · **Tasks:** [tasks.md](tasks.md)
-**Status:** In progress. Phase 1, the D-108 renderers and ordered matter (T007–T013, D-169 and D-170 accepted 2026-11-04) are implemented; the Markdown folder export (T014) and the rest of Phase 4 are open.
+**Status:** In progress. Phase 1, the D-108 renderers and ordered matter (T007–T013, D-169 and D-170 accepted 2026-11-04) are implemented; the Markdown folder contract is recorded by D-202 (2026-11-09) while its implementation (T014) and the rest of Phase 4 are open.
 
 ## Constraints
 
@@ -11,8 +11,9 @@
   snapshot; output is a separate copy.
 - Reuse `book.settings.manuscript` for canonical typography. Do not add a parallel set of typography
   values to an export profile.
-- Keep the existing `book.frontMatter` record intact and semantically unchanged. Any ordered matter
-  field is additive, versioned and dependent on the unresolved public conversion decision.
+- Keep the existing `book.frontMatter` record intact and semantically unchanged. Ordered matter is
+  the additive D-169 `matter` value; conversion stays explicit, and the folder export adds only the
+  content-bound FR-011 preflight.
 - Reuse spec 019's image store and attachment records. This feature reads attached images for output;
   it does not modify their lifecycle.
 - Use only synthetic, isolated library fixtures for tests in this feature. Live manuscripts,
@@ -29,23 +30,23 @@ target, book metadata, ordered matter, chapter IDs/titles/order/Markdown, canoni
 attached image bytes or explicit missing-image warnings. It contains no mutable filesystem paths from
 the renderer and no second copy of typography state.
 
-The snapshot is captured once. Every renderer uses that same snapshot even if a later save occurs. The
-success message identifies that it represents the saved version captured when export began.
+The bundle is collected once and frozen before rendering. Collection may observe different files at
+different times, so it is never described as the book at one instant. Every renderer uses that same
+frozen bundle even if a later save occurs. The success message identifies the destination, format and
+written files as that collected bundle and explains the collection interval and post-freeze isolation;
+an unconfirmed publication is reported as uncertain, never as success.
 
-### 2. Additive matter schema — decision required first
+### 2. Additive matter schema — accepted as D-169
 
 Accepted as D-169 (2026-11-04): the value is named `matter`, with a generated title page and one
-ordered list of sections, each placed `front` or `back`; see `docs/FORMAT.md`. The original working
-proposal follows. It was a new versioned `orderedMatter` value in `book.json`, separate from
-`frontMatter`, with ordered `front` and `back` arrays. A section would have a stable ID, kind, title and
-editable Markdown content. Array order is the displayed order. This is a proposal, not an accepted
-schema: field naming, section details and treatment of populated legacy records must be resolved and
-recorded publicly before schema or conversion code is written.
+ordered list of sections, each placed `front` or `back`; see `docs/FORMAT.md`. The earlier
+`orderedMatter` working proposal was not selected and is not an accepted schema.
 
 The legacy record must never be cast to an array or automatically assigned a side or order. Existing
-books continue to open with no new value. Until conversion is decided and implemented, the export
-preflight warns that non-empty legacy values are excluded and requires the author to continue
-explicitly or cancel.
+books continue to open with no new value. Conversion is explicit under D-169. Independently, the
+Markdown folder export applies FR-011's content-bound preflight: only an exact included-section-body
+match or the narrow actually emitted title-page match counts as represented, and every other
+non-empty value needs an explicit continue or cancel for that frozen bundle.
 
 ### 3. Format editor and approximate preview
 
@@ -77,13 +78,12 @@ author-readable states.
 
 ### 5. Renderer strategy
 
-Keep a renderer seam keyed by the selected format, but do not choose or add a DOCX/PDF/EPUB library in
-this spec. D-108 must be researched and resolved before renderer selection or conformance claims for
-those formats. Markdown output can be planned independently, but its packaging and matter behavior
-still depend on the public matter decision. Until renderers exist, unsupported targets are visibly
-unavailable rather than represented as complete.
+D-108 was accepted on 2026-11-03, so renderer selection is settled and no new DOCX/PDF/EPUB library is
+chosen here. The existing single-file Markdown export keeps its behavior. The Markdown folder is a
+separate target with its own recorded packaging contract (D-202); until its planner and host work
+land, it stays visibly unavailable rather than represented as complete.
 
-D-108 was accepted on 2026-11-03 and the renderers now exist: `manuscript-html.ts` and `pdf.ts`
+The D-108 renderers now exist: `manuscript-html.ts` and `pdf.ts`
 (Chromium print-to-PDF in a hidden window) and `epub.ts` (`fflate`), all in `apps/desktop/src/main`,
 behind `exportManuscriptPdf` and `exportManuscriptEpub` in `export.ts`. They read the same saved
 `BookDetail` and the same collected illustrations as DOCX; no export-model package was added.
@@ -110,6 +110,33 @@ docs/DECISIONS.md and docs/adr/                 public decision record when acce
 
 Exact module names may follow the repository structure when implementation begins. No schema,
 renderer library or destination behavior is considered accepted by this file alone.
+
+## Markdown folder delivery order (D-202)
+
+Recording (this packet) comes first; implementation then splits into two independent branches that
+join only at the mounted journey:
+
+```text
+C: recorded public contract (D-202, FORMAT, folder format, this spec)
+   ├─ P: one pure planner owner — deterministic plan, notation, budgets, legacy analysis
+   └─ Q0: host protocol contract — capture, verification, production policy, target capability
+        └─ Q: capture and publication implementation with qualified targets
+P + Q ──> U: validated mounted journey ──> I: integrated evidence and fresh exact-head review
+```
+
+- **P** owns only the pure planner and its focused expected-byte and inventory tests. It has no
+  Library, writer, host or interface authority, and package-export wiring is coordinated rather than
+  separately owned.
+- **Q0** must separately establish the actual enumeration and observation protocol, the trusted
+  construction handoff, measured production limits and host memory peaks, and per-target publication
+  capability before **Q** implementation. One shared host integration owner coordinates the Library,
+  image-store and editor seams; there are no competing writers. Existing-folder replacement and
+  later-change preservation remain named successor work inside this branch.
+- **U/I** begin only after the P and Q interfaces are agreed: validated transport, content-bound
+  consent, destination choice, accessible warnings and file lists, real pre-commit cancellation and
+  truthful late or unknown settlement, followed by integrated positive and failure evidence on each
+  qualified target. Pure-planner success alone never exposes the journey, and no branch's evidence
+  substitutes for another's.
 
 ## Decision gates
 

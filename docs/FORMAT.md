@@ -1092,6 +1092,36 @@ rather than leaving the matter out. Fields inside `matter` that the app does not
 saves. Only the matter save writes `matter`; a general book update never does. The format of
 `matter` changes only with `schemaVersion`.
 
+## Markdown folder export
+
+**Status: specified contract, not implemented output.** [D-202](DECISIONS.md#d-202--markdown-folder-export-pure-planner-contract-and-saved-source-bundle)
+accepts the contract and [the folder format](formats/markdown-folder.md) is normative. No planner,
+capture protocol, publisher or mounted journey exists yet, so the app does not offer this export and
+no folder found on disk was necessarily produced under these rules.
+
+The export writes a one-way reading copy: `README.md`, an `images/` directory (present even when
+empty) and dense uniformly numbered reading files in one order — the generated title page when matter
+enables it, front sections, a contents file when settings ask for one, chapters in captured Library
+order each followed by its successfully captured illustrations, then back sections. An illustration's
+copied image file shares its ordinal. The folder is not a backup, archive or live manuscript, holds no
+hidden manifest and makes no re-import claim. The existing single-file Markdown export is unchanged.
+
+The output is planned from saved files collected into one frozen bundle after required saves succeed.
+Collection may observe different files at different times and is never described as the book at a
+single instant; once frozen, later edits cannot change the plan and a new collection invalidates
+earlier consent. Generated metadata uses a reversible escape notation while chapter and section bodies
+keep their captured parsed bytes exactly — parsed content, not the raw chapter file — and the
+title page's trimmed subtitle and author remain deliberate projections rather than raw-value copies.
+Legacy values the output does not represent are listed for an explicit **Continue without them** or
+**Cancel** choice under the exact rules in the folder format, including its key classification spelled
+as `key.toLowerCase().replace(/[^a-z]/g, "")`; the record itself is never changed. Selected images are
+bound to verified private bytes before planning and copied exactly, with frozen omission warnings for
+optional failures; copied files may carry embedded metadata and their placement text names position,
+not content. Planning is bounded in every dimension — input, generated text, output, inventory,
+retrieval and a conservative accounted payload that is a logical envelope, not measured memory — and
+a fresh plan must allow every file to be retrieved once under all limits together. Publication,
+no-replace replacement, cancellation and per-target qualification remain gated host work.
+
 ## Chapter files
 
 One Markdown file per chapter, named `NNNN-slug.md` (`0001-the-door.md`). The numeric prefix is the
