@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, mock, test } from "bun:test";
 import { analyzeReviewCoverage, type ReviewSourceSnapshot } from "@ai-book-studio/core/review";
-import { analyzeReviewInWorker } from "@ai-book-studio/app/lib/review-worker";
+import { analyzeReviewInWorker, verifyRepetitionInWorker } from "@ai-book-studio/app/lib/review-worker";
 import type { ReviewWorkerReply, ReviewWorkerRequest } from "@ai-book-studio/app/lib/review-worker-protocol";
 
 const NOW = "2026-11-08T12:00:00.000Z";
@@ -23,6 +23,28 @@ class ControlledWorker extends EventTarget {
 }
 
 describe("owned review worker lifecycle", () => {
+  test("selected-evidence verification rejects other operation replies and non-boolean claims", async () => {
+    const evidence = { body: "one two three", startOffset: 0, endOffset: 13, label: "one two three" };
+    for (const reply of [{ kind: "complete", analysis: analyzeReviewCoverage(snapshot([evidence.body])) },
+      { kind: "verified-evidence", matches: "true" }, { kind: "verified-evidence" }, { kind: "failed" }, null]) {
+      const worker = new ControlledWorker();
+      const result = verifyRepetitionInWorker(evidence, new AbortController().signal, { createWorker: () => worker });
+      worker.message({ kind: "ready" });
+      expect(worker.postMessage).toHaveBeenCalledWith({ kind: "verify-evidence", evidence });
+      worker.message(reply as ReviewWorkerReply);
+      expect((await result).status).toBe("failed");
+      expect(worker.terminate).toHaveBeenCalledTimes(1);
+    }
+    const worker = new ControlledWorker();
+    const controller = new AbortController();
+    const result = verifyRepetitionInWorker(evidence, controller.signal, { createWorker: () => worker });
+    worker.message({ kind: "ready" });
+    controller.abort();
+    worker.message({ kind: "verified-evidence", matches: true });
+    expect((await result).status).toBe("cancelled");
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
   test("pre-abort starts no worker; abort during startup terminates and removes listeners", async () => {
     const source = snapshot(["one two three"]);
     const before = new AbortController();
@@ -171,7 +193,7 @@ describe("owned review worker lifecycle", () => {
 });
 
 describe("real in-process Bun workers (not browser/Electron evidence)", () => {
-  test("main-loop heartbeat and cancellation reach non-cooperative native NFC, then a fresh run completes", async () => {
+  test.each(["analysis", "evidence"] as const)("%s heartbeat and cancellation reach non-cooperative native NFC, then a fresh run completes", async (operation) => {
     const source = snapshot([`a${"\u0315".repeat(65_536)}${"\u0300".repeat(65_536)} two three`]);
     const controller = new AbortController();
     let entered = false;
@@ -191,7 +213,7 @@ describe("real in-process Bun workers (not browser/Electron evidence)", () => {
     let terminations = 0;
     const start = performance.now();
     try {
-      const result = await analyzeReviewInWorker(source, controller.signal, { createWorker: () => {
+      const createWorker = () => {
         worker = new Worker(new URL("./support/review-normalization.worker.ts", import.meta.url), { type: "module" });
         const terminate = worker.terminate.bind(worker);
         worker.terminate = () => { terminations++; terminate(); };
@@ -205,7 +227,11 @@ describe("real in-process Bun workers (not browser/Electron evidence)", () => {
           } else if (event.data.kind === "test-native-exit") nativeFinished = true;
         });
         return worker;
-      } });
+      };
+      const body = source.chapters[0]?.status === "saved" ? source.chapters[0].body : "";
+      const result = operation === "analysis"
+        ? await analyzeReviewInWorker(source, controller.signal, { createWorker })
+        : await verifyRepetitionInWorker({ body, label: "untrusted key", startOffset: 0, endOffset: body.length }, controller.signal, { createWorker });
       const settledAt = performance.now();
       clearInterval(heartbeat);
       maxGap = Math.max(maxGap, settledAt - lastTick);
@@ -223,6 +249,10 @@ describe("real in-process Bun workers (not browser/Electron evidence)", () => {
       if (fresh.status !== "complete") throw new Error("Fresh worker failed");
       expect(fresh.value.findings[0]?.label).toBe("fresh saved words");
       expect(fresh.value.findings[0]?.evidence).toHaveLength(2);
+      expect(await verifyRepetitionInWorker({ body: "CAFÉ, L’ÉTÉ 42", label: "café l'été 42", startOffset: 0, endOffset: 14 }, new AbortController().signal))
+        .toEqual({ status: "complete", value: true });
+      expect(await verifyRepetitionInWorker({ body: "xone two three", label: "one two three", startOffset: 1, endOffset: 14 }, new AbortController().signal))
+        .toEqual({ status: "complete", value: false });
       console.info("review-worker adversarial cancellation", {
         units: 131_083, ticksDuringNative: ticks, maxMainGapMs: maxGap,
         abortToResultMs: settledAt - abortAt, elapsedMs: settledAt - start

@@ -14,6 +14,7 @@ import {
 } from "@ai-book-studio/core/review";
 import type { ReviewRunView } from "@ai-book-studio/app/components/ReviewReportDialog";
 import type { ReviewWorkerReply, ReviewWorkerRequest } from "@ai-book-studio/app/lib/review-worker-protocol";
+import { matchesRepetitionEvidence } from "@ai-book-studio/core/review/repetition";
 
 let testing!: typeof import("@testing-library/react/pure");
 // Loaded in beforeAll, once the DOM exists.
@@ -509,27 +510,39 @@ function workerWorkspaceFixture(detail = firstDetail) {
   return { props, open, forbidden };
 }
 
-function controlledReviewWorkers() {
+function controlledReviewWorkers(holdEvidence = false) {
   const original = globalThis.Worker;
   const workers: ControlledWorker[] = [];
+  const checks: ControlledWorker[] = [];
   class ControlledWorker extends EventTarget {
     request: ReviewWorkerRequest | undefined;
     terminate = mock(() => {});
     constructor(_url: string | URL, _options?: WorkerOptions) {
       super();
-      workers.push(this);
       queueMicrotask(() => this.reply({ kind: "ready" }));
     }
-    postMessage(request: ReviewWorkerRequest) { this.request = request; }
+    postMessage(request: ReviewWorkerRequest) {
+      this.request = request;
+      if (request.kind === "analyze") workers.push(this);
+      else {
+        checks.push(this);
+        // A small-fixture protocol double only; real off-thread normalization has separate tests.
+        if (!holdEvidence) queueMicrotask(() => this.verify());
+      }
+    }
     reply(reply: ReviewWorkerReply) { this.dispatchEvent(new MessageEvent("message", { data: reply })); }
     complete(change?: (analysis: ReviewCoverageAnalysis) => ReviewCoverageAnalysis) {
-      if (!this.request) throw new Error("Worker has no saved snapshot");
+      if (this.request?.kind !== "analyze") throw new Error("Worker has no saved snapshot");
       const analysis = analyzeReviewCoverage(this.request.source);
       this.reply({ kind: "complete", analysis: change ? change(analysis) : analysis });
     }
+    verify() {
+      if (this.request?.kind !== "verify-evidence") throw new Error("Worker has no selected evidence");
+      this.reply({ kind: "verified-evidence", matches: matchesRepetitionEvidence(this.request.evidence) });
+    }
   }
   globalThis.Worker = ControlledWorker as unknown as typeof Worker;
-  return { workers, restore: () => { globalThis.Worker = original; } };
+  return { workers, checks, restore: () => { globalThis.Worker = original; } };
 }
 
 function deferredRead() {
@@ -549,7 +562,10 @@ async function startControlledReport(
   testing.fireEvent.click(queries.getByTestId("review-manuscript"));
   await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
   await testing.act(async () => { control.workers[0]?.complete(change); });
-  expect(queries.getByTestId("review-findings").textContent).toContain(expectedLabel);
+  await testing.waitFor(() => expect(queries.queryByTestId("review-findings")?.textContent?.includes(expectedLabel) ?? false).toBe(true), {
+    onTimeout: (error) => new Error(`${error.message}\nReview state: ${queries.queryByTestId("review-report")?.textContent?.slice(0, 1500) ?? "not mounted"}`)
+  });
+  await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-checking"))).toBe(false));
   return { rendered, queries };
 }
 
@@ -569,6 +585,159 @@ function changeLaterOccurrence(
 }
 
 describe("workspace review entry to report", () => {
+  test.each(["swapped", "label", "token-start", "token-end", "apostrophe", "astral"] as const)(
+    "opening a %s claim refuses false finding association and retains the unavailable report", async (defect) => {
+      const prefix = defect === "token-start" ? "x" : defect === "apostrophe" ? "x’" : defect === "astral" ? "𐐀" : "";
+      const suffix = defect === "token-end" ? "\u0301" : "";
+      const body = `${prefix}agate birch cloud${suffix} agate birch cloud agate birch cloud`;
+      const detail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [integrationChapter("ch_int000001", "The Light", 1, body)]);
+      const fixture = workerWorkspaceFixture(detail);
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control, (analysis) => {
+          const finding = analysis.findings.find((item) => item.label === "agate birch cloud");
+          if (!finding) throw new Error("Fixture needs the repeated phrase");
+          const evidence = [...finding.evidence];
+          if (defect === "swapped") {
+            const other = analysis.findings.find((item) => item.label === "birch cloud agate");
+            if (!other) throw new Error("Fixture needs another sequence");
+            evidence[0] = at(other.evidence, 0);
+          }
+          else if (defect !== "label") evidence[0] = { ...at(evidence, 0), startOffset: prefix.length,
+            endOffset: prefix.length + "agate birch cloud".length, excerpt: "agate birch cloud" };
+          return { ...analysis, findings: [{ ...finding, id: "repetition-v1-1", label: defect === "label" ? "silver fir pine" : finding.label, evidence }] };
+        }, defect === "label" ? "silver fir pine" : "agate birch cloud");
+        expect(queries.getByTestId("review-findings").textContent).toContain("Unverified totals");
+        expect(queries.getByTestId("review-finding").textContent).toContain("Unverified sequence");
+        expect(queries.getByTestId("review-finding").textContent).toContain("unverified count");
+        testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+        await testing.waitFor(() => expect(queries.getByTestId("review-unavailable")).toBeTruthy());
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value).toBe(body);
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        testing.fireEvent.click(queries.getByTestId("review-close"));
+        testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+        expect(queries.getByTestId("review-unavailable")).toBeTruthy();
+        expect(queries.queryByTestId("review-retry-freshness")).toBeNull();
+        expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
+  test("valid normalized Unicode and punctuation evidence selects the original literal", async () => {
+    const literal = "CAFÉ, L’ÉTÉ 𐐀";
+    const body = `😀 ${literal}. Cafe\u0301—l'e\u0301te\u0301;𐐨!`;
+    const detail = integrationDetail(INTEGRATION_BOOK, "Integration Fixture", [integrationChapter("ch_int000001", "The Light", 1, body)]);
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, undefined, "café l'été 𐐨");
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.selectionStart).toBe(3);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe(literal);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["initial", "after verification"] as const)("navigation read %s stays checking, rejects visibly, then retries explicitly", async (phase) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers(phase === "after verification");
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      const pending = deferredRead();
+      if (phase === "initial") fixture.open.mockImplementationOnce(() => pending.promise);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      expect(queries.getByTestId("review-checking")).toBeTruthy();
+      expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+      if (phase === "after verification") {
+        await testing.waitFor(() => expect(control.checks[0]?.request).toBeTruthy());
+        fixture.open.mockImplementationOnce(() => pending.promise);
+        await testing.act(async () => { control.checks[0]?.verify(); });
+      }
+      await testing.act(async () => { pending.reject(new Error("synthetic navigation read failure")); });
+      expect(queries.getByTestId("review-unavailable").textContent).toContain("saved chapters could not be checked");
+      expect(queries.queryByTestId("review-stale")).toBeNull();
+      expect(queries.getAllByTestId("review-evidence").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(at(firstDetail.chapters, 0).content);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      const retry = deferredRead();
+      fixture.open.mockImplementationOnce(() => retry.promise);
+      testing.fireEvent.click(queries.getByTestId("review-retry-freshness"));
+      expect(queries.getByTestId("review-checking")).toBeTruthy();
+      await testing.act(async () => { retry.resolve({ ok: true, data: firstDetail }); });
+      expect(queries.queryByTestId("review-unavailable")).toBeNull();
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-checking"))).toBe(false));
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      const checkIndex = control.checks.length;
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      if (phase === "after verification") {
+        await testing.waitFor(() => expect(control.checks[checkIndex]?.request).toBeTruthy());
+        await testing.act(async () => { control.checks[checkIndex]?.verify(); });
+      }
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("Salt and stone");
+      expect(fixture.props.onNotice).toHaveBeenCalledTimes(1);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["changed", "dirty"] as const)("source becoming %s during evidence normalization cannot be selected", async (change) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers(true);
+    try {
+      const { queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
+      await testing.waitFor(() => expect(control.checks[0]?.request).toBeTruthy());
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      if (change === "dirty") testing.fireEvent.change(editor, { target: { value: "My live words" } });
+      else fixture.open.mockImplementationOnce(async () => ({ ok: true as const, data: { ...firstDetail,
+        chapters: firstDetail.chapters.map((chapter) => ({ ...chapter, version: 2, hash: "f".repeat(64) })) } }));
+      await testing.act(async () => { control.checks[0]?.verify(); });
+      expect(queries.getByTestId("review-report")).toBeTruthy();
+      expect((queries.getByLabelText("Chapter title") as HTMLInputElement).value).toBe("The Light");
+      if (change === "dirty") expect(editor.value).toBe("My live words");
+      else expect(queries.getByTestId("review-stale")).toBeTruthy();
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each(["close", "rerun", "book", "library", "ABA", "unmount"] as const)("%s cancels evidence normalization and old replies cannot poison a replacement", async (change) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers(true);
+    try {
+      const { rendered, queries } = await startControlledReport(fixture, control);
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 0));
+      await testing.waitFor(() => expect(control.checks[0]?.request).toBeTruthy());
+      const check = at(control.checks, 0);
+      if (change === "unmount") rendered.unmount();
+      else if (change === "close") testing.fireEvent.click(queries.getByTestId("review-close"));
+      else if (change === "rerun") testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      else if (change === "library") rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, libraryRoot: "/synthetic/new" }));
+      else {
+        rendered.rerender(React.createElement(WorkspaceView, { ...fixture.props, bookId: INTEGRATION_BOOK_TWO }));
+        if (change === "ABA") rendered.rerender(React.createElement(WorkspaceView, fixture.props));
+      }
+      expect(check.terminate).toHaveBeenCalledTimes(1);
+      await testing.act(async () => {
+        check.reply({ kind: "verified-evidence", matches: false });
+        check.dispatchEvent(new Event("error"));
+      });
+      if (change === "rerun") {
+        await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+        expect(queries.getByTestId("review-cancel-run")).toBeTruthy();
+        await testing.act(async () => { control.workers[1]?.complete(); });
+        expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      } else expect(queries.queryByTestId("review-report")).toBeNull();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
   test.each(["literal", "bounds", "gap", "surrogate"] as const)(
     "a later %s occurrence is explicitly unverified and an exact open makes the report unavailable", async (defect) => {
       const fixture = workerWorkspaceFixture(repeatedDetail);
@@ -585,7 +754,7 @@ describe("workspace review entry to report", () => {
         const finding = at(queries.getAllByTestId("review-finding"), 0);
         const page = testing.within(finding);
         testing.fireEvent.click(page.getByRole("button", { name: "Next occurrences" }));
-        expect(queries.getByTestId("review-findings").textContent).toContain("Excerpts are unverified until checked");
+        expect(queries.getByTestId("review-findings").textContent).toContain("Sequence labels, counts and excerpts are unverified");
         expect(finding.textContent).toContain("Unverified excerpt");
         expect(page.getAllByTestId("review-evidence")).toHaveLength(10);
         testing.fireEvent.click(at(page.getAllByTestId("review-evidence"), 2));
@@ -920,8 +1089,14 @@ describe("workspace review entry to report", () => {
       const before = fixture.open.mock.calls.length;
       testing.fireEvent.click(at(buttons, 0));
       expect(fixture.open.mock.calls.length).toBe(before + 1);
+      expect(queries.getByTestId("review-checking")).toBeTruthy();
       testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
-      expect(fixture.open.mock.calls.length).toBe(before + 2);
+      expect(fixture.open.mock.calls.length).toBe(before + 1);
+      // A new explicit visit, rather than a disabled second click, supersedes the pending read.
+      testing.fireEvent.click(queries.getByTestId("review-close"));
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-checking"))).toBe(false));
+      testing.fireEvent.click(at(queries.getAllByTestId("review-evidence"), 1));
       await testing.waitFor(() => expect(Boolean(queries.queryByTestId("review-report"))).toBe(false));
       await testing.act(async () => {
         if (outcome === "resolve") pending.resolve({ ok: true, data: firstDetail });

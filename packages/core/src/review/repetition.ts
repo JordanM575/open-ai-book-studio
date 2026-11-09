@@ -26,6 +26,72 @@ function scalarWidth(body: string, offset: number): number {
   return next >= 0xdc00 && next <= 0xdfff ? 2 : 0;
 }
 
+function normalizedToken(token: string): string {
+  return token.normalize("NFC").toLowerCase().replaceAll("’", "'");
+}
+
+function tokenCharacterAt(body: string, offset: number): boolean {
+  return offset >= 0 && offset < body.length && TOKEN_CHARACTER.test(body.slice(offset, offset + scalarWidth(body, offset)));
+}
+
+function continuesToken(body: string, offset: number, tokenStart: number): boolean {
+  const character = body[offset];
+  return tokenCharacterAt(body, offset) ||
+    ((character === "'" || character === "’") && tokenStart >= 0 && tokenCharacterAt(body, offset + 1));
+}
+
+/** The previous scalar's start; callers have already checked the body's Unicode. */
+function previousScalar(body: string, offset: number): number {
+  const unit = body.charCodeAt(offset - 1);
+  return offset - (unit >= 0xdc00 && unit <= 0xdfff ? 2 : 1);
+}
+
+export interface RepetitionEvidenceCheck {
+  body: string;
+  startOffset: number;
+  endOffset: number;
+  /** The selected finding's normalized comparison key, not its literal excerpt. */
+  label: string;
+}
+
+/**
+ * Check one claimed three-token window, not the report's counts or other occurrences. Interactive
+ * callers MUST run this in a terminable worker: whole-token NFC is not cooperatively bounded.
+ * No trimming or repairing: the scanner rejects malformed chapters, including trailing Unicode.
+ */
+export function matchesRepetitionEvidence({ body, startOffset: start, endOffset: end, label }: RepetitionEvidenceCheck): boolean {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start || end > body.length) return false;
+  for (let offset = 0; offset < body.length;) {
+    const width = scalarWidth(body, offset);
+    if (!width) return false;
+    offset += width;
+  }
+  // A leading apostrophe is punctuation; an apostrophe after a token character joins that token.
+  const before = previousScalar(body, start);
+  if (!tokenCharacterAt(body, start) || tokenCharacterAt(body, before) ||
+      ((body[before] === "'" || body[before] === "’") && tokenCharacterAt(body, previousScalar(body, before)))) return false;
+  if (!tokenCharacterAt(body, previousScalar(body, end)) || continuesToken(body, end, start)) return false;
+
+  const keys: string[] = [];
+  let tokenStart = -1;
+  for (let offset = start; offset < end;) {
+    const width = scalarWidth(body, offset);
+    if (!width || offset + width > end) return false;
+    if (continuesToken(body, offset, tokenStart)) {
+      if (tokenStart < 0) {
+        if (keys.length === 3) return false;
+        tokenStart = offset;
+      }
+    } else if (tokenStart >= 0) {
+      keys.push(normalizedToken(body.slice(tokenStart, offset)));
+      tokenStart = -1;
+    }
+    offset += width;
+  }
+  if (tokenStart >= 0) keys.push(normalizedToken(body.slice(tokenStart, end)));
+  return keys.length === 3 && keys.join(" ") === label;
+}
+
 /**
  * Pure incremental scanner. Yields are work boundaries, never partial findings. Budgets carry
  * across chapters, including empty/short ones, and through final grouping. The async host may
@@ -55,7 +121,7 @@ export function* scanRepetitionSteps(source: ReviewSourceSnapshot): Generator<vo
     let tokenStart = -1;
     const finishToken = (end: number) => {
       if (tokenStart < 0) return;
-      const key = body.slice(tokenStart, end).normalize("NFC").toLowerCase().replaceAll("’", "'");
+      const key = normalizedToken(body.slice(tokenStart, end));
       window.push({ key, start: tokenStart });
       tokenStart = -1;
       const first = window[0];
@@ -80,10 +146,7 @@ export function* scanRepetitionSteps(source: ReviewSourceSnapshot): Generator<vo
 
     for (let offset = 0; offset < body.length;) {
       const width = scalarWidth(body, offset);
-      const character = body.slice(offset, offset + width);
-      const internalApostrophe = (character === "'" || character === "’") && tokenStart >= 0 &&
-        offset + width < body.length && TOKEN_CHARACTER.test(body.slice(offset + width, offset + width + scalarWidth(body, offset + width)));
-      if (TOKEN_CHARACTER.test(character) || internalApostrophe) {
+      if (continuesToken(body, offset, tokenStart)) {
         if (tokenStart < 0) tokenStart = offset;
       } else {
         finishToken(offset);

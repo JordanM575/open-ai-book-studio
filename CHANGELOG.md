@@ -7,6 +7,19 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Selected review evidence verification
+
+- Before opening a repetition passage, verify that it contains exactly three complete source tokens
+  with the selected sequence's normalized key. Share the scanner's Unicode/apostrophe rules and run
+  normalization in a disposable, cancellable worker. Re-read saved text afterward and retain the
+  live-editor and view-lifetime guards before selecting anything.
+- Disable evidence while navigation reads or verification are pending. A failed source read leaves
+  the report unavailable with an explicit retry; a false association requires a new review. Label
+  sequence names, counts and excerpts as unverified, and keep every occurrence in the paged report.
+- Add synthetic token-boundary, Unicode, worker cancellation, source-change, retry and lifetime
+  regressions. Native worker packaging, accessibility, retained-review and other-host acceptance
+  remain open.
+
 ### Review evidence and display freshness
 
 - Label each displayed occurrence excerpt unverified until its exact saved passage is checked when

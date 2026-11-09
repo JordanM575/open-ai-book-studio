@@ -308,10 +308,10 @@ function PagedFindings({ findings, sources, navigationDisabled, onNavigate, onMa
   return (
     <>
       <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
-        {findings.length} {pluralize(findings.length, "sequence")} · {totalOccurrences} occurrences, including overlaps. All results are retained; paging changes only this view.
+        Unverified totals · {findings.length} {pluralize(findings.length, "sequence")} · {totalOccurrences} occurrences, including overlaps. All results are retained; paging changes only this view.
       </p>
       <p className="mt-1 text-(length:--text-caption-size) text-muted-foreground">
-        Excerpts are unverified until checked against the saved text when opened.
+        Sequence labels, counts and excerpts are unverified worker results. Opening a passage checks only that occurrence against its sequence and the saved text; it does not verify the totals.
       </p>
       <ReviewPages label="Sequences" page={page} size={FINDINGS_PER_PAGE} total={findings.length} onPage={setPage} />
       <ul className="mt-2 space-y-3">
@@ -348,7 +348,7 @@ function FindingOccurrences({ finding, sources, navigationDisabled, onNavigate, 
   if (malformed) return <li role="status">The local review worker returned an invalid result. Run the review again.</li>;
   return (
     <li data-testid="review-finding">
-      <p className="break-words text-(length:--text-subheadline-size) font-medium">{finding.label} · {finding.evidence.length} occurrences</p>
+      <p className="break-words text-(length:--text-subheadline-size) font-medium">Unverified sequence · {finding.label} · {finding.evidence.length} occurrences (unverified count)</p>
       <ReviewPages label="Occurrences" page={page} size={OCCURRENCES_PER_PAGE} total={finding.evidence.length} onPage={setPage} />
       <ul className="mt-1 space-y-1.5">
         {visible.map((span, index) => (

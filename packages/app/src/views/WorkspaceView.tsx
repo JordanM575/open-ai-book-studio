@@ -45,7 +45,8 @@ import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateD
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
 import { exportBlockedMessage, exportReceipt, type ManuscriptExportReceipt } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
-import { analyzeReviewInWorker } from "../lib/review-worker";
+import { analyzeReviewInWorker, verifyRepetitionInWorker } from "../lib/review-worker";
+import { REPETITION_VERSION } from "@ai-book-studio/core/review/repetition";
 import { mustCompatible, SchemaRefusalError } from "../lib/schema-refusal";
 import { clearEditorHistory } from "../lib/editor-history";
 import { editBook, formatCount, formatWords, keptCopyText, must, pluralize } from "../lib/utils";
@@ -963,20 +964,51 @@ export function WorkspaceView({
     async (findingId: string, evidenceIndex: number) => {
       if (reviewView.kind !== "report" || reviewView.freshness.status !== "current") return;
       invalidateReview(true);
+      const controller = new AbortController();
       const generation = reviewGeneration.current;
-      const isCurrent = () => generation === reviewGeneration.current &&
+      const isCurrent = () => !controller.signal.aborted && generation === reviewGeneration.current &&
         shownBookId.current === bookId && shownLibraryRoot.current === libraryRoot;
       const report = reviewView.report;
       const origin = editorRef.current;
       const visit = origin?.getEvidenceSnapshot();
       const unavailable = () => onNotice(new Error("That passage cannot be selected while the editor has unsaved changes or is busy. Save or finish editing and try again."));
       if (!origin || !visit) { unavailable(); return; }
+      runController.current = controller;
+      setReviewView({ kind: "report", report, freshness: { status: "checking", cancellableRun: false } });
+      const evidenceUnavailable = () => {
+        setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+          ? { kind: "report", report, freshness: { status: "unavailable", reason: "evidence" } } : view);
+        onNotice(new Error("That passage could not be verified for this finding. Run the review again for current results."));
+      };
       try {
-        const fresh = await must(window.studio.books.open(bookId));
+        let fresh = await must(window.studio.books.open(bookId));
         if (!isCurrent()) return;
-        const snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
-        const navigation = revalidateReviewEvidence(report, snapshot, findingId, evidenceIndex);
+        let snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+        let navigation = revalidateReviewEvidence(report, snapshot, findingId, evidenceIndex);
         if (navigation.status === "ready") {
+          const finding = report.findings.find((item) => item.id === findingId);
+          const span = navigation.evidence;
+          const source = snapshot.chapters.find((item) => item.status === "saved" && item.chapterId === span.chapterId);
+          if (!finding || finding.metricId !== REPETITION_VERSION || source?.status !== "saved") { evidenceUnavailable(); return; }
+          // Only this selected claim is normalized, in a disposable worker. No whole-report
+          // occurrence traversal or native NFC is allowed on the UI thread.
+          const verified = await verifyRepetitionInWorker({ body: source.body, label: finding.label,
+            startOffset: span.startOffset, endOffset: span.endOffset }, controller.signal);
+          if (!isCurrent()) return;
+          if (verified.status !== "complete" || !verified.value) { evidenceUnavailable(); return; }
+          // Normalization can take arbitrarily long. Re-read after it, before touching the editor;
+          // the worker's answer confers neither current saved-source nor live-editor authority.
+          fresh = await must(window.studio.books.open(bookId));
+          if (!isCurrent()) return;
+          snapshot = reviewSourceSnapshotFromBookDetail(fresh, new Date().toISOString());
+          navigation = revalidateReviewEvidence(report, snapshot, findingId, evidenceIndex);
+          if (navigation.status === "ready" && fresh.chapters.find((item) => item.id === span.chapterId)?.content !== source.body) {
+            evidenceUnavailable(); return;
+          }
+        }
+        if (navigation.status === "ready") {
+          setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+            ? { kind: "report", report, freshness: { status: "current" } } : view);
           const chapter = fresh.chapters.find((item) => item.id === navigation.evidence.chapterId);
           if (!chapter || editorRef.current !== origin || !origin.isEvidenceCurrent(visit)) { unavailable(); return; }
           const sameChapter = visit.chapterId === chapter.id;
@@ -1004,11 +1036,14 @@ export function WorkspaceView({
             ? { kind: "report", report, freshness: navigation } : view);
           return;
         }
-        setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
-          ? { kind: "report", report, freshness: { status: "unavailable", reason: "evidence" } } : view);
-        onNotice(new Error("That passage is no longer available. Run the review again for current results."));
+        evidenceUnavailable();
       } catch (error) {
-        if (isCurrent()) onNotice(error);
+        if (!isCurrent()) return;
+        setReviewView((view) => isCurrent() && view.kind === "report" && view.report === report
+          ? { kind: "report", report, freshness: { status: "unavailable", reason: "read" } } : view);
+        onNotice(error);
+      } finally {
+        if (runController.current === controller) runController.current = null;
       }
     },
     [reviewView, bookId, libraryRoot, onNotice, invalidateReview]

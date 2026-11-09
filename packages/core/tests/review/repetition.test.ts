@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { analyzeReviewCoverage, analyzeReviewCoverageAsync, buildReviewReport, countReviewWords,
   revalidateReviewEvidence, type ReviewSourceSnapshot } from "../../src/review";
-import { scanRepetition, scanRepetitionSteps } from "../../src/review/repetition";
+import { matchesRepetitionEvidence, scanRepetition, scanRepetitionSteps } from "../../src/review/repetition";
 
 const NOW = "2026-11-08T12:00:00.000Z";
 function snapshot(...bodies: string[]): ReviewSourceSnapshot {
@@ -16,6 +16,52 @@ function report(source: ReviewSourceSnapshot) {
 }
 
 describe("repetition-v1 exact-source scanner", () => {
+  test("selected claims must match the normalized label and complete Unicode/apostrophe tokens", () => {
+    const phrase = "Agate, BIRCH—cloud";
+    const label = "agate birch cloud";
+    for (const prefix of ["x", "𐐀", "१२", "\u0301", "x'", "𐐀’"]) {
+      const body = `${prefix}${phrase}`;
+      expect(matchesRepetitionEvidence({ body, label, startOffset: prefix.length, endOffset: body.length })).toBe(false);
+    }
+    for (const suffix of ["x", "𐐀", "१२", "\u0301", "'x", "’𐐀"]) {
+      const body = `${phrase}${suffix}`;
+      expect(matchesRepetitionEvidence({ body, label, startOffset: 0, endOffset: phrase.length })).toBe(false);
+    }
+    for (const [prefix, suffix] of [["😀 '", "’!"], ["x''", "''x"], [".\n", "?\n"]] as const) {
+      const body = `${prefix}${phrase}${suffix}`;
+      expect(matchesRepetitionEvidence({ body, label, startOffset: prefix.length, endOffset: prefix.length + phrase.length })).toBe(true);
+    }
+    expect(matchesRepetitionEvidence({ body: phrase, label: "silver fir pine", startOffset: 0, endOffset: phrase.length })).toBe(false);
+    expect(matchesRepetitionEvidence({ body: "birch cloud agate", label, startOffset: 0, endOffset: "birch cloud agate".length })).toBe(false);
+    for (const body of [`\ud800${phrase}`, `${phrase}\udc00`]) {
+      const startOffset = body.indexOf(phrase);
+      expect(matchesRepetitionEvidence({ body, label, startOffset, endOffset: startOffset + phrase.length })).toBe(false);
+    }
+  });
+
+  test("selected-window checks agree with an independent regex oracle for every UTF-16 endpoint", () => {
+    for (const body of ["xagate birch cloud agate birch cloud", "😀 CAFÉ, L’ÉTÉ 42!", "'𐐀' १२ a\u0308;",
+      "can''t go now can't go now", "x’𐐀 १२ a\u0308", "İ I ı. i\u0307 i ı", "one two three four", "  one two "]) {
+      const tokens = [...body.matchAll(/[\p{L}\p{N}\p{M}]+(?:['’][\p{L}\p{N}\p{M}]+)*/gu)];
+      const expected = new Map<string, string>();
+      for (let index = 0; index + 2 < tokens.length; index++) {
+        const first = tokens[index];
+        const last = tokens[index + 2];
+        if (!first || !last) throw new Error("Fixture needs a three-token window");
+        expected.set(`${first.index}:${last.index + last[0].length}`,
+          tokens.slice(index, index + 3).map((token) => token[0].normalize("NFC").toLowerCase().replaceAll("’", "'")).join(" "));
+      }
+      const labels = [...new Set(expected.values()), "one two three"];
+      for (let startOffset = 0; startOffset < body.length; startOffset++) {
+        for (let endOffset = startOffset + 1; endOffset <= body.length; endOffset++) {
+          for (const label of labels) {
+            expect(matchesRepetitionEvidence({ body, label, startOffset, endOffset })).toBe(expected.get(`${startOffset}:${endOffset}`) === label);
+          }
+        }
+      }
+    }
+  });
+
   test("folds NFC, case and apostrophes without changing literal UTF-16 spans", () => {
     const text = "😀 CAFÉ, L’ÉTÉ 42. Cafe\u0301—l'e\u0301te\u0301;42!";
     const result = scanRepetition(snapshot(text));

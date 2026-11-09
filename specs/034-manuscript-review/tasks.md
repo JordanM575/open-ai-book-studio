@@ -218,3 +218,26 @@ and reopen success/failure races, cancellation, view and identity changes, and u
 These are focused Bun/happy-dom observations, not independent exact-head, native, remaining-host,
 provider or release acceptance. T016/T018/T019 and 038 T022 remain unchecked; retained-review
 continuation, inline mounting, native accessibility and worker packaging/CSP remain separately gated.
+
+### Wave 26 selected finding association and navigation reads
+
+Opening an occurrence now verifies its association with the selected repetition-v1 comparison key
+and both complete source-token boundaries. The check uses the scanner's Unicode letter/number/mark
+and internal-apostrophe grammar, NFC, case folding and apostrophe normalization; it preserves the
+literal source. This selected-claim check runs in a disposable worker because native NFC can be
+non-cooperative. It checks neither other occurrences nor aggregate counts. Sequence names, counts
+and excerpts are explicitly unverified, with all results retained through paging.
+
+Navigation enters checking before its first saved-source read, disables evidence throughout
+verification and re-reads the saved source after the worker finishes. The final saved/live editor
+and visit guards still apply. Rejected reads produce a retryable read-unavailable state without
+claiming the source changed; an explicit retry checks freshness but does not itself select a passage.
+False associations stay evidence-unavailable across reopen until a new review. Dismissal, rerun,
+book/library changes and unmount abort owned verification and ignore late replies.
+
+Synthetic checks cover swapped evidence, forged labels, partial letter/mark/astral/apostrophe tokens,
+valid normalized Unicode and punctuation, an independent regex endpoint oracle, both navigation-read
+failures and explicit retry, source/live edits during verification, and obsolete replies. Real
+in-process Bun workers separately demonstrate heartbeat and cancellation during native NFC for
+both analysis and selected-evidence verification. These checks do not establish browser/Electron
+packaging, device or release acceptance. T016/T018/T019 and 038 T022 remain unchecked.

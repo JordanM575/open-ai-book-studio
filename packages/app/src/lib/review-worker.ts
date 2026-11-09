@@ -1,4 +1,5 @@
 import type { ReviewCoverageAnalysis, ReviewSourceSnapshot, ReviewWorkResult } from "@ai-book-studio/core/review";
+import type { RepetitionEvidenceCheck } from "@ai-book-studio/core/review/repetition";
 import type { ReviewWorkerReply, ReviewWorkerRequest } from "./review-worker-protocol";
 import { asReviewAnalysis, validReviewAnalysis } from "./review-worker-validation";
 
@@ -18,18 +19,39 @@ function createReviewWorker(): ReviewWorker {
  * Unicode normalization. No heavy main-thread fallback. Own one worker until completion, failure
  * or abort; detach listeners and terminate it on every terminal path, ignoring already queued replies.
  */
-export function analyzeReviewInWorker(
+export async function analyzeReviewInWorker(
   source: ReviewSourceSnapshot,
   signal: AbortSignal,
-  options: { createWorker?: () => ReviewWorker; startupTimeoutMs?: number } = {}
+  options: ReviewWorkerOptions = {}
 ): Promise<ReviewWorkResult<ReviewCoverageAnalysis>> {
+  const result = await runReviewWorker({ kind: "analyze", source }, signal, async (reply) =>
+    reply?.kind === "complete" && await validReviewAnalysis(reply.analysis, source, signal)
+      ? asReviewAnalysis(reply.analysis) : undefined, options);
+  return result.status === "complete" ? result : { ...result, scope: source.scope, requestedAt: source.capturedAt };
+}
+
+/** Verify only the selected claim off-thread; it grants no source freshness or editor authority. */
+export function verifyRepetitionInWorker(evidence: RepetitionEvidenceCheck, signal: AbortSignal, options: ReviewWorkerOptions = {}): Promise<WorkerOutcome<boolean>> {
+  return runReviewWorker({ kind: "verify-evidence", evidence }, signal, async (reply) =>
+    reply?.kind === "verified-evidence" && typeof reply.matches === "boolean" ? reply.matches : undefined, options);
+}
+
+type ReviewWorkerOptions = { createWorker?: () => ReviewWorker; startupTimeoutMs?: number };
+type WorkerOutcome<T> = { status: "complete"; value: T } | { status: "cancelled" } | { status: "failed"; message: string };
+
+function runReviewWorker<T>(
+  request: ReviewWorkerRequest,
+  signal: AbortSignal,
+  parseReply: (reply: ReviewWorkerReply) => Promise<T | undefined>,
+  options: ReviewWorkerOptions
+): Promise<WorkerOutcome<T>> {
   return new Promise((resolve) => {
     let worker: ReviewWorker | undefined;
     let settled = false;
     let started = false;
     let validating = false;
     let startupTimer: ReturnType<typeof setTimeout> | undefined;
-    const finish = (result: ReviewWorkResult<ReviewCoverageAnalysis>) => {
+    const finish = (result: WorkerOutcome<T>) => {
       if (settled) return;
       settled = true;
       clearTimeout(startupTimer);
@@ -42,8 +64,8 @@ export function analyzeReviewInWorker(
       }
       resolve(result);
     };
-    const onAbort = () => finish({ status: "cancelled", scope: source.scope, requestedAt: source.capturedAt });
-    const fail = () => finish({ status: "failed", scope: source.scope, requestedAt: source.capturedAt, message: WORKER_FAILURE });
+    const onAbort = () => finish({ status: "cancelled" });
+    const fail = () => finish({ status: "failed", message: WORKER_FAILURE });
     const onError = (event: Event) => { event.preventDefault(); fail(); };
     const onMessage = (event: MessageEvent<ReviewWorkerReply>) => {
       if (settled) return;
@@ -52,14 +74,14 @@ export function analyzeReviewInWorker(
       if (reply?.kind === "ready" && !started) {
         started = true;
         clearTimeout(startupTimer);
-        try { worker?.postMessage({ kind: "analyze", source }); } catch { fail(); }
-      } else if (reply?.kind === "complete" && started && !validating) {
+        try { worker?.postMessage(request); } catch { fail(); }
+      } else if (started && !validating) {
         validating = true;
         // Traverse required metadata in bounded slices, never the potentially huge evidence arrays.
-        void validReviewAnalysis(reply.analysis, source, signal).then((valid) => {
+        void parseReply(reply).then((value) => {
           if (settled) return;
           if (signal.aborted) onAbort();
-          else if (valid) finish({ status: "complete", value: asReviewAnalysis(reply.analysis) });
+          else if (value !== undefined) finish({ status: "complete", value });
           else fail();
         }).catch(fail);
       } else {
