@@ -7,6 +7,15 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Completion map owner and policy follow-through
+
+- Distinguish volatile review, durable conversations, explicit campaigns and retained continuation,
+  with their own source, consent, overflow, storage and connected-journey gates.
+- Link next-work owners and clarify native iOS responsibilities, voice-session/catalog evidence,
+  audiobook retries and reuse, and the separate preview, pinned-routing and cost-mode contracts.
+- Align the speech acceptance edge with its preference owner while retaining background boundaries,
+  and state the five-child execution limit separately from coordination and broad-suite ownership.
+
 ### Platform contract follow-through
 
 - Align the spec index and browser handoff with the mobile owner's remaining native iOS work and

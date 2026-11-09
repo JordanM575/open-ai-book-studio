@@ -22,6 +22,24 @@ are incorporated as writer prerequisites; a roadmap reference alone supplies no 
 
 ## Next dependency slices
 
+### Review paths
+
+The continuation row above concerns retained campaign data. Four separate paths retain their own
+prerequisites; a storage gate on one path does not suspend all foreground review.
+
+| Path / owner | Required boundary |
+| --- | --- |
+| Volatile selected-source [039](../specs/039-reader-continuity-review/tasks.md) | No conversation/report writes. Selected-source bounds, provider/data-use disclosure, required consent, citations, read-only runtime enforcement and actual host/UI integration remain independent gates. It does not wait for 037 thread persistence or campaign continuation. |
+| Durable conversational [037](../specs/037-guided-autonomous-authoring/tasks.md) | The same selected-source/execution contracts plus disclosed retention through checked, recoverable shared threads and replay exclusion. Thread safety is this path's storage prerequisite. |
+| Explicit full-book campaigns [039/037](../specs/039-reader-continuity-review/spec.md#requirements) | Author-selected multi-stage planning/execution, per-call admission and attributed range/category/synthesis coverage. Ordinary overflow refuses; no silent extra calls. Pure planning does not authorize execution or prove storage. |
+| Retained campaign continuation [039 T014–T018](../specs/039-reader-continuity-review/tasks.md) | Reviewed public decision/format incorporation, exact codec/reconstruction and provenance, capability-qualified writers/recovery, then host/UI acceptance. A retained plan never grants execution authority. |
+
+[U-039-04 / ADR 0018](adr/0018-scoped-review-contracts.md#reader-profiles-and-bounds) remains a gate
+on **both T003 and T006**, including a single oversized chapter. Explicit campaigns partition only
+under their own per-call/coverage contracts; ordinary runs never silently clip, summarize or split.
+
+### Combined journey
+
 ```mermaid
 flowchart TD
   A[Correct and accept workflow storage] --> H[Host permission and durable admission]
@@ -64,7 +82,8 @@ claim the combined capability until its additional contracts pass.
   collections/recents/notes, remaining migration and import formats. Decide unresolved format and
   identity contracts before their writers; preserve all original requirements.
 - **W06 / 035:** ordinary ordered Markdown folder export with matter/assets and failure-safe
-  destinations, then measurable publishing/layout/template checks. A preview is not measured output.
+  destinations after its separate Markdown packaging decision, then measurable publishing/layout/
+  template checks. A preview is not measured output.
 - **W11 / 019/041/042:** image-result recovery, front-cover composition and recoverable stock-narrator
   chapters. Select each storage/output/consent contract; paid or device qualification needs its own
   authorized evidence. Optional character casting follows successful narrator-only delivery.

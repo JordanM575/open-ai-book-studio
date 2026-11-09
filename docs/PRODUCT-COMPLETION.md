@@ -12,7 +12,9 @@ The [requirements](completion-requirements.json) record stable IDs, current clas
 and acceptance criteria.
 The [spec ownership and dependency map](SPEC-DAG.md) links every requirement and lane to its
 existing or new spec; 039 is now In progress, while 040–042 remain Draft/Planned.
-The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into five active agent slots,
+The [spec index](../specs/README.md) links their plans/tasks; the [decision register](DECISIONS.md)
+records which contracts are accepted and which choices remain open.
+The [concurrent delivery plan](CONCURRENT-DELIVERY.md) turns this graph into up to five child slots,
 bounded work packages, decision packets and an event-driven continuation loop.
 
 The author's [expanded November 7 requirements](EXPANDED-AUTHORING-REQUIREMENTS.md) explicitly retain
@@ -35,9 +37,14 @@ L05/L09/L12; the earlier foreground-only review slices do not complete these jou
   choice with one all-target sign-off.
 
 The published CLI/MCP and ambient voice workflows are existing capabilities. Their lanes finish
-conformance and gaps; integrated spec 038 owns the voice preferences. They do not rebuild those features from scratch. The ambient
-workflow records on the author's action and speaks the completed answer automatically. Always-on
-listening, wake words and barge-in are separate, unimplemented behavior.
+conformance and gaps. [038](../specs/038-voice-options/spec.md) owns profile-local voice preferences;
+[017](../specs/017-voice-and-background/spec.md) owns background and explicit-session behavior.
+The current ambient workflow records when the author starts and stops it, then attempts a spoken
+reply. An unavailable selected route, provider refusal or playback failure can prevent audio; see
+[Voice](VOICE.md). Qualified interruption within an explicitly activated session remains retained
+production work. Unrequested always-listening or wake-word capture remains outside the contract.
+The merged Discuss controls have synthetic in-process host evidence; that does not qualify connected
+native capture, microphones or playback.
 
 ## Dependency graph
 
@@ -123,8 +130,10 @@ tradeoffs.
 
 ## Execution and ownership
 
-Use up to five concurrent OpenCode / GPT-6.1 Terra agents at reasoning `max` as specified in
-[CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md); the original six-agent wave is historical.
+Use up to five concurrent **children** and a separate coordinator; broad suites have one runner at a
+time, as specified in [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md). The requested child route is provider
+`opencode`, model `openai/gpt-6.1-terra`, variant `max`; this records requested settings, not measured
+effective inference effort. The original six-agent wave is historical.
 The graph does not require starting every lane at once. Edges identify required contracts: an
 existing verified implementation may already satisfy one while other work in that lane remains.
 A lane may implement an independent slice before all predecessors finish; its final acceptance
@@ -168,7 +177,7 @@ consistency, not that evidence passed or open design decisions are settled. The
 [map rationale](PRODUCT-MAP-DESIGN.md) explains the selected boundaries; the execution plan records
 concrete acceptance slices before dispatch.
 
-## Current next work
+## Next work
 
 ### What the November 8 baseline includes
 
@@ -186,7 +195,7 @@ neither a merged leaf nor a passing test suite completes an entire lane.
 
 The README uses [the current demo](https://youtu.be/0RsFzUq97xU); the
 [original submission](../hackathon/SUBMISSION.md) retains its original link and dated evidence.
-Short cuts, captions, credits and exact-upload playback/privacy/provenance review still need an
+Shorter video cuts, captions, credits and exact-upload playback/privacy/provenance review still need an
 artifact-by-artifact record. A link does not establish that the upload matches an inspected draft.
 
 ### Proposed delivery sequence
@@ -197,17 +206,20 @@ features with independent contracts can advance without waiting for unrelated ro
 
 | Work / owner | First deliverable | Prerequisites and acceptance before broadening |
 | --- | --- | --- |
-| Voice acceptance · 038 / L12 | Complete the author's review of T022's automated record; inventory live microphone/provider/playback gaps separately | T022 stays unchecked until the author closes it. Decide `marin`/`cedar` separately; current catalogs are model-specific. Any paid check needs explicit scope/budget. |
-| Named history · 032 / L07 | API/Workspace mounting for accepted restore/UI correction `56c7b7d` | Saved-only core merged PR #33. Correction passed 2,580 tests, coverage and 12/12 e2e; fresh independent review accepted it and PR #34 merged it. Preserve original candidates; no repeat broad suite absent changes/concerns. |
-| Agent interaction · 031/037 / L05 | Accept corrected workflow storage, then integrate host permission/admission, execution and one checked publisher | Checked v1 threads and pure graph/admission are merged; backed-up v2 migration and real scheduling remain. PR #43 needs fresh review/gates. 037 T018–T042 own the full connected journey. |
-| Planning and organization · 030/033 / L06–L07 | Correct PR #44 exact-value recovery and order identity, then prove built-adapter recovery | Worldbuilding/goal integration is merged; the broader manual candidate remains unaccepted. D-163–D-168/ADR 0017 governs checked save/reopen, conflicts and bounds. Series/collections/anchors remain owned. |
-| Formatting · 035 / L11 | T014 Markdown folder export from the saved ordered book, with failure-safe destination handling | Keep existing exports usable. Separate future physical layout, templates and named publishing rules; unknown measurements cannot pass KDP/EPUB/PDF readiness. |
-| Review · 034/037/039 / L08–L09 | Correct PR #45 finding association/token boundaries and navigation-read state; review the continuation contract/format candidate, then implement exact continuation and real scoped generation | Editor/verifier, saved-review controls and planner are merged. D-193 bounds remain; D-201 is a separate candidate whose reviewed decision and format must be incorporated before continuation writers. Codec/provenance, capability-gated storage and host/UI evidence remain. Generation remains read-only. |
-| Routing · 036 / L14 | Mount neutral preview and implement explicitly pinned workflow routes/admission | D-196/D-116 select bounded operations versus qualified strict money; no ranking, fallback or automatic retry. Enforcement/adapter qualification is not established by policy. |
-| Cover design · 041 / L10 | Existing art → saved front-cover composition → approximate preview → independently measured export | U-041-01/02 govern storage/output. Prove original-asset/manuscript preservation and failed-export recovery. Print wraps need measured pagination/paper inputs; generation waits on U-041-03. |
-| Audiobooks · 042 / L13 | Stock narrator/script approval, then one recoverable chapter render | Reuse integrated 038 and lower-level TTS helpers; U-042-01/03 gate requests, U-042-02 storage/recovery and U-042-04 packaging. Test partial/uncertain requests, no paid retry without consent, stale audio and reuse of successful chapters before optional character casting. |
-| Desktop release · 009/013 / L20–L23 | Accepted support/lifecycle matrix and candidate-specific install/upgrade/recovery evidence | D-115 and D-172–D-174 retain their scopes. Recheck D-174 against D-189's profile recovery text before any cleanup design. Signing/distribution need approval; test library/profile preservation and newer-schema refusal. L23 can close without Android/glasses/audiobooks. |
-| Browser, iOS, Android, glasses · 010/014/016/026/040 / L16–L19 | Per-target capability/refusal matrix; Android shell/storage decision packet and editor-only slice | Resolve actual storage/permission/credential limits; 040 U-01/02 before Android writes, U-03 before providers/voice, U-04 before release. Keep emulator, real-device and distribution evidence distinct. D-160's private companion transport is not implemented by a responsive demo. |
+| Voice acceptance · [038 tasks](../specs/038-voice-options/tasks.md), [017 tasks](../specs/017-voice-and-background/tasks.md) / L12 | Complete the author's review of T022's automated record; qualify production session/interrupt paths and inventory microphone/provider/playback gaps separately | T022 stays unchecked until the author closes it. Separately decide whether to add `marin` and `cedar` to the model-specific local catalogs described in [Voice](VOICE.md); neither is approved here, and local membership is not live availability. Paid checks need explicit scope/budget. |
+| Named history · [032 tasks](../specs/032-chapter-history/tasks.md) / L07 | API/Workspace mounting for accepted restore/UI correction `56c7b7d` | Saved-only core merged PR #33. Correction passed 2,580 tests, coverage and 12/12 e2e; fresh independent review accepted it and PR #34 merged it. Preserve original candidates; no repeat broad suite absent changes/concerns. |
+| Agent interaction · [031 tasks](../specs/031-agent-interaction/tasks.md), [037 tasks](../specs/037-guided-autonomous-authoring/tasks.md) / L05 | Accept corrected workflow storage, then integrate host permission/admission, execution and one checked publisher | Checked v1 threads and pure graph/admission are merged; backed-up v2 migration and real scheduling remain. PR #43 needs fresh review/gates. 037 T018–T042 own the full connected journey. [ADR 0019's alternatives](adr/0019-bounded-autonomous-authoring.md#alternatives-and-consequences) explain checked host publication, author control, recovery and its coordination costs. |
+| Planning and organization · [030 tasks](../specs/030-story-bible-extensions/tasks.md), [033 tasks](../specs/033-library-organization/tasks.md) / L06–L07 | Correct PR #44 exact-value recovery and order identity, then prove built-adapter recovery | Worldbuilding/goal integration is merged; the broader manual candidate remains unaccepted. D-163–D-168/ADR 0017 governs checked save/reopen, conflicts and bounds. Series/collections/anchors remain owned. |
+| Formatting · [035 tasks](../specs/035-book-formatting/tasks.md) / L11 | T014 Markdown folder export from the saved ordered book, with failure-safe destination handling | Record the separate Markdown packaging contract before its writer. Keep existing exports usable. Physical layout, templates and named publishing rules remain separate; unknown measurements cannot pass KDP/EPUB/PDF readiness. |
+| Volatile selected-source review · [039 tasks](../specs/039-reader-continuity-review/tasks.md), [034 tasks](../specs/034-manuscript-review/tasks.md) / L08–L09 | Connect disclosed saved-source snapshots, verified citations and read-only generation to the actual host/UI | Independently enforce selected-source bounds, provider/data-use disclosure, required consent, zero-send cancel and runtime read-only scope. This path writes no conversations or reports and does not wait for 037 thread storage or retained campaign continuation. Editor/verifier leaves do not establish connected acceptance. |
+| Durable conversational review · [037 tasks](../specs/037-guided-autonomous-authoring/tasks.md) / L05 | Integrate disclosed review inputs/results into the checked conversation path | Shared thread safety, versioned parts, recovery and replay exclusion gate this persistence path under [ADR 0018](adr/0018-scoped-review-contracts.md#accepted-envelope-and-execution-boundary). Selected-source and consent/runtime gates still apply. It is distinct from volatile 039 reports. |
+| Explicit full-book campaigns · [039 tasks](../specs/039-reader-continuity-review/tasks.md), [037 tasks](../specs/037-guided-autonomous-authoring/tasks.md) / L09/L05 | Connect all-range planning, per-call admission and attributed coverage/synthesis to separately authorized execution | Ordinary overflow refuses. Only an explicit campaign may partition under its per-call and coverage contracts; no silent extra calls or invented token-fit guarantee. Pure planner acceptance does not establish scheduling, storage or provider quality. |
+| Retained campaign continuation · [039 T014–T018](../specs/039-reader-continuity-review/tasks.md) / L09 | Record and independently review the public continuation contract/format, then implement exact reconstruction and recovery | D-201 remains a separate candidate at this snapshot. Reviewed public decision/format incorporation precedes writers. Codec/provenance, capability-gated storage and host/UI evidence are separate gates; this row governs retained continuation, not every review run. |
+| Routing · [036 tasks](../specs/036-task-aware-model-routing/tasks.md) / L14 | Mount selection-neutral preview; separately implement explicitly pinned workflow routes/admission | Preview stays unranked until T002's ranking decision; source alone proves neither production mounting nor accepted taxonomy. [D-196](DECISIONS.md#d-196--workflow-admission-pinned-role-routing-and-evidence) pins explicit workflow routes with no automatic retry or fallback. [D-116](DECISIONS.md#d-116--cost-and-usage-cap-enforcement) permits disclosed unknown cost in bounded-operation mode, which is not a dollar cap; strict money needs qualified provider-enforceable all-charge bounds and durable concurrent reservations. Enforcement and adapter qualification remain open. |
+| Cover design · [041 tasks](../specs/041-cover-design/tasks.md) / L10 | Existing art → saved front-cover composition → approximate preview → independently measured export | U-041-01/02 govern storage/output. Prove original-asset/manuscript preservation and failed-export recovery. Print wraps need measured pagination/paper inputs; generation waits on U-041-03. |
+| Audiobooks · [042 tasks](../specs/042-audiobook-casting/tasks.md) / L13 | Stock narrator/script approval, then one recoverable chapter render | [FR-006](../specs/042-audiobook-casting/spec.md#requirements) applies D-116's two cost modes; enforcement, durable reservations and adapter qualification remain open. Review every failed/uncertain request and authorize any retry anew with duplicate-charge risk disclosed; no automatic retry, substitution or regeneration. Validate/reuse successful chapter assets. 038/TTS seams do not prove exact text treatment or durable jobs: U-042-01/03 gate script/requests, U-042-02 storage/recovery and U-042-04 packaging. |
+| Desktop release · [009 tasks](../specs/009-packaging-release/tasks.md), [013 tasks](../specs/013-builds-and-deployment/tasks.md) / L20–L23 | Accepted support/lifecycle matrix and candidate-specific install/upgrade/recovery evidence | D-115 and D-172–D-174 retain their scopes. Recheck D-174 against D-189's profile recovery text before any cleanup design. Signing/distribution need approval; test library/profile preservation and newer-schema refusal. L23 can close without Android/glasses/audiobooks. |
+| Browser, iOS, Android, glasses · [010 tasks](../specs/010-web-target/tasks.md), [014 tasks](../specs/014-mobile/tasks.md), [016 tasks](../specs/016-sync/tasks.md), [026 tasks](../specs/026-glasses/tasks.md), [040 tasks](../specs/040-android/tasks.md) / L16–L19 | Per-target capability/refusal matrix; native iOS storage/credential/lifecycle decisions and Android shell/storage packet before dependent adapters | 014 owns native iOS storage, protected credentials, lifecycle/permissions and capability/refusal integration; 010/013 retain shared ports/build contracts. D-117 remains Proposed; shell/Simulator evidence does not qualify native storage. 040 U-01/02 gate Android writes, U-03 providers/voice, U-04 release. Keep Simulator/emulator, real-device and distribution evidence distinct. D-160's companion transport is not implemented by a responsive demo. |
 
 ### Decision packets and handoff contract
 
@@ -222,12 +234,14 @@ author-visible deliverable and exact acceptance tests. Completion evidence names
 and target, commands/results and remaining limits. Mock/provider contracts, live requests, native
 devices and release approval get their own records. Retain failed results and contested remedies.
 
-The U-039-04 gate remains on T003: overflow can affect a single large chapter as well as multi-book
-work. D-193 / ADR 0018 now accepts the shared bounded-envelope policy and rejects a single-book
-exemption. Pure review contracts can proceed; shared thread safety and provider/UI integration
-remain implementation prerequisites. ADRs 0019–0021 now select the specific persistence/autonomy/
-inline/voice extensions; several independent leaves are merged, while connected execution,
-continuation, application and target-specific acceptance remain open.
+U-039-04 remains a prerequisite on **both T003 and T006**: a single large chapter can overflow.
+[D-193 / ADR 0018](adr/0018-scoped-review-contracts.md#reader-profiles-and-bounds) rejects a single-book
+exemption. Ordinary overflow refuses without clipping, automatic splitting, summarization or fallback;
+explicit campaigns have separate per-call/coverage contracts. Volatile 039 still needs its own
+selected-source, disclosure, consent, citation, runtime and host/UI gates. Shared thread safety gates
+durable conversational retention, not volatile 039. ADRs 0019–0021 select the persistence/autonomy/
+inline/voice extensions; connected execution, retained continuation, application and target-specific
+acceptance remain open. See the [forecast's review paths](DELIVERY-FORECAST.md#review-paths).
 
 Release links belong in the repository only when their artifacts are ready. A configured installer,
 responsive viewport, Simulator capture or successful submission is not by itself release evidence.

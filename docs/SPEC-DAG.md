@@ -33,7 +33,7 @@ they are not replacement implementations. Linked numbers below open their princi
 | REQ-AUDIOBOOK-001 | [042] (new) | [038] preferences and existing TTS helpers; [017] background boundary, [011]/[022] consent and [035] snapshot concepts; stock cast/text consent and recovery | L13 |
 | REQ-LIBRARY-001 | [033] | [001]/[002]; identity, unknown-field preservation, checked collections/notes/goals and stale anchors | L07 |
 | REQ-HISTORY-001 | [032] | Core merged PR #33; restore/UI correction accepted and merged in PR #34, host mount remains | L07 |
-| REQ-ROUTING-001 | [036] | [011]/[022]; advisory-only preview, zero side effects and honest unknown price/capability; [D-116](DECISIONS.md#d-116--cost-and-usage-cap-enforcement) not a cap | L14 |
+| REQ-ROUTING-001 | [036] | [011]/[022]; selection-neutral unranked preview, zero side effects and honest unknown price/capability. [D-116](DECISIONS.md#d-116--cost-and-usage-cap-enforcement): bounded operations allow disclosed unknown cost, not a dollar cap; strict money requires qualified all-charge bounds and durable reservations. Enforcement/qualification remain open. | L14 |
 | REQ-RELEASE-001 | [009] | [013]; signing/update decision gates, unsigned provenance and install/update library preservation | L20 |
 | REQ-SURFACE-001 | [013] | [010]/[014]/[026]/[040]; per-surface matrix and refusal before capture/request/write | L16 |
 
@@ -72,7 +72,7 @@ states applicable claim, contract, evidence and refusal; the
 | L14 Routing and spend policy | [036], [011], [022] |
 | L15 CLI and MCP conformance | [018], [024], [025], [026] |
 | L16 Browser product | [010], [011], [013] |
-| L17 iPhone and iPad | [014], [016] |
+| L17 iPhone and iPad | [014] native storage, protected credentials, lifecycle/permission and capability/refusal integration; [010]/[013] shared ports/build contracts; [016] sync/trust |
 | L18 Android | [040]; [010]/[013]/[014]/[016] |
 | L19 Glasses and companion | [026]; transport/hardware decisions remain gated |
 | L20 Desktop packages and updates | [009], [013] |
@@ -108,7 +108,7 @@ flowchart LR
   S037[037 scoped read-only review] --> S039
   S011[011/022 provider consent] --> S039
   S010[010/013 storage and capabilities] --> S040[040 Android]
-  S014[014 mobile UI] --> S040
+  S014[014 mobile UI and native integration contracts] --> S040
   S016[016 conflicts and trust] --> S040
   S029[029 import gates] --> S040
   S011 --> S040
@@ -116,7 +116,7 @@ flowchart LR
   S035[035 export snapshots and validation] --> S041
   S011 --> S041
   S017[017 explicit background boundary] --> S042[042 audiobooks]
-  S038[038 integrated preferences and TTS helpers] --> S042
+  S038[038 integrated speech routes and preferences] --> S042
   S011 --> S042
   S035 --> S042
   S030[030 optional new planning records] -. only when included .-> S039
@@ -126,12 +126,20 @@ flowchart LR
 These contract arrows do not require full feature completion of all source specs. 035 supplies
 snapshot/validation contracts to 041; 041 may later supply cover measurements to a 035 readiness
 check. These are different slices, not a cycle requiring both entire specs to finish first. Likewise
-037's conversational review and 039's structured reports remain distinct; neither changes 034's
-deterministic metrics. D-171/D-116 and U-037/U-039 are now specifically accepted under ADRs 0019–0020;
-format, integration and independent evidence gates remain. D-115 and U-040…U-042 retain open decisions.
+037's durable conversational review needs shared thread safety; volatile 039's structured reports do
+not depend on conversation persistence. They still need selected-source bounds, disclosure/consent,
+citations, read-only execution and UI evidence. Neither changes 034's deterministic metrics. Explicit
+campaign planning/execution and retained continuation have separate gates, as shown in the
+[four review paths](DELIVERY-FORECAST.md#review-paths). D-171/D-116 and U-037/U-039 are specifically
+accepted under ADRs 0019–0020; detailed continuation format, integration and independent evidence
+gates remain. D-115 and U-040…U-042 retain open decisions.
 
 Spec 017's D-200 extension now includes hands-free/reading; 038 and existing speech services supply
-selection/request seams, not an audiobook job system. The November 7 direction adds L06 → L24 explicitly;
+selection/request seams, not an audiobook job system. L12 → L13 links 038 as its speech-route owner;
+042 also retains 017's explicit background boundary and its own request/storage/packaging decisions.
+Native iOS work remains with 014; D-117 is Proposed and shell/Simulator evidence does not qualify
+native storage, protected credentials or real-device/release behavior.
+The November 7 direction adds L06 → L24 explicitly;
 claim-scoped lane interpretations remain documented in
 [the dependency notes](PRODUCT-COMPLETION.md#dependency-questions-still-open).
 [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md) and its JSON map independent execution packages to

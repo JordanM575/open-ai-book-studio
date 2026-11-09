@@ -33,14 +33,15 @@ finish. Research can proceed while those decisions are open.
 
 ## Capacity and ownership
 
-- **Five concurrent agents**, per the author's direction. The original six-agent dispatch below is
-  historical. Current packages cover workflow storage/host integration, manual planning,
+- **Up to five concurrent children**, plus the separate coordinator, per the author's direction.
+  The original six-agent dispatch below is historical. Current packages cover workflow storage/host integration, manual planning,
   review/continuation, production voice qualification and independent documentation review, described in
   [Expanded authoring requirements](EXPANDED-AUTHORING-REQUIREMENTS.md). The JSON `currentWave`
   owns the current queue; `firstWave` preserves the initial dispatch.
   The coordinator owns the queue, integration and public completion records. Freed slots take the
   next ready package; five is a concurrency limit, not five permanent assignments.
-- **Every new child uses OpenCode / `openai/gpt-6.1-terra`, variant `max`.** The author's
+- **Every new child requests provider `opencode`, model `openai/gpt-6.1-terra`, variant `max`.**
+  These are requested settings, not a measurement of effective inference effort. The author's
   latest correction supersedes historical model choices.
   This includes fresh review. No silent model/effort substitution. The remaining monthly allowance is a
   capacity note, not a measured token balance or permission for paid application-provider calls.
