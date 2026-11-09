@@ -13,10 +13,12 @@ retain every feature; a prerequisite here is a specific contract, not completion
 | Workflow storage · PR #43 | `0ed733884a6d394a97634765c8d3c7d52e8f864e` | Corrected delayed verified-note ownership and integrated accepted main. Focused tests pass; fresh independent/Codex review and integrated gates are pending. |
 | Manual planning · PR #44 | `ae5a7f37c65b3ad68edf893d731cece3df89421d` | Independent review requires exact line-ending recovery, an exact full-copy representation and stable identities inside order editors. Five gates passed on an unchanged-head rerun; the initial failure remains recorded. |
 | Repetition navigation · PR #45 | `1cbe34e9fe50cd1d1e1dcc0e2b58df7deea7832a` | Five gates pass, but independent review requires finding association, complete source-token boundaries and checking/unavailable navigation-read states. |
-| Campaign continuation | Documentation candidate; implementation pending | D-201 specifies the continuation contract. Codec, reconstruction/provenance, writer and host integration are not implemented by this candidate. |
+| Campaign continuation | Documentation candidate; implementation pending | D-201 identifies a separate contract/format candidate, not an accepted decision recorded in this snapshot. Codec, reconstruction/provenance, writer and host integration remain unimplemented. |
 
 PR numbers identify work under review, not shipped features. A changed candidate needs assessment
 and gates on its new exact head. Tests from separate candidates overlap and are never summed.
+The continuation candidate must record its full decision and format and pass review before they
+are incorporated as writer prerequisites; a roadmap reference alone supplies no storage contract.
 
 ## Next dependency slices
 
@@ -46,7 +48,7 @@ claim the combined capability until its additional contracts pass.
 | A · W04 / 037 T023 | Published corrected candidate | Preserve later accepted/newer/uncertain journal decisions while keeping unaccepted outside bytes reviewable. Fresh whole-candidate review and exact-head gates precede merge. |
 | B · W08 / 030/033 | Released PR #44 review target | Fresh checked edits recover every valid literal value; exact copies remain available; duplicate order labels map to stable IDs. Verify real browser controls and built adapter journeys. |
 | C · W10 / 034 | Released PR #45 review target | A selected occurrence matches its normalized finding and whole tokens. Pending/failed reads visibly disable actionable evidence; stale/live-editor and lifetime protections remain. |
-| D → V · W10 / 039 T014/T017 | Accepted D-201 contract; prepared dependencies | Pure exact segmented codec, typed external holes, complete bounds/tamper tests, then compatible replan/content equality. Hash agreement alone never grants planner provenance. |
+| D → V · W10 / 039 T014/T017 | D-201 contract/format recorded and reviewed; prepared dependencies | Pure exact segmented codec, typed external holes, complete bounds/tamper tests, then compatible replan/content equality. Hash agreement alone never grants planner provenance. |
 | S · W10 / 039 T014/T015 | Codec/provenance accepted; adapter capability demonstrated | Intent-first immutable segments and checked manifest, honest uncertain recovery, supported unknown fields, bounded inventories and owner-explicit report reads. Unsupported mutation refuses. |
 | H → P · W04 / 037 T020–T025/T029 | Accepted storage and pinned-host settlement contracts | Separate host permission, durable finite admission, one journal-aware checked publisher and event-driven scheduling. Prove revocation, competing edits and every publication crash window. |
 | O · W08/W04 / 030/033/037 | Exact planning recovery and canonical brief/Bible mapping | Small returnable onboarding retains direction and the existing saved-word goal. No duplicate progress counter or implicit execution grant. |

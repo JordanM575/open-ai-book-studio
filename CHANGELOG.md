@@ -9,6 +9,8 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Current requirements and delivery forecast
 
+- Keep the continuation decision and format candidate-labelled until their reviewed contracts are
+  incorporated; roadmap references alone do not authorize continuation writers.
 - Identify the continuation work by its delivery state until a published candidate is available.
 - Reconcile the accepted November 8 foundations and unmerged candidates, update the concurrent
   execution model/queue, and publish the next dependency slices through full-book acceptance.
