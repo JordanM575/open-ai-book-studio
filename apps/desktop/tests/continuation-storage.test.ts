@@ -9,6 +9,7 @@ import { buildCampaignContinuation } from "@ai-book-studio/core/review/campaign-
 import {
   continuationIntentPath, continuationManifestPath, continuationSegmentPath
 } from "@ai-book-studio/core/review/campaign-continuation-store";
+import { encodeCanonicalJson } from "@ai-book-studio/core/review/record-json";
 import { campaignInput, planned, withSynthesis } from "../../../packages/core/tests/review/campaign-fixtures";
 import { FileSystemLibraryPort } from "../src/main/library/fs-port";
 import { Library } from "../src/main/library/store";
@@ -132,6 +133,44 @@ describe("desktop campaign continuation storage", () => {
     expect((await g.library.campaignContinuations.publishContinuation(g.book.id, g.plan.campaignId, g.candidate)).status).toBe("published");
     expect((await g.library.campaignContinuations.inspectContinuationRecovery(g.book.id, g.plan.campaignId, "operation-one"))
       .classifications[0]).toMatchObject({ status: "complete", code: "already-published" });
+  });
+
+  test("a revision-skip refuses on disk and an oversize manifest reads as refused uncertain", async () => {
+    const f = await fixtureLibrary(false);
+    const store = f.library.campaignContinuations;
+    await store.publishContinuation(f.book.id, f.plan.campaignId, f.candidate);
+    const manifest = JSON.parse(new TextDecoder().decode(f.built.manifestBytes)) as Record<string, unknown>;
+    manifest.revision = 3;
+    manifest.publicationId = "operation-skip";
+    manifest.base = { kind: "sha256", value: sha256(f.built.manifestBytes), revision: 2 };
+    const skippedBytes = encodeCanonicalJson(manifest);
+    const intent = JSON.parse(new TextDecoder().decode(f.built.intentBytes)) as Record<string, unknown>;
+    intent.id = "operation-skip";
+    intent.expectedBase = manifest.base;
+    intent.candidate = { encoding: "base64", bytes: skippedBytes.length, sha256: sha256(skippedBytes),
+      data: Buffer.from(skippedBytes).toString("base64") };
+    await expect(store.publishContinuation(f.book.id, f.plan.campaignId, {
+      manifestBytes: skippedBytes, intentBytes: encodeCanonicalJson(intent), segments: f.built.segments
+    })).rejects.toMatchObject({ name: "ContinuationStorageError", code: "conflict" });
+    const manifestDisk = f.disk("books", f.book.id, "reviews", "campaigns", `${f.plan.campaignId}.json`);
+    expect(await readFile(manifestDisk)).toEqual(Buffer.from(f.built.manifestBytes));
+
+    const g = await fixtureLibrary(false);
+    const gPort = g.library.libraryPort as FileSystemLibraryPort;
+    await gPort.createImmutableFile(continuationIntentPath(g.book.id, g.plan.campaignId, "operation-one"), g.candidate.intentBytes);
+    for (const segment of g.candidate.segments) {
+      await gPort.createImmutableFile(continuationSegmentPath(g.book.id, g.plan.campaignId, segment.reference.id), segment.bytes);
+    }
+    const gStore = g.library.campaignContinuations;
+    expect((await gStore.inspectContinuationRecovery(g.book.id, g.plan.campaignId, "operation-one"))
+      .classifications[0]).toMatchObject({ status: "recoverable", code: "prepared" });
+    await writeFile(g.disk("books", g.book.id, "reviews", "campaigns", `${g.plan.campaignId}.json`), new Uint8Array(262_145));
+    const singledOut = await gStore.inspectContinuationRecovery(g.book.id, g.plan.campaignId, "operation-one");
+    expect(singledOut.manifest).toEqual({ present: true, sha256: null, unreadable: true });
+    expect(singledOut.classifications[0]).toMatchObject({ status: "refused", code: "uncertain" });
+    const aggregate = await gStore.inspectContinuationRecovery(g.book.id, g.plan.campaignId);
+    expect(aggregate.manifest).toEqual({ present: true, sha256: null, unreadable: true });
+    expect(aggregate.classifications[0]).toMatchObject({ status: "refused", code: "uncertain" });
   });
 
   test("fault injection at the segment and manifest boundaries leaves recoverable on-disk state", async () => {
