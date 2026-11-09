@@ -7,6 +7,13 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Markdown folder subordinate gates closed (T014-C/P/Q0/Q/U)
+
+- Close the five T014 subordinate gates in `specs/035-book-formatting/tasks.md` on accepted
+  evidence at `914794f` (PR #49), `fe2d7a3` (PR #51), `81b474e` (PR #52), `e91ac11` (PR #53)
+  and `255fc77` (PR #54), each independently accepted at its exact head. T014 itself stays
+  unchecked pending T016/T017/T019; no other task, requirement or wording changes.
+
 ### Markdown folder mounted journey (T014-U)
 
 - Mount the Markdown folder journey in the Format dialog on desktop (T014-U): a new
