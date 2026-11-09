@@ -128,7 +128,7 @@ An author connects a provider that is approved for direct browser access, unders
 - Hosting libraries, accounts, credentials, analytics or a model proxy on a studio server.
 - Making every model provider available in every browser; provider access is gated by verified browser capability.
 - Replacing the desktop credential vault with browser storage or promising browser-key encryption equivalent to OS-protected storage.
-- Implementing native iOS file access, iCloud entitlements, Keychain integration, App Store distribution or the Capacitor shell itself; spec 014 and D-117 own those host-specific decisions.
+- Implementing native iOS storage, protected credentials, lifecycle, permissions or capability/refusal integration; spec 014 owns that host work and D-117 remains proposed. App Store distribution and the Capacitor shell itself are not browser-target work.
 - Redesigning the responsive interface; spec 014 owns mobile layout and touch acceptance.
 - Making an opaque database the source of truth or silently merging imported libraries.
 
@@ -158,5 +158,5 @@ An author connects a provider that is approved for direct browser access, unders
 - The adapter is selected by feature detection and author choice, not browser-name checks.
 - Existing browser-access evidence in D-101 and spec 011 limits initial direct model use to providers that have passed the check; current evidence verifies OpenRouter only.
 - The author can always move a library using a portable archive, even where a browser folder picker is unavailable.
-- Static app distribution and build metadata are governed by spec 013; native iOS shell and safe-area behavior are governed by spec 014.
+- Static app distribution and build metadata are governed by spec 013; spec 014 owns the native iOS shell and integration, consuming the shared port and capability contracts without selecting native adapters here.
 - Existing desktop layouts, save tests and hidden smoke remain regression gates; browser durability is not used to weaken desktop acceptance.

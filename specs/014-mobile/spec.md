@@ -95,6 +95,20 @@ The same layout runs in a Capacitor WKWebView on iOS without Expo or React Nativ
 - **FR-016** The mobile layout MUST NOT change the save protocol, conflict handling or file format.
 - **FR-017** A missing native capability MUST produce an author-facing explanation, not a blank view.
 - **FR-018** The mobile build MUST NOT add Expo or React Native to the app stack.
+- **FR-019** Spec 014 owns native iOS library storage integration. It MUST use the shared library
+  port and checked save/conflict contract; an unavailable or revoked permission MUST be explained
+  without silently moving the library to a different storage tier.
+- **FR-020** Native iOS provider credentials MUST use an accepted protected host store, remain outside
+  the library and exports, and refuse storage with an explanation if protection is unavailable. No
+  plaintext fallback is permitted.
+- **FR-021** Native lifecycle and permission handling MUST represent pending, confirmed, failed or
+  unconfirmed work honestly after suspension, resume or termination. A missing, denied or revoked
+  capability MUST refuse the affected operation and explain recovery where available.
+
+These native requirements are retained work, not a claim of an implemented adapter. Spec 010 owns
+shared library ports and browser storage; spec 013 owns shared build and capability contracts. The
+native decisions, implementation and target evidence in [the plan](plan.md) and [tasks](tasks.md)
+remain open.
 
 ## Key Entities
 
@@ -120,8 +134,9 @@ The same layout runs in a Capacitor WKWebView on iOS without Expo or React Nativ
 - iPhone 393 × 852 and iPad mini 744 × 1133 are the reference viewports.
 - Electron remains the desktop reference; the web build is the prerequisite for Capacitor.
 - The Capacitor shell spike passed with Capacitor 8.5.3 on the iPhone 17 Pro simulator.
-- Native storage, SQLite and Keychain plugins are out of scope for this spec and belong to the web
-  storage work.
+- Native iOS storage, protected credentials, lifecycle, permissions and capability/refusal
+  integration belong to this spec. [D-117](../../docs/DECISIONS.md) is proposed; no native plugin,
+  storage mechanism or credential adapter is selected by this ownership statement.
 - The iOS runtime is iOS 26.5 under Xcode 26.6; commands need
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 

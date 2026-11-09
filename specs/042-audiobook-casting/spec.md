@@ -37,10 +37,14 @@ audition/approval, recoverable chapter rendering and packaging tied to an unchan
 - **FR-005** Cancellation MUST stop further sends best-effort and state that already sent text and
   incurred charges cannot be recalled. Chapter states MUST distinguish pending, rendering, complete,
   failed, cancelled and stale. Partial output MUST NOT be labelled a complete audiobook.
-- **FR-006** Resume MUST reuse validated successful assets from the exact source/cast run. Retrying
-  a failed/uncertain request needs explicit consent and disclosure of duplicate-charge risk; no
-  silent retry, fallback, voice substitution or regeneration. Hard spend caps require an accepted
-  separate enforcement contract; D-116's proposal does not supply one.
+- **FR-006** Resume MUST validate and reuse successful chapter assets from the exact source/cast run.
+  Every failed or uncertain request requires author review and fresh explicit authorization before a
+  retry, with duplicate-charge risk disclosed. There MUST be no automatic retry, fallback, voice
+  substitution or regeneration. Accepted D-116 and [ADR 0019](../../docs/adr/0019-bounded-autonomous-authoring.md)
+  select two cost modes: bounded operations permit disclosed unknown cost and are not a dollar cap;
+  strict money requires a qualified provider-enforceable upper bound covering all charges and durable
+  concurrent reservations. Enforcement, accounting implementation and adapter qualification remain
+  open; this policy alone certifies no adapter or hard-cap claim.
 - **FR-007** Export MUST identify included chapters/order, voices/provider, source revisions,
   generated-voice disclosure, output format and measured audio facts/unknowns. Packaging MUST
   preserve prior destinations on failure and warn/refuse incomplete output as defined by the output
@@ -53,15 +57,17 @@ audition/approval, recoverable chapter rendering and packaging tied to an unchan
 
 ## Acceptance scenarios
 
-Use synthetic chapters, generated test tones and mocked speech transports.
+Use synthetic chapters, generated test tones and mocked speech transports. Existing TTS helpers do
+not by themselves establish exact full-book payload preservation, consent, durable jobs or quality.
 
 1. Cancel before audition/render: zero calls. Approve two chapters: captured payload equals disclosed
    text/cast/pronunciation and contains no other manuscript or secret. Original file hashes match.
 2. Change source/cast or remove a voice: affected assets show stale/unavailable; no silent fallback.
    Ambiguous dialogue requires approved assignment before a request.
-3. Fail/stop chapter two after chapter one completes, then restart: valid chapter-one asset is reused;
-   chapter two needs explicit retry. An uncertain request warns of duplicate charges. No complete
-   package is claimed from the partial run.
+3. Fail/stop chapter two after chapter one completes, then restart: the valid chapter-one asset is
+   reused. For a failed or uncertain request, require author review, duplicate-charge-risk disclosure
+   and fresh explicit retry authorization; never retry automatically. No complete package is claimed
+   from the partial run.
 4. Corrupt output, disk-full, conflict and export failure preserve original manuscript and prior
    destinations. Run metadata and valid audio recover after restart under the accepted layout.
 5. Inspect exported manifest/order/disclosure and independently measure the chosen audio properties.

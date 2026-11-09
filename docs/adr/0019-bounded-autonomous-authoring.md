@@ -168,9 +168,43 @@ output); independently evaluated live literary quality; usability; actual host/v
 release evidence. Finishing short needs an explicit author choice. A live rubric must be declared
 before paid evaluation; the research's numeric literary scoring proposal is not certified here.
 
-Alternatives rejected: repeated ordinary start calls, one enormous prompt, workers writing directly,
-hidden authoritative database, external hosted scheduler, blanket overwrite authority, and a
-candidate-only manual-Apply workflow as the final completion boundary.
+## Alternatives and consequences
+
+- **Repeated ordinary start calls:** These preserve ordinary turn-by-turn approval, but do not
+  provide the retained bounded, revocable multi-attempt journey or its durable direction and
+  recovery state. The selected agreement requires a coordinator, explicit limits and a separate
+  host-local permission record; ordinary turns retain their existing boundary.
+- **One enormous prompt:** A single request avoids coordinating a task graph, but cannot provide
+  the selected intermediate direction, attributed specialist attempts and bounded iterative review.
+  The selected graph incurs planning, storage and coordination work and requires empirical checks
+  of context fit, resource use and full-journey quality.
+- **Direct worker writes:** Letting each worker publish would simplify its local handoff but disperse
+  file ownership and make grant, clean-target, conflict and recovery checks harder to enforce at one
+  publication boundary. Candidate-only workers and the checked Library publisher are intended to
+  retain those checks and recoverable outcomes, at the cost of serialized short commits, receipts and
+  contention. This does not establish cross-process compare-and-swap or exactly-once effects.
+- **Hidden authoritative database:** A database could centralize coordination, but would make the
+  retained workflow depend on a second source of truth outside ordinary author files. Checked file
+  records preserve file ownership and recoverability, while requiring explicit schemas, bounded reads,
+  cross-file recovery and maintenance of rebuildable projections.
+- **External hosted scheduler:** An always-available service could continue after the app quits, but
+  would introduce custody and execution outside the selected local, revocable host boundary. The
+  host coordinator instead stops on quit and needs local recovery and explicit continuation or the
+  narrowly granted same-host resume behavior.
+- **Blanket overwrite authority:** This would reduce approval interruptions, but could replace
+  existing or newly edited author text without exact consent. Automatic adoption is limited to
+  opted-in, run-created, still-clean targets; other affected text retains action-bound authorization.
+  These checks and check-ins impose extra work and may pause progress for the author.
+- **Manual Apply as the final boundary:** Candidate-only manual application keeps each adoption under
+  direct author control and simplifies automatic publication, but does not complete the retained
+  author-started journey for eligible run-created text. Checked automatic adoption is permitted only
+  within the selected grant and clean-target rules; the author still directs the run and approves
+  changes outside that scope. Recovery, UI clarity and usable oversight remain acceptance work.
+
+Coordination, concurrency, storage and checked publication have maintenance and performance costs;
+the stated bounds and workload estimate are not measurements of superiority. Protocol/fault tests,
+the connected synthetic journey, usability and quality evaluation, and host/device/release evidence
+remain separate empirical gates.
 
 Evidence: existing runtime/ThreadStore/Library/checked-sidecar source, completed November 7 autonomy
 and requirements audits, [AI SDK loop control](https://ai-sdk.dev/docs/agents/loop-control),

@@ -7,6 +7,14 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Native and audiobook contract clarity
+
+- Assign native iOS storage, protected credentials, lifecycle and capability/refusal integration to
+  the mobile owner, with unchecked decision, implementation and separate target-evidence follow-through.
+- Align audiobook retry authorization and cost-mode wording with the accepted policy while keeping
+  enforcement, media decisions and provider qualification open. Explain the selected autonomous
+  authoring architecture's alternatives and costs without claiming runtime acceptance.
+
 ### Current requirements and delivery forecast
 
 - Keep the continuation decision and format candidate-labelled until their reviewed contracts are

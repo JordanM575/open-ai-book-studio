@@ -14,7 +14,10 @@ The Capacitor shell spike proved that Capacitor 8.5.3 can launch a bundled page 
 
 **Primary dependencies**: Existing renderer/UI; Capacitor iOS plugin set only after D-117 platform research. Expo and React Native remain excluded.
 
-**Storage**: Existing desktop library remains unchanged. Capacitor consumes spec 010/013 web storage adapter until iOS-native Filesystem/Keychain behavior is separately accepted; it does not introduce a new source of truth.
+**Storage**: Existing desktop library remains unchanged. The recorded shell slice uses spec 010's
+browser adapter and spec 013's web build; it does not establish native storage or protected
+credentials. Spec 014 owns their iOS integration through the shared contracts, without introducing a
+new source of truth. D-117 and any other necessary native choices remain decision gates.
 
 **Testing**: Bun unit tests, hidden Electron smoke, device-size captures, Playwright/Node browser E2E where available, and iOS Simulator orientation/touch verification.
 
@@ -46,6 +49,9 @@ Commit `eb8cfa2` (a pre-event commit) added responsive library/workspace layouts
 2. Add mobile browser/webview viewport and safe-area integration once `apps/web` exists.
 3. Add `apps/mobile` Capacitor config whose `webDir` consumes spec 013 output; do not duplicate renderer assets or add Expo/React Native.
 4. Verify orientation changes preserve selection and text, and the real web build renders in iOS Simulator.
+5. Use prior findings instead of repeating a survey to resolve the native storage, protected-credential,
+   permission and lifecycle choices individually. Implement the accepted integrations, including
+   operation-level capability and refusal behavior, only after the applicable decisions.
 
 ## Project Structure
 
@@ -57,22 +63,25 @@ apps/desktop/src/renderer/src/components/ChatPanel.tsx     agent sheet/panel
 apps/desktop/src/renderer/src/components/ManuscriptEditor.tsx manuscript sizing
 apps/desktop/src/renderer/src/styles/base.css             touch targets and safe areas
 apps/web/                                                   static renderer from spec 013
-apps/mobile/                                                Capacitor shell/config only
+apps/mobile/                                                Capacitor shell/config and planned native integration
 scripts/capture.mjs                                         device-size captures
 specs/014-mobile/tasks.md                                   ordered implementation checklist
 ```
 
-**Structure Decision**: Keep application UI in the shared React renderer; `apps/mobile` is only the native shell and plugins. Build/runtime entry and storage adapters are owned by specs 010 and 013.
+**Structure Decision**: Keep application UI in the shared React renderer. Spec 010 owns the shared
+library port and browser adapters; spec 013 owns the web build and shared capability contracts. Spec
+014 owns the Capacitor shell and native iOS storage, protected credentials, lifecycle, permissions and
+capability/refusal integration against those contracts. No native adapter or plugin is selected here.
 
 ## Risks and Mitigations
 
 | Risk | Mitigation |
 | --- | --- |
 | Existing compact icon controls miss 44px minimum | Audit computed bounds on coarse-pointer viewports and add a CSS hit-area layer; keep mouse appearance unchanged. |
-| iOS clears or evicts browser data | Use spec 010 disclosure/export behavior; do not claim desktop-equivalent durability. |
+| iOS clears or evicts browser data | For the browser-backed shell use spec 010 disclosure/export behavior; do not claim desktop-equivalent durability or native-adapter acceptance. |
 | Capacitor WebView differs from desktop screenshots | Load the actual static build in iOS Simulator, not a placeholder page; capture and inspect portrait and landscape. |
 | Rotation interrupts text/save | Keep editor state in the shared renderer; test rotation during dirty text and wait for confirmed save. |
-| Missing native plugin looks like a broken page | Show the supported fallback and recovery action; do not render a blank panel. |
+| Missing native capability looks like a broken page | Explain the refusal and recovery action; do not silently change the author's storage tier or render a blank panel. |
 | Safe-area padding applied twice | Apply it at the shell/viewport boundary and test both browser page and Capacitor WebView. |
 
 ## Verification
@@ -83,9 +92,15 @@ specs/014-mobile/tasks.md                                   ordered implementati
 - Verify light/dark and reduced transparency; keyboard focus remains visible.
 - Rotate iPad mini while editor has unsaved text; confirm selected chapter and text remain and save state does not falsely report success.
 - Run `bun run typecheck`, `bun test`, `bun run build`, `bun run smoke`; simulator tests use a disposable profile/library.
+- For the native slice, record source implementation, synthetic/fault checks, Simulator evidence,
+  separately authorized real-device evidence and release evidence as distinct results. Test permission
+  loss, protected-store refusal, lifecycle interruption, pending saves and recovery without treating
+  one evidence class as another.
 
 ## Dependencies
 
-- Spec 010 supplies the browser storage and library adapters.
-- Spec 013 supplies the actual static web build and the shared UI package.
-- D-117 continues to govern native plugin and iCloud questions. The shell proof alone does not close those decisions.
+- Spec 010 supplies shared library ports and browser storage adapters.
+- Spec 013 supplies the actual static web build, shared UI and capability contracts.
+- D-117 remains proposed and governs its native plugin and iCloud questions alongside any other
+  required decisions. The shell and existing Simulator checks do not close native storage,
+  credential, lifecycle, device or release acceptance.
