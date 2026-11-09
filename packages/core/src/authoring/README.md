@@ -13,6 +13,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | Module | Surface | Meaning |
 | --- | --- | --- |
 | `contracts.ts` | `Owner`, `Reference<K>`, `Graph`, `TaskDefinition`, `validateGraph`, `prepareBrief` | Readonly owner/kind/id/revision/hash references; supported version, duplicate/missing/foreign/stale dependency and DAG checks. Input descriptors are copied, not trusted as permissions. The exact brief and existing 033 goal survive; no word counter. |
+| `contracts.ts` | `CheckinCadencePolicy`, `DEFAULT_CHECKIN_CADENCE_POLICY`, `CHECKIN_CADENCE_LIMITS`, `validateCheckinCadencePolicy`, `CheckinCadenceProgress`, `validateCheckinCadenceProgress`, `evaluateCheckinCadence` | Versioned check-in cadence (ADR 0019): editable adopted-chapter/saved-word intervals, first-chapter and irreversible-choice triggers, bounded validation, and a pure due evaluation over caller-counted progress. Counts nothing and reads no prose. |
 | `graph.ts` | `createRun`, `reduceRun`, `taskStatuses`, `runStatus`, `publicationEligible` | Checked command/revision/generation transitions, deterministic graph-order projection, questions/direction, preserved historical attempts, explicit author finish. Publication eligibility is only a necessary graph condition. |
 | `lifecycle.ts` | `advanceAttempt`, `advanceEffect` | Prepared, intent, receiving, output-kept and completed are separate. Publication intent and actual receipt are separate. Recovery never turns possible sends/writes into known-free failure or a replay. |
 | `admission.ts` | `createLedger`, `reserve`, `observeReservation`, `accountingSummary` | Finite reservations, actual receipts, pinned routes, per-attempt continuations/read limits, revision/no-progress checks and known/unknown/partial accounting. |
@@ -71,6 +72,29 @@ executable JavaScript/proxies.
   receipt before dependants become ready. Review quality, actual output retention, exact target/base,
   first-keystroke draft protection, host grant, source scope, safety and actual write verification all
   remain host responsibilities. `publicationEligible` certifies none of them.
+
+## Check-in cadence
+
+ADR 0019's cadence is a versioned policy (`version: 1`) in `contracts.ts`. The named default
+`DEFAULT_CHECKIN_CADENCE_POLICY` is a check-in after the first adopted chapter, then every three
+more adopted chapters or 10,000 more saved words (whichever occurs first), plus major irreversible
+character/ending choices. Authors may edit the intervals and toggle the two triggers;
+`validateCheckinCadencePolicy` copies the input, refuses any other version (`unsupported-version`),
+and bounds `adoptedChapterInterval` to 1–1,024 and `savedWordInterval` to 1–1,000,000 via
+`CHECKIN_CADENCE_LIMITS` and the shared `integer` vocabulary (`invalid-integer`,
+`invalid-cadence-policy`). Nothing is coerced or defaulted silently on read: string numbers,
+fractions, `-0`, unsafe numbers and non-boolean triggers refuse, as values do throughout this module.
+
+`evaluateCheckinCadence(policy, progress)` is pure: the caller supplies counted
+`adoptedChaptersSinceCheckin` and `savedWordsSinceCheckin` (nonnegative safe integers; zero means
+no progress, negatives refuse), `firstAdoptedChapterOccurred` and `irreversibleChoicePending`.
+The evaluator counts nothing itself and reads no prose. It returns a frozen
+`{ due, reasons }` where `reasons` lists every trigger that fired in the fixed order
+`first-adopted-chapter`, `adopted-chapter-interval`, `saved-word-interval`, `irreversible-choice`;
+progress exactly at an interval threshold is due. The caller owns counting saved words and adopted
+chapters, supplying the first-chapter flag only until that first check-in is taken, and resetting the
+since-check-in counters after a check-in. The policy and evaluator perform no scheduling, persistence,
+inbox or host wiring; the campaign-continuation adapter does not yet emit cadence.
 
 ## Admission and accounting
 

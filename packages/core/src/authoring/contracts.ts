@@ -126,3 +126,87 @@ export function validateGraph(input: Graph): Immutable<Graph> {
   for (const task of graph.tasks) visit(task);
   return freeze(graph);
 }
+
+export const CHECKIN_CADENCE_LIMITS = Object.freeze({
+  minAdoptedChapterInterval: 1,
+  maxAdoptedChapterInterval: 1024,
+  minSavedWordInterval: 1,
+  maxSavedWordInterval: 1_000_000,
+});
+export const CADENCE_LIMITS = CHECKIN_CADENCE_LIMITS;
+
+export interface CheckinCadencePolicy {
+  version: 1;
+  adoptedChapterInterval: number;
+  savedWordInterval: number;
+  afterFirstChapter: boolean;
+  onIrreversibleChoice: boolean;
+}
+export type CadencePolicy = CheckinCadencePolicy;
+
+export const DEFAULT_CHECKIN_CADENCE_POLICY: Immutable<CheckinCadencePolicy> = Object.freeze({
+  version: 1 as const, adoptedChapterInterval: 3, savedWordInterval: 10_000,
+  afterFirstChapter: true, onIrreversibleChoice: true,
+});
+export const DEFAULT_CADENCE_POLICY = DEFAULT_CHECKIN_CADENCE_POLICY;
+
+export function validateCheckinCadencePolicy(input: CheckinCadencePolicy): Immutable<CheckinCadencePolicy> {
+  const policy = copyValue(input);
+  requireValue(policy !== null && typeof policy === 'object' && !Array.isArray(policy),
+    'invalid-cadence-policy');
+  requireValue(policy.version === 1, 'unsupported-version');
+  integer(policy.adoptedChapterInterval,
+    CHECKIN_CADENCE_LIMITS.minAdoptedChapterInterval, CHECKIN_CADENCE_LIMITS.maxAdoptedChapterInterval);
+  integer(policy.savedWordInterval,
+    CHECKIN_CADENCE_LIMITS.minSavedWordInterval, CHECKIN_CADENCE_LIMITS.maxSavedWordInterval);
+  requireValue(typeof policy.afterFirstChapter === 'boolean', 'invalid-cadence-policy');
+  requireValue(typeof policy.onIrreversibleChoice === 'boolean', 'invalid-cadence-policy');
+  return freeze(policy);
+}
+export const validateCadencePolicy: typeof validateCheckinCadencePolicy = validateCheckinCadencePolicy;
+
+export interface CheckinCadenceProgress {
+  adoptedChaptersSinceCheckin: number;
+  savedWordsSinceCheckin: number;
+  firstAdoptedChapterOccurred: boolean;
+  irreversibleChoicePending: boolean;
+}
+export type CadenceProgress = CheckinCadenceProgress;
+
+export function validateCheckinCadenceProgress(input: CheckinCadenceProgress): Immutable<CheckinCadenceProgress> {
+  const progress = copyValue(input);
+  requireValue(progress !== null && typeof progress === 'object' && !Array.isArray(progress),
+    'invalid-cadence-progress');
+  integer(progress.adoptedChaptersSinceCheckin);
+  integer(progress.savedWordsSinceCheckin);
+  requireValue(typeof progress.firstAdoptedChapterOccurred === 'boolean', 'invalid-cadence-progress');
+  requireValue(typeof progress.irreversibleChoicePending === 'boolean', 'invalid-cadence-progress');
+  return freeze(progress);
+}
+export const validateCadenceProgress: typeof validateCheckinCadenceProgress = validateCheckinCadenceProgress;
+
+export type CheckinCadenceReason = 'first-adopted-chapter' | 'adopted-chapter-interval' |
+  'saved-word-interval' | 'irreversible-choice';
+export type CadenceReason = CheckinCadenceReason;
+
+export interface CheckinCadenceEvaluation {
+  due: boolean;
+  reasons: CheckinCadenceReason[];
+}
+export type CadenceEvaluation = CheckinCadenceEvaluation;
+
+/** Pure due check over caller-counted progress; counts nothing and reads no prose. */
+export function evaluateCheckinCadence(
+  inputPolicy: CheckinCadencePolicy, inputProgress: CheckinCadenceProgress): Immutable<CheckinCadenceEvaluation> {
+  const policy = validateCheckinCadencePolicy(inputPolicy);
+  const progress = validateCheckinCadenceProgress(inputProgress);
+  const reasons: CheckinCadenceReason[] = [];
+  if (policy.afterFirstChapter && progress.firstAdoptedChapterOccurred) reasons.push('first-adopted-chapter');
+  if (progress.adoptedChaptersSinceCheckin >= policy.adoptedChapterInterval) {
+    reasons.push('adopted-chapter-interval');
+  }
+  if (progress.savedWordsSinceCheckin >= policy.savedWordInterval) reasons.push('saved-word-interval');
+  if (policy.onIrreversibleChoice && progress.irreversibleChoicePending) reasons.push('irreversible-choice');
+  return freeze({ due: reasons.length > 0, reasons });
+}
+export const evaluateCadence: typeof evaluateCheckinCadence = evaluateCheckinCadence;

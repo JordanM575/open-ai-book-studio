@@ -146,6 +146,14 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
 - [ ] T030 Run separate developmental and line/continuity reviewers with exact candidate/saved citations.
 - [ ] T031 Retain bounded revision/recheck lineage and integrate exact current-source underlines.
 - [ ] T032 Add durable question inbox, adoption-based cadence and checked versioned author answers.
+  - Partial evidence (November 9): the pure adoption-based cadence portion now exists as the
+    versioned `CheckinCadencePolicy` and `evaluateCheckinCadence` in
+    `packages/core/src/authoring/contracts.ts` (ADR 0019 defaults, bounded editable intervals,
+    first-chapter/irreversible-choice triggers, caller-counted progress, exact-threshold due,
+    all fired reasons) with synthetic tests in `packages/core/tests/authoring/cadence.test.ts`.
+    The durable question inbox, checked versioned author answers, persistence, scheduling and
+    host wiring remain open, the continuation adapter does not yet emit cadence, and this task
+    stays unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.
