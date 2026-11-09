@@ -331,6 +331,7 @@ calls, publication and independent storage review remain open. The pure host-neu
 | `admission/reservations/<reservationId>.json` | `reservation` | Checked reservation and settlement. |
 | `admission/observations/<sequence>-<observationId>.json` | `observation` | Append-only host observation. |
 | `admission/accounting.json` | `accounting` | Checked accounting summary input. |
+| `adoptions/<receiptId>.json` | `adoption-receipt` | Absent-only recorded adoption receipt (see below); beside-store, not a schema-1 codec kind. |
 | `conflicts/` | (copy) | Recoverable conflict copies; never active records. |
 
 ### Common encoding and identity
@@ -672,6 +673,29 @@ Known subtotal, unknown/partial calls, pending calls and reserved maxima remain 
 is never reported as zero. The summary is derived from reservations/observations but is a checked
 durable input; a failed accounting persistence closes dependent admission and never relabels saved
 prose.
+
+### `adoptions/<receiptId>.json` — recorded adoption receipt
+
+A beside-store record (`packages/core/src/workflow/adoption-receipt-store.ts`), not a schema-1
+codec kind. The pure contract is `packages/core/src/authoring/adoption-receipt.ts`. It is the
+recorded state that distinguishes a coordinator-adopted chapter from any other saved chapter
+(FR-017); only a future Library publisher writes it.
+
+| Field | Required | Rule |
+| --- | --- | --- |
+| `schemaVersion`, `kind`, `owner`, `id` | yes | `schemaVersion: 1`, `kind:"adoption-receipt"`, `id:"adoption_…"`; `owner` is the adopting run owner. No `revision`, `base` or `generation`. |
+| `chapterId` | yes | Safe chapter ID the candidate was adopted into. |
+| `candidate` | yes | Exact `artifact` reference; its hash is the body SHA-256. |
+| `resultVersion`, `resultHash` | yes | Published chapter version (positive) and raw-file SHA-256, as the effect receipt names them. |
+| `grant`, `direction` | yes | Same-owner `grant` and `direction` references, validated by the authoring validators. |
+| `sequence`, `adoptedAt` | yes | Caller-supplied ordering: sequence 1–1,000,000 and millisecond UTC instant. No clock is read on validation. |
+
+Bytes are the canonical compact sorted-key form (262,144-byte bound), re-parsed before
+publication and verified byte-exact on readback. Creation is strictly absent-only per candidate
+artifact: an existing receipt for that candidate (or sequence) refuses and keeps a conflict copy;
+foreign book/run receipts refuse on read and list. Listing is bounded (page at most 256, at most
+10,000 per run) and ordered by sequence. The pure counter counts distinct `chapterId`s strictly
+after an exclusive sequence/adopted-at marker; this format does not wire counting into any host.
 
 ### Size, count and depth bounds
 

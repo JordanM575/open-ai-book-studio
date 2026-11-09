@@ -272,6 +272,11 @@ function parseJsonBytes(bytes: Uint8Array): unknown {
   return new Reader(source).parse();
 }
 
+/** Strict raw JSON admission shared with beside-store codecs; same refusals as the record reader. */
+export function parseWorkflowJsonBytes(bytes: Uint8Array): unknown {
+  return parseJsonBytes(bytes);
+}
+
 export function canonicalWorkflowJson(value: unknown): string {
   const active = new Set<object>();
   const visit = (input: unknown): string => {

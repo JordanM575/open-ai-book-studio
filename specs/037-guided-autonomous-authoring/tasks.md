@@ -154,6 +154,14 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     The durable question inbox, checked versioned author answers, persistence, scheduling and
     host wiring remain open, the continuation adapter does not yet emit cadence, and this task
     stays unchecked.
+  - Partial evidence: the recorded adoption state cadence needs now exists in pure core as
+    the versioned adoption-receipt contract and pure distinct-chapter counter
+    (`packages/core/src/authoring/adoption-receipt.ts`, `countAdoptedChapters` with exclusive
+    sequence/adopted-at markers) plus a checked beside-store
+    (`packages/core/src/workflow/adoption-receipt-store.ts`, absent-only per candidate,
+    byte-exact readback, bounded listing, foreign refusal). No publisher writes receipts, no
+    host counts them, and the question inbox and checked answers remain open; this task stays
+    unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.

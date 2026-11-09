@@ -7,6 +7,42 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Authoring adoption receipts (037 T032 partial)
+
+- Add the recorded adoption-receipt contract for guided autonomous
+  authoring in pure core, so a later host slice can count adoption from
+  recorded state instead of chapters present (037 FR-017 / ADR 0019,
+  serving 037 T032 adoption-based cadence). `packages/core/src/authoring/adoption-receipt.ts`
+  defines the versioned receipt (`schemaVersion: 1`, `kind: "adoption-receipt"`):
+  one exact candidate as an `artifact` reference (body hash and revision),
+  `chapterId`, the published chapter's `resultVersion`/`resultHash`, the
+  adopting `owner`, `grant` and `direction` references validated by
+  `validateReference`, and caller-supplied ordering (`sequence` and
+  `adoptedAt`, bounded, no clock read). Unknown versions and malformed
+  shapes refuse without coercion; snapshots are frozen without aliasing.
+  Adding the `grant` kind to `ReferenceKind` is the only contracts change;
+  no prior grant reference kind existed. `countAdoptedChapters` is the pure
+  counter the cadence host will later call: given validated receipts for
+  one book/run and an exclusive since-marker (sequence or adopted-at of
+  the last taken check-in; absent means from the beginning) it counts
+  distinct adopted chapters (a re-adoption counts once per window) plus
+  `firstAdoptedChapterOccurred` for any adoption at all. It reads no prose.
+  Checked storage sits beside `WorkflowRecordStore` in
+  `packages/core/src/workflow/adoption-receipt-store.ts` under
+  `books/<bookId>/workflows/<runId>/adoptions/<receiptId>.json`, following
+  the workflow record-store pattern the checked question records use
+  (not the single-book review store): the same per-book queue and
+  journal-aware checked commit, canonical bytes re-parsed before
+  publication, hash-verified byte-exact readback, owning-book checks and
+  recoverable conflict copies. Added for receipts are strict absent-only
+  creation scoped to the candidate, candidate/sequence uniqueness, and a
+  bounded sequence-ordered listing; foreign book/run receipts refuse on
+  read and list. No adoption itself, publisher behavior, IPC, UI, host
+  wiring or cadence counting is added; receipts will be recorded by a
+  future publisher slice. Synthetic tests cover validation, duplicate
+  refusal, readback, foreign refusal, bounded listing and counter marker
+  semantics. 037 T032 and all 037/038/039 boxes remain unchecked.
+
 ### Campaign continuation check-in cadence host supply (039 T018 partial)
 
 - Host cadence supply through the `continuation:checkin` channel is

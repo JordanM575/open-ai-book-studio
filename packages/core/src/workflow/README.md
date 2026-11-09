@@ -43,6 +43,28 @@ accounting records keep their reserved FORMAT paths but have no writer in this s
   `__proto__` data property. Values from a closed semantic union that this build does not know are
   read-only and unavailable.
 
+## Adoption receipts (beside this store)
+
+`AdoptionReceiptStore` (`adoption-receipt-store.ts`) stores the FR-017 adoption receipts from
+`packages/core/src/authoring/adoption-receipt.ts` at
+`books/<bookId>/workflows/<runId>/adoptions/<receiptId>.json`. It follows this workflow
+record-store pattern — the one the checked question records use — not the review record-store,
+because receipts are run-scoped workflow state under the same book queue and journal. The
+review store owns single-book reports and is the wrong sibling.
+
+Reused: the injected host shape (`storage`, `runtime`, `deviceId`, per-book `withBook`,
+journal-aware `commitFile`), canonical compact sorted-key bytes re-parsed before publication,
+runtime SHA-256 checks, byte-exact readback (`uncertain` on mismatch), bounded observed reads,
+owning-book/writable checks, the `WorkflowRecordError` vocabulary, and bounded recoverable
+conflict copies under `conflicts/`. Added, because the schema-1 kinds cannot express receipts
+without widening that codec: the beside-store class and `adoptions/` paths, strict absent-only
+creation scoped to the candidate artifact (any existing receipt for that candidate refuses,
+including a byte-identical replay), candidate/sequence uniqueness by bounded scan, and a
+bounded listing sorted by sequence (page at most 256, at most 10,000 receipts per run).
+Foreign book/run receipts refuse on read and list. The store validates grant/direction
+references through the authoring validators but judges no adoption; a future Library publisher
+records receipts and a later host counts them. It is not yet exposed on `LibraryService`.
+
 ## Limits of this slice
 
 The store does not verify cross-file references (a task's plan/direction, an attempt's context or an
