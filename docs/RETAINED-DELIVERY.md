@@ -8,6 +8,8 @@ the omissions their next concrete work. The 25-lane/20-package DAG remains uncha
 Small first slices do not remove broader original capabilities. L24 closes only with acceptance
 evidence or an explicit author-approved scope change. Delegated engineering decisions do not permit
 quiet deferral. All tasks below remain open; linked task lists provide detailed implementation order.
+The [November 8 forecast](DELIVERY-FORECAST.md) supersedes the original next-slice ordering and
+distinguishes merged foundations from candidates and connected acceptance.
 
 ## Current accepted-contract implementation
 
@@ -16,7 +18,7 @@ quiet deferral. All tasks below remain open; linked task lists provide detailed 
 | Short brief → full book, asynchronous specialists and character direction | D-194–D-196 / ADR 0019; [037 T018–T042](../specs/037-guided-autonomous-authoring/tasks.md) | Pure graph/admission first, detailed formats before writers, one real Library publisher, then actual ~70k synthetic pipeline and separate literary evaluation |
 | Inline editorial critique and retained feedback | D-197–D-199 / ADR 0020; [039 T010–T019](../specs/039-reader-continuity-review/tasks.md), [034 T008/T018–T019](../specs/034-manuscript-review/tasks.md) | Correct scoped candidate, exact-current editor adapter, accessible overlap handling, recoverable explicit save/application/campaign; no seeded-finding completion claim |
 | Hands-free and original local reading/input | D-200 / ADR 0021; [017 T013–T024](../specs/017-voice-and-background/tasks.md) | Pure session/permission/PCM first; real STT/TTS/host integration, then separately authorized acoustic/device qualification; 038 T022 stays unchecked |
-| Planning and goals | D-163–D-168 / ADR 0017; [030](../specs/030-story-bible-extensions/tasks.md), [033](../specs/033-library-organization/tasks.md) | `320defb` core/UI independently accepted; real Library/API/Workspace save/reopen and complete source enumeration remain |
+| Planning and goals | D-163–D-168 / ADR 0017; [030](../specs/030-story-bible-extensions/tasks.md), [033](../specs/033-library-organization/tasks.md) | Worldbuilding/goal integration is merged; PR #44 broader manual recovery needs exact line-ending preservation and stable order identities before acceptance |
 | History | D-175/D-176 / ADR 0016; [032](../specs/032-chapter-history/tasks.md) | Core merged in PR #33. Restore/UI `56c7b7d` accepted and merged in PR #34; mounting and host controls remain |
 
 ## Original capabilities that remain owned
@@ -80,9 +82,8 @@ quiet deferral. All tasks below remain open; linked task lists provide detailed 
 
 ## Review and records
 
-The coordinator preserves raw W04 autonomy, W10 inline, W15 requirements and W12 platform reports.
-This public synthesis carries original product requirements, not private source material. ADRs link
-current official references and distinguish policy choices from measured evidence. New writer
+Requirements remain attached to their owning specs and acceptance records. ADRs link current official
+references and distinguish policy choices from measured evidence. New writer
 formats must satisfy [FORMAT reservations](FORMAT.md#accepted-reservations-awaiting-detailed-schemas).
 Every connected implementation gets a fresh independent candidate review, appropriate exact-head
 checks and truthful task states. Counts from separate candidates overlap and must never be summed.

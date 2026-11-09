@@ -4,7 +4,7 @@
 implementation, field-level writer formats and connected acceptance remain. This supplements the roadmap.
 
 The author explicitly requested a fresh review of **all** product requirements, emphasizing
-hands-free use, asynchronous multi-agent work, AutoCrit-like reviews with underlined passages, and
+hands-free use, asynchronous multi-agent work, editorial reviews with underlined passages, and
 a short onboarding flow that can turn roughly 100 words of description into autonomous background
 work toward a full book of roughly 70,000 words. The workflow should continue through revisions,
 check in with the author, and ask for direction on character development.
@@ -14,7 +14,7 @@ check in with the author, and ask for direction on character development.
 | Requirement | Intended author experience | Primary owners | Current evidence boundary |
 | --- | --- | --- | --- |
 | REQ-VOICE-002 | Speak direction, hear replies/check-ins, interrupt or stop, and recover from recognition errors. | 017/038; L12, W14 | D-200 selects bound sessions, segmentation, confirmation, cancellation and permission predicates. PTT/spoken replies do not establish the integrated hands-free journey. |
-| REQ-REVIEW-004 | Inspect editorial critique with underlined source passages and linked explanations; navigate, filter and resolve feedback while retaining attribution. | 034/039 with 033 anchors; L08/L09, W10 | D-197–D-199 select CodeMirror plain-text underlines, complete overlaps, explicit saved feedback/application and disclosed campaigns. Implementation remains. “AutoCrit-like” is workflow inspiration, not certified parity. |
+| REQ-REVIEW-004 | Inspect editorial critique with underlined source passages and linked explanations; navigate, filter and resolve feedback while retaining attribution. | 034/039 with 033 anchors; L08/L09, W10 | D-197–D-199 select plain-text underlines, complete overlaps, explicit saved feedback/application and disclosed campaigns. Editor, verifier, saved-review and planner slices are merged; connected generation/application and campaign continuation remain. |
 | REQ-AUTO-001 | Give a brief of about 100 words, complete small onboarding, and develop a full book toward a visible ~70,000-word target. | 037 with 030/031/033; L05, W04 | A single agent turn is insufficient. Brief, outline/characters, plan, long-run saved progress and recovery must connect. Approximate lengths are a supported scenario, not a hard input cap or quality guarantee. |
 | REQ-AUTO-002 | Keep asynchronous specialists working through drafting and critique/revision cycles; get check-ins and steer character development without supervising every step. | 037 with 031/036 and history; L05/L14, W04/W10 | D-194–D-196 select a durable book-owned graph, separate host permission, candidate-only specialists, one checked publisher and versioned direction. Runtime and full-book acceptance remain. |
 
@@ -44,6 +44,9 @@ check in with the author, and ask for direction on character development.
 
 ## Five concurrent development slots
 
+The [November 8 delivery forecast](DELIVERY-FORECAST.md) records the accepted base, current
+candidate blockers and the next independent slices. The table below is historical.
+
 This table records the **2026-11-07 five-slot dispatch wave**, when the development pool used
 GPT-6 Astra/high. It is historical, not the live queue: current dispatch and ownership are in
 [CONCURRENT-DELIVERY.md](CONCURRENT-DELIVERY.md). One coordinator owns integration and full-suite gates.
@@ -72,3 +75,28 @@ not measured capacity, live quality or a certified money ceiling. See [retained 
 All other planned features remain retained. The five-slot development cap is not a selected limit for
 the application's future runtime. Existing author-data, provider-spend, microphone, film and release
 restrictions apply to development/testing; 038 T022 remains unchecked.
+
+## Retained editorial depth
+
+The first repetition report and the saved-review controls are foundations for these retained needs:
+
+- **Local diagnostics:** sentence, paragraph and chapter variation; dialogue and word-choice patterns;
+  repetition and readability. Each metric needs a documented rule, language/genre limits, complete
+  coverage and navigable source evidence. Counts and heuristic indicators are not literary scores.
+- **Developmental reading:** plot progression, character consistency, pacing, tone, point of view and
+  genre expectations, with supporting passages, useful strengths and actionable concerns. Grammar
+  and style changes remain proposals until separately selected and checked by the author.
+- **Reader lenses and rereads:** built-in or authored profiles with explicit experience, taste,
+  genre familiarity, feedback directness and instructions. Preserve the exact profile/version, source
+  scope and prior run; distinguish changed passages and new feedback from historical observations.
+  Opening a profile or report sends nothing and never replaces earlier feedback silently.
+- **Series continuity:** selected books, timelines, characters, world facts, unresolved plot threads
+  and setup/payoff relationships. Label manuscript evidence separately from outlines and notes;
+  missing or contradictory evidence is visible rather than resolved by invented facts.
+- **Author workflow:** filter and navigate all overlapping findings, retain attributed dispositions,
+  compare rereads and explicitly save/export feedback. A selected suggestion uses the existing
+  checked editor/undo path; report generation alone never changes prose.
+
+These needs remain within REQ-REVIEW-001/003/004 and specs 034/039, with planning inputs owned by
+030/033 and authorized background execution by 037. Broader diagnostics need their own accepted
+rule/engine contracts and tests before enabling them; repetition v1 does not complete that scope.

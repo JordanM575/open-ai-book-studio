@@ -7,6 +7,15 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Current requirements and delivery forecast
+
+- Reconcile the accepted November 8 foundations and unmerged candidates, update the concurrent
+  execution model/queue, and publish the next dependency slices through full-book acceptance.
+- Describe retained editorial diagnostics, reader lenses, rereads and series continuity in
+  product terms, with exact-source and separate application/quality evidence requirements.
+- Keep broader history, planning, exports, media, native and release work explicitly assigned;
+  implementation, automated, provider, device and release acceptance remain distinct.
+
 ### Saved-review receipt and draft recovery corrections
 
 - Verify complete intended report-conflict copies at the store, handler and receiver, including a

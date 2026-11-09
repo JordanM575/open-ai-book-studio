@@ -1,8 +1,9 @@
 # Concurrent feature delivery
 
 **Updated:** November 8, 2026. **Goal:** finish every retained planned feature, with continuous
-independent verification. Source baseline: public `main` at `55b55b8`; the documentation refresh is
-tracked in [PR #30](https://github.com/JordanM575/open-book-studio/pull/30).
+independent verification. Current accepted source: public `main` at `19ea1c7` (PR #42).
+The original `55b55b8` baseline and [PR #30](https://github.com/JordanM575/open-book-studio/pull/30)
+remain historical. The [dated forecast](DELIVERY-FORECAST.md) records the next dependency slices.
 
 **Delegated authority, November 7:** the author authorized autonomous feature completion and approved
 the coordinator's recommendations: make an evidenced recommendation, record the decision and proceed
@@ -17,12 +18,12 @@ two explicit cost modes, inline editorial review, recoverable saved reviews and 
 Detailed workflow/review wire schemas precede writers. Broader media/platform decisions remain
 individual work; the completed research packets are reused rather than commissioned again.
 
-**Latest delivered foundation:** PR #32 merged the reviewed agent/export corrections; PR #33 merged
-the verified saved-history core as `a9997624ac28b970c0a656c50233753ad375982f`. Its exact candidate
-passed 2,500 tests and all 12 e2e suites. W02 restore/UI correction `56c7b7d` passed 2,580 tests,
-93.12% function / 94.88% line coverage, toolkit build and all 12 e2e suites; fresh independent
-review accepted that exact head and PR #34 merged it as `c2089ca`. Host/API mounting remains. W08 core/UI at `320defb` is
-independently accepted, with Library/API/Workspace integration next. Expanded journeys remain open.
+**Delivered foundations:** saved history/restore leaves, worldbuilding/goal integration, pure
+workflow graph/admission, checked v1 threads, inline editor/evidence, voice transport, saved-review
+records/controls, the campaign planner and synthetic hands-free Discuss controls are merged through
+PRs #32–#42, #46 and #47. History host mounting, broader manual planning, repetition findings and
+workflow storage remain assigned. Expanded connected journeys remain open; candidate checks are
+reported per head and are never added together as a product total.
 
 This execution plan builds on the 25-lane [product DAG](PRODUCT-COMPLETION.md) and
 [spec ownership map](SPEC-DAG.md). Its machine-readable work packages are in
@@ -32,20 +33,21 @@ finish. Research can proceed while those decisions are open.
 
 ## Capacity and ownership
 
-- **Five concurrent agents**, per the author's latest November 7 direction. The original six-agent
-  dispatch below is historical. The current queue is history review, planning integration, pure
-  authoring graph/admission, inline editor adapter and pure hands-free contracts, described in
+- **Five concurrent agents**, per the author's direction. The original six-agent dispatch below is
+  historical. Current packages cover workflow storage/host integration, manual planning,
+  review/continuation, production voice qualification and independent documentation review, described in
   [Expanded authoring requirements](EXPANDED-AUTHORING-REQUIREMENTS.md). The JSON `currentWave`
   owns the current queue; `firstWave` preserves the initial dispatch.
   The coordinator owns the queue, integration and public completion records. Freed slots take the
   next ready package; five is a concurrency limit, not five permanent assignments.
-- **Every new child uses Muse Wonder 1.0 (`muse-wonder-1.0`), reasoning `max`.** The author's
-  latest correction supersedes the historical Astra/high dispatch records below.
+- **Every new child uses OpenCode / `openai/gpt-6.1-terra`, variant `max`.** The author's
+  latest correction supersedes historical model choices.
   This includes fresh review. No silent model/effort substitution. The remaining monthly allowance is a
   capacity note, not a measured token balance or permission for paid application-provider calls.
-- **Isolated worktrees for builders.** Each starts from an identified public commit. A branch from
-  the older private checkout fails preflight. Research/review agents have read-only source ownership
-  and return reports to the coordinator.
+- **Isolated checkouts for builders.** Each starts from an identified accepted commit and verifies
+  ancestry. Prefer available Linux capacity for new independent work while preserving existing
+  candidates and active owners. A failed provider launch supplies no review evidence. Research/review
+  agents have read-only source ownership and return reports to the coordinator.
 - **One integration gate at a time.** Focused tests can run concurrently in isolated trees; full
   application suites and shared fixture infrastructure have one named owner. Keep real profiles,
   credentials and manuscripts outside every test.
@@ -121,14 +123,16 @@ decisions are coordinator work; no duplicate research assignment is needed.
 
 | Package | Next acceptance slice | Exclusive ownership |
 | --- | --- | --- |
-| W02 | Real history API/Workspace mounting from accepted, merged `56c7b7d`; prior exact-head broad gates and fresh review pass | History Library/API/IPC/preload/Workspace seams, dedicated tests |
-| W08 | Real worldbuilding/goal save/reopen and complete saved-word progress | Planning Library/API/IPC/preload/browser/Workspace seams, dedicated tests |
-| W04 | Pure task graph, direction invalidation and finite admission | New `core/authoring` leaves; no storage/runtime/host writer |
-| W10 | Minimal plain-text editor adapter and exact-current overlap underlines | New inline editor leaves and dependency manifest/lock only; no mounted editor replacement yet |
-| W14 | Pure bound voice session, confirmation/interruption, permission and PCM segmentation | New voice-session leaves; no microphone or host/ambient integration yet |
+| W04 | Fresh review of PR #43's receipt-owned journal correction; then host permission, admission and publisher seams | Workflow storage candidate immutable during review; host/shared Library integration assigned after acceptance |
+| W08 | PR #44 literal-value recovery and stable identity in both order editors; then built-adapter recovery | Manual planning components/tests and explicit shared integration owner |
+| W10 | PR #45 association/token/read-state correction; D-201 exact continuation codec and provenance | Separate immutable review candidates and non-overlapping pure codec/planner seams |
+| W14 | Qualify a production capture/IPC owner after merged synthetic controls and cancellable transport | Host permission, capture lifetime, actual dispatch and accounting; native/audio checks remain separately gated |
+| W15 | Fresh-context documentation review, truthful requirement status and next-slice DAG | Read-only stage reviewers; coordinator owns document corrections and traceability |
 
-The coordinator retains W04 stop-consumer/accounting and W10 scoped-core/UI corrections, policy/docs,
-integration and broad gates. W08 is the sole shared Library/API/Workspace writer until its handoff.
+The coordinator owns small review corrections, policy/docs, integration and the sole broad-gate slot.
+Every shared Library/API/Workspace writer needs a fresh explicit assignment; old wave ownership is
+not a standing grant. History mounting, remaining library features, exports, media and platform work
+remain in the [forecast](DELIVERY-FORECAST.md) and may start when their exact prerequisites are ready.
 Candidates receive fresh independent reviews before composition/exposure; leaf acceptance alone is
 not a connected author journey. [Retained follow-through](RETAINED-DELIVERY.md) preserves the original
 scope that smaller first slices leave open.
@@ -180,7 +184,7 @@ A single new **30-minute** fallback continuation runs in the existing conversati
 available. Child-completion notifications remain the primary wake-up. The older cutoff-bound loops
 stay disabled; their obsolete instructions and model choices do not govern this new campaign.
 
-At each execution, read the latest private queue/state and current public branch, consume delivered
+At each execution, read the latest coordination records and current public branch, consume delivered
 results once, preserve partial work, and advance or dispatch only unowned ready packages. Prioritize
 reproduced data-loss bugs, completing in-flight slices, accepted-decision work, then new packets.
 Maintain at most five active children and one integrated full-suite owner. A task awaiting external
