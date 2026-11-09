@@ -85,6 +85,8 @@
     "tests/format-save-order.test.tsx",
     "tests/book-actions-conflict-copy.test.tsx",
     "tests/chat-composer.test.tsx",
+    "tests/hands-free-controller.test.ts",
+    "tests/hands-free-bar.test.tsx",
     "tests/connection-cards.test.tsx",
     "tests/licenses-dialog.test.tsx",
     "tests/dialog-focus.test.tsx",

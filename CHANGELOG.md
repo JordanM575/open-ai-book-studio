@@ -7,6 +7,11 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Review integration
+
+- Integrate the accepted hands-free controls with the selected-evidence verification changes,
+  preserving both feature histories and removing an inherited stray merge-label line.
+
 ### Selected review evidence verification
 
 - Before opening a repetition passage, verify that it contains exactly three complete source tokens
@@ -88,7 +93,54 @@ Update the `Unreleased` section before every commit.
   Synthetic 70k/250k and oversized-chapter checks accompany the pure leaves. Continuation formats,
   lossless record mapping, scheduler/host integration and fresh independent review remain gated.
 
-HEAD
+### Hands-free Discuss controls
+
+- Keep confirmed voice words display-only until the actual admitted agent start. Stop, host refusal
+  and draft-flush failures cannot carry those unsubmitted words into a later typed or voice request;
+  legitimate stored history, dispatched outcomes and ordinary typed/retry behavior remain intact.
+  Add real-panel subsequent-request regressions with nonempty history and retained local words.
+  Remove an inherited stray merge-label line from this changelog section.
+- Restrict mounted hands-free activation to the documented `synthetic-in-process-v1` host contract:
+  monotonic fact revisions, prompt lifecycle notifications, independent host closure and synchronous
+  admission at the actual capture/STT/agent boundary. Stale snapshots and unsupported subscriptions
+  refuse activation; renderer checks do not qualify native IPC. Retain per-port STT slots, unique
+  request IDs and honest late-settlement/unknown-charge receipts across remounts, isolating consumers
+  and port replacements. Compensate failed partial acquisition through its original owner and leave
+  failed cleanup unconfirmed. Starting no longer claims capture is closed while verification waits.
+  Dispatched turn receipts remain visible independently of closure order or host availability.
+  These are synthetic source/test changes, not a production capture host or device qualification.
+- Correct the complete capture/settlement/dispatch lifetime: every capture acquisition is freshly
+  admitted after awaits and owned by its original port and monotonic attempt. Stop and disposal join
+  pending acquisition and close it before reporting Stopped; segment holds share native closure with
+  shutdown, while only the exact shutdown receipt can settle Stop. Failed cleanup remains visibly
+  unconfirmed, including port reuse after unmount. Committed scope/port changes synchronously revoke
+  pending work, including A–B–A returns. Exact transcript receipts release only their matching core
+  request even when permission, route, source or visibility rejects the words; unknown charges remain.
+  Carry revocable voice admission through the existing ChatPanel draft flush to the final agent-start
+  boundary, keep local Stop available while sending, retain actual dispatched outcomes without
+  rebinding a changed panel, and give status descriptions stable unique IDs. Positive synthetic
+  controller/mounted/ChatPanel race regressions preserve typed sending, correction focus and StrictMode.
+  No production capture adapter is connected; 017 T017 and 038 T022 remain unchecked.
+- Keep transcription queued and uncharged until capture closes and fresh session/scope/route/grant
+  facts admit the exact operation immediately before the adapter call. Stop revokes queued work
+  synchronously, including intents still awaiting host facts; dispatched cancellation retains
+  unknown charges. Foreign/late results cannot replace another draft. Clearing a correction keeps
+  the same focused editor mounted, updates its value synchronously and disables empty confirmation.
+- Mount explicit hands-free controls in the Discuss panel: start, the words as heard, correction
+  before sending, one explicit confirm and stop, bound to the open book, chapter and conversation.
+  A host-neutral controller composes the existing session reducer, audio-grant predicates and
+  transport ledger. A confirmed turn reuses the checked Discuss turn start exactly once, a
+  book/chapter/conversation change ends the session and keeps the unsent words visible instead of
+  sending them to the new target, and Stop reports stopping until the host settles, so a late
+  transcript cannot send. No capture adapter, OS prompt, microphone, provider call, playback
+  arbitration, IPC/preload change or device evidence is added: without a host adapter the bar says
+  hands-free audio is not connected and records nothing. Stop during transcription settles as a
+  cancellation instead of a permanent failure receipt; genuine failures are shown with an explicit
+  Dismiss; late capture/send settlements carry session/request identity; a target change while
+  recording tells the host to close capture; a late transcript settles its exact transport slot even
+  when its text is ignored; Continue retries a held capture and is offered when interrupted; and a
+  StrictMode remount re-arms the store. 017 T017 remains unchecked.
+
 ### Review navigation and worker reply safety
 
 - Guard report reopen, run and evidence-navigation continuations against superseding actions,
