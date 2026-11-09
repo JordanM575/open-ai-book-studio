@@ -7,6 +7,27 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation check-in contract (039 T018 seam 6a)
+
+- Add the pure integration contract leaf
+  (`packages/core/src/review/campaign-continuation-checkin.ts`): it maps one
+  checked continuation campaign — the store readers' inspection, cross-book
+  report resolution and group/fixed-history inspection results, plus a
+  host-supplied 037 run owner and direction reference — into counted 037
+  check-in inputs copied verbatim from the codec manifest and its `counts`
+  (campaign/owner identity, revision, segment and token totals, selected
+  scalar/byte counts, checkpoint receipt tallies and report dispositions). It
+  refuses stale expectations (`conflict`), partial groups (`uncertain`),
+  non-active groups, cross-book artifacts, refused or compatibly differing
+  semantics labels, and campaigns too large for one 037 context/phase record,
+  without coercion; it never recounts prose, re-encodes stored bytes or
+  mutates its inputs, so supported unknown fields survive untouched. The codec
+  retains no word count and the 037 contracts define no check-in cadence type,
+  campaign-stage task role or `Brief.targetWords` derivation, so the leaf
+  emits counted progress only. Pure core only: no IPC, preload, UI, provider
+  calls or host wiring, and 039 T018/T019 plus all 037/038 boxes remain
+  unchecked pending host integration and independent review.
+
 ### Campaign continuation fixed-history group trash/restore (039 T014/T015)
 
 - Add version-dispatching fixed-history group movement to the checked store
