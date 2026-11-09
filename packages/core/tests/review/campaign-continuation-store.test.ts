@@ -101,6 +101,25 @@ async function fixture(withCheckpoint = true) {
     sourceInput: { kind: "current" as const, sourceId: source.sourceId, rawBytes } };
 }
 
+type BuiltContinuation = Awaited<ReturnType<typeof buildCampaignContinuation>>;
+
+// A hand-crafted candidate that claims revision 3 directly on top of the revision-1
+// manifest: its base hash names the real prior bytes, but its base revision claims a
+// revision 2 that never existed. Only the store's revision-continuity gate can refuse it.
+function revisionSkipCandidate(built: BuiltContinuation, operationId: string): ContinuationCandidate {
+  const manifest = clone(JSON.parse(new TextDecoder().decode(built.manifestBytes))) as Record<string, unknown>;
+  manifest.revision = 3;
+  manifest.publicationId = operationId;
+  manifest.base = { kind: "sha256", value: sha256(built.manifestBytes), revision: 2 };
+  const manifestBytes = encodeCanonicalJson(manifest);
+  const intent = clone(JSON.parse(new TextDecoder().decode(built.intentBytes))) as Record<string, unknown>;
+  intent.id = operationId;
+  intent.expectedBase = manifest.base;
+  intent.candidate = { encoding: "base64", bytes: manifestBytes.length, sha256: sha256(manifestBytes),
+    data: Buffer.from(manifestBytes).toString("base64") };
+  return { manifestBytes, intentBytes: encodeCanonicalJson(intent), segments: built.segments };
+}
+
 function semanticsManifest(manifestBytes: Uint8Array, semantics: string): Uint8Array {
   const manifest = clone(JSON.parse(new TextDecoder().decode(manifestBytes))) as Record<string, unknown>;
   manifest.plannerSemantics = semantics;
@@ -202,6 +221,33 @@ describe("campaign continuation storage publication and recovery", () => {
     expect((await port.readFile(continuationManifestPath(owner, f.plan.campaignId)))?.bytes).toEqual(second.manifestBytes);
   });
 
+  test("a revision-skipping candidate refuses as a conflict and the active bytes survive", async () => {
+    const { port, store } = makeHarness();
+    await writeBook(port, owner);
+    const f = await fixture(false);
+    await store.publishContinuation(owner, f.plan.campaignId, f.candidate);
+    await expectCode(store.publishContinuation(owner, f.plan.campaignId, revisionSkipCandidate(f.built, "operation-skip")), "conflict");
+    // The active manifest is still the exact revision-1 bytes, and the refused
+    // candidate wrote no intent of its own.
+    expect((await port.readFile(continuationManifestPath(owner, f.plan.campaignId)))?.bytes).toEqual(f.built.manifestBytes);
+    expect(await port.readFile(continuationIntentPath(owner, f.plan.campaignId, "operation-skip"))).toBeNull();
+  });
+
+  test("a skipped-revision prepared candidate does not classify as prepared", async () => {
+    const { port, store } = makeHarness();
+    await writeBook(port, owner);
+    const f = await fixture(false);
+    await store.publishContinuation(owner, f.plan.campaignId, f.candidate);
+    const skipped = revisionSkipCandidate(f.built, "operation-skip");
+    await port.createImmutableFile(continuationIntentPath(owner, f.plan.campaignId, "operation-skip"), skipped.intentBytes);
+    for (const segment of skipped.segments) {
+      await port.createImmutableFile(continuationSegmentPath(owner, f.plan.campaignId, segment.reference.id), segment.bytes);
+    }
+    const recovery = await store.inspectContinuationRecovery(owner, f.plan.campaignId, "operation-skip");
+    expect(recovery.classifications[0]).toMatchObject({ status: "refused", code: "conflict", candidateRetained: true });
+    expect(recovery.classifications[0]?.code).not.toBe("prepared");
+  });
+
   test("refuses publication on an adapter without genuine no-replace creation, before any write", async () => {
     const port = new InMemoryLibraryPort({ id: "device_fixture01", name: "Fixture device", createdAt: time }, () => time);
     await writeBook(port, owner);
@@ -263,6 +309,30 @@ describe("campaign continuation storage publication and recovery", () => {
     faults.failManifest = false;
     const republished = await store.publishContinuation(owner, f.plan.campaignId, f.candidate);
     expect(republished.status).toBe("published");
+  });
+
+  test("an oversize file at the manifest path classifies recovery as refused uncertain, never prepared", async () => {
+    const { port, store } = makeHarness();
+    await writeBook(port, owner);
+    const f = await fixture();
+    await port.createImmutableFile(continuationIntentPath(owner, f.plan.campaignId, "operation-one"), f.candidate.intentBytes);
+    for (const segment of f.candidate.segments) {
+      await port.createImmutableFile(continuationSegmentPath(owner, f.plan.campaignId, segment.reference.id), segment.bytes);
+    }
+    const before = await store.inspectContinuationRecovery(owner, f.plan.campaignId, "operation-one");
+    expect(before.manifest).toEqual({ present: false, sha256: null, unreadable: false });
+    expect(before.classifications[0]).toMatchObject({ status: "recoverable", code: "prepared", candidateRetained: true });
+    // One byte over the manifest bound: the file occupies the publication pointer
+    // but cannot be read through it, so it must not read as absence.
+    await port.commitFile(continuationManifestPath(owner, f.plan.campaignId), new Uint8Array(262_145), { kind: "any" });
+    const singledOut = await store.inspectContinuationRecovery(owner, f.plan.campaignId, "operation-one");
+    expect(singledOut.manifest).toEqual({ present: true, sha256: null, unreadable: true });
+    expect(singledOut.classifications[0]).toMatchObject({ status: "refused", code: "uncertain", candidateRetained: true });
+    expect(singledOut.classifications[0]?.code).not.toBe("prepared");
+    expect(singledOut.classifications[0]?.code).not.toBe("incomplete-draft");
+    const aggregate = await store.inspectContinuationRecovery(owner, f.plan.campaignId);
+    expect(aggregate.manifest).toEqual({ present: true, sha256: null, unreadable: true });
+    expect(aggregate.classifications[0]).toMatchObject({ status: "refused", code: "uncertain" });
   });
 
   test("crash after the manifest but before readback is complete on recovery, not republished", async () => {

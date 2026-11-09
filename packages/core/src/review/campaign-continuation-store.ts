@@ -137,7 +137,7 @@ export interface ContinuationRecoveryClassification {
 export interface ContinuationRecoveryInspection {
   ownerBookId: string;
   campaignId: string;
-  manifest: { present: boolean; sha256: string | null };
+  manifest: { present: boolean; sha256: string | null; unreadable: boolean };
   classifications: ContinuationRecoveryClassification[];
 }
 
@@ -241,8 +241,23 @@ export class CampaignContinuationStore {
         }
         return { status: "already-published", publicationId: operationId, revision: manifest.revision as number, manifestHash: priorHash ?? prior.sha256 };
       }
-      const base = manifest.base as { kind?: unknown; value?: unknown };
-      const baseMatches = base.kind === "absent" ? prior === null : priorHash !== null && priorHash === base.value;
+      const base = manifest.base as { kind?: unknown; value?: unknown; revision?: unknown };
+      // Revision continuity (format section 3.1): the base must name the immediate
+      // predecessor, so a candidate that skips a revision refuses even when its base
+      // hash happens to match an older active manifest.
+      let priorRevision: number | null = null;
+      if (prior) {
+        try {
+          priorRevision = readContinuationManifest(prior.bytes, { ownerBookId, campaignId }).revision as number;
+        } catch {
+          refusal("conflict",
+            "The saved continuation could not be read as a continuation manifest, so its revision chain cannot be checked. Nothing was overwritten; inspect the retained files before another save.");
+        }
+      }
+      const revisionContinues = prior === null
+        ? manifest.revision === 1 && base.kind === "absent"
+        : manifest.revision === (priorRevision as number) + 1 && base.kind === "sha256" && base.revision === priorRevision;
+      const baseMatches = revisionContinues && (prior === null || priorHash === base.value);
       if (!baseMatches) {
         refusal("conflict",
           "The saved continuation changed since this candidate was prepared. Its intent and segments were kept for inspection; the active file was not overwritten.");
@@ -436,11 +451,19 @@ export class CampaignContinuationStore {
     }
     return this.host.withBook(ownerBookId, async () => {
       await this.assertOwner(ownerBookId);
-      const manifestSnapshot = await this.readBounded(continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes)
-        .catch(() => null);
-      const manifestInfo = { present: manifestSnapshot !== null, sha256: manifestSnapshot?.sha256 ?? null };
+      // A present-but-unreadable manifest (for example over the byte bound) is not
+      // absence: it occupies the publication pointer, so recovery refuses as
+      // uncertain instead of reporting an intact expected base.
+      let manifestSnapshot: LibraryFileSnapshot | null = null;
+      let manifestUnreadable = false;
+      try {
+        manifestSnapshot = await this.readBounded(continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes);
+      } catch {
+        manifestUnreadable = true;
+      }
+      const manifestInfo = { present: manifestSnapshot !== null || manifestUnreadable, sha256: manifestSnapshot?.sha256 ?? null, unreadable: manifestUnreadable };
       if (operationId !== undefined) {
-        const classification = await this.classifyOperation(ownerBookId, campaignId, operationId, manifestSnapshot);
+        const classification = await this.classifyOperation(ownerBookId, campaignId, operationId, manifestSnapshot, manifestUnreadable);
         return { ownerBookId, campaignId, manifest: manifestInfo, classifications: [classification] };
       }
       let entries: Awaited<ReturnType<CampaignContinuationStore["inventoryEntries"]>>;
@@ -449,7 +472,7 @@ export class CampaignContinuationStore {
       } catch (error) {
         return { ownerBookId, campaignId, manifest: manifestInfo, classifications: [{
           operationId: null, status: "refused" as const, code: mapCode(error), candidateRetained: false,
-          manifestState: manifestSnapshot ? "other" as const : "absent" as const, missingSegmentIds: [], divergentSegmentIds: []
+          manifestState: manifestSnapshot || manifestUnreadable ? "other" as const : "absent" as const, missingSegmentIds: [], divergentSegmentIds: []
         }] };
       }
       const operationIds = entries.flatMap((entry) => {
@@ -459,6 +482,12 @@ export class CampaignContinuationStore {
       }).sort();
       if (operationIds.length === 0) {
         if (!manifestSnapshot) {
+          if (manifestUnreadable) {
+            return { ownerBookId, campaignId, manifest: manifestInfo, classifications: [{
+              operationId: null, status: "refused" as const, code: "uncertain", candidateRetained: false,
+              manifestState: "other" as const, missingSegmentIds: [], divergentSegmentIds: []
+            }] };
+          }
           return { ownerBookId, campaignId, manifest: manifestInfo, classifications: [{
             operationId: null, status: "refused" as const, code: "not-found", candidateRetained: false,
             manifestState: "absent" as const, missingSegmentIds: [], divergentSegmentIds: []
@@ -478,14 +507,17 @@ export class CampaignContinuationStore {
         }
       }
       const classifications: ContinuationRecoveryClassification[] = [];
-      for (const id of operationIds) classifications.push(await this.classifyOperation(ownerBookId, campaignId, id, manifestSnapshot));
+      for (const id of operationIds) classifications.push(await this.classifyOperation(ownerBookId, campaignId, id, manifestSnapshot, manifestUnreadable));
       return { ownerBookId, campaignId, manifest: manifestInfo, classifications };
     });
   }
 
   private async classifyOperation(ownerBookId: string, campaignId: string, operationId: string,
-    manifestSnapshot: LibraryFileSnapshot | null): Promise<ContinuationRecoveryClassification> {
+    manifestSnapshot: LibraryFileSnapshot | null, manifestUnreadable = false): Promise<ContinuationRecoveryClassification> {
     const manifestStateOf = (candidateBytes: Uint8Array | null): ContinuationRecoveryClassification["manifestState"] => {
+      // An unreadable manifest occupies the pointer; its state is never "absent"
+      // and never a proven expected base.
+      if (manifestUnreadable) return "other";
       if (!manifestSnapshot) return "absent";
       if (candidateBytes && bytesEqual(manifestSnapshot.bytes, candidateBytes)) return "candidate";
       return "other";
@@ -495,20 +527,24 @@ export class CampaignContinuationStore {
       intentSnapshot = await this.readBounded(continuationIntentPath(ownerBookId, campaignId, operationId), CONTINUATION_STORAGE_LIMITS.intentBytes);
     } catch (error) {
       return { operationId, status: "refused", code: mapCode(error), candidateRetained: false,
-        manifestState: manifestSnapshot ? "other" : "absent", missingSegmentIds: [], divergentSegmentIds: [] };
+        manifestState: manifestStateOf(null), missingSegmentIds: [], divergentSegmentIds: [] };
     }
     if (!intentSnapshot) {
+      if (manifestUnreadable) {
+        return { operationId, status: "refused", code: "uncertain", candidateRetained: false,
+          manifestState: "other", missingSegmentIds: [], divergentSegmentIds: [] };
+      }
       // Interrupted before the intent landed: no candidate is retained in storage. The draft
       // may be republished only as a fresh, fully revalidated candidate; nothing is published.
       return { operationId, status: "recoverable", code: "incomplete-draft", candidateRetained: false,
-        manifestState: manifestSnapshot ? "other" : "absent", missingSegmentIds: [], divergentSegmentIds: [] };
+        manifestState: manifestStateOf(null), missingSegmentIds: [], divergentSegmentIds: [] };
     }
     let intent: Awaited<ReturnType<typeof readContinuationPublicationIntent>>;
     try {
       intent = await readContinuationPublicationIntent(intentSnapshot.bytes, { ownerBookId, campaignId, operationId });
     } catch (error) {
       return { operationId, status: "refused", code: mapCode(error), candidateRetained: false,
-        manifestState: manifestSnapshot ? "other" : "absent", missingSegmentIds: [], divergentSegmentIds: [] };
+        manifestState: manifestStateOf(null), missingSegmentIds: [], divergentSegmentIds: [] };
     }
     const candidateBytes = intent.candidateBytes;
     const candidate = intent.manifest;
@@ -537,9 +573,26 @@ export class CampaignContinuationStore {
       return { operationId, status: "refused", code: "uncertain", candidateRetained: true,
         manifestState: "candidate", missingSegmentIds, divergentSegmentIds };
     }
-    const base = candidate.base as { kind?: unknown; value?: unknown };
+    if (manifestUnreadable) {
+      return { operationId, status: "refused", code: "uncertain", candidateRetained: true,
+        manifestState: "other", missingSegmentIds, divergentSegmentIds };
+    }
+    const base = candidate.base as { kind?: unknown; value?: unknown; revision?: unknown };
     const activeHash = manifestSnapshot ? await this.host.runtime.sha256(manifestSnapshot.bytes) : null;
-    const baseMatches = base.kind === "absent" ? manifestSnapshot === null : activeHash !== null && activeHash === base.value;
+    // Same revision-continuity gate as publication: a candidate whose base skips a
+    // revision does not have its expected base intact, whatever the hash says.
+    let activeRevision: number | null = null;
+    if (manifestSnapshot) {
+      try {
+        activeRevision = readContinuationManifest(manifestSnapshot.bytes, { ownerBookId, campaignId }).revision as number;
+      } catch {
+        activeRevision = null;
+      }
+    }
+    const revisionContinues = !manifestSnapshot
+      ? candidate.revision === 1 && base.kind === "absent"
+      : activeRevision !== null && candidate.revision === activeRevision + 1 && base.kind === "sha256" && base.revision === activeRevision;
+    const baseMatches = revisionContinues && (base.kind === "absent" ? manifestSnapshot === null : activeHash !== null && activeHash === base.value);
     if (!baseMatches) {
       return { operationId, status: "refused", code: "conflict", candidateRetained: true,
         manifestState: manifestStateOf(candidateBytes), missingSegmentIds, divergentSegmentIds };

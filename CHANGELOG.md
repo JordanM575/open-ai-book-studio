@@ -27,6 +27,11 @@ Update the `Unreleased` section before every commit.
   directory adapter) refuse continuation publication before any write rather than degrading
   segment creation to check-then-rename. Segment files that already exist with different bytes
   refuse; identical bytes are the only tolerated pre-existence.
+- Correction on review: publication and recovery now enforce revision continuity (the
+  candidate base must name the immediate predecessor revision, so a revision-skipping
+  candidate refuses as a conflict with the active manifest preserved), and recovery
+  reports a present-but-unreadable manifest file as refused/uncertain instead of
+  treating it as absent.
 - This slice adds no IPC, UI, provider, group move/archive or cross-book report resolution,
   and 039 T014/T015/T017/T018 remain unchecked pending independent review.
 
