@@ -1,7 +1,7 @@
 # Concurrent feature delivery
 
 **Updated:** November 9, 2026. **Goal:** finish every retained planned feature, with continuous
-independent verification. Current accepted source: public `main` at `0fc19f3` (PR #45).
+independent verification. Current accepted source: public `main` at `c603095` (PR #63).
 The original `55b55b8` baseline and [PR #30](https://github.com/JordanM575/open-book-studio/pull/30)
 remain historical. The [dated forecast](DELIVERY-FORECAST.md) records the next dependency slices.
 
@@ -25,7 +25,12 @@ checked workflow storage and repetition findings are merged through PRs #32–#4
 places #46/#47 before #42, then #44/#43/#45. The [foundation register](FOUNDATION-EVIDENCE.md)
 records exact heads, merge IDs and public acceptance attribution: #43/#45 have final-head independent
 acceptance receipts; #44's public final-head automated review is separate and no equivalent independent
-receipt was located. This does not prove no review occurred. History host mounting, built-adapter
+receipt was located. This does not prove no review occurred. The Markdown folder chain (contract,
+pure planner, host policy, publication service and mounted journey) is merged and usable on desktop
+through PR #54. The campaign-continuation seams (codec, compatible replan, checked storage,
+group/archive, fixed-history group move, pure check-in contract, host check-in channel, presenter
+surface and journey measurement) are merged through PR #63. No real coordinator session exists yet,
+so the check-in channel and presenter refuse truthfully until one does. History host mounting, built-adapter
 planning, packaged/native review and connected workflow journeys remain. Checks stay at their named
 heads and are never added together as a product total.
 
@@ -130,7 +135,7 @@ decisions are coordinator work; no duplicate research assignment is needed.
 | --- | --- | --- |
 | W04 | Host permission, durable admission and publisher seams over merged #43 storage | Explicit host/shared Library integration owner; preserve pending receipts, active baselines and legitimate predecessors |
 | W08 | Built-adapter recovery and remaining manual planning over merged #44 corrections | Manual planning components/tests and explicit shared integration owner; built/native acceptance remains separate |
-| W10 | Packaged/native and inline/retained repetition acceptance; separately, D-201 continuation codec/provenance | Non-overlapping review/codec seams; reviewed public continuation contract/format incorporation precedes dependent writers |
+| W10 | Packaged/native and inline/retained repetition acceptance; separately, coordinator execution over the merged continuation seams | Non-overlapping review seams; continuation contract, codec, storage and check-in seams are merged, coordinator execution and its three contract gaps remain |
 | W14 | Qualify a production capture/IPC owner after merged synthetic controls and cancellable transport | Host permission, capture lifetime, actual dispatch and accounting; native/audio checks remain separately gated |
 | W15 | Fresh-context documentation review, truthful requirement status and next-slice DAG | Read-only stage reviewers; coordinator owns document corrections and traceability |
 
@@ -149,7 +154,7 @@ scope that smaller first slices leave open.
 | S0 · Coordinator | L00, L23, L24 | Reconcile packets and decisions, schedule shared contracts, integrate/review, exact-candidate acceptance. Every retained lane must reach L24. |
 | S1 · Files/history | L02, L07 | Saved-only history → UI → safety-copy/prepared-intent restore → checked undo → interrupted recovery; adapter fault/concurrency and sync-safe behavior throughout. |
 | S2 · Agent | L05 | Discuss/Edit/guidance → explicit plans → pause/new-turn continuation/cancel/restart → separately accepted 037 autonomy contracts and implementation. Existing one-turn background opt-in remains distinct. |
-| S3 · Export/publication | L04, L11 | Existing export safety → accepted Markdown folder package → remaining import/output conformance → templates/physical layout and named publishing rules only with accepted measurable contracts. |
+| S3 · Export/publication | L04, L11 | Existing export safety → merged Markdown folder export → remaining import/output conformance → templates/physical layout and named publishing rules only with accepted measurable contracts. |
 | S4 · Planning/library | L04, L06, L07 | Accepted planning files/revisions/bounds → manual world/series records → accepted collections/goals/notes and exact stale anchors → scoped context/generation after authority is defined. |
 | S5 · Review/routing/media | L05, L08, L09, L10, L13, L14 | Deterministic report completion → selected-source foreground review → structured readers/rereads/continuity; advisory routing → accepted selection/dispatch; front covers → measured wraps; stock narrator → durable chapters → recovery/package → reviewed character casting. Split independent accepted leaf modules across free slots. |
 | S6 · Providers/platforms | L03, L12, L15, L16–L20 | Provider/auth/catalog/usage gaps, 038 acceptance and toolkit parity; browser storage/capability → native storage/editor → credentials/voice → device/companion conformance → lifecycle/release evidence. Each platform needs its own proof. |

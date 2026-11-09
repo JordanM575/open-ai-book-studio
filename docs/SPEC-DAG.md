@@ -1,8 +1,9 @@
 # Completion spec ownership and DAG
 
-This map reconciles ownership against the November 7 status baseline in
-[PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md). 039 is now In progress with its retention decision
-checked; implementation remains open. 040–042 remain Draft/Planned with unchecked tasks. Existing specs
+This map reconciles ownership against the November 9 status baseline in
+[PRODUCT-COMPLETION.md](PRODUCT-COMPLETION.md). 039 is In progress: its retention decision is
+checked and its continuation seams are merged, while its gate-owner tasks remain unchecked.
+040–042 remain Draft/Planned with unchecked tasks. Existing specs
 remain authoritative for their implemented slices and open decisions. Spec 038 is integrated through
 PR #26 under D-192; its final verification task T022 remains open. The original review baseline and
 results in [SPEC-REVIEW.md](SPEC-REVIEW.md) remain historical evidence.
@@ -26,7 +27,7 @@ they are not replacement implementations. Linked numbers below open their princi
 | REQ-REVIEW-002 | [037] | [011]/[022]/[024]/[025]; exact outgoing scope, zero-send cancel and read-only execution | L05 |
 | REQ-REVIEW-003 | [039] (new) | [034]/[037] evidence and review boundaries; optional [030] planning sources; quote/profile/rerun attribution | L09 |
 | REQ-VOICE-001 | [017] | Integrated [038] owns preferences; recording visibility, truthful fallback/refusal, no implied always-on listening | L12 |
-| REQ-FORMAT-001 | [035] | [019] assets; immutable saved snapshot, folder export and failure-safe destinations | L11 |
+| REQ-FORMAT-001 | [035] | [019] assets; immutable saved snapshot; folder export merged and usable on desktop, T016/T017/T019 acceptance remains | L11 |
 | REQ-PUBLISH-001 | [035] | Named/versioned print and eBook rules, measurable inputs and unknowns; no implied KDP acceptance | L11 |
 | REQ-ANDROID-001 | [040] (new) | [010]/[013]/[014]/[016]/[029]; Android-specific save, lifecycle, credentials and supported-target matrix | L18 |
 | REQ-COVER-001 | [041] (new) | [019]/[035]; distinct book-level composition, original asset preservation and target geometry | L10 |
@@ -131,8 +132,11 @@ not depend on conversation persistence. They still need selected-source bounds, 
 citations, read-only execution and UI evidence. Neither changes 034's deterministic metrics. Explicit
 campaign planning/execution and retained continuation have separate gates, as shown in the
 [four review paths](DELIVERY-FORECAST.md#review-paths). D-171/D-116 and U-037/U-039 are specifically
-accepted under ADRs 0019–0020; detailed continuation format, integration and independent evidence
-gates remain. D-115 and U-040…U-042 retain open decisions.
+accepted under ADRs 0019–0020; the detailed continuation format and its storage and check-in seams
+are merged, while coordinator execution and independent evidence gates remain. No real coordinator
+session exists yet, so the check-in channel and presenter refuse truthfully until one does. Three
+authoring-contract gaps stay open: no word-count source for check-in targets, no cadence contract
+and no stage-kind mapping. D-115 and U-040…U-042 retain open decisions.
 
 Spec 017's D-200 extension now includes hands-free/reading; 038 and existing speech services supply
 selection/request seams, not an audiobook job system. L12 → L13 links 038 as its speech-route owner;

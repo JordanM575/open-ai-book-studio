@@ -1,9 +1,9 @@
 # Agentic coverage audit
 
-## Current reconciliation — November 7, 2026
+## Current reconciliation — November 9, 2026
 
 The October audit below is preserved as history. Its missing/unspecified rows and suggested spec
-numbers are not current instructions. Reconciliation uses merged PRs #32/#33, the `320defb` expanded
+numbers are not current instructions. Reconciliation uses merged PRs through #63, the `320defb` expanded
 requirements audit and exact candidate reports; it is not a new live-provider or release audit.
 
 | Area | Current evidence | Remaining owned work |
@@ -13,15 +13,18 @@ requirements audit and exact candidate reports; it is not a new live-provider or
 | Conversations | V1 files and compaction exist | D-113 now selects checked writes, explicit backed-up migration, recoverable deletion and replay exclusion; all-caller implementation remains |
 | History | PR #33 merged verified saved-only core; exact restore/UI correction accepted and merged in PR #34 | Real API/Workspace mount, restore confirmation/recovery controls and cleanup |
 | Planning/organization | `320defb` core/UI independently accepted | Library/API/Workspace integration and full Bible/series/collections/notes scope |
-| Review | Local count report exists; D-193 scoped leaves require corrections | D-197–D-199 exact-current underlines, explicit saved feedback/application and full-book campaigns |
-| Autonomous authoring | D-194–D-196 explicitly select authority, graph, direction, recovery and admission | 037 T018–T042; actual brief→full-book pipeline, independent attempts and separate literary evaluation |
+| Review | Local count report exists; D-193 scoped leaves require corrections; continuation seams merged through PR #63 | D-197–D-199 exact-current underlines, explicit saved feedback/application and full-book campaigns; coordinator execution remains, with no real coordinator session yet |
+| Autonomous authoring | D-194–D-196 explicitly select authority, graph, direction, recovery and admission; check-in presenter shows counted inputs only | 037 T018–T042; actual brief→full-book pipeline, independent attempts and separate literary evaluation; no word-count source for check-in targets, no cadence contract and no stage-kind mapping |
 | Hands-free | PTT/spoken reply and 038 routes exist; D-200 selects sessions | 017 T013–T024 including original local input/read-following; 038 T022 remains unchecked |
 | Verification | 012 has tasks and substantial contract/e2e/quality gates; candidate results are recorded separately | Unfinished adversarial/quality/platform/live gates remain; the old “no tasks” statement is obsolete |
 
 Spec 017 is voice/background, 031 owns ordinary interaction and 037 owns full-book workflows; do not
 create the historical proposed `017-agent-suite`. [Retained follow-through](RETAINED-DELIVERY.md)
 assigns the original omissions. Accepted contracts and isolated leaves do not establish an integrated
-full agentic product. The original audit follows unchanged.
+full agentic product. The check-in channel and presenter refuse truthfully because no real coordinator
+session exists yet. Two gate failures predate the presenter and stay with their owners: the browser
+editor-focus check and bundle baseline drift. All 039, 037 and 038 task boxes for their gate owners
+remain unchecked. The original audit follows unchanged.
 
 ## Historical October audit
 

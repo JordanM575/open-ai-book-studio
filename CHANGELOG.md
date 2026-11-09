@@ -7,6 +7,19 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Delivery documentation reconciliation
+
+- Reconcile the public completion, concurrent-delivery, forecast, retained-delivery, spec-map and
+  coverage docs with the merged Markdown folder chain (PRs #49–#54, subordinate gates closed, T014
+  still open pending T016/T017/T019) and the merged campaign-continuation seams through PR #63
+  (codec, compatible replan, checked storage, group/archive, fixed-history move, check-in contract,
+  host channel, presenter and measurement). Record truthfully that no real coordinator session
+  exists yet so the check-in channel and presenter refuse until one does, that no word-count source
+  for check-in targets, no cadence contract and no stage-kind mapping exist, that the browser
+  editor-focus check and bundle baseline drift predate the presenter and stay with their owners,
+  and that all 039, 037 and 038 gate-owner task boxes remain unchecked. No behavior, task state or
+  lane structure changes.
+
 ### Campaign continuation check-in presenter (039 T018 seam 6c)
 
 - Mount the presenter surface for continuation check-ins in the workspace

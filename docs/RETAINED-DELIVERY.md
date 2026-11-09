@@ -1,6 +1,6 @@
 # Retained feature follow-through
 
-**Reconciled November 7, 2026.** The expanded requirements audit covered 19 named requirements,
+**Reconciled November 9, 2026.** The expanded requirements audit covered 19 named requirements,
 35 retained specifications and 718 FR declarations at `320defb`. Those are audit coverage counts,
 not passed product tests. The original specs and dated audits remain available; this record assigns
 the omissions their next concrete work. The 25-lane/20-package DAG remains unchanged.
@@ -8,15 +8,17 @@ the omissions their next concrete work. The 25-lane/20-package DAG remains uncha
 Small first slices do not remove broader original capabilities. L24 closes only with acceptance
 evidence or an explicit author-approved scope change. Delegated engineering decisions do not permit
 quiet deferral. All tasks below remain open; linked task lists provide detailed implementation order.
-The [November 8 forecast](DELIVERY-FORECAST.md) supersedes the original next-slice ordering and
-distinguishes merged foundations from candidates and connected acceptance.
+The [delivery forecast](DELIVERY-FORECAST.md) supersedes the original next-slice ordering and
+distinguishes merged foundations from candidates and connected acceptance. The Markdown folder
+export and the campaign-continuation seams described there are merged; their retained acceptance
+below stays open until its gate owners close it.
 
 ## Current accepted-contract implementation
 
 | Scope | Accepted policy and next tasks | Evidence boundary |
 | --- | --- | --- |
 | Short brief → full book, asynchronous specialists and character direction | D-194–D-196 / ADR 0019; [037 T018–T042](../specs/037-guided-autonomous-authoring/tasks.md) | Pure graph/admission first, detailed formats before writers, one real Library publisher, then actual ~70k synthetic pipeline and separate literary evaluation |
-| Inline editorial critique and retained feedback | D-197–D-199 / ADR 0020; [039 T010–T019](../specs/039-reader-continuity-review/tasks.md), [034 T008/T018–T019](../specs/034-manuscript-review/tasks.md) | Correct scoped candidate, exact-current editor adapter, accessible overlap handling, recoverable explicit save/application/campaign; no seeded-finding completion claim |
+| Inline editorial critique and retained feedback | D-197–D-199 / ADR 0020; [039 T010–T019](../specs/039-reader-continuity-review/tasks.md), [034 T008/T018–T019](../specs/034-manuscript-review/tasks.md) | Correct scoped candidate, exact-current editor adapter, accessible overlap handling, recoverable explicit save/application/campaign; continuation storage and check-in seams are merged, coordinator execution remains; no seeded-finding completion claim |
 | Hands-free and original local reading/input | D-200 / ADR 0021; [017 T013–T024](../specs/017-voice-and-background/tasks.md) | Pure session/permission/PCM first; real STT/TTS/host integration, then separately authorized acoustic/device qualification; 038 T022 stays unchecked |
 | Planning and goals | D-163–D-168 / ADR 0017; [030](../specs/030-story-bible-extensions/tasks.md), [033](../specs/033-library-organization/tasks.md) | Worldbuilding/goal integration is merged; PR #44 broader manual recovery needs exact line-ending preservation and stable order identities before acceptance |
 | History | D-175/D-176 / ADR 0016; [032](../specs/032-chapter-history/tasks.md) | Core merged in PR #33. Restore/UI `56c7b7d` accepted and merged in PR #34; mounting and host controls remain |
@@ -52,11 +54,13 @@ distinguishes merged foundations from candidates and connected acceptance.
 - [ ] **RF-07 · Additional manuscript formats and hosts — 029, L04, W08.** Reuse completed DOC/RTF/
   ODT research; enabling tasks must prove parser fidelity, unsupported content reporting, staging,
   cancellation and actual host publication. Research/refusal tasks do not make formats available.
-- [ ] **RF-08 · Ordinary folder output and publishing — 002/035, L11, W06.** Implement T014's
-  ordered Markdown folder with matter/assets and safe destination recovery. Complete own-page
+- [ ] **RF-08 · Ordinary folder output and publishing — 002/035, L11, W06.** The ordered Markdown
+  folder export with matter/assets and safe destination recovery is merged and usable on desktop;
+  T014 stays open pending T016/T017/T019. Complete own-page
   illustrations/companion image assets, named versioned physical profiles, trim/pagination/font/
   accessibility measurements and independent print/eReader conformance. Existing copyright/disclaimer
-  templates remain; specify further template families explicitly. Four file exporters are partial.
+  templates remain; specify further template families explicitly. The file exporters and the folder
+  export remain partial until those checks pass.
 - [ ] **RF-09 · Native iOS and Android ownership — 014/040, L17/L18, W13.** Native iOS storage,
   protected credentials and lifecycle belong to 014, Android to 040; 010/013 own shared ports and
   operation-level capabilities. This resolves the old 014→010→014 ownership loop. Device, Simulator,
