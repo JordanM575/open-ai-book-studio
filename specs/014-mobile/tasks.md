@@ -34,8 +34,26 @@
 - [x] T016 [US4] Run `bun run typecheck`, `bun test`, `bun run build`, `bun run smoke` and the real iOS shell check; confirm no test touches the author's profile. `bun run verify` passes with 213 tests and both builds; desktop smoke is 14/14, web smoke is 10/10, and the iPad mini rotation pass is recorded above. All runs use throwaway profiles and fixtures.
 - [x] T017 [US4] Update `specs/README.md`, `CHANGELOG.md` and `docs/research/mobile-layouts.md` with verified device/build results.
 
+## Phase 5 — Native iOS integration (retained; not yet accepted)
+
+T010–T017 record the shell, browser-backed renderer and stated Simulator checks, not native storage
+or protected-credential acceptance. The following work remains open; D-117 is proposed, and the
+completed shell added no extra native plugins.
+
+- [ ] T019 Research the remaining native storage, protected-credential, permission and lifecycle questions using prior findings instead of repeating a survey; compare alternatives and record capability/refusal, failure and recovery evidence needed for each.
+- [ ] T020 Resolve D-117 and any other necessary native decisions individually; record accepted choices before dependent implementation. Do not treat the shell spike as a plugin or storage decision.
+- [ ] T021 Implement the accepted native iOS library storage integration against the shared port and checked save/conflict contracts; preserve the author's chosen storage tier and surface permission loss.
+- [ ] T022 Implement the accepted protected credential integration with refusal when protection is unavailable; keep credentials out of libraries and exports and provide no plaintext fallback.
+- [ ] T023 Integrate native lifecycle, permission and operation-level capability/refusal behavior, including honest pending and unconfirmed saves and actionable recovery.
+- [ ] T024 Verify the implemented native contracts with isolated synthetic fixtures and fault cases for permission loss, protected-store failure, interruption, conflict and recovery; record source and automated evidence separately.
+- [ ] T025 Verify the accepted native integrations in iOS Simulator with disposable data and isolated test credentials; record the actual scope separately from synthetic and real-device evidence.
+- [ ] T026 Obtain separately authorized real-device evidence for native storage, protected credentials, permissions and lifecycle with disposable data; record remaining device and accessibility limits.
+- [ ] T027 Record release evidence under the applicable release owner's gates and separate authorization; Simulator or real-device evidence alone does not authorize signing or distribution.
+
 ## Dependencies
 
-- T001–T005 shipped in `eb8cfa2` (a pre-event commit); T006–T009 completed the touch-target and overflow pass. T018 added the shared Settings surface and the dialog/touch fixes found in the workspace audit. The mobile spec is not complete until T014–T017 run against the real device.
+- T001–T005 shipped in `eb8cfa2` (a pre-event commit); T006–T009 completed the touch-target and overflow pass. T018 added the shared Settings surface and the dialog/touch fixes found in the workspace audit. The recorded T014–T017 Simulator results do not replace real-device or native integration acceptance.
 - T010–T013 are delivered against spec 010's browser adapters and spec 013's web build (`6f90cfd`, a pre-event commit, and later). `bun run ios:iphone`, `bun run ios:ipad` and `scripts/simulator-pair.mjs` drive the devices.
 - T014–T017 depend on a real Capacitor build; a shell-only placeholder does not count.
+- T019–T020 precede the native choices they govern; T021–T023 implement only accepted choices.
+  T024–T027 retain separate synthetic, Simulator, real-device and release evidence gates.

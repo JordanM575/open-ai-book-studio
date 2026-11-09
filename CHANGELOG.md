@@ -7,6 +7,60 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Exact-head foundation and delivery status
+
+- Reconcile the November 9 merged foundations across the map, forecast, execution plan, JSON and
+  spec index; link a public register of exact heads, merges and attributed review/check evidence.
+- Preserve historical figure scopes, public-receipt limitations, receipt-lifetime and selected-only
+  verification qualifications, and the remaining connected, native, provider and release gates.
+- Correct next-work navigation and align the sole continuation fallback with immediate stop rules;
+  retain independent review paths and both oversized-source gates.
+
+### Completion map owner and policy follow-through
+
+- Distinguish volatile review, durable conversations, explicit campaigns and retained continuation,
+  with their own source, consent, overflow, storage and connected-journey gates.
+- Link next-work owners and clarify native iOS responsibilities, voice-session/catalog evidence,
+  audiobook retries and reuse, and the separate preview, pinned-routing and cost-mode contracts.
+- Align the speech acceptance edge with its preference owner while retaining background boundaries,
+  and state the five-child execution limit separately from coordination and broad-suite ownership.
+
+### Platform contract follow-through
+
+- Align the spec index and browser handoff with the mobile owner's remaining native iOS work and
+  separate Simulator, real-device and release evidence.
+- Carry the audiobook cost-mode and explicit failed-or-uncertain retry contract into its plan and
+  unchecked tasks, including validation and reuse of successful chapter assets.
+
+### Native and audiobook contract clarity
+
+- Assign native iOS storage, protected credentials, lifecycle and capability/refusal integration to
+  the mobile owner, with unchecked decision, implementation and separate target-evidence follow-through.
+- Align audiobook retry authorization and cost-mode wording with the accepted policy while keeping
+  enforcement, media decisions and provider qualification open. Explain the selected autonomous
+  authoring architecture's alternatives and costs without claiming runtime acceptance.
+
+### Completion graph acceptance contracts
+
+- Record claim-scoped contract, evidence and refusal requirements for all 66 existing lane
+  relationships, with linked owners and independent optional planning, routing and casting gates.
+- Make L24's direct conjunction of all 24 retained lanes explicit without adding sequencing arrows;
+  document the desktop and full-roadmap milestone tradeoffs and navigate to principal owners.
+- Extend structural validation and isolated malformed-fixture tests without treating a graph pass as
+  implementation, evidence, decision or release acceptance.
+
+### Current requirements and delivery forecast
+
+- Keep the continuation decision and format candidate-labelled until their reviewed contracts are
+  incorporated; roadmap references alone do not authorize continuation writers.
+- Identify the continuation work by its delivery state until a published candidate is available.
+- Reconcile the accepted November 8 foundations and unmerged candidates, update the concurrent
+  execution model/queue, and publish the next dependency slices through full-book acceptance.
+- Describe retained editorial diagnostics, reader lenses, rereads and series continuity in
+  product terms, with exact-source and separate application/quality evidence requirements.
+- Keep broader history, planning, exports, media, native and release work explicitly assigned;
+  implementation, automated, provider, device and release acceptance remain distinct.
+
 
 ### Review and workflow storage integration
 

@@ -84,7 +84,7 @@ Keep the manifest schema, path normalization and archive invariants in `packages
 - **Spec 010**: core library port/service; desktop adapter migration; FSA/OPFS adapters; archive contract and import/export services; adapter tests and truthful storage/capability data.
 - **Spec 011**: browser OpenRouter callback, IndexedDB credential vault and provider UI, using D-101/D-104/D-105; unsupported providers stay unavailable.
 - **Spec 013**: shared UI extraction, `apps/web` entry/Vite output, build metadata, static-host behavior and promotion. It consumes the ports/adapters defined here.
-- **Spec 014**: Capacitor shell, safe-area behavior, native iOS review and device/orientation verification. It consumes spec 013's real renderer.
+- **Spec 014**: Capacitor shell and native iOS storage, protected credentials, lifecycle, permissions and capability/refusal integration. It consumes the shared port/capability contracts and spec 013's real renderer; native decisions and target evidence remain separate.
 
 ## Project Structure
 
@@ -147,5 +147,5 @@ specs/010-web-target/
 - Provider endpoint/CORS work beyond the verified capability registry and spec 011.
 - Hosted accounts, server-side file copies, API proxies, telemetry or remote backups.
 - A primary browser database, new file format, sync/merge algorithm or cross-device account.
-- Native iOS storage plugins, Keychain, iCloud security-scoped bookmarks and App Store distribution.
+- Native iOS storage, protected credentials, lifecycle, permissions and capability/refusal integration belong to spec 014; native choices remain gated by D-117 and other applicable decisions. App Store distribution is outside this browser plan.
 - Production hosting, release promotion and rollback, owned by spec 013.

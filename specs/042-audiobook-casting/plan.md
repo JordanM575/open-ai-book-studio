@@ -26,10 +26,15 @@ before packaging. Record storage ADR and docs/FORMAT.md with schema/retention/co
 implementation. Library writes stay atomic/version-hash checked; every output is traceable to its
 source/cast run. A manifest is not a promise that the provider produces identical audio on rerender.
 
-Bounded explicit author requests are the initial authority. 036 and D-116 do not authorize hard caps,
-automatic routing, retries or fallback. Unknown completion/charge after interruption requires author
-review and explicit retry. Do not build an unattended/background job system under this plan; any such
-change must pass 037's authority/lifecycle gates separately.
+Bounded explicit author requests are the initial authority. D-116 and
+[ADR 0019](../../docs/adr/0019-bounded-autonomous-authoring.md) select bounded operations, which may
+disclose unknown cost and are not a dollar cap, and strict money, which requires a qualified
+provider-enforceable all-charge upper bound and durable concurrent reservations. Enforcement,
+accounting and adapter qualification remain open. Neither policy authorizes automatic routing,
+retries or fallback. For every failed or uncertain request, require author review, disclose the risk
+of duplicate charges and obtain fresh explicit retry authorization. Do not build an unattended or
+background job system under this plan; any such change must pass 037's authority/lifecycle gates
+separately.
 
 ## Decision work before implementation
 
@@ -49,9 +54,10 @@ change must pass 037's authority/lifecycle gates separately.
    script/cast version and pronunciation to the generated asset. Publish through checked Library
    operations. In-progress or uncertain output is never reported as complete after restart.
 3. **Recoverable multi-chapter run (T005):** make chapter one succeed and chapter two fail, stop or
-   lose its reply. Reopen the run, validate/reuse chapter one and require explicit consent for chapter
-   two. Show stale audio if source/cast changes; a retry of uncertain work must disclose possible
-   duplicate charging. No background batch authority follows from the resume button.
+   lose its reply. Reopen the run and validate/reuse chapter one. For every failed or uncertain request,
+   require author review, disclose the risk of duplicate charges and obtain fresh explicit retry
+   authorization; never retry automatically. Show stale audio if source/cast changes. No background
+   batch authority follows from the resume button.
 4. **Packaging (T006):** after output-policy acceptance, export ordered validated assets with source,
    voice/provider and generated-audio disclosure. Independently measure required audio properties;
    handle partial exports according to the accepted policy and preserve prior destinations on failure.

@@ -101,15 +101,12 @@ via the safe output path. No secrets/raw errors/credential-bearing URLs or hidde
 
 ## Evidence and alternatives
 
-Vendor pages describe workflow inspiration, not tested parity or algorithms:
-[beta feedback](https://www.autocrit.com/ai-beta-reader/),
-[story analysis](https://www.autocrit.com/story-analyzer-plus/),
-[series](https://www.autocrit.com/series-analyzer/),
-[repetition](https://www.autocrit.com/editing/support/phrase-frequency/), and
-[grammar](https://www.autocrit.com/grammar-checker/), accessed November 7. The grammar page advertises
-no during-writing underlines; this product's underlines come from its author's own requirement.
+The author requires source-linked critique, reader lenses, series continuity, local repetition
+diagnostics and suggestion-only grammar/style review. Underlines must identify exact source passages
+and remain separate from an author's decision to apply a change. These requirements do not establish
+an implemented report, a validated scoring rule or a qualified language engine.
 [CodeMirror guide](https://codemirror.net/docs/guide/) and
 [decorations](https://codemirror.net/examples/decoration/) support the selected plain-text architecture.
 Existing editor/review source and completed independent audit establish gaps, not new UI evidence.
 Semantic usefulness, accessibility, large-manuscript performance and live literary quality have
-separate future acceptance gates. No proprietary scoring formula, dictionary or UI is copied.
+separate future acceptance gates. Diagnostic rules must be documented and independently tested.
