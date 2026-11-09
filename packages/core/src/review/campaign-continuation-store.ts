@@ -24,6 +24,11 @@ import {
   CONTINUATION_GROUP_LIMITS,
   type ContinuationGroupAction, type ContinuationGroupComponent, type ContinuationInventoryEntry
 } from "./campaign-continuation-group";
+import {
+  buildContinuationFixedHistoryIntentBytes, inspectFixedHistoryRecord,
+  readContinuationFixedHistoryIntent,
+  type ContinuationFixedHistoryAction, type ContinuationFixedHistoryComponent
+} from "./campaign-continuation-fixed-history";
 import type { CampaignPlan } from "./campaign-planner";
 import type { InspectedContinuationHole } from "./campaign-continuation-tokens";
 
@@ -64,6 +69,15 @@ import type { InspectedContinuationHole } from "./campaign-continuation-tokens";
  * a verified foreign report is a bounded foreign reference, and a missing or changed
  * report stays an unavailable entry. Neither operation rewrites retained bytes, creates
  * reports, or grants execution authority.
+ *
+ * Fixed-history trash/restore (seam 5) moves the preserved history sidecar set for
+ * the same campaign: the book's entire 032 `history/` tree plus the campaign's
+ * segment directory, publication-intent directory and manifest, in history-first,
+ * manifest-last order under one immutable fixed-history intent. It reuses this
+ * store's inventory, wire-verification and no-replace seams; membership, ordering
+ * and history-record dispatch differ from the campaign group as documented in
+ * `campaign-continuation-fixed-history.ts`. Revision chains and ownership are
+ * preserved because retained bytes are moved, never re-encoded.
  */
 
 export const CONTINUATION_STORAGE_LIMITS = Object.freeze({
@@ -142,6 +156,16 @@ export const continuationTrashIntentsPath = (bookId: string, campaignId: string,
 /** Ordinary schema-1 report location for a recorded report owner (format section 5). */
 export const continuationReportPath = (bookId: string, runId: string): LibraryPath =>
   toLibraryFilePath(["books", bookId, "reviews", `${runId}.json`]);
+/** Active preserved-history tree for an owner book (032 layout): `books/<owner>/history/`. */
+export const continuationHistoryPath = (bookId: string): LibraryPath =>
+  toLibraryPath(["books", bookId, "history"]);
+/** Archived preserved-history tree for one fixed-history group. */
+export const continuationTrashHistoryPath = (bookId: string, groupId: string): LibraryPath =>
+  toLibraryPath([...continuationTrashBasePath(bookId, groupId), "history"]);
+export const continuationFixedHistoryMovesPath = (bookId: string): LibraryPath =>
+  toLibraryPath(["books", bookId, "reviews", "fixed-history-moves"]);
+export const continuationFixedHistoryMoveIntentPath = (bookId: string, operationId: string): LibraryPath =>
+  toLibraryFilePath(["books", bookId, "reviews", "fixed-history-moves", `${operationId}.json`]);
 
 export interface ContinuationCandidate {
   readonly manifestBytes: Uint8Array;
@@ -216,6 +240,23 @@ export type ContinuationReportResolutionResult =
       owned: number; foreign: number; unavailable: number;
     }
   | { status: "refused"; code: string };
+
+export type ContinuationFixedHistoryMoveResult = {
+  status: "trashed" | "restored"; operationId: string; groupId: string;
+  campaignId: string; ownerBookId: string; manifestHash: string;
+};
+
+export type ContinuationFixedHistoryState = "active" | "archived" | "partial" | "absent";
+
+export interface ContinuationFixedHistoryInspection {
+  ownerBookId: string;
+  campaignId: string;
+  groupId: string | null;
+  state: ContinuationFixedHistoryState;
+  manifestHash: string | null;
+  active: { history: boolean; manifest: boolean; segments: boolean; intents: boolean };
+  archived: { history: boolean; manifest: boolean; segments: boolean; intents: boolean } | null;
+}
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const SEGMENT_ID = /^s-[a-f0-9]{64}$/;
@@ -835,6 +876,330 @@ export class CampaignContinuationStore {
         return { status: "structural-only" as const, intent: read.intent, hash: snapshot.sha256 };
       } catch (error) {
         throw asStorageError(error, "The retained group move intent could not be read. It was left untouched.");
+      }
+    });
+  }
+
+  /* ------------------------------------------------- fixed-history moves */
+
+  async trashContinuationFixedHistory(ownerBookId: string, campaignId: string,
+    options: { operationId: string; groupId: string; createdAt: string }): Promise<ContinuationFixedHistoryMoveResult> {
+    return this.moveContinuationFixedHistory(ownerBookId, campaignId, "trash", options);
+  }
+
+  async restoreContinuationFixedHistory(ownerBookId: string, campaignId: string,
+    options: { operationId: string; groupId: string; createdAt: string }): Promise<ContinuationFixedHistoryMoveResult> {
+    return this.moveContinuationFixedHistory(ownerBookId, campaignId, "restore", options);
+  }
+
+  /**
+   * Move the fixed-history group (history tree, segments, publication intents,
+   * manifest) between its active and archived locations. This mirrors the
+   * seam-4 campaign-group guarantees — complete checked preflight before the
+   * first move with source bytes preserved on refusal, an immutable intent
+   * created absent-only and read back, component moves in fixed order, and an
+   * honestly `uncertain` result with the intent retained after the first move
+   * — while reusing the seam-4 inventory, wire-verification and no-replace
+   * seams. Differences from the campaign group are membership (the book-scoped
+   * history tree is added), ordering (history first, manifest still last) and
+   * dispatch (manifest `plannerSemantics` as in seam 4, plus per-record 032
+   * schema/identity/body dispatch for every history file).
+   */
+  private async moveContinuationFixedHistory(ownerBookId: string, campaignId: string,
+    action: ContinuationFixedHistoryAction,
+    options: { operationId: string; groupId: string; createdAt: string }): Promise<ContinuationFixedHistoryMoveResult> {
+    this.assertIds(ownerBookId, campaignId);
+    const operationId = options?.operationId;
+    const groupId = options?.groupId;
+    const createdAt = options?.createdAt;
+    if (!recordIdSchema.max(160).safeParse(operationId).success ||
+      !recordIdSchema.max(160).safeParse(groupId).success) {
+      refusal("invalid", "That fixed-history operation or group ID is not valid. Nothing was moved.");
+    }
+    if (!recordTimestampSchema.safeParse(createdAt).success) {
+      refusal("invalid", "That fixed-history operation time is not valid. Nothing was moved.");
+    }
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      await this.writable(ownerBookId);
+      if (typeof this.host.createImmutableFile !== "function") {
+        refusal("unsupported-concurrent-writer",
+          "This storage cannot create the immutable fixed-history intent without replacing an existing file, so nothing was moved. Keep the continuation where it is and use a storage adapter with proven no-replace creation.");
+      }
+      const moveFile = this.host.moveFile ?? this.host.storage.moveFile.bind(this.host.storage);
+      const moveDirectory = this.host.moveDirectory ?? this.host.storage.moveDirectory.bind(this.host.storage);
+      if (typeof moveFile !== "function" || typeof moveDirectory !== "function") {
+        refusal("unsupported-concurrent-writer",
+          "This storage cannot move a fixed-history group without replacing a destination, so nothing was moved.");
+      }
+      const trashing = action === "trash";
+      const sourceHistory = trashing ? continuationHistoryPath(ownerBookId)
+        : continuationTrashHistoryPath(ownerBookId, groupId);
+      const sourceManifest = trashing ? continuationManifestPath(ownerBookId, campaignId)
+        : continuationTrashManifestPath(ownerBookId, campaignId, groupId);
+      const sourceSegments = trashing ? continuationSegmentsPath(ownerBookId, campaignId)
+        : continuationTrashSegmentsPath(ownerBookId, campaignId, groupId);
+      const sourceIntents = trashing ? continuationIntentsPath(ownerBookId, campaignId)
+        : continuationTrashIntentsPath(ownerBookId, campaignId, groupId);
+      const destHistory = trashing ? continuationTrashHistoryPath(ownerBookId, groupId)
+        : continuationHistoryPath(ownerBookId);
+      const destManifest = trashing ? continuationTrashManifestPath(ownerBookId, campaignId, groupId)
+        : continuationManifestPath(ownerBookId, campaignId);
+      const destSegments = trashing ? continuationTrashSegmentsPath(ownerBookId, campaignId, groupId)
+        : continuationSegmentsPath(ownerBookId, campaignId);
+      const destIntents = trashing ? continuationTrashIntentsPath(ownerBookId, campaignId, groupId)
+        : continuationIntentsPath(ownerBookId, campaignId);
+      const intentPath = continuationFixedHistoryMoveIntentPath(ownerBookId, operationId);
+      if (await this.host.storage.readFile(intentPath)) {
+        refusal("conflict", "That fixed-history operation already has a retained intent. Nothing was moved; inspect it before another move.");
+      }
+      const source = await this.readBounded(sourceManifest, CONTINUATION_STORAGE_LIMITS.manifestBytes);
+      if (!source) refusal("not-found", "That continuation is not at the expected location. Nothing was moved.");
+      const manifestBytes = new Uint8Array(source.bytes);
+      if (!this.recordedIdentityMatches(manifestBytes, ownerBookId, campaignId)) {
+        refusal("corrupt", "The continuation at that location names another owner or campaign. Nothing was moved.");
+      }
+      const dispatch = inspectCampaignContinuationCompatibility(manifestBytes);
+      if (dispatch.decision === "refuse") {
+        throw new ContinuationStorageError(
+          (["corrupt", "unsupported", "too-large", "newer-schema"].includes(dispatch.code)
+            ? dispatch.code : "unsupported") as ContinuationStorageErrorCode,
+          "That continuation version cannot be moved by this build. Nothing was moved.");
+      }
+      // A compatibly differing label is verified only through a local
+      // normalized comparison copy; stored bytes are never altered.
+      const verifyBytes = dispatch.decision === "replan-required"
+        ? this.normalizedSemanticsBytes(manifestBytes) : manifestBytes;
+      try {
+        await inspectContinuationWire(verifyBytes, { ownerBookId, campaignId },
+          this.segmentReaderFor(sourceSegments));
+      } catch (error) {
+        throw asStorageError(error, "The continuation does not verify at its source location, so nothing was moved. Its files were left exactly as they were.");
+      }
+      const sourceHistoryInventory = await this.inventoryDirectory(sourceHistory);
+      const sourceSegInventory = await this.inventoryDirectory(sourceSegments);
+      const sourceIntInventory = await this.inventoryDirectory(sourceIntents);
+      const sourceHistoryCheck = this.checkInventory(sourceHistoryInventory);
+      const sourceSegCheck = this.checkInventory(sourceSegInventory);
+      const sourceIntCheck = this.checkInventory(sourceIntInventory);
+      // Per-record history dispatch before the first move: every preserved
+      // record must name this owner and its directory chapter with a
+      // verifying body; future or divergent records refuse with source bytes
+      // preserved. History bytes are inspected, never re-encoded.
+      for (const entry of sourceHistoryInventory) {
+        if (entry.type !== "file") continue;
+        if (entry.path.length !== 2 || !(entry.path[1] as string).endsWith(".md")) {
+          refusal("unsupported", "This preserved history contains a file this version cannot move safely. Nothing was moved.");
+        }
+        const chapterId = entry.path[0] as string;
+        const snapshot = await this.readBounded(
+          toLibraryFilePath([...sourceHistory, ...entry.path]), CONTINUATION_GROUP_LIMITS.fileBytesEach);
+        if (!snapshot) refusal("corrupt", "A preserved history file disappeared while it was checked. Nothing was moved.");
+        try {
+          await inspectFixedHistoryRecord(new Uint8Array(snapshot.bytes),
+            { ownerBookId, chapterId }, (bytes) => this.host.runtime.sha256(bytes));
+        } catch (error) {
+          throw asStorageError(error, "A preserved history record cannot be moved by this build, so nothing was moved. Its files were left exactly as they were.");
+        }
+      }
+      const destHistoryInventory = await this.inventoryDirectory(destHistory);
+      const destSegInventory = await this.inventoryDirectory(destSegments);
+      const destIntInventory = await this.inventoryDirectory(destIntents);
+      this.checkInventory(destHistoryInventory);
+      this.checkInventory(destSegInventory);
+      this.checkInventory(destIntInventory);
+      const totalEntries = sourceHistoryCheck.entries + sourceSegCheck.entries + sourceIntCheck.entries + 1 +
+        destHistoryInventory.length + destSegInventory.length + destIntInventory.length;
+      const totalBytes = sourceHistoryCheck.bytes + sourceSegCheck.bytes + sourceIntCheck.bytes + manifestBytes.byteLength;
+      if (totalEntries > CONTINUATION_GROUP_LIMITS.entries || totalBytes > CONTINUATION_GROUP_LIMITS.fileBytes ||
+        sourceHistoryCheck.inventoryBytes + sourceSegCheck.inventoryBytes + sourceIntCheck.inventoryBytes >
+          CONTINUATION_GROUP_LIMITS.inventoryBytes) {
+        refusal("too-large", "This fixed-history group is larger than this version can move. Nothing was moved or listed partially.");
+      }
+      if (await this.host.storage.stat(destManifest)) {
+        refusal("conflict", "A continuation already occupies the move destination. Nothing was moved; both locations were kept.");
+      }
+      if (destHistoryInventory.length > 1 || destSegInventory.length > 1 || destIntInventory.length > 1) {
+        refusal("conflict", "A continuation already occupies the move destination. Nothing was moved; both locations were kept.");
+      }
+      const components: ContinuationFixedHistoryComponent[] = [
+        { name: "history", type: "directory",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: sourceHistoryCheck.entries, bytes: sourceHistoryCheck.bytes,
+          inventoryDigest: await continuationInventoryDigest(sourceHistoryInventory) },
+        { name: "segments", type: "directory",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: sourceSegCheck.entries, bytes: sourceSegCheck.bytes,
+          inventoryDigest: await continuationInventoryDigest(sourceSegInventory) },
+        { name: "publication-intents", type: "directory",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: sourceIntCheck.entries, bytes: sourceIntCheck.bytes,
+          inventoryDigest: await continuationInventoryDigest(sourceIntInventory) },
+        { name: "manifest", type: "file",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: 1, bytes: manifestBytes.byteLength,
+          inventoryDigest: await this.host.runtime.sha256(manifestBytes) }
+      ];
+      let intentBytes: Uint8Array;
+      try {
+        intentBytes = buildContinuationFixedHistoryIntentBytes({
+          ownerBookId, campaignId, operationId, groupId, action, createdAt, components
+        });
+      } catch (error) {
+        throw asStorageError(error, "The fixed-history move intent could not be prepared. Nothing was moved.");
+      }
+      await this.host.storage.ensureDirectory(continuationFixedHistoryMovesPath(ownerBookId));
+      await this.createImmutable(intentPath, intentBytes, "fixed-history move intent");
+      const retained = await this.readBounded(intentPath, CONTINUATION_GROUP_LIMITS.intentBytes);
+      if (!retained || !bytesEqual(retained.bytes, intentBytes)) {
+        throw new ContinuationStorageError("uncertain",
+          "The fixed-history move intent did not read back exactly, so nothing was moved. The intent was kept for inspection.");
+      }
+      const manifestHash = await this.host.runtime.sha256(manifestBytes);
+      const historyHasFiles = sourceHistoryInventory.some((entry) => entry.type === "file");
+      let movedAny = false;
+      try {
+        // History first, manifest last (see the leaf for the ordering difference).
+        if (historyHasFiles) {
+          await moveDirectory(sourceHistory, destHistory);
+          movedAny = true;
+          await this.noteGroupMove(sourceHistory, destHistory);
+          await this.verifyDirectoryAt(destHistory, sourceHistoryInventory);
+        } else {
+          // An empty preserved-history tree has no bytes to move; the
+          // destination directory stands in for it so inspection can still
+          // distinguish an archived empty tree from a partial move.
+          await this.host.storage.ensureDirectory(destHistory);
+          await this.verifyDirectoryAt(destHistory, sourceHistoryInventory);
+        }
+        await moveDirectory(sourceSegments, destSegments);
+        movedAny = true;
+        await this.noteGroupMove(sourceSegments, destSegments);
+        await this.verifyDirectoryAt(destSegments, sourceSegInventory);
+        await moveDirectory(sourceIntents, destIntents);
+        await this.noteGroupMove(sourceIntents, destIntents);
+        await this.verifyDirectoryAt(destIntents, sourceIntInventory);
+        await moveFile(sourceManifest, destManifest);
+        await this.noteGroupMove(sourceManifest, destManifest);
+        const landed = await this.readBounded(destManifest, CONTINUATION_STORAGE_LIMITS.manifestBytes);
+        if (!landed || !bytesEqual(landed.bytes, manifestBytes)) throw new Error("Manifest readback changed.");
+        if (await this.host.storage.readFile(sourceManifest)) throw new Error("Source manifest reappeared.");
+        await inspectContinuationWire(verifyBytes, { ownerBookId, campaignId },
+          this.segmentReaderFor(destSegments));
+      } catch (error) {
+        if (error instanceof ContinuationStorageError && !movedAny) throw error;
+        throw new ContinuationStorageError("uncertain",
+          "The fixed-history group move could not be confirmed and may be partial. Both locations and the fixed-history intent were kept; inspect them before another move. Nothing was rolled back or overwritten.");
+      }
+      return {
+        status: trashing ? "trashed" as const : "restored" as const,
+        operationId, groupId, campaignId, ownerBookId, manifestHash
+      };
+    });
+  }
+
+  async inspectContinuationFixedHistory(ownerBookId: string, campaignId: string,
+    options: { groupId?: string } = {}): Promise<ContinuationFixedHistoryInspection> {
+    this.assertIds(ownerBookId, campaignId);
+    const groupId = options.groupId ?? null;
+    if (groupId !== null && !recordIdSchema.max(160).safeParse(groupId).success) {
+      refusal("invalid", "That group ID is not valid. Nothing was inspected as a group.");
+    }
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      const present = async (path: LibraryPath, bounded: number): Promise<boolean> => {
+        try {
+          return (await this.readBounded(path, bounded)) !== null;
+        } catch {
+          return true;
+        }
+      };
+      const dirPresent = async (path: LibraryPath): Promise<boolean> =>
+        (await this.inventoryDirectory(path)).some((entry) => entry.type === "file");
+      const active = {
+        history: await dirPresent(continuationHistoryPath(ownerBookId)),
+        manifest: await present(continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes),
+        segments: await dirPresent(continuationSegmentsPath(ownerBookId, campaignId)),
+        intents: await dirPresent(continuationIntentsPath(ownerBookId, campaignId))
+      };
+      let archived: ContinuationFixedHistoryInspection["archived"] = null;
+      if (groupId !== null) {
+        archived = {
+          history: await dirPresent(continuationTrashHistoryPath(ownerBookId, groupId)),
+          manifest: await present(continuationTrashManifestPath(ownerBookId, campaignId, groupId), CONTINUATION_STORAGE_LIMITS.manifestBytes),
+          segments: await dirPresent(continuationTrashSegmentsPath(ownerBookId, campaignId, groupId)),
+          intents: await dirPresent(continuationTrashIntentsPath(ownerBookId, campaignId, groupId))
+        };
+      }
+      const activeContAny = active.manifest || active.segments || active.intents;
+      const activeContAll = active.manifest && active.segments && active.intents;
+      const archivedContAny = archived ? archived.manifest || archived.segments || archived.intents : false;
+      const archivedContAll = archived ? archived.manifest && archived.segments && archived.intents : false;
+      const historyAny = active.history || (archived?.history ?? false);
+      // The group is anchored by its continuation parts: the book-scoped
+      // history tree exists independently, so history files alone never make
+      // a group, and an empty history tree is neutral. Only a split history
+      // tree can turn an otherwise complete active/archived group partial.
+      let contState: ContinuationFixedHistoryState;
+      if (activeContAll && !archivedContAny) contState = "active";
+      else if (archivedContAll && !activeContAny) contState = "archived";
+      else if (!activeContAny && !archivedContAny) contState = "absent";
+      else contState = "partial";
+      let state: ContinuationFixedHistoryState = contState;
+      if (historyAny && contState === "active" && !(active.history && !(archived?.history ?? false))) state = "partial";
+      if (historyAny && contState === "archived" && !((archived?.history ?? false) && !active.history)) state = "partial";
+      let manifestHash: string | null = null;
+      const activeSnapshot = await this.readBounded(
+        continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes).catch(() => null);
+      if (activeSnapshot) manifestHash = activeSnapshot.sha256;
+      else if (groupId !== null) {
+        const archivedSnapshot = await this.readBounded(
+          continuationTrashManifestPath(ownerBookId, campaignId, groupId), CONTINUATION_STORAGE_LIMITS.manifestBytes).catch(() => null);
+        if (archivedSnapshot) manifestHash = archivedSnapshot.sha256;
+      }
+      return { ownerBookId, campaignId, groupId, state, manifestHash, active, archived };
+    });
+  }
+
+  async listContinuationFixedHistoryMoves(ownerBookId: string, options: { offset?: number; limit?: number } = {}) {
+    if (!bookIdSchema.safeParse(ownerBookId).success) refusal("invalid", "That owning book ID is not valid.");
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 50;
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 ||
+      limit > CONTINUATION_STORAGE_LIMITS.inventoryPage) {
+      refusal("invalid", "The fixed-history move page is not valid; use an offset of 0 or more and a page of 1 to 200.");
+    }
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      const entries = await this.inventoryEntries(continuationFixedHistoryMovesPath(ownerBookId));
+      const issues: Array<{ fileName: string; code: string }> = [];
+      const moves: Array<{ operationId: string }> = [];
+      for (const entry of entries) {
+        if (entry.kind !== "file" || !entry.name.endsWith(".json")) { issues.push({ fileName: entry.name, code: "unsupported" }); continue; }
+        const operationId = entry.name.slice(0, -".json".length);
+        if (!recordIdSchema.max(160).safeParse(operationId).success) { issues.push({ fileName: entry.name, code: "invalid" }); continue; }
+        moves.push({ operationId });
+      }
+      moves.sort((a, b) => a.operationId.localeCompare(b.operationId));
+      issues.sort((a, b) => a.fileName.localeCompare(b.fileName));
+      return { ownerBookId, offset, limit, total: moves.length, moves: moves.slice(offset, offset + limit), issues };
+    });
+  }
+
+  async readContinuationFixedHistoryIntent(ownerBookId: string, operationId: string) {
+    if (!bookIdSchema.safeParse(ownerBookId).success) refusal("invalid", "That owning book ID is not valid.");
+    if (!recordIdSchema.max(160).safeParse(operationId).success) refusal("invalid", "That fixed-history operation ID is not valid.");
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      const snapshot = await this.readBounded(continuationFixedHistoryMoveIntentPath(ownerBookId, operationId), CONTINUATION_GROUP_LIMITS.intentBytes);
+      if (!snapshot) return null;
+      try {
+        const raw = decodeStrictJsonBytes(new Uint8Array(snapshot.bytes), { maxBytes: CONTINUATION_GROUP_LIMITS.intentBytes }) as Record<string, unknown>;
+        const campaignId = typeof raw.campaignId === "string" ? raw.campaignId : "";
+        const read = readContinuationFixedHistoryIntent(snapshot.bytes, { ownerBookId, campaignId, operationId });
+        return { status: "structural-only" as const, intent: read.intent, hash: snapshot.sha256 };
+      } catch (error) {
+        throw asStorageError(error, "The retained fixed-history move intent could not be read. It was left untouched.");
       }
     });
   }

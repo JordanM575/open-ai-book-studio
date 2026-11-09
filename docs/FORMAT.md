@@ -55,7 +55,7 @@ schema from these directory names or from an unchecked TypeScript object.
 | `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers for `run`, `task`, `attempt`, `effect`, `question`, `artifact` and `context` exist, while command/admission writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer and saved-record IPC/UI exist, export and independent review remain open. |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/<campaignId>.json` | Checked author-owned records. The existing schema-1 writer is defined in [Saved review records](#saved-review-records-schema-1). The same campaign path is also reserved for the distinct [schema-2 manifest](#saved-campaign-continuation-manifest-schema-2-segment-and-intent-schema-1), not implemented by that writer. |
-| `books/<bookId>/reviews/campaigns/<campaignId>.segments/`, `<campaignId>.intents/`, and `reviews/campaign-moves/` | D-201 [schema and recovery rules](formats/campaign-continuation.md); pure segment/intent candidate encoding and inspection exist, a checked storage slice publishes and recovers one campaign's manifest, segments and intents, and a checked group slice now trashes/restores the whole campaign group under an immutable group intent and resolves checkpoint reports across their recorded owners. No host execution or portable-archive claim is added. |
+| `books/<bookId>/reviews/campaigns/<campaignId>.segments/`, `<campaignId>.intents/`, and `reviews/campaign-moves/` | D-201 [schema and recovery rules](formats/campaign-continuation.md); pure segment/intent candidate encoding and inspection exist, a checked storage slice publishes and recovers one campaign's manifest, segments and intents, and a checked group slice now trashes/restores the whole campaign group under an immutable group intent and resolves checkpoint reports across their recorded owners. A checked fixed-history slice additionally moves the owner book's `history/` tree with that campaign group under an immutable fixed-history intent in `reviews/fixed-history-moves/`. No host execution or portable-archive claim is added. |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
 
@@ -1024,8 +1024,14 @@ cannot preserve every checked reference refuses before the first move while a la
 is uncertain with both locations retained. Checkpoint reports resolve only from their recorded
 owner's ordinary report path: the recorded owner wins, a verified foreign report is a bounded
 foreign reference that is never adopted, merged or dropped, and a missing or changed report
-stays unavailable. No host integration, portable archive/export workflow or general adapter
-qualification is implemented or independently accepted. Exact
+stays unavailable. The same store now also moves the fixed-history group (the owner book's
+entire 032 `history/` tree plus the campaign's segment directory, publication-intent
+directory and manifest) to and from the same trash base under an immutable
+`review-campaign-fixed-history-intent` in `reviews/fixed-history-moves/`: manifest dispatch
+and wire verification plus per-record 032 dispatch and bounded inventories are preflighted
+before the first move, history moves first with the manifest last, and partial groups
+inspect as `partial`, never complete. No host integration, portable archive/export workflow
+or general adapter qualification is implemented or independently accepted. Exact
 continuation remains conditional on matching external values and compatible planner provenance;
 missing values remain unavailable. 039 T014/T017/T018 and T015 remain open.
 

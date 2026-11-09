@@ -7,6 +7,32 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation fixed-history group trash/restore (039 T014/T015)
+
+- Add version-dispatching fixed-history group movement to the checked store
+  (`packages/core/src/review/campaign-continuation-fixed-history.ts` and
+  `CampaignContinuationStore` fixed-history methods): the preserved history
+  sidecar set for a campaign — the owner book's entire 032 `history/` tree
+  plus the campaign's segment directory, publication-intent directory and
+  manifest — moves between the active locations and
+  `.studio/trash/<owner>/reviews/campaign-<groupId>/` under an immutable
+  `review-campaign-fixed-history-intent` retained in
+  `reviews/fixed-history-moves/`. Complete checked preflight (manifest
+  `plannerSemantics` dispatch with compatibly differing labels verified only
+  through a local normalized comparison copy and stored bytes never altered,
+  full wire verification, bounded inventories, per-record 032
+  schema/identity/body dispatch and destination absence) runs before the
+  first move with source bytes preserved on refusal; the intent is created
+  absent-only and read back, components move history-first with the manifest
+  last, and a failure after the first move is `uncertain` with both locations
+  and the intent retained. Inspection classifies the group as `active`,
+  `archived`, `partial` or `absent` and never reads a partial group as
+  complete; revision chains, ownership and supported unknown fields survive
+  byte for byte because retained bytes are moved, never re-encoded.
+- This slice is pure core plus the existing storage seams only: no IPC, UI,
+  provider calls or host wiring is added, and 039 T014/T015/T017/T018 remain
+  unchecked pending independent review.
+
 ### Campaign continuation group trash/restore and cross-book report resolution (039 T014/T015)
 
 - Add campaign continuation group movement and cross-book report resolution to the checked
