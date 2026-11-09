@@ -92,6 +92,26 @@ provenance non-transfer. Storage publication/recovery, version-dispatching stora
 cross-book report resolution, host integration and independent exact-head review remain open.
 T014/T017/T018 stay unchecked; 038 T022 is unchanged.
 
+### November 9 — continuation group trash/restore and cross-book report resolution (T014/T015 partial)
+
+`packages/core/src/review/campaign-continuation-group.ts` with new `CampaignContinuationStore`
+group/report methods now supplies the storage seam the codec handoff ordered fourth: a
+version-dispatching trash/restore moves exactly the manifest file and the whole segment and
+publication-intent directories between the active reviews folder and
+`.studio/trash/<owner>/reviews/campaign-<groupId>/` under an immutable group intent retained in
+`reviews/campaign-moves/`, after full wire verification at the source and bounded
+inventory/destination preflight, moving segments and intents before the manifest last; a move
+that cannot preserve every checked reference refuses before the first move with source bytes
+preserved, a later failure is uncertain with both locations retained, and group inspection
+classifies `active`/`archived`/`partial`/`absent`. Checkpoint reports resolve only from their
+recorded owner's ordinary report path: the recorded owner wins, a verified foreign report is a
+bounded foreign reference never adopted, merged or dropped, and a missing or changed report
+stays unavailable. Focused synthetic tests cover group move chain/readback, archive/restore
+classification, preflight refusal, post-move partial uncertainty, mixed-ownership resolution,
+wrong-owner refusal and unknown-field survival, in memory and on the real desktop filesystem.
+Host integration, portable archive/export, cross-book mutation and independent exact-head
+review remain open. T014/T015/T017/T018 stay unchecked; 038 T022 is unchanged.
+
 ### November 9 — checked continuation storage publication and recovery (T014/T015 partial)
 
 `packages/core/src/review/campaign-continuation-store.ts` now supplies the storage seam the codec

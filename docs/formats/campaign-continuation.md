@@ -4,10 +4,11 @@
 [ADR 0020](../adr/0020-inline-editorial-review.md#d-201-conditional-campaign-continuation).
 This document specifies the wire and operating contract. Pure in-memory codec leaves implement
 part of that contract, including pure compatibility dispatch, bounded source validation and
-compatible replan. A checked storage slice now adds a version-dispatching storage reader,
-intent-first publication and explicit recovery classification over the Library queue (below);
-it does **not** establish host execution, group move/archive, cross-book report resolution or a
-general adapter qualification, and independent review remains required.
+compatible replan. Checked storage slices now add a version-dispatching storage reader,
+intent-first publication and explicit recovery classification over the Library queue, plus
+whole-group trash/restore and cross-book report resolution (below); they do **not** establish
+host execution, a portable archive/export workflow or a general adapter qualification, and
+independent review remains required.
 [FORMAT](../FORMAT.md#saved-review-records-schema-1) continues to specify the separate existing
 schema-1 records.
 
@@ -55,8 +56,18 @@ and divergent segments named). Segment and intent files are created only through
 no-replace creation seam (`LibraryPort.createImmutableFile`, implemented by the desktop
 filesystem adapter with exclusive creation); an adapter without that seam refuses publication
 before any write instead of using a check-then-rename commit, and the checked manifest commit
-still does not claim cross-writer atomic CAS. Report resolution, group move/archive, host
-integration and independent review remain separate work. These leaves and the storage slice
+still does not claim cross-writer atomic CAS. The same store, with the pure
+`campaign-continuation-group` leaf, now also implements §7.3 group trash/restore and the §5
+cross-book report read: an immutable group intent is written and read back before exactly the
+segment directory, publication-intent directory and manifest file move (manifest last) between
+`books/<ownerBookId>/reviews/` and `.studio/trash/<ownerBookId>/reviews/campaign-<groupId>/`,
+after version dispatch, full wire verification and bounded inventory/destination preflight at
+the source, so a move that cannot preserve every checked reference refuses before the first
+move and a later failure is uncertain with both locations retained; checkpoint reports are
+read only from their recorded owner's ordinary report path, the recorded owner wins, a verified
+foreign report is a bounded foreign reference that is never adopted, merged or dropped, and a
+missing or changed report stays unavailable. Host integration, a portable archive/export
+workflow and independent review remain separate work. These leaves and the storage slices
 have focused synthetic tests, not independent acceptance or a self-contained archive.
 
 ## 1. Encoding and operation limits
@@ -251,11 +262,15 @@ synthesis evidence or currentness. Do not automatically create/trash reports or 
 checkpoint changes. 037 owns authenticated receipts, attempts, summaries, permissions, budgets and
 retry policy; if an actual summary needed to resume synthesis is unavailable, stop rather than infer it.
 
-The existing campaign store resolves reports only in the campaign-owning book, while a schema-1
-report is owned by a book participating in its own stage. Multi-book range stages can therefore need
-a different report owner. A separately authorized cross-book read/identity seam and independent review
-are required; without them mark such references unavailable and do not claim saved-report completeness.
-No cross-book mutation, multi-book transaction or automatic report creation is authorized.
+A schema-1 report is owned by a book participating in its own stage, so multi-book range stages
+can need a different report owner than the campaign owner. The checked store now provides that
+separately authorized cross-book read/identity seam (`resolveContinuationReports`): each reference
+is read only from its recorded owner's ordinary path and verified by raw hash, record identity
+and disclosure scope, the recorded owner wins, a verified foreign report is reported as a bounded
+foreign reference, and a missing, foreign, changed, unsupported or unresolvable reference remains
+represented as unavailable in stage order, never silently adopted, merged or dropped, and never
+claimed as saved-report completeness. Independent review remains required. No cross-book
+mutation, multi-book transaction or automatic report creation is authorized.
 
 ### Unknown and future data
 
@@ -474,5 +489,7 @@ or report uncertain.
 Archive/export is a separately authorized copy/publication workflow, not a move. Include all ordinary
 campaign files, recovery intents and independently owned reports/dispositions in the selected archive
 scope, including supported unknown bytes. Verify exact bytes and completeness under that workflow's
-own limits; refuse overflow or unreadable required data rather than omit it. This specification does
-not establish a complete archive, sync, group-move, atomicity or restore implementation.
+own limits; refuse overflow or unreadable required data rather than omit it. The checked store
+implements the trash/restore move and its `active`/`archived`/`partial`/`absent` inspection above
+without claiming the separately authorized archive/export workflow, cross-writer atomicity beyond
+the adapters' proven no-replace moves, or independent acceptance.

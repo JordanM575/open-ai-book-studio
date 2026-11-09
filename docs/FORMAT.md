@@ -55,7 +55,7 @@ schema from these directory names or from an unchecked TypeScript object.
 | `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers for `run`, `task`, `attempt`, `effect`, `question`, `artifact` and `context` exist, while command/admission writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer and saved-record IPC/UI exist, export and independent review remain open. |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/<campaignId>.json` | Checked author-owned records. The existing schema-1 writer is defined in [Saved review records](#saved-review-records-schema-1). The same campaign path is also reserved for the distinct [schema-2 manifest](#saved-campaign-continuation-manifest-schema-2-segment-and-intent-schema-1), not implemented by that writer. |
-| `books/<bookId>/reviews/campaigns/<campaignId>.segments/`, `<campaignId>.intents/`, and `reviews/campaign-moves/` | D-201 [schema and recovery rules](formats/campaign-continuation.md); pure segment/intent candidate encoding and inspection exist, and a checked storage slice now publishes and recovers one campaign's manifest, segments and intents, but no group move is implemented. |
+| `books/<bookId>/reviews/campaigns/<campaignId>.segments/`, `<campaignId>.intents/`, and `reviews/campaign-moves/` | D-201 [schema and recovery rules](formats/campaign-continuation.md); pure segment/intent candidate encoding and inspection exist, a checked storage slice publishes and recovers one campaign's manifest, segments and intents, and a checked group slice now trashes/restores the whole campaign group under an immutable group intent and resolves checkpoint reports across their recorded owners. No host execution or portable-archive claim is added. |
 | Existing `books/<bookId>/threads/` v2 | Explicit backed-up migration for new semantic parts only. V1 checked whole-document revisions/raw hashes, lossless supported unknown fields, future/unknown-semantic read-only behavior and recoverable trash/restore are current; see [Conversation files](#conversation-files). |
 | Host-local workflow permission (outside library/archive) | Separate selected-host protected/disclosed store; registration/book/run/policy/generation/expiry/revoke/resume, no prose or credential; missing or copied descriptor grants no execution |
 
@@ -64,9 +64,10 @@ the T023 checked record writers exist on `LibraryService.workflowRecords`, while
 writers and independent storage review remain open. The saved-review rows are now
 specified in [Saved review records (schema 1)](#saved-review-records-schema-1); their checked writer
 and saved-record IPC/UI exist but export/archive and independent review remain open. D-201 has
-pure in-memory continuation codec and compatible-replan leaves plus a checked storage slice for
-one campaign's manifest, segments and intents; occurrence/disposition continuation, group
-move, export/archive and independent review remain open. The host-local workflow permission
+pure in-memory continuation codec and compatible-replan leaves plus checked storage slices for
+one campaign's manifest, segments and intents and for whole-group trash/restore with cross-book
+report resolution; occurrence/disposition continuation, host execution, portable archive/export
+and independent review remain open. The host-local workflow permission
 row remains a reservation.
 
 Each detailed format must name every field and optional/default rule; schema/kind/owner/host-issued ID;
@@ -1013,8 +1014,18 @@ and accepts only its complete canonical match; differing compatible semantics ar
 unchanged. A checked storage slice (`LibraryService.campaignContinuations`) now provides the
 version-dispatching storage reader, intent-first publication with genuine no-replace segment
 creation and verified manifest readback, and explicit recovery classification for one campaign;
-adapters without proven no-replace creation refuse publication. No group move, host integration,
-archive or general adapter qualification is implemented or independently accepted. Exact
+adapters without proven no-replace creation refuse publication. The same store now also moves
+a whole campaign group (manifest, segment directory and publication-intent directory) to and
+from `.studio/trash/<owner>/reviews/campaign-<groupId>/` under an immutable
+`review-campaign-group-intent` in `reviews/campaign-moves/`: version dispatch and full wire
+verification happen at the source, inventories and destination absence are preflighted under
+the format's scan bounds, segments and intents move before the manifest, and a move that
+cannot preserve every checked reference refuses before the first move while a later failure
+is uncertain with both locations retained. Checkpoint reports resolve only from their recorded
+owner's ordinary report path: the recorded owner wins, a verified foreign report is a bounded
+foreign reference that is never adopted, merged or dropped, and a missing or changed report
+stays unavailable. No host integration, portable archive/export workflow or general adapter
+qualification is implemented or independently accepted. Exact
 continuation remains conditional on matching external values and compatible planner provenance;
 missing values remain unavailable. 039 T014/T017/T018 and T015 remain open.
 
