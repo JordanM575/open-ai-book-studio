@@ -164,6 +164,11 @@ manuscripts, credentials, live providers, paid services or devices.
     owner. Evidence: specified enumeration and observation rules, trusted construction handoff,
     measured acquisition and memory peaks, production limit values and per-target capability matrix,
     including change-and-change-back cases that the bundle wording discloses rather than denies.
+    Specified by D-203 in [the host contract](../../docs/formats/markdown-folder-host.md)
+    (enumeration and closing-sample observation, §3 verification handoff, `Q0 production policy v1`
+    with synthetic planner measurements, and a no-claim capability matrix). This records the
+    contract only; the box stays unchecked pending independent review, and implemented acquisition
+    counts and host peaks remain T014-Q evidence.
   - [ ] **T014-Q** Capture, image verification and publication. Owner: shared host integration owner.
     Evidence: selected records bound to verified private bytes, genuine no-replace publication with
     protected identities and owned staging/cleanup, existing-folder replacement kept as named

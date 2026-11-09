@@ -7,6 +7,22 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Markdown folder host protocol contract (T014-Q0)
+
+- Specify the T014-Q0 host protocol and production policy in
+  `docs/formats/markdown-folder-host.md`, recorded as D-203 in `docs/DECISIONS.md`: enumeration and
+  closing-sample observation for building the frozen saved-source bundle from a real library
+  (including the disclosed change-and-change-back limit and consent invalidation by any new
+  capture), the trusted-construction handoff into `createMarkdownFolderBundle` with per-image
+  identity, length, SHA-256, header, format, MIME and dimension binding, `Q0 production policy v1`
+  values for all twelve planner dimensions with synthetic planner measurements, and a per-target
+  capability matrix claiming no folder capability today. Clarify in D-202 and the folder format,
+  as clarification not behavior change, that the blank-title annotation applies to every navigation
+  link whose label uses a blank fallback.
+- This is a specification only: it implements nothing, captures nothing from a real library, and
+  exposes no journey. 035 T014, T014-P, T014-Q0, T014-Q, T014-U, T016, T017 and T019 remain
+  unchecked pending their own gates and independent review.
+
 ### Markdown folder pure planner
 
 - Add the pure Markdown folder planner in `packages/core/src/markdown-folder/` (T014-P): a trusted
