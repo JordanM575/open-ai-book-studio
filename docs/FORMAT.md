@@ -77,9 +77,10 @@ semantic migration remains unimplemented.
 ## Checked planning and goal sidecars
 
 D-163–D-168 / [ADR 0017](adr/0017-planning-and-organization.md) define these optional
-book-owned files. Worldbuilding create/read/edit and goal set/clear are connected to the current
-Library's shared queue, desktop/browser transport and workspace controls. Timeline/beat/story-note
-mutation, record archive/restore and the remaining organization journeys are separate delivery work.
+book-owned files. Worldbuilding, timeline events, beats, optional story notes, explicit ordering,
+record archive/restore and goal set/clear use the current Library's shared queue and validated
+desktop/browser transport. Workspace planning controls expose those manual operations; full native
+host/visual acceptance and the remaining organization journeys retain their separate delivery gates.
 
 ### `books/<bookId>/planning.json` (schema 1)
 
@@ -177,10 +178,24 @@ The core save envelope is `{bookId, source, baselineJson, draft}`. `source` is e
 `{kind:"absent", revision:0}` with `baselineJson:null`, or
 `{kind:"sha256", value:<64 lowercase hex>, revision:<positive safe integer>}` with the exact raw
 UTF-8 JSON string returned by read. The service checks that string's hash/revision/owner. `draft`
-is a strict typed intent: `create-worldbuilding` with `{name,category,description,notes}` fields,
-`edit-worldbuilding` with an existing `id` and those fields, or (for goals) `set-goal` with
-`targetWords`. No path, generated ID, revision, owner, arbitrary document replacement or unrelated
-field patch is accepted in a draft. The full intended document is constructed from that bounded
+is one of these strict typed intents:
+
+- `create-worldbuilding` / `edit-worldbuilding`: `{name,category,description,notes}` fields; edits
+  also carry the existing `id`.
+- `create-timeline` / `edit-timeline`: `{title,when,description,notes}` fields, with existing `id`
+  for edits. `create-beat` / `edit-beat`: `{title,summary,notes}` fields and existing `id` for edits.
+- `set-story-notes`: `{workingNotes,styleNotes,synopsis}` fields. `clear-story-notes` clears those
+  known strings but retains the singleton's identity and unknown supported data. An absent singleton
+  plus clear or an all-empty set writes nothing.
+- `order-timeline` / `order-beats`: `ids`, an exact permutation of all retained corresponding IDs.
+- `archive-worldbuilding` / `archive-timeline` / `archive-beat`: existing `id` and `archived` boolean;
+  false restores. Archive retains content and order position. Editing an archived list record requires
+  restore first. New timeline/beat IDs append to their order. Order-only edits increment the file
+  revision, not record revisions; changed content or archive state advances the affected record too.
+- For goals, `set-goal` with `targetWords`.
+
+No path, generated ID, revision, owner, arbitrary document replacement or unrelated field patch is
+accepted in a draft. The full intended document is constructed from that bounded
 baseline plus draft; this preserves unknown/unrelated fields without trusting an editor to resend
 them correctly. The request carries only one full baseline and bounded authored fields, within
 the ADR's two-document allowance: the raw baseline and serialized `{bookId,draft}` are each capped
@@ -203,8 +218,13 @@ budget: it does not reserialize or publish that form.
 A stale request (even a same-content request), missing-after-read or commit race preserves its
 complete intended document under
 `books/<bookId>/conflicts/<planning|goals>.conflict-<external-edit|missing-file>.<deviceId>.<timestamp>[-N].json`.
-The copy adds a reserved `conflictMetadata` object with `reason`, original `baseline` token and
-observed token. Recovery copies are bounded to 5,000,000 bytes. Colliding names use absent-only
+The copy adds a reserved `conflictMetadata` object with `reason`, original `baseline` token,
+`observed` token, `requestHash` and, for transported saves, `attempt: {requestId,publicationId}`.
+`requestHash` is SHA-256 of the UTF-8 `JSON.stringify` output of
+`{bookId,source,draft}`, in that key order with the strict schema-parsed source and typed draft;
+the source's raw hash already binds the complete original baseline bytes. Older copies without
+`requestHash` or an attempt binding remain inspectable but cannot confirm a new transported save. Recovery copies are bounded
+to 5,000,000 bytes. Colliding names use absent-only
 suffix attempts; returned bytes and their hash must verify before reporting `conflict`/`savedAs`.
 Only conflict-copy names may be retried, never the active-file commit. A copy cannot be loaded as
 an active baseline; eventual explicit recovery must remove the copy-only context and create a
@@ -214,8 +234,36 @@ replay automatically or remove a possibly published file. Copy failure never cla
 Owner/schema checks run again before copy creation and each publication attempt.
 
 Transport preserves exact raw baselines, validates strict request/result envelopes and verifies reply
-owner, raw hash, revision and submitted fields. Only known request-admission failures return
-`outcome: "refused"`; unknown exceptions remain uncertain. Write errors retain `phase: "active" |
+owner, raw hash, revision and the complete projected document, including unknown own JSON fields.
+Data correspondence checks dense array lengths and own data properties; sparse or non-JSON transport
+values cannot stand in for the raw document. Changed `saved` replies must contain the exact writer
+serialization (two-space indentation, original property order and final newline) and its hash.
+Valid compact reads and current `unchanged` replies keep their original bytes without canonicalizing.
+For each explicit API save, the client generates a fresh UUID request ID in the internal wire
+envelope; the handler independently generates a fresh UUID publication ID, even if the caller repeats
+its request ID. Both IDs accompany every success/no-op/conflict receipt. Host-created planning IDs
+are `<kind-prefix>_<publicationId>` for transported creates, so the handler reconstructs the expected
+identity from its private attempt snapshot rather than learning it from the response. The client
+checks its request ID and reconstructs from the returned host publication ID; the handler checks both
+against its pinned values. Request/attempt validation snapshots are separate from mutable objects
+passed to services/transports. Direct service calls may omit transport binding and retain runtime-
+generated IDs; their unbound receipts cannot confirm a transported save. No session registry or
+hidden durable authority is introduced.
+
+A `conflict` result carries `preserved: {rawJson,hash}`: the complete recovery bytes verified at
+publication, not an echoed nonce. Handler and client independently validate the intended operation,
+baseline, observed token, reason, attempt binding, created identity, full projected draft and exact recovery
+serialization against that receipt. Before returning, the handler also reads the named durable copy
+through the captured Library and requires its name/hash/raw bytes to match. A missing, changed or
+unverifiable copy is uncertain, never a claim that this draft was kept. These are snapshot and
+correspondence checks, not cryptographic transport authentication or a guarantee against later edits.
+
+Known request-admission failures and typed deterministic preparation failures return
+`outcome: "refused"` without a publication phase. The latter are constructed only while projecting,
+validating and bounding the complete output, before any active or recovery commit/layout/journal
+attempt. Their drafts and original baselines remain usable for correction and a later explicit save.
+Read/adapter errors and unknown exceptions remain uncertain; no general `LibraryError` downgrade is
+allowed after a possible publication. Write errors retain `phase: "active" |
 "recovery"` and `outcome: "uncertain" | "not-kept"`. The browser adapter marks a `changed` result
 after publication with `publication: "uncertain"`; planning treats that as an uncertain outcome,
 never as a prepublication conflict or a collision to retry. This adds no cross-process CAS guarantee.
@@ -225,8 +273,18 @@ limit). Inspection verifies bounded raw bytes, hash, schema, owner and copy-only
 copy that cannot be verified stays unavailable. Recovery is explicit manual review: inspect the
 read-only document, reopen the appropriate current editor, enter the chosen fields and submit a new
 checked edit. There is no whole-document restore endpoint or automatic loading of copy metadata as
-active state. Newer active unknown fields remain owned by the current baseline. Native close and
-shell book/library navigation are blocked until the matching dialog resolves pending/dirty/uncertain
+active state. Every inspected text field also exposes its exact JSON-string representation for
+manual re-entry. The editors offer an explicit exact-JSON-string mode; saved values containing CR
+or null characters start in that mode. Only a valid decoded string can be submitted, and field
+limits apply to its decoded UTF-16 length. Incomplete/invalid encoded input remains in the guarded
+draft rather than falling back to an earlier valid value. Ordinary text areas support multiline
+short fields but normalize line endings to LF; exact mode preserves CR, CRLF, LF and literal escapes.
+The full-copy display has a separate JSON-string representation of the original raw JSON, which
+decodes once to the exact verified text, including legacy formatting. Displaying or recovering fields
+does not change the stored copy. Order editors show stable record IDs and associate them with move
+controls, including archived rows and duplicate titles. Newer active unknown fields remain owned by
+the current baseline. Native close and shell book/library navigation are blocked until the matching
+dialog resolves pending/dirty/uncertain
 state; after closing an editor, retry the navigation action. Abrupt process termination cannot retain
 an in-memory draft or cancel a publication already sent.
 
