@@ -1,7 +1,8 @@
 import {
   ADOPTION_RECEIPT_LIMITS, validateAdoptionReceipt, type AdoptionReceipt
 } from "../authoring/adoption-receipt";
-import { sameReference, type Owner } from "../authoring/contracts";
+import { sameOwner, sameReference, type Owner, type Reference } from "../authoring/contracts";
+import type { EffectPhase } from "../authoring/lifecycle";
 import { AuthoringError, copyValue, type Immutable } from "../authoring/value";
 import { canonicalWorkflowJson, parseWorkflowJsonBytes } from "../authoring/wire";
 import { LibraryError, LibraryPortError } from "../library/errors";
@@ -43,8 +44,9 @@ import {
  * to the candidate (an existing receipt for the same candidate artifact
  * refuses rather than overwrites — even a byte-identical replay refuses),
  * candidate/sequence uniqueness enforced by a bounded scan, and a bounded
- * sequence-ordered listing. No publisher, scheduler, provider call or
- * cadence wiring lives here; receipts are recorded by a future publisher.
+ * sequence-ordered listing. The Library publisher records receipts through
+ * `recordConfirmedAdoption` (see `LibraryService.recordConfirmedAdoptionReceipt`);
+ * no scheduler, provider call or cadence wiring lives here.
  */
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -76,6 +78,75 @@ export interface AdoptionReceiptListing {
   limit: number;
   total: number;
   receipts: AdoptionReceiptSnapshot[];
+}
+
+/**
+ * One confirmed adoption, as the Library publisher hands it to this store.
+ *
+ * The fields are the ones the existing confirmation point carries: a checked
+ * effect record saved with phase `confirmed` and a receipt of
+ * `{ outcome: "confirmed", resultVersion, resultHash, at }` carries `owner`,
+ * the exact `candidate`, the target `chapterId`, `resultVersion`/`resultHash`
+ * and the adoption instant (`adoptedAt`, the effect receipt's `at`). It does
+ * not carry a `grant` or a `direction` reference, so the caller — the future
+ * coordinator holding the current host permission and direction — supplies
+ * those two references explicitly. Nothing here fabricates them.
+ */
+export interface ConfirmedAdoption {
+  phase: EffectPhase;
+  owner: Owner;
+  chapterId: string;
+  candidate: Reference<"artifact">;
+  resultVersion: number;
+  resultHash: string;
+  grant: Reference<"grant">;
+  direction: Reference<"direction">;
+  adoptedAt: string;
+}
+
+/**
+ * What the caller learns when it asks this store to record a confirmed
+ * adoption. `confirmed-unrecorded` is the honest failure shape: the adoption
+ * itself is confirmed and is never rolled back by this store, but no receipt
+ * is claimed; `code` is the `WorkflowRecordError` vocabulary of the failure.
+ */
+export type AdoptionRecordingResult =
+  | { status: "recorded"; receipt: AdoptionReceiptSnapshot }
+  | { status: "already-recorded"; receipt: AdoptionReceiptSnapshot }
+  | { status: "not-confirmed"; phase: EffectPhase }
+  | { status: "confirmed-unrecorded"; code: WorkflowRecordError["code"]; message: string };
+
+const EFFECT_PHASES: ReadonlySet<string> = new Set([
+  "prepared", "publish-intent", "confirmed", "conflict", "not-published", "uncertain"
+]);
+
+/**
+ * The identity a retried confirmation is compared by: the adopting owner, the
+ * chapter adopted into, the exact candidate reference, the published result
+ * version/hash, and the grant and direction references. Receipt ID, sequence
+ * and `adoptedAt` are recording metadata allocated at first recording, so a
+ * retry that matches on this identity is the same adoption already recorded,
+ * while a receipt for the same candidate that differs on any of these fields
+ * is a conflicting receipt, never an overwrite.
+ */
+function sameAdoptionIdentity(record: Immutable<AdoptionReceipt>, adoption: ConfirmedAdoption): boolean {
+  return sameOwner(record.owner, adoption.owner) &&
+    record.chapterId === adoption.chapterId &&
+    sameReference(record.candidate, adoption.candidate) &&
+    record.resultVersion === adoption.resultVersion &&
+    record.resultHash === adoption.resultHash &&
+    sameReference(record.grant, adoption.grant) &&
+    sameReference(record.direction, adoption.direction);
+}
+
+function unrecorded(error: WorkflowRecordError): AdoptionRecordingResult {
+  return {
+    status: "confirmed-unrecorded",
+    code: error.code,
+    message:
+      `The adoption is confirmed, but its adoption receipt was not recorded (${error.code}: ` +
+      `${error.message}) The adopted chapter was not rolled back and no adoption receipt is claimed.`
+  };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -114,55 +185,140 @@ export class AdoptionReceiptStore {
     return this.inBook(bookId, async () => {
       await this.writable(bookId);
       const prepared = this.prepare(bookId, runId, value);
-      const receiptId = prepared.record.id;
-      const path = adoptionReceiptPath(bookId, runId, receiptId);
-      const observed = await this.readObserved(path, RECORD_BYTES, "adoption receipt");
-      if (observed) {
-        const savedAs = await this.preserve(bookId, runId, receiptId, prepared.bytes, observed.sha256);
-        throw new WorkflowRecordError(
-          "conflict",
-          "An adoption receipt with this identity already exists. This version was kept as a copy; nothing was replaced.",
-          savedAs
-        );
-      }
-      const existing = await this.listAllUnlocked(bookId, runId);
-      const candidateDuplicate = existing.find((entry) =>
-        sameReference(entry.record.candidate, prepared.record.candidate));
-      const sequenceDuplicate = existing.find((entry) => entry.record.sequence === prepared.record.sequence);
-      const duplicate = candidateDuplicate ?? sequenceDuplicate;
-      if (duplicate) {
-        const savedAs = await this.preserve(bookId, runId, receiptId, prepared.bytes, duplicate.hash);
-        throw new WorkflowRecordError(
-          "conflict",
-          candidateDuplicate
-            ? "An adoption receipt for this candidate already exists. This version was kept as a copy; nothing was replaced."
-            : "An adoption receipt with this sequence already exists. This version was kept as a copy; nothing was replaced.",
-          savedAs
-        );
-      }
-      let result: CommitFileResult;
+      const record = await this.commitPrepared(bookId, runId, prepared);
+      return { status: "created" as const, record };
+    });
+  }
+
+  /**
+   * Record the receipt for one confirmed adoption, under the same per-book
+   * queue as publication. Only a `confirmed` phase records; every other
+   * effect phase returns `not-confirmed` and writes nothing.
+   *
+   * Sequence allocation is race-safe because it happens here, inside the
+   * queue: the next sequence is one past the maximum read from the store in
+   * this same queue hold, never a cached value. A candidate that already has
+   * a receipt is compared by `sameAdoptionIdentity`: a match is the same
+   * adoption retried and returns `already-recorded` with the stored receipt,
+   * while any identity difference is a conflicting receipt and returns
+   * `confirmed-unrecorded` with code `conflict` — nothing is overwritten.
+   *
+   * Because creation is absent-only and refuses even a byte-identical
+   * replay, an uncertain commit outcome is settled here by reading the
+   * receipt back and comparing bytes exactly: byte equality with the
+   * intended receipt reports `recorded`, anything else reports
+   * `confirmed-unrecorded` with code `uncertain` and claims no receipt.
+   */
+  async recordConfirmedAdoption(
+    bookId: string,
+    runId: string,
+    adoption: ConfirmedAdoption
+  ): Promise<AdoptionRecordingResult> {
+    assertRunId(runId);
+    if (!adoption || typeof adoption.phase !== "string" || !EFFECT_PHASES.has(adoption.phase)) {
+      throw new WorkflowRecordError("invalid", "That adoption phase is not a known effect phase. Nothing was written.");
+    }
+    if (adoption.phase !== "confirmed") return { status: "not-confirmed", phase: adoption.phase };
+    return this.inBook(bookId, async () => {
+      await this.writable(bookId);
+      // Validate the binding before any identity comparison reads its fields.
       try {
-        result = await this.host.commitFile(path, prepared.bytes, { kind: "absent" });
+        this.prepare(bookId, runId, {
+          schemaVersion: 1,
+          kind: "adoption-receipt",
+          id: "adoption_00000001",
+          owner: adoption.owner,
+          chapterId: adoption.chapterId,
+          candidate: adoption.candidate,
+          resultVersion: adoption.resultVersion,
+          resultHash: adoption.resultHash,
+          grant: adoption.grant,
+          direction: adoption.direction,
+          sequence: 1,
+          adoptedAt: adoption.adoptedAt
+        });
       } catch (error) {
-        throw this.writeFailure(error);
+        if (error instanceof WorkflowRecordError) return unrecorded(error);
+        throw error;
       }
-      if (result.status === "changed") {
-        if (result.publication === "uncertain") throw this.uncertainRecord();
-        if (result.current && bytesEqual(result.current.bytes, prepared.bytes)) {
-          const snapshot = await this.decodeSnapshot(bookId, runId, receiptId, result.current);
-          return { status: "created" as const, record: snapshot };
+      let existing: AdoptionReceiptSnapshot[];
+      try {
+        existing = await this.listAllUnlocked(bookId, runId);
+      } catch (error) {
+        if (error instanceof WorkflowRecordError) return unrecorded(error);
+        throw error;
+      }
+      const candidateDuplicate = existing.find((entry) =>
+        sameReference(entry.record.candidate, adoption.candidate));
+      if (candidateDuplicate) {
+        if (sameAdoptionIdentity(candidateDuplicate.record, adoption)) {
+          return { status: "already-recorded" as const, receipt: candidateDuplicate };
         }
-        const savedAs = await this.preserve(
-          bookId, runId, receiptId, prepared.bytes, result.current?.sha256 ?? null);
-        throw new WorkflowRecordError(
+        return unrecorded(new WorkflowRecordError(
           "conflict",
-          "An adoption receipt appeared while it was saved. This version was kept as a copy; nothing was overwritten.",
-          savedAs
-        );
+          "An adoption receipt for this candidate already exists with different adoption details. Nothing was replaced."
+        ));
       }
-      const snapshot = await this.verifyBytes(result.snapshot, prepared.bytes, this.uncertainRecord());
-      const decoded = await this.decodeSnapshot(bookId, runId, receiptId, snapshot);
-      return { status: "created" as const, record: decoded };
+      const sequence = existing.reduce((max, entry) => Math.max(max, entry.record.sequence), 0) + 1;
+      if (sequence > ADOPTION_RECEIPT_LIMITS.maxSequence) {
+        return unrecorded(new WorkflowRecordError(
+          "too-large",
+          `This run already holds the maximum adoption sequence. Nothing was written.`
+        ));
+      }
+      const receiptId = this.host.runtime.newId("adoption");
+      let prepared: { bytes: Uint8Array; record: Immutable<AdoptionReceipt> };
+      try {
+        prepared = this.prepare(bookId, runId, {
+          schemaVersion: 1,
+          kind: "adoption-receipt",
+          id: receiptId,
+          owner: adoption.owner,
+          chapterId: adoption.chapterId,
+          candidate: adoption.candidate,
+          resultVersion: adoption.resultVersion,
+          resultHash: adoption.resultHash,
+          grant: adoption.grant,
+          direction: adoption.direction,
+          sequence,
+          adoptedAt: adoption.adoptedAt
+        });
+      } catch (error) {
+        if (error instanceof WorkflowRecordError) return unrecorded(error);
+        throw error;
+      }
+      try {
+        const receipt = await this.commitPrepared(bookId, runId, prepared);
+        return { status: "recorded" as const, receipt };
+      } catch (error) {
+        if (!(error instanceof WorkflowRecordError)) throw error;
+        if (error.code === "uncertain") {
+          // Creation refuses byte-identical replay, so settle the uncertain
+          // write by reading back: only byte-exact stored bytes are ours.
+          try {
+            const stored = await this.load(bookId, runId, receiptId);
+            if (stored && bytesEqual(stored.bytes, prepared.bytes)) {
+              return { status: "recorded" as const, receipt: stored };
+            }
+          } catch {
+            // A read-back failure confirms nothing; report it as uncertain.
+          }
+          return unrecorded(error);
+        }
+        if (error.code === "conflict") {
+          try {
+            const nowExisting = await this.listAllUnlocked(bookId, runId);
+            const duplicate = nowExisting.find((entry) =>
+              sameReference(entry.record.candidate, adoption.candidate));
+            if (duplicate && sameAdoptionIdentity(duplicate.record, adoption)) {
+              return { status: "already-recorded" as const, receipt: duplicate };
+            }
+          } catch {
+            // The conflict below already states the receipt was not recorded.
+          }
+        }
+        return unrecorded(error);
+      }
     });
   }
 
@@ -200,6 +356,61 @@ export class AdoptionReceiptStore {
         receipts: all.slice(offset, offset + limit)
       };
     });
+  }
+
+  /** Absent-only candidate-scoped commit of one prepared receipt. Caller holds the book queue. */
+  private async commitPrepared(
+    bookId: string,
+    runId: string,
+    prepared: { bytes: Uint8Array; record: Immutable<AdoptionReceipt> }
+  ): Promise<AdoptionReceiptSnapshot> {
+    const receiptId = prepared.record.id;
+    const path = adoptionReceiptPath(bookId, runId, receiptId);
+    const observed = await this.readObserved(path, RECORD_BYTES, "adoption receipt");
+    if (observed) {
+      const savedAs = await this.preserve(bookId, runId, receiptId, prepared.bytes, observed.sha256);
+      throw new WorkflowRecordError(
+        "conflict",
+        "An adoption receipt with this identity already exists. This version was kept as a copy; nothing was replaced.",
+        savedAs
+      );
+    }
+    const existing = await this.listAllUnlocked(bookId, runId);
+    const candidateDuplicate = existing.find((entry) =>
+      sameReference(entry.record.candidate, prepared.record.candidate));
+    const sequenceDuplicate = existing.find((entry) => entry.record.sequence === prepared.record.sequence);
+    const duplicate = candidateDuplicate ?? sequenceDuplicate;
+    if (duplicate) {
+      const savedAs = await this.preserve(bookId, runId, receiptId, prepared.bytes, duplicate.hash);
+      throw new WorkflowRecordError(
+        "conflict",
+        candidateDuplicate
+          ? "An adoption receipt for this candidate already exists. This version was kept as a copy; nothing was replaced."
+          : "An adoption receipt with this sequence already exists. This version was kept as a copy; nothing was replaced.",
+        savedAs
+      );
+    }
+    let result: CommitFileResult;
+    try {
+      result = await this.host.commitFile(path, prepared.bytes, { kind: "absent" });
+    } catch (error) {
+      throw this.writeFailure(error);
+    }
+    if (result.status === "changed") {
+      if (result.publication === "uncertain") throw this.uncertainRecord();
+      if (result.current && bytesEqual(result.current.bytes, prepared.bytes)) {
+        return this.decodeSnapshot(bookId, runId, receiptId, result.current);
+      }
+      const savedAs = await this.preserve(
+        bookId, runId, receiptId, prepared.bytes, result.current?.sha256 ?? null);
+      throw new WorkflowRecordError(
+        "conflict",
+        "An adoption receipt appeared while it was saved. This version was kept as a copy; nothing was overwritten.",
+        savedAs
+      );
+    }
+    const snapshot = await this.verifyBytes(result.snapshot, prepared.bytes, this.uncertainRecord());
+    return this.decodeSnapshot(bookId, runId, receiptId, snapshot);
   }
 
   /* -------------------------------------------------------------- internals */

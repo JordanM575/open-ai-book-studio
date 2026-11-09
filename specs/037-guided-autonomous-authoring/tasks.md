@@ -162,6 +162,17 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     byte-exact readback, bounded listing, foreign refusal). No publisher writes receipts, no
     host counts them, and the question inbox and checked answers remain open; this task stays
     unchecked.
+  - Partial evidence (publisher): the Library publisher now records a receipt on confirmed
+    adoption. `LibraryService` exposes the beside-store as `library.adoptionReceipts` and
+    `recordConfirmedAdoptionReceipt` records exactly one receipt at the checked effect
+    confirmation (`workflowRecords.saveEffect` with phase `confirmed`, carrying
+    `resultVersion`/`resultHash`), allocating the next sequence inside the per-book queue,
+    recognising a retried confirmation by adoption identity, settling uncertain writes by
+    byte-exact read-back, and reporting `confirmed-unrecorded` without rolling the adoption
+    back when a receipt cannot be recorded. The confirmed effect does not carry `grant` or
+    `direction`, so the caller supplies those references; no host counts receipts on cadence
+    resume and `irreversibleChoicePending` is not yet read from recorded question state, and
+    the question inbox and checked answers remain open; this task stays unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.

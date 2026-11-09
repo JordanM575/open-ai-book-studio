@@ -679,7 +679,8 @@ prose.
 A beside-store record (`packages/core/src/workflow/adoption-receipt-store.ts`), not a schema-1
 codec kind. The pure contract is `packages/core/src/authoring/adoption-receipt.ts`. It is the
 recorded state that distinguishes a coordinator-adopted chapter from any other saved chapter
-(FR-017); only a future Library publisher writes it.
+(FR-017); only the Library publisher writes it, through `LibraryService.adoptionReceipts` and
+`recordConfirmedAdoptionReceipt` at a confirmed effect (see below).
 
 | Field | Required | Rule |
 | --- | --- | --- |
@@ -696,6 +697,12 @@ artifact: an existing receipt for that candidate (or sequence) refuses and keeps
 foreign book/run receipts refuse on read and list. Listing is bounded (page at most 256, at most
 10,000 per run) and ordered by sequence. The pure counter counts distinct `chapterId`s strictly
 after an exclusive sequence/adopted-at marker; this format does not wire counting into any host.
+
+The publisher sequence is allocated by the Library publisher inside the per-book queue as one
+past the maximum sequence read from this store in the same queue hold. A retried confirmation
+is recognised by owner, chapter, exact candidate, result version/hash, grant and direction, and
+returns the stored receipt instead of creating a second one; an uncertain publisher write is
+reported recorded only after byte-exact read-back.
 
 ### Size, count and depth bounds
 

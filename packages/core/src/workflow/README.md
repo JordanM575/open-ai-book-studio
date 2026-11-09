@@ -62,8 +62,29 @@ creation scoped to the candidate artifact (any existing receipt for that candida
 including a byte-identical replay), candidate/sequence uniqueness by bounded scan, and a
 bounded listing sorted by sequence (page at most 256, at most 10,000 receipts per run).
 Foreign book/run receipts refuse on read and list. The store validates grant/direction
-references through the authoring validators but judges no adoption; a future Library publisher
-records receipts and a later host counts them. It is not yet exposed on `LibraryService`.
+references through the authoring validators but judges no adoption.
+
+The store now has a LibraryService writer. `LibraryService` constructs it as
+`library.adoptionReceipts`, bound to the open library instance and its per-book queue exactly
+like `library.workflowRecords` — there is no second writer path. The publisher entry point is
+`library.recordConfirmedAdoptionReceipt(bookId, runId, effectId, { grant, direction })`, which
+records a receipt at the existing confirmation point: a checked effect record saved through
+`library.workflowRecords.saveEffect` with phase `confirmed` and a receipt carrying
+`resultVersion`/`resultHash`. That effect record carries the adopting owner, the exact candidate
+and the target chapter; it does not carry a `grant` or `direction` reference, so the caller
+supplies those two references from the current host permission and direction, and they are never
+derived from the effect, its policy or its attempt. Inside one per-book queue hold,
+`AdoptionReceiptStore.recordConfirmedAdoption` allocates the next sequence as one past the
+maximum read from the store in that same hold, returns `already-recorded` for a retried
+confirmation that matches the stored receipt on owner, chapter, exact candidate, result
+version/hash, grant and direction, settles an uncertain write by byte-exact read-back before
+reporting `recorded`, and otherwise reports `confirmed-unrecorded` with the failure's code —
+the confirmed adoption is never rolled back and no receipt is claimed. Other effect phases
+(`prepared`, `publish-intent`, `conflict`, `not-published`, `uncertain`) record nothing.
+
+What remains: the cadence host does not yet count these receipts on resume
+(`countAdoptedChapters` is still unwired there), and `irreversibleChoicePending` is not yet read
+from recorded question state, so host cadence supply stays withheld.
 
 ## Limits of this slice
 

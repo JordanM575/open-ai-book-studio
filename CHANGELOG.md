@@ -7,6 +7,34 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Authoring adoption receipt publisher (037 T032 partial)
+
+- Record adoption receipts from the Library publisher on confirmed
+  adoption (037 FR-017 / ADR 0019, serving 037 T032 adoption-based
+  cadence). `LibraryService` now exposes the checked beside-store as
+  `library.adoptionReceipts` (`AdoptionReceiptStore`, bound to the open
+  library and its per-book queue, with no second writer), and
+  `library.recordConfirmedAdoptionReceipt(bookId, runId, effectId, refs)`
+  records exactly one receipt at the existing confirmation point: a checked
+  effect record saved through `workflowRecords.saveEffect` with phase
+  `confirmed` and a receipt carrying `resultVersion`/`resultHash`. The
+  publisher allocates the next monotonic sequence by reading the current
+  maximum from the store inside the per-book queue, distinguishes a
+  retried confirmation (`already-recorded`, compared by owner, chapter,
+  exact candidate, result version/hash, grant and direction) from a
+  conflicting receipt for the same candidate, and settles an uncertain
+  receipt write by byte-exact read-back before reporting it recorded. A
+  confirmed adoption whose receipt cannot be recorded reports
+  `confirmed-unrecorded` with the recording failure's code and claims no
+  receipt; the confirmed effect is never rolled back. The confirmed effect
+  record does not carry `grant` or `direction` references, so the caller
+  supplies them from the current host permission and direction; they are
+  never derived from the effect, policy or attempt. No new adoption, grant
+  issuance or candidate creation, IPC, UI, host or cadence wiring is added.
+  Cadence resume counting and reading `irreversibleChoicePending` from
+  recorded question state remain open. 037 T032 and all 037/038/039 boxes
+  remain unchecked.
+
 ### Authoring adoption receipts (037 T032 partial)
 
 - Add the recorded adoption-receipt contract for guided autonomous
