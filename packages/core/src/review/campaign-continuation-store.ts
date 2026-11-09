@@ -1,13 +1,14 @@
 import { bookSchema } from "../schema";
 import { LibraryError, LibraryPortError } from "../library/errors";
-import { bookFilePath } from "../library/paths";
-import { toLibraryFilePath, toLibraryPath, type LibraryPath } from "../library/path";
+import { bookFilePath, trashPath } from "../library/paths";
+import { libraryPathToArchivePath, toLibraryFilePath, toLibraryPath, type LibraryPath } from "../library/path";
 import type { CommitFileResult, FileExpectation, LibraryFileSnapshot, LibraryPort, LibraryRuntime } from "../library/port";
 import { assertBookWritable, assertSchemaVersion } from "../library/schema-guard";
+import { noteMovedPrefix } from "../sync/journal";
 import { bookIdSchema } from "./contract";
-import { recordIdSchema } from "./record-format";
+import { decodeReviewRecord, recordIdSchema, recordTimestampSchema } from "./record-format";
 import { ReviewRecordError } from "./record-error";
-import { bytesEqual, decodeStrictJsonBytes } from "./record-json";
+import { bytesEqual, decodeStrictJsonBytes, encodeCanonicalJson, REVIEW_RECORD_BYTES } from "./record-json";
 import { ContinuationTokenError } from "./campaign-continuation-tokens";
 import { CONTINUATION_SEGMENT_LIMITS } from "./campaign-continuation-segments";
 import {
@@ -17,6 +18,12 @@ import {
   inspectCampaignContinuationCompatibility, replanCampaignContinuation, serveCampaignContinuation,
   type CampaignContinuationReplanResult, type CampaignContinuationServeResult
 } from "./campaign-continuation-replan";
+import {
+  buildContinuationGroupIntentBytes, continuationInventoryDigest, extractContinuationReportReferences,
+  readContinuationGroupIntent, sortContinuationInventory, validateContinuationInventory,
+  CONTINUATION_GROUP_LIMITS,
+  type ContinuationGroupAction, type ContinuationGroupComponent, type ContinuationInventoryEntry
+} from "./campaign-continuation-group";
 import type { CampaignPlan } from "./campaign-planner";
 import type { InspectedContinuationHole } from "./campaign-continuation-tokens";
 
@@ -46,6 +53,17 @@ import type { InspectedContinuationHole } from "./campaign-continuation-tokens";
  * owner and campaign must equal them. A retained continuation is loaded only through the
  * codec wire readers and the compatible-replan dispatch; hash agreement never registers a
  * deserialized plan.
+ *
+ * Group trash/restore (format section 7.3) moves exactly the manifest file and the whole
+ * segment and publication-intent directories under one immutable group intent, in that
+ * fixed order with the manifest last, after version dispatch and full wire verification
+ * at the source; a move that cannot preserve every checked reference refuses before the
+ * first move, and a failure after the first move is `uncertain` with both locations and
+ * the intent retained. Cross-book report resolution (section 5) reads each checkpoint
+ * report only from its recorded owner's ordinary report path: the recorded owner wins,
+ * a verified foreign report is a bounded foreign reference, and a missing or changed
+ * report stays an unavailable entry. Neither operation rewrites retained bytes, creates
+ * reports, or grants execution authority.
  */
 
 export const CONTINUATION_STORAGE_LIMITS = Object.freeze({
@@ -86,6 +104,14 @@ export interface CampaignContinuationHost {
    * over the destination. When this seam is absent, publication refuses.
    */
   createImmutableFile?: (path: LibraryPath, bytes: Uint8Array) => Promise<CommitFileResult>;
+  /**
+   * Journal-aware moves for a campaign group (format section 7.3). When a host seam is
+   * absent the store falls back to the storage port's own move, which adapters must
+   * still implement as a no-replace move; a store that can prove neither refuses a
+   * group move before the first move instead of copying file by file.
+   */
+  moveFile?: (from: LibraryPath, to: LibraryPath) => Promise<void>;
+  moveDirectory?: (from: LibraryPath, to: LibraryPath) => Promise<void>;
 }
 
 export const continuationManifestPath = (bookId: string, campaignId: string): LibraryPath =>
@@ -100,6 +126,22 @@ export const continuationIntentPath = (bookId: string, campaignId: string, opera
   toLibraryFilePath(["books", bookId, "reviews", "campaigns", `${campaignId}.intents`, `${operationId}.json`]);
 export const continuationCampaignsPath = (bookId: string): LibraryPath =>
   toLibraryPath(["books", bookId, "reviews", "campaigns"]);
+export const continuationGroupMovesPath = (bookId: string): LibraryPath =>
+  toLibraryPath(["books", bookId, "reviews", "campaign-moves"]);
+export const continuationGroupMoveIntentPath = (bookId: string, operationId: string): LibraryPath =>
+  toLibraryFilePath(["books", bookId, "reviews", "campaign-moves", `${operationId}.json`]);
+/** Trash base for one archived campaign group: `.studio/trash/<owner>/reviews/campaign-<groupId>/`. */
+export const continuationTrashBasePath = (bookId: string, groupId: string): LibraryPath =>
+  toLibraryPath([...trashPath(bookId), "reviews", `campaign-${groupId}`]);
+export const continuationTrashManifestPath = (bookId: string, campaignId: string, groupId: string): LibraryPath =>
+  toLibraryFilePath([...continuationTrashBasePath(bookId, groupId), "campaigns", `${campaignId}.json`]);
+export const continuationTrashSegmentsPath = (bookId: string, campaignId: string, groupId: string): LibraryPath =>
+  toLibraryPath([...continuationTrashBasePath(bookId, groupId), "campaigns", `${campaignId}.segments`]);
+export const continuationTrashIntentsPath = (bookId: string, campaignId: string, groupId: string): LibraryPath =>
+  toLibraryPath([...continuationTrashBasePath(bookId, groupId), "campaigns", `${campaignId}.intents`]);
+/** Ordinary schema-1 report location for a recorded report owner (format section 5). */
+export const continuationReportPath = (bookId: string, runId: string): LibraryPath =>
+  toLibraryFilePath(["books", bookId, "reviews", `${runId}.json`]);
 
 export interface ContinuationCandidate {
   readonly manifestBytes: Uint8Array;
@@ -140,6 +182,40 @@ export interface ContinuationRecoveryInspection {
   manifest: { present: boolean; sha256: string | null; unreadable: boolean };
   classifications: ContinuationRecoveryClassification[];
 }
+
+export type ContinuationGroupMoveResult = {
+  status: "trashed" | "restored"; operationId: string; groupId: string;
+  campaignId: string; ownerBookId: string; manifestHash: string;
+};
+
+export type ContinuationGroupState = "active" | "archived" | "partial" | "absent";
+
+export interface ContinuationGroupInspection {
+  ownerBookId: string;
+  campaignId: string;
+  groupId: string | null;
+  state: ContinuationGroupState;
+  manifestHash: string | null;
+  active: { manifest: boolean; segments: boolean; intents: boolean };
+  archived: { manifest: boolean; segments: boolean; intents: boolean } | null;
+}
+
+export type ContinuationReportDisposition = "owned" | "foreign" | "unavailable";
+
+export interface ContinuationReportResolutionEntry {
+  stageId: string;
+  reference: { ownerBookId: string; runId: string; sha256: string };
+  disposition: ContinuationReportDisposition;
+  code: string;
+}
+
+export type ContinuationReportResolutionResult =
+  | {
+      status: "resolved"; ownerBookId: string; campaignId: string;
+      entries: ContinuationReportResolutionEntry[];
+      owned: number; foreign: number; unavailable: number;
+    }
+  | { status: "refused"; code: string };
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const SEGMENT_ID = /^s-[a-f0-9]{64}$/;
@@ -512,6 +588,343 @@ export class CampaignContinuationStore {
     });
   }
 
+  /* ------------------------------------------------------------ group moves */
+
+  async trashContinuationGroup(ownerBookId: string, campaignId: string,
+    options: { operationId: string; groupId: string; createdAt: string }): Promise<ContinuationGroupMoveResult> {
+    return this.moveContinuationGroup(ownerBookId, campaignId, "trash", options);
+  }
+
+  async restoreContinuationGroup(ownerBookId: string, campaignId: string,
+    options: { operationId: string; groupId: string; createdAt: string }): Promise<ContinuationGroupMoveResult> {
+    return this.moveContinuationGroup(ownerBookId, campaignId, "restore", options);
+  }
+
+  private async moveContinuationGroup(ownerBookId: string, campaignId: string, action: ContinuationGroupAction,
+    options: { operationId: string; groupId: string; createdAt: string }): Promise<ContinuationGroupMoveResult> {
+    this.assertIds(ownerBookId, campaignId);
+    const operationId = options?.operationId;
+    const groupId = options?.groupId;
+    const createdAt = options?.createdAt;
+    if (!recordIdSchema.max(160).safeParse(operationId).success ||
+      !recordIdSchema.max(160).safeParse(groupId).success) {
+      refusal("invalid", "That group operation or group ID is not valid. Nothing was moved.");
+    }
+    if (!recordTimestampSchema.safeParse(createdAt).success) {
+      refusal("invalid", "That group operation time is not valid. Nothing was moved.");
+    }
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      await this.writable(ownerBookId);
+      if (typeof this.host.createImmutableFile !== "function") {
+        refusal("unsupported-concurrent-writer",
+          "This storage cannot create the immutable group intent without replacing an existing file, so nothing was moved. Keep the continuation where it is and use a storage adapter with proven no-replace creation.");
+      }
+      const moveFile = this.host.moveFile ?? this.host.storage.moveFile.bind(this.host.storage);
+      const moveDirectory = this.host.moveDirectory ?? this.host.storage.moveDirectory.bind(this.host.storage);
+      if (typeof moveFile !== "function" || typeof moveDirectory !== "function") {
+        refusal("unsupported-concurrent-writer",
+          "This storage cannot move a continuation group without replacing a destination, so nothing was moved.");
+      }
+      const trashing = action === "trash";
+      const sourceManifest = trashing ? continuationManifestPath(ownerBookId, campaignId)
+        : continuationTrashManifestPath(ownerBookId, campaignId, groupId);
+      const sourceSegments = trashing ? continuationSegmentsPath(ownerBookId, campaignId)
+        : continuationTrashSegmentsPath(ownerBookId, campaignId, groupId);
+      const sourceIntents = trashing ? continuationIntentsPath(ownerBookId, campaignId)
+        : continuationTrashIntentsPath(ownerBookId, campaignId, groupId);
+      const destManifest = trashing ? continuationTrashManifestPath(ownerBookId, campaignId, groupId)
+        : continuationManifestPath(ownerBookId, campaignId);
+      const destSegments = trashing ? continuationTrashSegmentsPath(ownerBookId, campaignId, groupId)
+        : continuationSegmentsPath(ownerBookId, campaignId);
+      const destIntents = trashing ? continuationTrashIntentsPath(ownerBookId, campaignId, groupId)
+        : continuationIntentsPath(ownerBookId, campaignId);
+      const intentPath = continuationGroupMoveIntentPath(ownerBookId, operationId);
+      if (await this.host.storage.readFile(intentPath)) {
+        refusal("conflict", "That group operation already has a retained intent. Nothing was moved; inspect it before another move.");
+      }
+      const source = await this.readBounded(sourceManifest, CONTINUATION_STORAGE_LIMITS.manifestBytes);
+      if (!source) refusal("not-found", "That continuation is not at the expected location. Nothing was moved.");
+      const manifestBytes = new Uint8Array(source.bytes);
+      if (!this.recordedIdentityMatches(manifestBytes, ownerBookId, campaignId)) {
+        refusal("corrupt", "The continuation at that location names another owner or campaign. Nothing was moved.");
+      }
+      const dispatch = inspectCampaignContinuationCompatibility(manifestBytes);
+      if (dispatch.decision === "refuse") {
+        throw new ContinuationStorageError(
+          (["corrupt", "unsupported", "too-large", "newer-schema"].includes(dispatch.code)
+            ? dispatch.code : "unsupported") as ContinuationStorageErrorCode,
+          "That continuation version cannot be moved by this build. Nothing was moved.");
+      }
+      const verifyBytes = dispatch.decision === "replan-required"
+        ? this.normalizedSemanticsBytes(manifestBytes) : manifestBytes;
+      try {
+        await inspectContinuationWire(verifyBytes, { ownerBookId, campaignId },
+          this.segmentReaderFor(sourceSegments));
+      } catch (error) {
+        throw asStorageError(error, "The continuation does not verify at its source location, so nothing was moved. Its files were left exactly as they were.");
+      }
+      const sourceSegInventory = await this.inventoryDirectory(sourceSegments);
+      const sourceIntInventory = await this.inventoryDirectory(sourceIntents);
+      const sourceSegCheck = this.checkInventory(sourceSegInventory);
+      const sourceIntCheck = this.checkInventory(sourceIntInventory);
+      const destSegInventory = await this.inventoryDirectory(destSegments);
+      const destIntInventory = await this.inventoryDirectory(destIntents);
+      this.checkInventory(destSegInventory);
+      this.checkInventory(destIntInventory);
+      const totalEntries = sourceSegCheck.entries + sourceIntCheck.entries + 1 +
+        destSegInventory.length + destIntInventory.length;
+      const totalBytes = sourceSegCheck.bytes + sourceIntCheck.bytes + manifestBytes.byteLength;
+      if (totalEntries > CONTINUATION_GROUP_LIMITS.entries || totalBytes > CONTINUATION_GROUP_LIMITS.fileBytes ||
+        sourceSegCheck.inventoryBytes + sourceIntCheck.inventoryBytes > CONTINUATION_GROUP_LIMITS.inventoryBytes) {
+        refusal("too-large", "This continuation group is larger than this version can move. Nothing was moved or listed partially.");
+      }
+      if (await this.host.storage.stat(destManifest)) {
+        refusal("conflict", "A continuation already occupies the move destination. Nothing was moved; both locations were kept.");
+      }
+      if (destSegInventory.length > 1 || destIntInventory.length > 1) {
+        refusal("conflict", "A continuation already occupies the move destination. Nothing was moved; both locations were kept.");
+      }
+      const components: ContinuationGroupComponent[] = [
+        { name: "segments", type: "directory",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: sourceSegCheck.entries, bytes: sourceSegCheck.bytes,
+          inventoryDigest: await continuationInventoryDigest(sourceSegInventory) },
+        { name: "publication-intents", type: "directory",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: sourceIntCheck.entries, bytes: sourceIntCheck.bytes,
+          inventoryDigest: await continuationInventoryDigest(sourceIntInventory) },
+        { name: "manifest", type: "file",
+          sourceLocation: trashing ? "active" : "trash", destinationLocation: trashing ? "trash" : "active",
+          entries: 1, bytes: manifestBytes.byteLength,
+          inventoryDigest: await this.host.runtime.sha256(manifestBytes) }
+      ];
+      let intentBytes: Uint8Array;
+      try {
+        intentBytes = buildContinuationGroupIntentBytes({
+          ownerBookId, campaignId, operationId, groupId, action, createdAt, components
+        });
+      } catch (error) {
+        throw asStorageError(error, "The group move intent could not be prepared. Nothing was moved.");
+      }
+      await this.host.storage.ensureDirectory(continuationGroupMovesPath(ownerBookId));
+      await this.createImmutable(intentPath, intentBytes, "group move intent");
+      const retained = await this.readBounded(intentPath, CONTINUATION_GROUP_LIMITS.intentBytes);
+      if (!retained || !bytesEqual(retained.bytes, intentBytes)) {
+        throw new ContinuationStorageError("uncertain",
+          "The group move intent did not read back exactly, so nothing was moved. The intent was kept for inspection.");
+      }
+      const manifestHash = await this.host.runtime.sha256(manifestBytes);
+      let movedAny = false;
+      try {
+        await moveDirectory(sourceSegments, destSegments);
+        movedAny = true;
+        await this.noteGroupMove(sourceSegments, destSegments);
+        await this.verifyDirectoryAt(destSegments, sourceSegInventory);
+        await moveDirectory(sourceIntents, destIntents);
+        await this.noteGroupMove(sourceIntents, destIntents);
+        await this.verifyDirectoryAt(destIntents, sourceIntInventory);
+        await moveFile(sourceManifest, destManifest);
+        await this.noteGroupMove(sourceManifest, destManifest);
+        const landed = await this.readBounded(destManifest, CONTINUATION_STORAGE_LIMITS.manifestBytes);
+        if (!landed || !bytesEqual(landed.bytes, manifestBytes)) throw new Error("Manifest readback changed.");
+        if (await this.host.storage.readFile(sourceManifest)) throw new Error("Source manifest reappeared.");
+        await inspectContinuationWire(verifyBytes, { ownerBookId, campaignId },
+          this.segmentReaderFor(destSegments));
+      } catch (error) {
+        if (error instanceof ContinuationStorageError && !movedAny) throw error;
+        throw new ContinuationStorageError("uncertain",
+          "The continuation group move could not be confirmed and may be partial. Both locations and the group intent were kept; inspect them before another move. Nothing was rolled back or overwritten.");
+      }
+      return {
+        status: trashing ? "trashed" as const : "restored" as const,
+        operationId, groupId, campaignId, ownerBookId, manifestHash
+      };
+    });
+  }
+
+  async inspectContinuationGroup(ownerBookId: string, campaignId: string,
+    options: { groupId?: string } = {}): Promise<ContinuationGroupInspection> {
+    this.assertIds(ownerBookId, campaignId);
+    const groupId = options.groupId ?? null;
+    if (groupId !== null && !recordIdSchema.max(160).safeParse(groupId).success) {
+      refusal("invalid", "That group ID is not valid. Nothing was inspected as a group.");
+    }
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      const present = async (path: LibraryPath, bounded: number): Promise<boolean> => {
+        try {
+          return (await this.readBounded(path, bounded)) !== null;
+        } catch {
+          return true;
+        }
+      };
+      const dirPresent = async (path: LibraryPath): Promise<boolean> =>
+        (await this.inventoryDirectory(path)).some((entry) => entry.type === "file");
+      const active = {
+        manifest: await present(continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes),
+        segments: await dirPresent(continuationSegmentsPath(ownerBookId, campaignId)),
+        intents: await dirPresent(continuationIntentsPath(ownerBookId, campaignId))
+      };
+      let archived: ContinuationGroupInspection["archived"] = null;
+      if (groupId !== null) {
+        archived = {
+          manifest: await present(continuationTrashManifestPath(ownerBookId, campaignId, groupId), CONTINUATION_STORAGE_LIMITS.manifestBytes),
+          segments: await dirPresent(continuationTrashSegmentsPath(ownerBookId, campaignId, groupId)),
+          intents: await dirPresent(continuationTrashIntentsPath(ownerBookId, campaignId, groupId))
+        };
+      }
+      const activeAny = active.manifest || active.segments || active.intents;
+      const activeAll = active.manifest && active.segments && active.intents;
+      const archivedAny = archived ? archived.manifest || archived.segments || archived.intents : false;
+      const archivedAll = archived ? archived.manifest && archived.segments && archived.intents : false;
+      let state: ContinuationGroupState;
+      if (activeAll && !archivedAny) state = "active";
+      else if (archivedAll && !activeAny) state = "archived";
+      else if (!activeAny && !archivedAny) state = "absent";
+      else state = "partial";
+      let manifestHash: string | null = null;
+      const activeSnapshot = await this.readBounded(
+        continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes).catch(() => null);
+      if (activeSnapshot) manifestHash = activeSnapshot.sha256;
+      else if (groupId !== null) {
+        const archivedSnapshot = await this.readBounded(
+          continuationTrashManifestPath(ownerBookId, campaignId, groupId), CONTINUATION_STORAGE_LIMITS.manifestBytes).catch(() => null);
+        if (archivedSnapshot) manifestHash = archivedSnapshot.sha256;
+      }
+      return { ownerBookId, campaignId, groupId, state, manifestHash, active, archived };
+    });
+  }
+
+  async listContinuationGroupMoves(ownerBookId: string, options: { offset?: number; limit?: number } = {}) {
+    if (!bookIdSchema.safeParse(ownerBookId).success) refusal("invalid", "That owning book ID is not valid.");
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 50;
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 ||
+      limit > CONTINUATION_STORAGE_LIMITS.inventoryPage) {
+      refusal("invalid", "The group move page is not valid; use an offset of 0 or more and a page of 1 to 200.");
+    }
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      const entries = await this.inventoryEntries(continuationGroupMovesPath(ownerBookId));
+      const issues: Array<{ fileName: string; code: string }> = [];
+      const moves: Array<{ operationId: string }> = [];
+      for (const entry of entries) {
+        if (entry.kind !== "file" || !entry.name.endsWith(".json")) { issues.push({ fileName: entry.name, code: "unsupported" }); continue; }
+        const operationId = entry.name.slice(0, -".json".length);
+        if (!recordIdSchema.max(160).safeParse(operationId).success) { issues.push({ fileName: entry.name, code: "invalid" }); continue; }
+        moves.push({ operationId });
+      }
+      moves.sort((a, b) => a.operationId.localeCompare(b.operationId));
+      issues.sort((a, b) => a.fileName.localeCompare(b.fileName));
+      return { ownerBookId, offset, limit, total: moves.length, moves: moves.slice(offset, offset + limit), issues };
+    });
+  }
+
+  async readContinuationGroupIntent(ownerBookId: string, operationId: string) {
+    if (!bookIdSchema.safeParse(ownerBookId).success) refusal("invalid", "That owning book ID is not valid.");
+    if (!recordIdSchema.max(160).safeParse(operationId).success) refusal("invalid", "That group operation ID is not valid.");
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      const snapshot = await this.readBounded(continuationGroupMoveIntentPath(ownerBookId, operationId), CONTINUATION_GROUP_LIMITS.intentBytes);
+      if (!snapshot) return null;
+      try {
+        const raw = decodeStrictJsonBytes(new Uint8Array(snapshot.bytes), { maxBytes: CONTINUATION_GROUP_LIMITS.intentBytes }) as Record<string, unknown>;
+        const campaignId = typeof raw.campaignId === "string" ? raw.campaignId : "";
+        const read = readContinuationGroupIntent(snapshot.bytes, { ownerBookId, campaignId, operationId });
+        return { status: "structural-only" as const, intent: read.intent, hash: snapshot.sha256 };
+      } catch (error) {
+        throw asStorageError(error, "The retained group move intent could not be read. It was left untouched.");
+      }
+    });
+  }
+
+  /**
+   * Resolve checkpoint report references across their recorded owners (format
+   * section 5). The recorded owner always wins: a report is read only from its
+   * recorded owner's ordinary report path and verified by raw hash, identity
+   * and disclosure scope. A verified report owned by another participating
+   * book is a bounded foreign reference, never adopted, merged or dropped; a
+   * missing, changed or unsupported report stays an unavailable entry in
+   * stage order. Nothing is written and no checkpoint byte is rewritten.
+   */
+  async resolveContinuationReports(ownerBookId: string, campaignId: string): Promise<ContinuationReportResolutionResult> {
+    this.assertIds(ownerBookId, campaignId);
+    return this.host.withBook(ownerBookId, async () => {
+      await this.assertOwner(ownerBookId);
+      let snapshot: LibraryFileSnapshot | null;
+      try {
+        snapshot = await this.readBounded(continuationManifestPath(ownerBookId, campaignId), CONTINUATION_STORAGE_LIMITS.manifestBytes);
+      } catch (error) {
+        return { status: "refused" as const, code: mapCode(error) };
+      }
+      if (!snapshot) return { status: "refused" as const, code: "not-found" };
+      if (!this.recordedIdentityMatches(snapshot.bytes, ownerBookId, campaignId)) {
+        return { status: "refused" as const, code: "corrupt" };
+      }
+      const dispatch = inspectCampaignContinuationCompatibility(snapshot.bytes);
+      if (dispatch.decision === "refuse") return { status: "refused" as const, code: dispatch.code };
+      const verifyBytes = dispatch.decision === "replan-required"
+        ? this.normalizedSemanticsBytes(snapshot.bytes) : snapshot.bytes;
+      let wire: Awaited<ReturnType<typeof inspectContinuationWire>>;
+      try {
+        wire = await inspectContinuationWire(verifyBytes, { ownerBookId, campaignId },
+          this.segmentReader(ownerBookId, campaignId));
+      } catch (error) {
+        return { status: "refused" as const, code: mapCode(error) };
+      }
+      const planStream = wire.streams.find((stream) => stream.stream === "plan");
+      const checkpointStream = wire.streams.find((stream) => stream.stream === "checkpoint");
+      if (!planStream || !checkpointStream) {
+        return { status: "resolved" as const, ownerBookId, campaignId, entries: [], owned: 0, foreign: 0, unavailable: 0 };
+      }
+      let extracted: ReturnType<typeof extractContinuationReportReferences>;
+      try {
+        extracted = extractContinuationReportReferences(planStream.root, checkpointStream.root);
+      } catch (error) {
+        return { status: "refused" as const, code: mapCode(error) };
+      }
+      if (!extracted) {
+        return { status: "resolved" as const, ownerBookId, campaignId, entries: [], owned: 0, foreign: 0, unavailable: 0 };
+      }
+      const entries: ContinuationReportResolutionEntry[] = [];
+      for (const item of extracted.references) {
+        const reference = item.reference;
+        let disposition: ContinuationReportDisposition = "unavailable";
+        let code = "external-unavailable";
+        try {
+          await this.assertOwner(reference.ownerBookId);
+          const reportSnapshot = await this.readBounded(continuationReportPath(reference.ownerBookId, reference.runId), REVIEW_RECORD_BYTES);
+          if (!reportSnapshot) {
+            code = "external-unavailable";
+          } else if (reportSnapshot.sha256 !== reference.sha256) {
+            code = "external-mismatch";
+          } else {
+            const decoded = decodeReviewRecord(reportSnapshot.bytes, { kind: "review-report", bookId: reference.ownerBookId });
+            const record = decoded.record as unknown as Record<string, unknown>;
+            const disclosure = record.disclosure as Record<string, unknown> | undefined;
+            if (record.id !== reference.runId || disclosure?.scopeDigest !== item.actualScopeDigest) {
+              code = "external-mismatch";
+            } else {
+              disposition = reference.ownerBookId === ownerBookId ? "owned" : "foreign";
+              code = "resolved";
+            }
+          }
+        } catch (error) {
+          disposition = "unavailable";
+          code = error instanceof ContinuationStorageError ? error.code : mapCode(error);
+        }
+        entries.push({ stageId: item.stageId, reference: { ...reference }, disposition, code });
+      }
+      return {
+        status: "resolved" as const, ownerBookId, campaignId, entries,
+        owned: entries.filter((entry) => entry.disposition === "owned").length,
+        foreign: entries.filter((entry) => entry.disposition === "foreign").length,
+        unavailable: entries.filter((entry) => entry.disposition === "unavailable").length
+      };
+    });
+  }
+
   private async classifyOperation(ownerBookId: string, campaignId: string, operationId: string,
     manifestSnapshot: LibraryFileSnapshot | null, manifestUnreadable = false): Promise<ContinuationRecoveryClassification> {
     const manifestStateOf = (candidateBytes: Uint8Array | null): ContinuationRecoveryClassification["manifestState"] => {
@@ -640,6 +1053,92 @@ export class CampaignContinuationStore {
       const snapshot = await this.readBounded(continuationSegmentPath(ownerBookId, campaignId, id), CONTINUATION_STORAGE_LIMITS.segmentBytes);
       return snapshot ? new Uint8Array(snapshot.bytes) : undefined;
     };
+  }
+
+  private segmentReaderFor(segmentsDir: LibraryPath) {
+    return async (id: string): Promise<Uint8Array | undefined> => {
+      if (!SEGMENT_ID.test(id)) return undefined;
+      const snapshot = await this.readBounded(
+        toLibraryFilePath([...segmentsDir, `${id}.json`]), CONTINUATION_STORAGE_LIMITS.segmentBytes);
+      return snapshot ? new Uint8Array(snapshot.bytes) : undefined;
+    };
+  }
+
+  /** Local comparison copy for a compatibly differing label; stored bytes are never altered. */
+  private normalizedSemanticsBytes(manifestBytes: Uint8Array): Uint8Array {
+    const manifest = decodeStrictJsonBytes(new Uint8Array(manifestBytes),
+      { maxBytes: CONTINUATION_STORAGE_LIMITS.manifestBytes }) as Record<string, unknown>;
+    return encodeCanonicalJson({ ...manifest, plannerSemantics: "review-campaign-planner-v1" },
+      { maxBytes: CONTINUATION_STORAGE_LIMITS.manifestBytes });
+  }
+
+  private checkInventory(inventory: ContinuationInventoryEntry[]) {
+    try {
+      return validateContinuationInventory(inventory);
+    } catch (error) {
+      throw asStorageError(error, "This continuation group inventory cannot be verified. Nothing was moved.");
+    }
+  }
+
+  /**
+   * Recursive inventory of one group directory (format section 7.3). Unsupported
+   * entries refuse without following them; every file is read bounded and hashed
+   * before the inventory grows past its scan budgets.
+   */
+  private async inventoryDirectory(root: LibraryPath): Promise<ContinuationInventoryEntry[]> {
+    const entries: ContinuationInventoryEntry[] = [{ path: [], type: "directory" }];
+    let fileBytes = 0;
+    const walk = async (dir: LibraryPath, prefix: string[]): Promise<void> => {
+      const listed = this.host.storage.inspectDirectory
+        ? await this.host.storage.inspectDirectory(dir)
+        : await this.host.storage.listDirectory(dir);
+      const ordered = [...listed].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      for (const entry of ordered) {
+        if ((entry as { kind: string }).kind === "unsupported") {
+          refusal("unsupported", "This continuation group contains a file this version cannot move safely. Nothing was moved.");
+        }
+        const name = entry.name;
+        if (name.length === 0 || name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+          refusal("unsupported", "This continuation group contains a file this version cannot move safely. Nothing was moved.");
+        }
+        if (entries.length + 1 > CONTINUATION_GROUP_LIMITS.entries) {
+          refusal("too-large", "This continuation group has more files than this version can move. Nothing was moved or listed partially.");
+        }
+        const path = [...prefix, name];
+        if (entry.kind === "directory") {
+          entries.push({ path, type: "directory" });
+          await walk(toLibraryPath([...dir, name]), path);
+        } else {
+          const child = toLibraryFilePath([...dir, name]);
+          const snapshot = await this.readBounded(child, CONTINUATION_GROUP_LIMITS.fileBytesEach);
+          if (!snapshot) refusal("corrupt", "A continuation group file disappeared while it was inventoried. Nothing was moved.");
+          if (snapshot.bytes.byteLength > CONTINUATION_GROUP_LIMITS.fileBytes - fileBytes) {
+            refusal("too-large", "This continuation group is larger than this version can move. Nothing was moved.");
+          }
+          fileBytes += snapshot.bytes.byteLength;
+          entries.push({ path, type: "file", bytes: snapshot.bytes.byteLength, sha256: snapshot.sha256 });
+        }
+      }
+    };
+    await walk(root, []);
+    return sortContinuationInventory(entries);
+  }
+
+  private async verifyDirectoryAt(dir: LibraryPath, expected: ContinuationInventoryEntry[]): Promise<void> {
+    const landed = await this.inventoryDirectory(dir);
+    if (JSON.stringify(landed) !== JSON.stringify(expected)) throw new Error("Directory readback changed.");
+  }
+
+  private async noteGroupMove(from: LibraryPath, to: LibraryPath): Promise<void> {
+    try {
+      await noteMovedPrefix({
+        storage: this.host.storage, deviceId: this.host.deviceId,
+        from: libraryPathToArchivePath(from), to: libraryPathToArchivePath(to),
+        now: this.host.runtime.now()
+      });
+    } catch {
+      // Detection degrades to a reviewable report; the move itself already verified.
+    }
   }
 
   private async verifyStoredReferences(ownerBookId: string, campaignId: string, manifestBytes: Uint8Array) {

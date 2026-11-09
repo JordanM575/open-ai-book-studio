@@ -7,6 +7,28 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation group trash/restore and cross-book report resolution (039 T014/T015)
+
+- Add campaign continuation group movement and cross-book report resolution to the checked
+  store (`packages/core/src/review/campaign-continuation-group.ts` and
+  `CampaignContinuationStore` group/report methods): a version-dispatching trash/restore moves
+  exactly the manifest file and the whole segment and publication-intent directories between
+  `books/<owner>/reviews/` and `.studio/trash/<owner>/reviews/campaign-<groupId>/` under an
+  immutable `review-campaign-group-intent` retained in `reviews/campaign-moves/`, after full
+  wire verification at the source and bounded inventory/destination preflight, moving segments
+  and intents before the manifest last with inventory and wire readback at the destination; a
+  move that cannot preserve every checked reference refuses before the first move with source
+  bytes preserved, and a failure after the first move is `uncertain` with both locations and
+  the intent retained and no rollback. Group inspection classifies the group as `active`,
+  `archived`, `partial` or `absent`. Checkpoint reports resolve only from their recorded
+  owner's ordinary report path with raw-hash, identity and disclosure-scope verification: the
+  recorded owner wins, a verified foreign report is a bounded foreign reference that is never
+  adopted, merged or dropped, and a missing or changed report stays an unavailable entry.
+  Supported unknown fields survive byte for byte because retained bytes are never re-encoded.
+- This slice is pure core plus the existing storage seams only: no IPC, UI, provider calls,
+  host wiring, portable archive/export workflow or cross-book mutation is added, and
+  039 T014/T015/T017/T018 remain unchecked pending independent review.
+
 ### Campaign continuation checked storage publication and recovery (039 T014/T015)
 
 - Add checked continuation storage as `LibraryService.campaignContinuations`
