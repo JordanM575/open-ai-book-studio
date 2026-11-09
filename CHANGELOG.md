@@ -9,6 +9,7 @@ Update the `Unreleased` section before every commit.
 ## [Unreleased]
 ### Current requirements and delivery forecast
 
+- Identify the continuation work by its delivery state until a published candidate is available.
 - Reconcile the accepted November 8 foundations and unmerged candidates, update the concurrent
   execution model/queue, and publish the next dependency slices through full-book acceptance.
 - Describe retained editorial diagnostics, reader lenses, rereads and series continuity in

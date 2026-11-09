@@ -13,7 +13,7 @@ retain every feature; a prerequisite here is a specific contract, not completion
 | Workflow storage · PR #43 | `0ed733884a6d394a97634765c8d3c7d52e8f864e` | Corrected delayed verified-note ownership and integrated accepted main. Focused tests pass; fresh independent/Codex review and integrated gates are pending. |
 | Manual planning · PR #44 | `ae5a7f37c65b3ad68edf893d731cece3df89421d` | Independent review requires exact line-ending recovery, an exact full-copy representation and stable identities inside order editors. Five gates passed on an unchanged-head rerun; the initial failure remains recorded. |
 | Repetition navigation · PR #45 | `1cbe34e9fe50cd1d1e1dcc0e2b58df7deea7832a` | Five gates pass, but independent review requires finding association, complete source-token boundaries and checking/unavailable navigation-read states. |
-| Campaign continuation | `250b140232e4854d9f821cb0f661c57bb990ee67` | D-201 documentation-only candidate. Codec, reconstruction/provenance, writer and host integration are not implemented by it. |
+| Campaign continuation | Documentation candidate; implementation pending | D-201 specifies the continuation contract. Codec, reconstruction/provenance, writer and host integration are not implemented by this candidate. |
 
 PR numbers identify work under review, not shipped features. A changed candidate needs assessment
 and gates on its new exact head. Tests from separate candidates overlap and are never summed.
