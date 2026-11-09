@@ -99,6 +99,13 @@ import { PlanningRecovery } from "./planning-recovery";
 import { ReviewRecordStore } from "../review/record-store";
 import { CampaignContinuationStore } from "../review/campaign-continuation-store";
 import { WorkflowRecordStore } from "../workflow/record-store";
+import {
+  AdoptionReceiptStore,
+  type AdoptionRecordingResult
+} from "../workflow/adoption-receipt-store";
+import { WorkflowRecordError } from "../workflow/record-error";
+import type { Owner, Reference } from "../authoring/contracts";
+import type { EffectPhase } from "../authoring/lifecycle";
 import { GoalService, type GoalHost } from "../organization/goals";
 import {
   HistoryError,
@@ -154,6 +161,8 @@ export class LibraryService {
   readonly workflowRecords: WorkflowRecordStore;
   /** Checked campaign continuation storage (039 T014/T015). Leaf APIs only; no host execution here. */
   readonly campaignContinuations: CampaignContinuationStore;
+  /** Recorded adoption receipts (037 FR-017/T032). Only `recordConfirmedAdoptionReceipt` writes them. */
+  readonly adoptionReceipts: AdoptionReceiptStore;
 
   private constructor(
     private readonly env: LibraryEnvironment,
@@ -182,6 +191,12 @@ export class LibraryService {
       deviceId: device.id
     });
     this.workflowRecords = new WorkflowRecordStore({
+      ...this.writeHost,
+      storage: env.storage,
+      runtime: env.runtime,
+      deviceId: device.id
+    });
+    this.adoptionReceipts = new AdoptionReceiptStore({
       ...this.writeHost,
       storage: env.storage,
       runtime: env.runtime,
@@ -230,6 +245,62 @@ export class LibraryService {
       commitFile: (path, bytes, expected) => this.commitBytes(path, bytes, expected),
       moveFile: (from, to) => this.env.storage.moveFile(from, to)
     };
+  }
+
+  /**
+   * Record the adoption receipt for one confirmed adoption (037 FR-017 / ADR 0019).
+   *
+   * The confirmation point is the checked effect record already saved through
+   * `workflowRecords.saveEffect`: only a record whose phase is `confirmed`,
+   * with a receipt carrying `resultVersion`/`resultHash` and its instant, is
+   * an adoption this method will record. That record carries the adopting
+   * owner, the exact candidate and the target chapter; it does not carry a
+   * grant or direction reference, so the caller supplies those two references
+   * from the current host permission and direction — they are never derived
+   * from the effect, its policy or its attempt here.
+   *
+   * A receipt that cannot be recorded never rolls the confirmed effect back:
+   * the result reports `confirmed-unrecorded` with the recording failure's
+   * code and claims no receipt. Recording itself, including reading the
+   * current maximum sequence, happens inside the per-book queue in
+   * `AdoptionReceiptStore.recordConfirmedAdoption`; there is no second
+   * writer and no new adoption, grant or candidate path here.
+   */
+  async recordConfirmedAdoptionReceipt(
+    bookId: string,
+    runId: string,
+    effectId: string,
+    refs: { grant: Reference<"grant">; direction: Reference<"direction"> }
+  ): Promise<AdoptionRecordingResult> {
+    const effect = await this.workflowRecords.readEffect(bookId, runId, effectId);
+    if (!effect) {
+      throw new WorkflowRecordError(
+        "not-found",
+        "That confirmed effect is unavailable. No adoption receipt was recorded."
+      );
+    }
+    const record = effect.record as unknown as {
+      phase?: unknown;
+      owner?: unknown;
+      candidate?: unknown;
+      target?: { chapterId?: unknown } | null;
+      receipt?: {
+        resultVersion?: unknown;
+        resultHash?: unknown;
+        at?: unknown;
+      } | null;
+    };
+    return this.adoptionReceipts.recordConfirmedAdoption(bookId, runId, {
+      phase: record.phase as EffectPhase,
+      owner: record.owner as Owner,
+      chapterId: record.target?.chapterId as string,
+      candidate: record.candidate as Reference<"artifact">,
+      resultVersion: record.receipt?.resultVersion as number,
+      resultHash: record.receipt?.resultHash as string,
+      grant: refs.grant,
+      direction: refs.direction,
+      adoptedAt: record.receipt?.at as string
+    });
   }
 
   /**
