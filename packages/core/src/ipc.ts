@@ -33,6 +33,7 @@ import type { BookMatter, SaveMatterResult } from "./matter";
 import type { VoicePreferences } from "./providers/voice-preferences";
 import { planningChannels, type PlanningApi } from "./library/planning-api";
 import { reviewRecordChannel, type ReviewRecordApi } from "./library/review-record-api";
+import type { ContinuationCheckinInput } from "./review/campaign-continuation-checkin";
 export { createPlanningApi, planningChannels, planningHandler, planningValue } from "./library/planning-api";
 
 export type { VoicePreferences } from "./providers/voice-preferences";
@@ -153,6 +154,10 @@ export const IPC = {
     exportMarkdownFolderPublish: "books:exportMarkdownFolderPublish",
     exportMarkdownFolderCancel: "books:exportMarkdownFolderCancel",
     search: "books:search"
+  },
+  continuation: {
+    /** Read-only counted check-in inputs for one checked campaign (039 T018 seam 6b). */
+    checkin: "continuation:checkin"
   },
   chapters: {
     create: "chapters:create",
@@ -379,6 +384,18 @@ export interface RecoveredDraft {
   ending: string;
 }
 
+/**
+ * What the renderer may ask the check-in host to read: the owning book and
+ * campaign identities, plus the caller's held view for a stale check. The 037
+ * run owner and direction are host-supplied in the main process, never sent
+ * by the renderer, and no path is ever accepted or returned.
+ */
+export interface ReadContinuationCheckinInput {
+  bookId: string;
+  campaignId: string;
+  expected?: { revision?: number; manifestHash?: string };
+}
+
 export interface SaveChapterInput {
   bookId: string;
   chapterId: string;
@@ -559,6 +576,15 @@ export interface StudioApi {
     /** Ask to cancel one Markdown folder attempt before its commit begins. */
     exportMarkdownFolderCancel(input: { bookId: string; attemptId: string }): Promise<Result<MarkdownFolderCancelResult>>;
     search(bookId: string, query: string): Promise<Result<SearchHit[]>>;
+  };
+  /** Absent on hosts without a 037 coordinator seam; reads refuse there. */
+  continuation?: {
+    /**
+     * The counted check-in inputs for one checked continuation campaign,
+     * mapped from the codec's own counters. Refusals (stale, partial,
+     * cross-book, future, replan, too-large, missing) are typed failures.
+     */
+    checkin(input: ReadContinuationCheckinInput): Promise<Result<ContinuationCheckinInput>>;
   };
   chapters: {
     create(bookId: string, input: { title?: string }): Promise<Result<Chapter>>;

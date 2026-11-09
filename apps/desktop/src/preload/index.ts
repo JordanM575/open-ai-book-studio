@@ -93,6 +93,9 @@ const api: StudioApi = {
     importManuscript: (input) => invoke(IPC.books.importManuscript, input),
     pickImportSource: () => invoke(IPC.books.pickImportSource)
   },
+  continuation: {
+    checkin: (input) => invoke(IPC.continuation.checkin, input)
+  },
   chapters: {
     create: (bookId, input) => invoke(IPC.chapters.create, { bookId, ...input }),
     save: (input: SaveChapterInput) => invoke(IPC.chapters.save, input),

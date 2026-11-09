@@ -73,6 +73,18 @@ task is completed. T010 retains the independent correction gate. The policy amen
     counted mapping, stale/partial/cross-book/future-label refusals, unknown-field survival
     and inexpressible-shape refusal. No host wiring, coordinator execution or task box is
     completed by this slice; T018 stays unchecked.
+  - Partial evidence (seam 6b, host integration only): the desktop host wires that contract
+    through one read-only `continuation:checkin` channel (core `IPC`/`StudioApi`, Zod-validated
+    book/campaign ids before any Library access, preload bridge, unmounted `must(...)` client
+    helper; no presenter screen). The main process loads the checked campaign through the
+    existing `campaignContinuations` store readers and returns the counted inputs through the
+    `Result` envelope, with the 6a refusal codes preserved as typed failures. The 037 run
+    owner and direction are host-supplied through a coordinator-identity seam; this build
+    registers no 037 coordinator session in the main process, so the channel refuses
+    truthfully (`unsupported`) instead of inventing an owner. Focused synthetic tests cover
+    the Library-level happy path and stale/partial/cross-book/future/not-found refusals plus
+    IPC validation and bridge delivery. No coordinator execution, presenter surface or task
+    box is completed by this slice; T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
 

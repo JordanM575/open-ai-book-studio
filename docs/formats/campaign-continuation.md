@@ -87,9 +87,15 @@ inputs, so supported unknown fields survive untouched. The codec retains no word
 the 037 authoring contracts define no check-in cadence type, no campaign-stage task role and
 no derivation for `Brief.targetWords`; the leaf therefore emits counted progress only and a
 host must not relabel scalar/byte counts as words or invent a cadence from them.
-Host integration, a portable archive/export workflow and independent review remain separate
-work. These leaves and the storage slices have focused synthetic tests, not independent
-acceptance or a self-contained archive.
+The desktop host (039 T018 seam 6b) exposes that mapping as one read-only
+`continuation:checkin` channel: ids are validated before the Library is touched, the checked
+campaign is loaded through the store readers above, and the counted inputs cross the `Result`
+envelope with the leaf's refusal codes preserved as typed failures. The 037 run owner and
+direction are host-supplied; this build registers no coordinator session in the main process,
+so the channel refuses truthfully until one exists rather than inventing an owner. Coordinator
+execution, a presenter surface, a portable archive/export workflow and independent review
+remain separate work. These leaves and the storage slices have focused synthetic tests, not
+independent acceptance or a self-contained archive.
 
 ## 1. Encoding and operation limits
 
