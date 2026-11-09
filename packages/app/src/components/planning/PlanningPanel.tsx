@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { PlanningApi } from "@ai-book-studio/core/library/planning-api";
 import { planningValue } from "@ai-book-studio/core/library/planning-api";
 import type { Planning } from "@ai-book-studio/core/planning/schema";
@@ -26,6 +26,7 @@ export function PlanningPanel({ bookId, bookTitle, api, navigation, sourceGenera
   sourceGeneration: string; manuscriptState: ManuscriptSaveState;
 }) {
   const [lifetime] = useState(() => ++nextLifetime);
+  const identityPrefix = useId();
   const serial = useRef(0);
   const [session, setSession] = useState<(PlanningView & Editor) | null>(null);
   const [planning, setPlanning] = useState<Planning | null>(null);
@@ -86,14 +87,16 @@ export function PlanningPanel({ bookId, bookTitle, api, navigation, sourceGenera
       {error ? <p role="alert">{error}</p> : !loaded ? <p>Reading saved planning…</p> : <>
         <h3 className="font-medium">World details</h3>
         {!planning?.worldbuilding.some((record) => !record.archived) && <p>No world details yet. Add a place, custom or other detail.</p>}
-        <ul>{planning?.worldbuilding.map((record, index) => record.archived ? null : <li key={record.id}>
-          <Button variant="ghost" aria-label={label(record, index, "Edit")} onClick={() => open({ kind: "world", recordId: record.id })}>{record.name}</Button>
-          <Button variant="ghost" aria-label={label(record, index, "Archive")} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: true })}>Archive {record.name}</Button>
+        <ul>{planning?.worldbuilding.map((record, index) => record.archived ? null : <li key={record.id} className="min-w-0 break-words">
+          <p id={`${identityPrefix}-${record.id}`} className="break-all text-muted-foreground">Identity: <code>{record.id}</code></p>
+          <Button variant="ghost" aria-label={label(record, index, "Edit")} aria-describedby={`${identityPrefix}-${record.id}`} onClick={() => open({ kind: "world", recordId: record.id })}>{record.name}</Button>
+          <Button variant="ghost" aria-label={label(record, index, "Archive")} aria-describedby={`${identityPrefix}-${record.id}`} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: true })}>Archive {record.name}</Button>
         </li>)}</ul>
         <Button variant="secondary" onClick={() => open({ kind: "world" })}>New world detail</Button>
-        {planning?.worldbuilding.map((record, index) => !record.archived ? null : <div key={record.id}>
+        {planning?.worldbuilding.map((record, index) => !record.archived ? null : <div key={record.id} className="min-w-0 break-words">
           <span>{record.name} · archived</span>
-          <Button variant="ghost" aria-label={label(record, index, "Restore")} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: false })}>Restore {record.name}</Button>
+          <p id={`${identityPrefix}-${record.id}`} className="break-all text-muted-foreground">Identity: <code>{record.id}</code></p>
+          <Button variant="ghost" aria-label={label(record, index, "Restore")} aria-describedby={`${identityPrefix}-${record.id}`} onClick={() => open({ kind: "archive-worldbuilding", recordId: record.id, archived: false })}>Restore {record.name}</Button>
         </div>)}
         {(["timeline", "beat"] as const).map((kind) => {
           const order = (kind === "timeline" ? planning?.timelineOrder : planning?.beatOrder) ?? [];

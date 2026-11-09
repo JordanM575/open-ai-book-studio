@@ -10,6 +10,12 @@ Update the `Unreleased` section before every commit.
 
 ### Manual planning records
 
+- Show stable world identities beside active Edit/Archive and archived Restore controls and in the
+  matching editor, with accessible control descriptions. Recover duplicate names by copied identity
+  through explicit checked restore/edit while retaining other records and the original copy.
+- Avoid per-character regular-expression repetition when checking numbers around long JSON strings.
+  Retain exact numeric admission, syntax/byte limits and every checked-save boundary; keep the
+  existing near-limit save waits and add escaped-string/numeric-boundary controls.
 - Add validated exact-JSON-string editing and recovery representations for literal CR/CRLF/LF,
   control characters and escapes. Retain incomplete encoded drafts behind the existing navigation
   guard, measure decoded field limits, and expose the full verified copy without textarea line-ending

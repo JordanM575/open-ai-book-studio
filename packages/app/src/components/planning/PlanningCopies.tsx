@@ -80,7 +80,7 @@ function PlanningCopyFields({ data }: { data: Planning }) {
   return <div className="space-y-4">
     <p>These are the copy’s decoded values, including line breaks and literal punctuation. For exact re-entry, select Use exact JSON string in the matching editor, then paste the field’s exact JSON string including its quotes. This preserves CR, CRLF and LF without browser line-ending normalization. Match a record by its title and identity before editing the current version. Use its Restore control first if the current record is archived; use the New control if it does not exist. Inspect the complete JSON for any additional fields.</p>
     <section className="space-y-2" aria-label="World details in copy">
-      <p>For world details, reopen the matching world detail editor or New world detail.</p>
+      <p>For world details, match the identity below to the identity beside the current record’s Edit or Restore control, then check it again in the editor. Reopen the matching world detail editor or New world detail if that identity is absent.</p>
       {data.worldbuilding.map((record, index) => <CopyFields key={record.id} label={`World detail ${index + 1}`} fields={[
         ["Identity", record.id], ["Status", record.archived ? "Archived" : "Active"], ["Name", record.name],
         ["Category", record.category], ["Description", record.description], ["Notes", record.notes]

@@ -64,6 +64,10 @@ files.
    does not parse it as a calendar date or reorder it automatically.
 4. **Given** one book is open, **when** the author edits or archives a record, **then** the interface
    identifies the current book as its scope and no other book changes.
+5. **Given** active or archived world details with identical visible fields, **when** the author
+   matches a recovery copy to the current list, **then** each Edit, Archive or Restore control is
+   described by its visible stable identity and the matching editor repeats that identity. Recovery
+   is an explicit checked restore/edit; other current records and the original copy remain intact.
 
 ### Story 2 — Add optional notes and beats without replacing the outline (P1)
 

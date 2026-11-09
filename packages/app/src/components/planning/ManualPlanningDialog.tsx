@@ -125,6 +125,7 @@ function ManualFields({ draft, change }: { draft: Draft; change: (draft: Draft) 
   </>;
   if ("archived" in intent) return <>
     <p>{intent.archived ? "Archive this record? Its text, identity and order will be retained. You can restore it from archived records." : "Restore this retained record to the active list. Its text and identity stay the same."}</p>
+    <p className="break-all text-muted-foreground">Identity: <code>{intent.id}</code></p>
     <pre className="whitespace-pre-wrap break-words">{JSON.stringify(draft.record, null, 2)}</pre>
     {intent.archived && <label className="flex items-center gap-2" htmlFor={id}><input id={id} type="checkbox" checked={draft.confirmed}
       onChange={(event) => change({ ...draft, confirmed: event.target.checked })} />Confirm archive · keep all content</label>}

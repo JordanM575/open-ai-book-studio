@@ -86,11 +86,24 @@ export function serializeDocument(data: SidecarDocument, limit = SIDECAR_BYTES):
 export function parseJson(bytes: Uint8Array, limit = SIDECAR_BYTES): unknown {
   try {
     const text = decoder.decode(checkBytes(bytes, limit));
-    // Walk string literals as whole tokens, so numeric-looking authored text is never interpreted.
-    // This is portable to hosts without JSON.parse's newer reviver source-context argument.
-    for (const match of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g)) {
+    // Skip strings with native quote searches rather than a per-character regexp repetition.
+    // Large unknown string fields still get every byte/number check at each trust boundary.
+    // JSON.parse below owns syntax validation, including malformed escapes/unterminated strings.
+    const tokens = /"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+    for (let match = tokens.exec(text); match !== null; match = tokens.exec(text)) {
       const token = match[1];
-      if (token === undefined) continue;
+      if (token === undefined) {
+        let quote = text.indexOf('"', tokens.lastIndex);
+        while (quote !== -1) {
+          let before = quote - 1;
+          while (text.charCodeAt(before) === 92) before--;
+          if ((quote - 1 - before) % 2 === 0) break;
+          quote = text.indexOf('"', quote + 1);
+        }
+        if (quote === -1) break;
+        tokens.lastIndex = quote + 1;
+        continue;
+      }
       const value = Number(token);
       if (!Number.isFinite(value) || Object.is(value, -0) || decimalValue(token) !== decimalValue(String(value))) {
         throw new LibraryError("format", "The sidecar contains a JSON number this version cannot preserve. Nothing was written.");

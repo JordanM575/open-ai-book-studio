@@ -79,7 +79,7 @@ describe("mounted manual planning through real filesystem Library and handler", 
     const raw = input("Complete read-only copy");
     expect(raw.readOnly).toBe(true);
     expect(raw.value).toBe(copy.rawJson);
-    expect(page().getByText(new RegExp(`reopen.*${editor}`))).toBeTruthy();
+    expect(page().getByText(new RegExp(`reopen.*${editor}`, "i"))).toBeTruthy();
     const data = JSON.parse(copy.rawJson) as Planning;
     const intended = required(kind === "timeline" ? data.timeline[0] : kind === "beat" ? data.beats[0]
       : kind === "world" ? data.worldbuilding[0] : data.storyNotes);
@@ -251,6 +251,62 @@ describe("mounted manual planning through real filesystem Library and handler", 
     const recovered = required((await planningValue(f.api.read(f.book.id))).data);
     expect(recovered.timelineOrder).toEqual(required(desired[0])); expect(recovered.beatOrder).toEqual(required(desired[1]));
     expect(recovered.timeline).toEqual(winner.timeline); expect(recovered.beats).toEqual(winner.beats);
+    expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(conflict.preserved.rawJson);
+  });
+
+  test.each(["active", "archived"] as const)("%s identical world details recover by displayed identity through a fresh checked edit", async (state) => {
+    const f = await setup();
+    const save = async (draft: PlanningSaveRequest["draft"]) => {
+      const read = await planningValue(f.api.read(f.book.id));
+      return planningValue(f.api.save({ bookId: read.bookId, source: read.source, baselineJson: read.baselineJson, draft }));
+    };
+    for (let index = 0; index < 4; index++) await save({ kind: "create-worldbuilding",
+      fields: { name: "Twin", category: "Same", description: "Same", notes: `Copied ${index}\r\n"literal" \\ path\rnotes` } });
+    await save({ kind: "create-beat", fields: { title: "Unrelated witness", summary: "Keep", notes: "Keep" } });
+    const base = await planningValue(f.api.read(f.book.id));
+    const original = required(base.data);
+    for (const [index, record] of original.worldbuilding.entries()) {
+      await save({ kind: "edit-worldbuilding", id: record.id, fields: { name: "Twin", category: "Same", description: "Same", notes: "Current winner" } });
+      if (index >= 2) await save({ kind: "archive-worldbuilding", id: record.id, archived: true });
+    }
+    const winner = required((await planningValue(f.api.read(f.book.id))).data);
+    const conflict = await planningValue(f.api.save({ bookId: base.bookId, source: base.source, baselineJson: base.baselineJson,
+      draft: { kind: "set-story-notes", fields: { workingNotes: "Stale request", styleNotes: "", synopsis: "" } } }));
+    if (conflict.status !== "conflict") throw new Error("Expected synthetic stale copy");
+    const name = required(conflict.savedAs.split("/").at(-1));
+    click("Refresh planning"); testing.fireEvent.click(page().getByText("Planning recovery copies"));
+    testing.fireEvent.click(await page().findByRole("button", { name: `Inspect ${name}` }));
+    const copied = await page().findByRole("group", { name: `World detail ${state === "active" ? 2 : 4} · read-only` });
+    const fieldNames = ["Name", "Category", "Description", "Notes"] as const;
+    const copiedId = JSON.parse((testing.within(copied).getByRole("textbox", { name: "Identity · exact JSON string" }) as HTMLTextAreaElement).value) as string;
+    const encoded = fieldNames.map((label) => (testing.within(copied).getByRole("textbox", { name: `${label} · exact JSON string` }) as HTMLTextAreaElement).value);
+    const currentControl = async (action: "Edit" | "Archive" | "Restore") => {
+      const buttons = await page().findAllByRole("button", { name: new RegExp(`^World detail \\d+ · ${action} Twin$`) });
+      for (const button of buttons) expect(button.getAttribute("aria-describedby")).toBeTruthy();
+      return required(buttons.find((button) => document.getElementById(required(button.getAttribute("aria-describedby")))?.querySelector("code")?.textContent === copiedId));
+    };
+    if (state === "archived") {
+      testing.fireEvent.click(await currentControl("Restore")); await ready();
+      expect(page().getByRole("dialog").querySelector("code")?.textContent).toBe(copiedId);
+      click("Save changes"); await saved(); click("Close editor");
+    }
+    expect(await currentControl("Archive")).toBeTruthy();
+    testing.fireEvent.click(await currentControl("Edit")); await ready();
+    expect(page().getByRole("dialog").querySelector("code")?.textContent).toBe(copiedId);
+    expect(input("Notes").value).toBe("Current winner");
+    for (const [index, label] of fieldNames.entries()) {
+      testing.fireEvent.click(page().getByRole("checkbox", { name: `Use exact JSON string · ${label}` }));
+      change(label, required(encoded[index]));
+    }
+    click("Save changes"); await saved(); click("Close editor");
+    const current = required((await planningValue(f.api.read(f.book.id))).data);
+    const recovered = required(current.worldbuilding.find((record) => record.id === copiedId));
+    expect(recovered.archived).toBe(false);
+    for (const [index, key] of ["name", "category", "description", "notes"].entries()) expect(recovered[key]).toBe(JSON.parse(required(encoded[index])));
+    expect(recovered.revision).toBe(required(winner.worldbuilding.find((record) => record.id === copiedId)).revision + (state === "archived" ? 2 : 1));
+    expect(current.worldbuilding.filter((record) => record.id !== copiedId)).toEqual(winner.worldbuilding.filter((record) => record.id !== copiedId));
+    expect(current.beats).toEqual(winner.beats); expect(current.beatOrder).toEqual(winner.beatOrder);
+    expect(current.storyNotes).toBeUndefined();
     expect((await planningValue(f.api.readCopy(f.book.id, name))).rawJson).toBe(conflict.preserved.rawJson);
   });
 

@@ -63,6 +63,7 @@ function definition(recordId: string | undefined): DraftDefinition<Planning, Fie
         draft: recordId ? { kind: "edit-worldbuilding", id: recordId, fields: values } : { kind: "create-worldbuilding", fields: values } };
     },
     render: (draft, change) => <>
+      {recordId && <p className="break-all text-muted-foreground">Identity: <code>{recordId}</code></p>}
       <p>Names and categories allow 200 UTF-16 units; descriptions and notes allow 20,000. The complete saved file must also fit 2,500,000 UTF-8 bytes.</p>
       {fields.map(([key, label, limit]) => <PlanningTextField key={key} label={label} limit={limit} field={draft[key]}
         onChange={(value) => change({ ...draft, [key]: value })} />)}
@@ -70,7 +71,8 @@ function definition(recordId: string | undefined): DraftDefinition<Planning, Fie
     preview: (read) => {
       const record = find(read);
       if (!record) return <p>{recordId ? "This detail is no longer in the saved file." : `${read.data?.worldbuilding.length ?? 0} saved world details. This draft is a new detail.`}</p>;
-      return <dl className="whitespace-pre-wrap break-words">{fields.map(([key, label]) => <div key={key}><dt className="font-medium">{label}</dt><dd>{record[key] || "(empty)"}</dd></div>)}</dl>;
+      return <dl className="whitespace-pre-wrap break-words"><div><dt className="font-medium">Identity</dt><dd className="break-all">{record.id}</dd></div>
+        {fields.map(([key, label]) => <div key={key}><dt className="font-medium">{label}</dt><dd>{record[key] || "(empty)"}</dd></div>)}</dl>;
     }
   };
 }
