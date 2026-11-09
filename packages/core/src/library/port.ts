@@ -77,6 +77,14 @@ export interface LibraryPort {
   /** Create a directory and any missing parents. Existing directories are not an error. */
   ensureDirectory(path: LibraryPath): Promise<void>;
   commitFile(path: LibraryPath, bytes: Uint8Array, expected: FileExpectation): Promise<CommitFileResult>;
+  /**
+   * Create an immutable file with genuine no-replace semantics, or return `changed` with the
+   * current snapshot when it already exists. Implementations must create exclusively (for
+   * example an exclusive-create open) and must not check for absence and then rename over the
+   * destination. Adapters that cannot guarantee this leave the method unimplemented, and
+   * callers that require it refuse rather than degrading to a check-then-rename commit.
+   */
+  createImmutableFile?(path: LibraryPath, bytes: Uint8Array): Promise<CommitFileResult>;
   moveFile(from: LibraryPath, to: LibraryPath): Promise<void>;
   /**
    * Move an entire directory tree. The destination must not exist. Whether readers see

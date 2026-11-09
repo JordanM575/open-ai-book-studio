@@ -2,10 +2,12 @@
 
 **Status:** Accepted by [D-201](../DECISIONS.md#d-201--conditional-campaign-continuation) and
 [ADR 0020](../adr/0020-inline-editorial-review.md#d-201-conditional-campaign-continuation).
-This document specifies the wire and operating contract. Pure in-memory codec leaves now implement
+This document specifies the wire and operating contract. Pure in-memory codec leaves implement
 part of that contract, including pure compatibility dispatch, bounded source validation and
-compatible replan; they do **not** establish a writer, version-dispatching storage reader, host
-execution, adapter capability, group move or archive. Those and independent review remain required.
+compatible replan. A checked storage slice now adds a version-dispatching storage reader,
+intent-first publication and explicit recovery classification over the Library queue (below);
+it does **not** establish host execution, group move/archive, cross-book report resolution or a
+general adapter qualification, and independent review remains required.
 [FORMAT](../FORMAT.md#saved-review-records-schema-1) continues to specify the separate existing
 schema-1 records.
 
@@ -38,9 +40,24 @@ it dispatches on the recorded schema version and `plannerSemantics`, validates e
 current or historical raw source files against the retained identities and bounds before planning,
 replans only through the real planner, and returns `matched-local-plan-only` with that fresh
 provenanced plan or a bounded refusal; a differing but compatible semantics label is never served
-unchanged, and hash agreement alone never registers a plan. A version-dispatching storage reader,
-publication and recovery writer, report resolver and host integration remain separate work. These
-leaves have focused synthetic tests, not independent acceptance or a self-contained archive.
+unchanged, and hash agreement alone never registers a plan.
+
+`packages/core/src/review/campaign-continuation-store.ts` (`LibraryService.campaignContinuations`)
+adds the checked storage slice of §7.1–§7.2 for one campaign: owner-explicit bounded reads that
+load a retained continuation only through the codec wire readers and the replan dispatch
+(current semantics served only through a locally provenanced plan, compatible labels returned
+as `replan-required`, everything else refused), intent-first publication of the exact candidate
+bytes (immutable intent, then immutable segments in manifest order, then the checked manifest
+last, with fresh readback of every reference by length, raw hash and semantic ID before
+`published` is reported), and explicit per-intent recovery classification (`already-published`
+as a byte observation, `prepared`, `incomplete-draft`, `conflict` or `uncertain`, with missing
+and divergent segments named). Segment and intent files are created only through a genuine
+no-replace creation seam (`LibraryPort.createImmutableFile`, implemented by the desktop
+filesystem adapter with exclusive creation); an adapter without that seam refuses publication
+before any write instead of using a check-then-rename commit, and the checked manifest commit
+still does not claim cross-writer atomic CAS. Report resolution, group move/archive, host
+integration and independent review remain separate work. These leaves and the storage slice
+have focused synthetic tests, not independent acceptance or a self-contained archive.
 
 ## 1. Encoding and operation limits
 

@@ -97,6 +97,7 @@ import { ChapterHistoryRestore, type HistoryChapterWrite, type HistoryMutationRe
 import { PlanningService } from "../planning/service";
 import { PlanningRecovery } from "./planning-recovery";
 import { ReviewRecordStore } from "../review/record-store";
+import { CampaignContinuationStore } from "../review/campaign-continuation-store";
 import { WorkflowRecordStore } from "../workflow/record-store";
 import { GoalService, type GoalHost } from "../organization/goals";
 import {
@@ -151,6 +152,8 @@ export class LibraryService {
   readonly reviewRecords: ReviewRecordStore;
   /** Checked workflow records (037 T023). Leaf APIs only; no scheduler/execution/publication here. */
   readonly workflowRecords: WorkflowRecordStore;
+  /** Checked campaign continuation storage (039 T014/T015). Leaf APIs only; no host execution here. */
+  readonly campaignContinuations: CampaignContinuationStore;
 
   private constructor(
     private readonly env: LibraryEnvironment,
@@ -183,6 +186,15 @@ export class LibraryService {
       storage: env.storage,
       runtime: env.runtime,
       deviceId: device.id
+    });
+    this.campaignContinuations = new CampaignContinuationStore({
+      ...this.writeHost,
+      storage: env.storage,
+      runtime: env.runtime,
+      deviceId: device.id,
+      ...(typeof env.storage.createImmutableFile === "function"
+        ? { createImmutableFile: (path: LibraryPath, bytes: Uint8Array) => this.createImmutableBytes(path, bytes) }
+        : {})
     });
   }
 
@@ -1306,6 +1318,35 @@ export class LibraryService {
       return { folder, title: null, reason: "syncing" };
     }
     return { folder, title: null, reason: "unreadable" };
+  }
+
+  /** Journal-aware genuine no-replace creation, for immutable continuation intents/segments. */
+  private async createImmutableBytes(path: LibraryPath, bytes: Uint8Array): Promise<CommitFileResult> {
+    const create = this.env.storage.createImmutableFile;
+    if (!create) {
+      throw new LibraryPortError("unsupported", "This storage cannot create immutable files without replacing an existing file.");
+    }
+    const intendedHash = await this.env.runtime.sha256(bytes);
+    const planned = await notePlannedWrite({
+      storage: this.env.storage,
+      deviceId: this.device.id,
+      paths: [libraryPathToArchivePath(path)],
+      sha256: intendedHash,
+      now: this.env.runtime.now()
+    });
+    let publication: PlannedWriteOutcome = "possible";
+    try {
+      const result = await create.call(this.env.storage, path, bytes);
+      if (result.status === "changed" && result.publication !== "uncertain") publication = "not-published";
+      if (result.status === "written" && result.snapshot.sha256 === intendedHash &&
+          result.snapshot.bytes.byteLength === bytes.byteLength &&
+          result.snapshot.bytes.every((byte, index) => byte === bytes[index])) {
+        publication = { kind: "verified", size: bytes.byteLength, now: this.env.runtime.now() };
+      }
+      return result;
+    } finally {
+      await planned.settle(publication);
+    }
   }
 
   private async commitText(

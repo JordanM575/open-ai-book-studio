@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, watch as watchFiles, type Stats } from "node:fs";
-import { lstat, mkdir, readdir, readFile, rename, rm, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, readFile, rename, rm, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, sep } from "node:path";
 import { LibraryPortError } from "@ai-book-studio/core/library/errors";
@@ -151,6 +151,51 @@ export class FileSystemLibraryPort implements LibraryPort {
       throw toPortError(error);
     }
 
+    const snapshot = await this.readFile(path);
+    if (!snapshot) {
+      throw new LibraryPortError("io", "The file was written but could not be read back.", true);
+    }
+    return { status: "written", snapshot };
+  }
+
+  /**
+   * Genuine no-replace creation for immutable files: the destination is opened with
+   * exclusive creation (`wx`), written and synced in place, never created by checking
+   * for absence and then renaming over it. An existing destination is reported as
+   * `changed` with its current snapshot and is never overwritten.
+   */
+  async createImmutableFile(path: LibraryPath, bytes: Uint8Array): Promise<CommitFileResult> {
+    const absolute = await this.checkedAbsolute(path);
+    await mkdir(dirname(absolute), { recursive: true });
+    let handle: Awaited<ReturnType<typeof open>>;
+    try {
+      handle = await open(absolute, "wx", 0o600);
+    } catch (error) {
+      if (errorCode(error) === "EEXIST") {
+        return { status: "changed", current: await this.readFile(path) };
+      }
+      throw toPortError(error);
+    }
+    let closed = false;
+    try {
+      await handle.writeFile(bytes);
+      await handle.chmod(0o644 & ~process.umask() & 0o777);
+      await handle.sync();
+      await handle.close();
+      closed = true;
+    } catch (error) {
+      if (!closed) await handle.close().catch(() => {});
+      // This call created the file exclusively, so a partial write is its own to remove;
+      // a process crash between creation and this cleanup leaves the partial file for
+      // recovery inspection instead of a silent overwrite on retry.
+      await unlink(absolute).catch(() => {});
+      throw toPortError(error);
+    }
+    noteOwnFile(absolute, createHash("sha256").update(bytes).digest("hex"));
+    try {
+      const dirHandle = await open(dirname(absolute), "r");
+      try { await dirHandle.sync(); } finally { await dirHandle.close(); }
+    } catch { /* The file is already published; directory sync is best effort. */ }
     const snapshot = await this.readFile(path);
     if (!snapshot) {
       throw new LibraryPortError("io", "The file was written but could not be read back.", true);
