@@ -130,10 +130,14 @@ describe("ReviewReportDialog", () => {
     expect(meta).toContain("Fixture book");
     expect(meta).toContain("2 chapters");
     expect(meta).toContain("4 words");
+    expect(meta).toContain("unverified studio count");
 
     const coverage = testing.within(document.body).getByTestId("review-coverage").textContent ?? "";
     expect(coverage).toContain("Empty chapter");
     expect(coverage).toContain("Punctuation stays");
+    expect(coverage).toContain("Unverified coverage");
+    expect(coverage).toContain("Empty · unverified");
+    expect(coverage).toContain("4 words · unverified");
 
     const definitions = testing.within(document.body).getByTestId("review-definitions").textContent ?? "";
     expect(definitions).toContain("Studio word count");
@@ -181,7 +185,8 @@ describe("ReviewReportDialog", () => {
       "Not enough saved text to review"
     );
     const emptyFindings = testing.within(document.body).getByTestId("review-findings").textContent ?? "";
-    expect(emptyFindings).toContain("Not enough saved text for phrase findings");
+    expect(emptyFindings).toContain("Unverified result");
+    expect(emptyFindings).toContain("worker reported insufficient saved text for phrase findings");
     expect(emptyFindings).not.toContain("reported no repeated");
   });
 
@@ -595,6 +600,136 @@ function changeLaterOccurrence(
 }
 
 describe("workspace review entry to report", () => {
+  test.each([false, true])("false-empty worker metadata stays explicitly unverified (partial=%s)", async (partial) => {
+    const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
+    const detail: BookDetail = {
+      ...integrationDetail(INTEGRATION_BOOK, "Metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+      chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+    };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) => {
+        expect(analysis.status).toBe(partial ? "partial" : "complete");
+        expect(analysis.wordCounts.totalWordCount).toBe(10);
+        expect(analysis.findings).toHaveLength(3);
+        return {
+          ...analysis, status: "insufficient-evidence", findings: [],
+          coverage: { ...analysis.coverage, included: 0, empty: analysis.coverage.empty + analysis.coverage.included,
+            chapters: analysis.coverage.chapters.map((entry) => entry.status === "included"
+              ? { ...entry, status: "empty" as const, wordCount: 0 as const } : entry) },
+          wordCounts: { totalWordCount: 0, chapters: analysis.wordCounts.chapters.map((entry) => entry.status === "included"
+            ? { ...entry, status: "empty" as const, wordCount: 0 as const } : entry) }
+        };
+      }, "worker reported insufficient saved text");
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("Unverified result");
+      expect(status).toContain("according to the local review worker");
+      expect(status).toContain("has not been checked against saved text");
+      expect(status).not.toContain("None of the chapters in scope contain readable saved prose");
+      expect(status.includes("Skipped chapters were not scanned; their contents are unknown")).toBe(partial);
+      const findings = queries.getByTestId("review-findings").textContent ?? "";
+      expect(findings).toContain("Unverified result");
+      expect(findings).toContain("does not confirm that the saved chapters contain no readable prose");
+      expect(findings).not.toContain("reported no repeated");
+      expect(queries.getByTestId("review-run-meta").textContent).toContain("0 words (unverified studio count)");
+      expect(queries.getByTestId("review-coverage").textContent).toContain("Unverified coverage");
+      expect(queries.getByTestId("review-coverage-row-0").textContent).toContain("Empty · unverified");
+      if (partial) {
+        expect(queries.getByTestId("review-coverage-row-1").textContent).toContain("0002-unreadable-fixture.md");
+        expect(queries.getByTestId("review-coverage-row-1").textContent).toContain("Skipped · The studio could not read this chapter file. · unverified coverage");
+      }
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(body);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("inaccurate nonzero worker counts remain qualified beside real findings (partial=%s)", async (partial) => {
+    const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
+    const detail: BookDetail = {
+      ...integrationDetail(INTEGRATION_BOOK, "Metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+      chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+    };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      const { queries } = await startControlledReport(fixture, control, (analysis) => {
+        expect(analysis.wordCounts.totalWordCount).toBe(10);
+        expect(analysis.findings).toHaveLength(3);
+        return { ...analysis,
+          coverage: { ...analysis.coverage, chapters: analysis.coverage.chapters.map((entry) => entry.status === "included"
+            ? { ...entry, wordCount: 999 } : entry) },
+          wordCounts: { totalWordCount: 999, chapters: analysis.wordCounts.chapters.map((entry) => entry.status === "included"
+            ? { ...entry, wordCount: 999 } : entry) }
+        };
+      }, "café l'été pine");
+      expect(queries.getByTestId("review-run-meta").textContent).toContain("999 words (unverified studio count)");
+      expect(queries.getByTestId("review-coverage").textContent).toContain("Unverified coverage");
+      expect(queries.getByTestId("review-coverage-row-0").textContent).toContain("999 words · unverified");
+      expect(queries.getByTestId("review-findings").textContent).toContain("Unverified totals");
+      expect(queries.getAllByTestId("review-finding")).toHaveLength(3);
+      expect(queries.queryByTestId("review-status")?.textContent?.includes("Unverified coverage") ?? false).toBe(partial);
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      expect(editor.value).toBe(body);
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([
+    { body: "one two three", words: 3, result: "zero" },
+    { body: " \n\t", words: 0, result: "insufficient" },
+    { body: "salt and stone salt and stone", words: 6, result: "nonempty" }
+  ].flatMap((item) => [false, true].map((partial) => ({ ...item, partial }))))(
+    "genuine $result results retain their distinct explanation (partial=$partial)", async ({ body, words, result, partial }) => {
+      const detail: BookDetail = {
+        ...integrationDetail(INTEGRATION_BOOK, "Genuine metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+        chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+      };
+      const fixture = workerWorkspaceFixture(detail);
+      const control = controlledReviewWorkers();
+      try {
+        const { queries } = await startControlledReport(fixture, control, (analysis) => {
+          expect(analysis.wordCounts.totalWordCount).toBe(words);
+          expect(analysis.status).toBe(result === "insufficient" ? "insufficient-evidence" : partial ? "partial" : "complete");
+          expect(analysis.findings.length > 0).toBe(result === "nonempty");
+          return analysis;
+        }, result === "nonempty" ? "salt and stone" : "Unverified result");
+        expect(queries.getByTestId("review-run-meta").textContent).toContain(`${words} words (unverified studio count)`);
+        expect(queries.getByTestId("review-coverage").textContent).toContain("Unverified coverage");
+        const findings = queries.getByTestId("review-findings").textContent ?? "";
+        const status = queries.queryByTestId("review-status")?.textContent ?? "";
+        if (result === "insufficient") {
+          expect(status).toContain("Not enough saved text to review, according to the local review worker");
+          expect(status).toContain("Unverified result");
+          expect(status.includes("their contents are unknown")).toBe(partial);
+          expect(findings).toContain("worker reported insufficient saved text");
+          expect(findings).not.toContain("reported no repeated");
+          expect(queries.getByTestId("review-coverage-row-0").textContent).toContain("Empty · unverified");
+        } else {
+          expect(status.includes("Partial report · Unverified coverage")).toBe(partial);
+          expect(findings).toContain(result === "nonempty" ? "Unverified totals" : "worker reported no repeated three-token sequences");
+          if (result === "zero") expect(findings).toContain("This does not confirm that none exist");
+        }
+        expect(queries.getByTestId("review-coverage").textContent).toContain(`${partial ? 1 : 0} skipped`);
+        if (partial) expect(queries.getByTestId("review-coverage-row-1").textContent).toContain("Skipped · The studio could not read this chapter file.");
+        const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+        expect(editor.value).toBe(body);
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe("");
+        expect(control.checks).toHaveLength(0);
+        expect(fixture.forbidden).not.toHaveBeenCalled();
+        expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      } finally { testing.cleanup(); control.restore(); }
+    }
+  );
+
   test.each([false, true])("an omitted worker result discloses unverified zero findings (partial=%s)", async (partial) => {
     const detail: BookDetail = { ...firstDetail, chapterReadIssues: partial
       ? [{ fileName: "0003-unreadable-fixture.md", order: 3, reason: "unreadable" }] : [] };

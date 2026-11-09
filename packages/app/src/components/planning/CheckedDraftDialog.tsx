@@ -14,6 +14,7 @@ interface RequestBase {
 export interface DraftDefinition<T, Draft, Request> {
   title: string;
   fromRead: (read: SidecarRead<T>) => Draft;
+  fromSaved?: (read: SidecarRead<T>, submitted: Draft, baseline: SidecarRead<T>) => Draft;
   validate: (draft: Draft, read: SidecarRead<T>) => string | null;
   request: (draft: Draft, read: SidecarRead<T>) => Request;
   render: (draft: Draft, change: (draft: Draft) => void) => ReactNode;
@@ -52,11 +53,12 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
   const form = useRef<HTMLFormElement>(null);
   const dirty = draft !== null && JSON.stringify(draft) !== original;
 
-  const acceptRead = useCallback((read: SidecarRead<T>) => {
+  const acceptRead = useCallback((read: SidecarRead<T>, submitted?: { draft: Draft; baseline: SidecarRead<T> }) => {
     if (read.bookId !== session.bookId) throw new Error("The saved data belongs to another book.");
     // Isolate from callback-owned mutable objects while retaining the exact original raw string.
     const retained = structuredClone(read);
-    const next = session.definition.fromRead(retained);
+    const next = submitted && session.definition.fromSaved
+      ? session.definition.fromSaved(retained, submitted.draft, submitted.baseline) : session.definition.fromRead(retained);
     setBaseline(retained);
     setDraft(next);
     setOriginal(JSON.stringify(next));
@@ -199,7 +201,7 @@ export function CheckedDraftDialog<T, Draft, Request extends RequestBase>(props:
         setFailure(true);
         setMessage(`The saved source changed. Your submitted draft was kept in conflict copy ${result.savedAs}. Your current draft is still here. Review saved data, then explicitly reload or keep editing.`);
       } else {
-        acceptRead(result.current);
+        acceptRead(result.current, { draft, baseline });
         setMessage(result.status === "unchanged" ? "Already current · no file was written." : "Saved.");
         setRevision((value) => value + 1);
       }

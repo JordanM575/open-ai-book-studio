@@ -39,6 +39,7 @@
     "tests/editor-mount.test.tsx",
     "tests/inline-editor-native-fixture.tsx",
     "tests/planning-dialogs.test.tsx",
+    "tests/manual-planning.test.tsx",
     "tests/manuscript-editor.test.ts",
     "tests/review-gate.test.tsx",
     "tests/review-report.test.tsx",

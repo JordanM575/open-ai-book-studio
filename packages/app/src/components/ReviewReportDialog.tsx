@@ -40,9 +40,9 @@ interface Props {
 }
 
 function coverageRowLabel(entry: ReviewCoverageEntry): string {
-  if (entry.status === "included") return formatWords(entry.wordCount);
-  if (entry.status === "empty") return "Empty";
-  return entry.reason;
+  if (entry.status === "included") return `${formatWords(entry.wordCount)} · unverified`;
+  if (entry.status === "empty") return "Empty · unverified";
+  return `Skipped · ${entry.reason} · unverified coverage`;
 }
 
 function coverageRowTitle(entry: ReviewCoverageEntry): string {
@@ -69,17 +69,22 @@ function StatusCopy({ view }: { view: Extract<ReviewRunView, { kind: "report" }>
   if (report.status === "insufficient-evidence") {
     return (
       <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
-        Not enough saved text to review. None of the chapters in scope contain readable saved prose. Add
-        text, save, then run the review again.
+        Unverified result · Not enough saved text to review, according to the local review worker.
+        This classification of the readable chapters has not been checked against saved text. Check
+        the saved chapters, then run again. If they need more text, add it and save first.
+        {report.coverage.skipped > 0 ? (
+          <> Worker-reported skipped coverage: {report.coverage.skipped} of {report.coverage.inScope}{" "}
+            {pluralize(report.coverage.inScope, "chapter")}. Skipped chapters were not scanned; their contents are unknown.</>
+        ) : null}
       </p>
     );
   }
   if (report.status === "partial") {
     return (
       <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
-        Partial report. {report.coverage.skipped} of {report.coverage.inScope}{" "}
-        {pluralize(report.coverage.inScope, "chapter")} could not be read, so that text is not included in
-        the counts below.
+        Partial report · Unverified coverage. The local review worker reports {report.coverage.skipped}{" "}
+        of {report.coverage.inScope} {pluralize(report.coverage.inScope, "chapter")} skipped, so that text
+        is not included in the counts below.
       </p>
     );
   }
@@ -191,8 +196,8 @@ function ReportBody({
   return (
     <>
       <p data-testid="review-run-meta" className="text-(length:--text-caption-size) text-muted-foreground">
-        {bookTitle} · Reviewed {report.coverage.inScope} {pluralize(report.coverage.inScope, "chapter")} ·{" "}
-        {formatWords(report.wordCounts.totalWordCount)} · {new Date(report.completedAt).toLocaleString()}
+        {bookTitle} · {report.coverage.inScope} {pluralize(report.coverage.inScope, "chapter")} in scope ·{" "}
+        {formatWords(report.wordCounts.totalWordCount)} (unverified studio count) · {new Date(report.completedAt).toLocaleString()}
       </p>
 
       {stale ? (
@@ -236,6 +241,10 @@ function ReportBody({
       <section aria-label="Coverage" className="mt-4" data-testid="review-coverage">
         <h3 className="text-(length:--text-callout-size) font-semibold">Coverage</h3>
         <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
+          Unverified coverage · The local review worker reports the counts and classifications below.
+          These have not been checked against saved text. Opening a passage checks only that occurrence.
+        </p>
+        <p className="mt-2 text-(length:--text-subheadline-size) text-muted-foreground">
           {report.coverage.included} with text · {report.coverage.empty} empty · {report.coverage.skipped} skipped · {report.coverage.inScope} in scope
         </p>
         <ul className="mt-2 space-y-1.5">
@@ -246,7 +255,7 @@ function ReportBody({
               className="flex items-baseline justify-between gap-3 text-(length:--text-subheadline-size)"
             >
               <span className="min-w-0 truncate">{coverageRowTitle(entry)}</span>
-              <span className="shrink-0 text-muted-foreground">{coverageRowLabel(entry)}</span>
+              <span className="min-w-0 break-words text-right text-muted-foreground">{coverageRowLabel(entry)}</span>
             </li>
           ))}
         </ul>
@@ -269,7 +278,7 @@ function ReportBody({
         {report.findings.length === 0 ? (
           <p className="mt-2 text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
             {report.status === "insufficient-evidence"
-              ? "Not enough saved text for phrase findings."
+              ? "Unverified result · The local review worker reported insufficient saved text for phrase findings. This does not confirm that the saved chapters contain no readable prose."
               : report.status === "partial"
                 ? "Unverified result · The local review worker reported no repeated three-token sequences in the analyzed chapters. This does not confirm that none exist. Skipped chapters were not scanned."
                 : "Unverified result · The local review worker reported no repeated three-token sequences in the saved chapters. This does not confirm that none exist."}

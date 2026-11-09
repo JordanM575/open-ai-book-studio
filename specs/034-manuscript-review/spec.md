@@ -90,7 +90,11 @@ it does not change the existing count contract or manuscript format.
   with no phrase matches from partial coverage and from insufficient evidence. When worker findings
   are checked only as passages are opened, zero findings MUST also be labeled as an unverified
   worker result, not confirmation that no repetitions exist. Saved-source freshness alone does not
-  verify aggregate completeness; skipped chapters and insufficient text keep their own explanations.
+  verify aggregate completeness. Worker-derived studio word counts, coverage classifications and
+  insufficient-text conclusions MUST also be attributed and labeled unverified until checked against
+  saved text. This includes nonzero counts and empty classifications, not just zero findings.
+  Skipped chapters and insufficient text keep their own explanations; the report MUST NOT imply that
+  skipped chapters are empty. Opening one verified passage does not verify the remaining metadata.
 - **FR-007 — Exact evidence navigation.** Every phrase finding MUST be tied to its chapter identity,
   source version/hash and exact span in the saved body, and MUST show its chapter title/order and a
   short excerpt. Selecting a finding MUST open that chapter and highlight the exact span if the

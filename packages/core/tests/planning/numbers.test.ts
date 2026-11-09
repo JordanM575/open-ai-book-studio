@@ -4,6 +4,34 @@ import { libraryPathFromArchivePath } from "../../src/library/path";
 import { envelope, fixture } from "./fixture";
 
 describe("lossless sidecar JSON number admission", () => {
+  test("escaped quotes and backslash runs keep numeric-looking strings separate from number tokens", () => {
+    const dangerous = ["9007199254740993", "1e-400", "1e400", "1.0000000000000001", "-0"];
+    for (const length of [...Array.from({ length: 13 }, (_, index) => index), 15, 16, 127]) {
+      for (const suffix of ["", '"', '\\"', "\r\n\t\0", "\u0301😀\ud800"]) {
+        const text = `${"\\".repeat(length)}${suffix} ${dangerous.join(" ")} ${"\\".repeat(length)}`;
+        const encoded = JSON.stringify(text);
+        const valid = `{${encoded}:[${encoded},1.00,0.1,1e21,6.022e-5],"tail":${encoded}}`;
+        expect(parseJson(encoder.encode(valid))).toEqual(JSON.parse(valid));
+        for (const token of dangerous) {
+          expect(() => parseJson(encoder.encode(`[${encoded},${token},${encoded}]`))).toThrow("cannot preserve");
+          expect(() => parseJson(encoder.encode(`[${token},${encoded}]`))).toThrow("cannot preserve");
+          expect(() => parseJson(encoder.encode(`{${encoded}:${token}}`))).toThrow("cannot preserve");
+        }
+      }
+    }
+  });
+
+  test("malformed strings and escapes remain invalid JSON", () => {
+    // A backslash-escaped opening quote followed by zero is valid string text, not a number.
+    expect(parseJson(encoder.encode('"\\"0"'))).toBe('"0');
+    for (const raw of ['"unterminated', '"trailing\\', '{"text":"bad\\q"}', '{"text":"bad\\u12zz"}',
+      '{"text":"raw\nnewline"}', '{"text":"raw\0null"}', '{"text":"closed" "extra"}', '{"text":"\\"}',
+      '["\\\\",]', '["first" "second"]', '{"key":1,}', '["escaped\\"', '"a" trailing']) {
+      expect(() => JSON.parse(raw)).toThrow();
+      expect(() => parseJson(encoder.encode(raw))).toThrow("not valid UTF-8 JSON");
+    }
+  });
+
   for (const kind of ["planning", "goals"] as const) {
     for (const token of ["9007199254740993", "1e-400", "1e400", "1.0000000000000001", "0.10000000000000001", "-0", "-0.00e99"]) {
       test(`${kind} refuses ${token} in active data and a stale recovery baseline without writes`, async () => {
@@ -63,4 +91,17 @@ describe("lossless sidecar JSON number admission", () => {
     }
     expect(parseJson(encoder.encode('{"number":1.000,"text":"1.0000000000000001"}'))).toEqual({ number: 1, text: "1.0000000000000001" });
   });
+
+  test("large string values preserve syntax boundaries and retain numeric checks on both sides", () => {
+    for (const text of ["x".repeat(2_499_000), '\\"9007199254740993 '.repeat(60_000)]) {
+      const encoded = JSON.stringify(text);
+      const raw = `[1.00,${encoded},1e-7]`;
+      expect(encoder.encode(raw).length).toBeLessThan(2_500_000);
+      expect(parseJson(encoder.encode(raw))).toEqual([1, text, 1e-7]);
+      expect(() => parseJson(encoder.encode(`[${encoded},9007199254740993]`))).toThrow("cannot preserve");
+      expect(() => parseJson(encoder.encode(`[9007199254740993,${encoded}]`))).toThrow("cannot preserve");
+      expect(() => parseJson(encoder.encode(`[${encoded.slice(0, -1)}]`))).toThrow("not valid UTF-8 JSON");
+    }
+  });
+
 });

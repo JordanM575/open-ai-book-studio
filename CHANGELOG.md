@@ -8,6 +8,13 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Review metadata disclosure
+
+- Attribute worker-derived coverage, studio word counts and insufficient-text conclusions as
+  unverified. Keep skipped chapters explicit and distinguish insufficient text from zero findings.
+  Preserve cancellable off-thread selected-passage verification and read-only reports.
+- Integrate the accepted manual planning records and retain both feature histories.
+
 ### Empty review result disclosure
 
 - Qualify a worker's zero-finding result as unverified for both complete and partial repetition
@@ -43,6 +50,52 @@ Update the `Unreleased` section before every commit.
 - Bind malformed-page failures to the report lifetime independently of individual navigation reads,
   so current failures cancel pending navigation without affecting a replacement run. Synthetic
   regressions cover these boundaries; independent review and native/host acceptance remain open.
+
+### Manual planning records
+
+- Show stable world identities beside active Edit/Archive and archived Restore controls and in the
+  matching editor, with accessible control descriptions. Recover duplicate names by copied identity
+  through explicit checked restore/edit while retaining other records and the original copy.
+- Avoid per-character regular-expression repetition when checking numbers around long JSON strings.
+  Retain exact numeric admission, syntax/byte limits and every checked-save boundary; keep the
+  existing near-limit save waits and add escaped-string/numeric-boundary controls.
+- Add validated exact-JSON-string editing and recovery representations for literal CR/CRLF/LF,
+  control characters and escapes. Retain incomplete encoded drafts behind the existing navigation
+  guard, measure decoded field limits, and expose the full verified copy without textarea line-ending
+  loss. Show stable identities within both order editors and describe them on move controls so
+  duplicate and archived records can be matched to inspected copies before a fresh checked save.
+- Extend verified recovery-copy inspection with decoded, labelled read-only timeline, beat, order
+  and story-notes values alongside world details and goals. Explain the correct fresh editor for
+  each kind and retain archived identities, literal text and the complete JSON. Test actual manual
+  recovery from displayed fields without replacing a newer saved document or changing the copy.
+- Bind every transported save to a fresh client request and independently issued host publication
+  identity. Derive created record IDs from that publication, verify the same binding in complete
+  recovery bytes, and keep handler validation snapshots separate from service submissions. Reject
+  identical stale-create receipt replay, including an old receipt returned after a later real write.
+- Prefix planning control names with kind, retained position and action before authored titles, and
+  prefix reorder names with direction and position. Action-like titles and literal generated labels
+  remain distinct while preserving visible text in the accessible name. Add pending-service,
+  four-kind replay and mounted collision regressions; native accessibility acceptance remains open.
+- Bind conflict receipts to the exact typed intent and complete byte-verified recovery document,
+  recheck the named copy in the handler, and reject replayed replies for another draft. Require
+  changed-save replies to match the writer's exact serialization while retaining valid compact
+  reads/no-ops and unknown own data; refuse sparse/non-JSON response arrays.
+- Surface deterministic output-budget/validation refusal only before any publication attempt, so
+  authors can shorten a retained draft and explicitly save again. Keep genuinely uncertain active
+  and recovery outcomes paused with no retry. Disambiguate duplicate planning edit/archive/restore
+  labels and keep move-control position names accurate after reorder. Add real Library/API and
+  mounted regressions; native accessibility and fresh independent acceptance remain separate gates.
+- Extend the existing checked planning save/API with timeline events, optional story notes, outline
+  beats, explicit author ordering and reversible worldbuilding/event/beat archive controls. Mount
+  these in the planning panel with literal fields, archive confirmation and the existing exact-draft
+  recovery/navigation guard. Confirmed creation keeps subsequent edits on the same host-assigned ID.
+- Verify full save-response correspondence and preserve unknown own `__proto__` data across reads
+  and edits. Clear notes keeps the singleton identity and unknown fields; empty optional notes and
+  current no-ops write nothing. Synthetic Library/handler and mounted filesystem journeys cover
+  ordering, retained limits, recovery, archive/restore and untouched Bible/chapter bytes.
+- Reconcile the complete typed-intent inventory in FORMAT and narrow existing worldbuilding test
+  assertions across the expanded save union. Independent review and integrated visual/host checks
+  remain acceptance gates.
 
 ### Saved-review receipt and draft recovery corrections
 

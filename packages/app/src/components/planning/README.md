@@ -1,12 +1,21 @@
 # Planning UI leaves
 
-These components implement the bounded worldbuilding/goal portion of ADR 0017 / specs 030 and 033.
+These components implement manual planning and the bounded goal portion of ADR 0017 / specs 030 and 033.
 `PlanningPanel` mounts them in the shared workspace, using the existing Library's checked services
 through `library/planning-api.ts`. They add no provider call or automatic save.
 
 - `WorldbuildingDialog`: `recordId` omitted creates a world detail; supplied edits the exact saved
   record. Fields stay literal. The host assigns IDs, validates full serialized size, and owns all
   file/record revision and conflict-copy rules.
+- `ManualPlanningDialog`: timeline create/edit (including literal `when` labels), beat create/edit,
+  optional story-notes set/edit/clear, explicit timeline/beat order, and reversible archive/restore
+  for all three list kinds. These controls are mounted in `PlanningPanel`. Order includes archived
+  records and never changes chapter order. Archive requires a native confirmation checkbox followed
+  by Save changes. Clear notes blanks only the three known text fields, retaining the singleton's
+  identity and unknown data; clearing absent notes is a no-write operation.
+- Checked creation results bind the open editor to the newly assigned identity. Continuing to edit
+  after creation edits that record rather than creating a duplicate. Only a checked result can make
+  that transition; Reload after an uncertain creation never guesses an identity or replays the draft.
 - `GoalDialog`: an optional positive safe-integer total-book goal. Clear only changes the local
   draft; Save changes submits null. It includes `SavedGoalProgress`.
 - `SavedGoalProgress`: accepts only an injected `GoalProgress` reader, never BookSummary, cached
@@ -64,12 +73,15 @@ the editor. A blocked navigation is not queued: after closing, retry that action
 have no `planning` capability and cannot open a draft.
 
 Recovery is manual and checked: inspect the complete verified read-only copy, reopen the current
-goal/world editor and enter the chosen fields before Save changes. Copy metadata is never an active
-baseline. Copies remain in ordinary files even if inspection fails. The current bounded UI exposes
-neither whole-document replacement nor record archive/restore. These journeys do not deliver full
+goal/planning editor and enter the chosen fields before Save changes. Copy metadata is never an active
+baseline. Copies remain in ordinary files even if inspection fails. There is no whole-document
+replacement. These journeys do not deliver full
 specs 030/033; fresh independent review and parent integrated gates remain required.
 
-Focused synthetic tests: `apps/desktop/tests/planning-dialogs.test.tsx` (including the actual mounted
+Focused synthetic tests: `apps/desktop/tests/manual-planning.test.tsx` (mounted planning controls,
+real filesystem Library/handler, ordering, archive/restore and draft/lifetime guards),
+`packages/core/tests/planning/manual-planning.test.ts` (all intents and exact response validation),
+`apps/desktop/tests/planning-dialogs.test.tsx` (including the actual mounted
 Workspace/registered IPC/filesystem), `planning-storage.test.ts`, core planning integration and browser
 adapter planning tests. Design uses the existing
 shared Dialog/Button, native labelled controls, token surfaces and 44px minimum local controls.
