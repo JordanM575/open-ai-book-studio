@@ -7,6 +7,28 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Markdown folder capture, verification and desktop publication (T014-Q)
+
+- Add the main-process Markdown folder host service in `apps/desktop/src/main/markdown-folder.ts`
+  (T014-Q, desktop folder target only; no IPC channel and no UI, which remain T014-U): capture of
+  the frozen saved-source bundle through the open library's port following the host contract
+  section 2 enumeration and closing-observation protocol (complete candidate set with refusal,
+  manifest read / known-empty / unreadable classification, whole-capture discard on disagreement,
+  consent binding to the digest tuple with invalidation on any new capture, and the disclosed
+  change-and-change-back limit carried in consent wording), section 3.2 verification of every
+  selected image against the single manifest snapshot (membership, identity, location, length,
+  SHA-256, detected header format against `mimeType` and `fileName` extension independently, MIME,
+  positive dimensions) producing bounded omissions while text still exports, bundle construction
+  only through the planner trusted-construction seam, planning under `Q0 production policy v1`,
+  and genuine no-replace publication to a new desktop folder through owned sibling staging with
+  an exclusive destination commit, protected source identities, owned cleanup reporting, and
+  failure handling that preserves prior output and source bytes. Replacing an existing folder
+  stays named successor work and is refused, not implemented. Synthetic-fixture tests in
+  `apps/desktop/tests/markdown-folder-capture.test.ts` cover the section 6 proof list for the
+  desktop target, including a destination created during staging preventing publication.
+- This slice qualifies no target and exposes no journey: T014-Q and every other 035 task remain
+  unchecked pending their own gates and independent review.
+
 ### Markdown folder host protocol contract (T014-Q0)
 
 - Specify the T014-Q0 host protocol and production policy in
