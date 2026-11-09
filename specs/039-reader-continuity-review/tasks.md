@@ -110,6 +110,18 @@ task is completed. T010 retains the independent correction gate. The policy amen
     absence of any invented measure; the hidden smoke run covers the mounted panel and its
     no-coordinator state. No coordinator execution or task box is completed by this slice;
     T018 stays unchecked.
+  - Partial evidence (cadence host supply, desktop host only): the desktop host now counts
+    cadence progress from checked Library state and supplies it through the
+    `continuation:checkin` channel via the same injected coordinator-identity seam. Saved
+    words use only the canonical `countWords` over chapter bodies loaded through the existing
+    `Library.readBook` reader; chapters present in that read fill the authoring contract's
+    fixed adopted-chapter field (existence, not a recorded coordinator adoption event).
+    Supply is scoped to the pre-checkpoint window; a checkpoint record or an unreadable
+    chapter withholds cadence while counted inputs still succeed, distinguishable from an
+    evaluated `due: false`. The renderer may only choose the versioned policy (Zod-validated
+    before Library access); renderer-supplied progress refuses as `invalid`, and the
+    production no-coordinator `unsupported` refusal is unchanged. No UI change, no
+    coordinator session is fabricated, and T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
   - Partial evidence (seam 6d, measurement only): `apps/desktop/tests/continuation-checkin-measurement.test.tsx`

@@ -7,6 +7,33 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign continuation check-in cadence host supply (039 T018 partial)
+
+- Supply caller-counted cadence inputs from the desktop host through the
+  `continuation:checkin` channel. The host reader
+  (`apps/desktop/src/main/continuation-checkin.ts`) counts saved words only
+  with the canonical `countWords` over chapter bodies loaded through the
+  existing `Library.readBook` reader, and counts chapters present in that
+  same read into the authoring contract's fixed
+  `adoptedChaptersSinceCheckin` field (Library state records chapter
+  existence, not a distinct coordinator adoption event; the handoff names
+  it as chapters present). Supply is scoped to the pre-checkpoint window:
+  while the mapped campaign has no checkpoint record, totals are exactly
+  the since-check-in counters; once a checkpoint record exists, or any
+  chapter cannot be read, cadence is withheld and the counted check-in
+  inputs still succeed without a cadence section, which stays
+  distinguishable from an evaluated cadence with `due: false`. The
+  renderer may only choose the versioned cadence policy
+  (`ReadContinuationCheckinInput.cadence.policy`, bounds mirroring
+  `CHECKIN_CADENCE_LIMITS`, Zod-validated before any Library access);
+  renderer-supplied counted progress is refused as `invalid`. The
+  production no-coordinator `unsupported` refusal is unchanged, and no
+  coordinator session is fabricated. Synthetic tests cover the
+  countWords-oracle supply, edited-policy evaluation, checkpoint and
+  unreadable-chapter withholding, malformed cadence input and the
+  no-identity refusal. No UI change; presenter display of cadence is a
+  later slice, and 039 T018 plus all 037/038 boxes remain unchecked.
+
 ### Campaign continuation check-in cadence emission (039 T018 partial)
 
 - Extend the pure continuation check-in adapter

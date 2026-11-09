@@ -105,10 +105,18 @@ The desktop host (039 T018 seam 6b) exposes that mapping as one read-only
 campaign is loaded through the store readers above, and the counted inputs cross the `Result`
 envelope with the leaf's refusal codes preserved as typed failures. The 037 run owner and
 direction are host-supplied; this build registers no coordinator session in the main process,
-so the channel refuses truthfully until one exists rather than inventing an owner. The host does
-not yet supply cadence inputs, so the channel emits no cadence section yet. Coordinator
-execution, a presenter surface, a portable archive/export workflow and independent review
-remain separate work. These leaves and the storage slices have focused synthetic tests, not
+so the channel refuses truthfully until one exists rather than inventing an owner. The host now
+supplies caller-counted cadence inputs through the same injected-identity seam: saved words are
+counted only with the canonical `countWords` over chapter bodies loaded through the existing
+`Library.readBook` reader, and chapters present in that read fill the authoring contract's fixed
+adopted-chapter field (Library state records chapter existence, not a distinct coordinator
+adoption event). Supply is scoped to the pre-checkpoint window: while the mapped campaign has
+no checkpoint record, the totals are exactly the since-check-in counters; once a checkpoint
+record exists, or any chapter cannot be read, cadence is withheld and the counted inputs still
+succeed without a cadence section, distinguishable from an evaluated cadence with `due: false`.
+The renderer may only choose the versioned cadence policy; counted progress is never accepted
+from the renderer. Coordinator execution, presenter display of cadence, a portable
+archive/export workflow and independent review remain separate work. These leaves and the storage slices have focused synthetic tests, not
 independent acceptance or a self-contained archive.
 
 ## 1. Encoding and operation limits

@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeBody, serializeChapter } from "@ai-book-studio/core/markdown";
+import { countWords } from "@ai-book-studio/core/words";
 import { buildCampaignContinuation } from "@ai-book-studio/core/review/campaign-continuation-build";
 import type { ContinuationCheckinCounts } from "@ai-book-studio/core/review/campaign-continuation-checkin";
 import { encodeCanonicalJson } from "@ai-book-studio/core/review/record-json";
@@ -34,11 +35,15 @@ const coordinator = (bookId: string): CoordinatorIdentity => {
   return { owner, direction: { kind: "direction", owner, id: "direction_fixture", revision: 1, hash: hash(7) } };
 };
 
-async function checkedLibrary() {
+async function checkedLibrary(options: { withCheckpoint?: boolean; chapterContents?: string[] } = {}) {
   const root = await mkdtemp(join(tmpdir(), "continuation-checkin-"));
   roots.push(root);
   const library = await Library.open(root);
   const book = await library.createBook({ title: "Synthetic check-in book" });
+  const chapters = [];
+  for (const [index, content] of (options.chapterContents ?? []).entries()) {
+    chapters.push(await library.createChapter(book.id, { title: `Counted chapter ${index + 1}`, content }));
+  }
   const body = normalizeBody("Synthetic chapter prose for check-in mapping.\nSecond synthetic line.\n");
   const rawBytes = new TextEncoder().encode(serializeChapter({
     id: "ch_123456", title: "Synthetic chapter", order: 1, arc: "middle", purpose: "", synopsis: "",
@@ -52,7 +57,7 @@ async function checkedLibrary() {
   input.ownerBookId = book.id;
   if (input.request.books[0]) input.request.books[0].bookId = book.id;
   const plan = await planned(input);
-  const checkpoint = {
+  const checkpoint = options.withCheckpoint === false ? null : {
     checkpointVersion: 1, owner: { bookId: plan.ownerBookId }, campaignId: plan.campaignId,
     planDigest: plan.digest, capturedAt: time,
     stages: plan.stages.map((stage, index) => ({
@@ -69,7 +74,7 @@ async function checkedLibrary() {
     manifestBytes: built.manifestBytes, intentBytes: built.intentBytes, segments: built.segments
   });
   const disk = (...segments: string[]) => join(root, ...segments);
-  return { root, library, book, plan, built, disk };
+  return { root, library, book, plan, built, disk, chapters };
 }
 
 const refusal = async (promise: Promise<unknown>): Promise<ContinuationCheckinError> => {
@@ -152,6 +157,70 @@ describe("continuation check-in host reading (039 T018 seam 6b)", () => {
     expect(future.code).toBe("unsupported");
     expect(await readFile(disk("books", book.id, "reviews", "campaigns", `${plan.campaignId}.json`)))
       .toEqual(Buffer.from(encodeCanonicalJson(manifest)));
+  });
+
+  test("supplies cadence in the pre-checkpoint window with counts matching a countWords oracle", async () => {
+    const contents = ["Alpha beta gamma delta.", "Epsilon zeta\neta theta iota kappa lambda."];
+    const { library, book, plan } = await checkedLibrary({ withCheckpoint: false, chapterContents: contents });
+    const checkin = await readContinuationCheckin(
+      library, { bookId: book.id, campaignId: plan.campaignId }, coordinator(book.id));
+    // Independent oracle: the canonical counter over the exact saved bodies.
+    const oracle = contents.reduce((total, content) => total + countWords(normalizeBody(content)), 0);
+    expect(checkin.cadence).toBeDefined();
+    expect(checkin.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(oracle);
+    // Chapters present in the book, counted from Library state (see handoff naming).
+    expect(checkin.cadence?.callerCountedProgress.adoptedChaptersSinceCheckin).toBe(2);
+    expect(checkin.cadence?.callerCountedProgress.firstAdoptedChapterOccurred).toBe(true);
+    expect(checkin.cadence?.callerCountedProgress.irreversibleChoicePending).toBe(false);
+    expect(checkin.cadence?.policy).toEqual({
+      version: 1, adoptedChapterInterval: 3, savedWordInterval: 10_000,
+      afterFirstChapter: true, onIrreversibleChoice: true
+    });
+    expect(checkin.cadence?.due).toBe(true);
+    expect(checkin.cadence?.reasons).toContain("first-adopted-chapter");
+  });
+
+  test("supplies cadence with an author-edited policy and evaluates it verbatim", async () => {
+    const { library, book, plan } = await checkedLibrary({
+      withCheckpoint: false, chapterContents: ["One two three four five."]
+    });
+    const checkin = await readContinuationCheckin(
+      library,
+      {
+        bookId: book.id, campaignId: plan.campaignId,
+        cadence: {
+          policy: {
+            version: 1, adoptedChapterInterval: 1, savedWordInterval: 5,
+            afterFirstChapter: false, onIrreversibleChoice: false
+          }
+        }
+      },
+      coordinator(book.id));
+    expect(checkin.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(5);
+    expect(checkin.cadence?.due).toBe(true);
+    expect(checkin.cadence?.reasons).toEqual(["adopted-chapter-interval", "saved-word-interval"]);
+  });
+
+  test("withholds cadence once a checkpoint record exists, while counted inputs still succeed", async () => {
+    const { library, book, plan } = await checkedLibrary({ chapterContents: ["Alpha beta gamma."] });
+    const checkin = await readContinuationCheckin(
+      library, { bookId: book.id, campaignId: plan.campaignId }, coordinator(book.id));
+    expect(checkin.checkpoint).not.toBeNull();
+    expect("cadence" in checkin).toBe(false);
+    expect(checkin.counts.stages).toBeGreaterThan(0);
+  });
+
+  test("withholds cadence when a chapter cannot be read, while counted inputs still succeed", async () => {
+    const { library, book, plan, chapters, disk } = await checkedLibrary({
+      withCheckpoint: false, chapterContents: ["Alpha beta gamma."]
+    });
+    const first = chapters[0];
+    if (!first) throw new Error("Missing counted chapter");
+    await writeFile(disk("books", book.id, "chapters", first.path), "---\norder: \"abc\"\n---\nUnreadable body\n");
+    const checkin = await readContinuationCheckin(
+      library, { bookId: book.id, campaignId: plan.campaignId }, coordinator(book.id));
+    expect("cadence" in checkin).toBe(false);
+    expect(checkin.campaignId).toBe(plan.campaignId);
   });
 
   test("with no 037 coordinator identity supplied, the host refuses truthfully instead of inventing one", async () => {

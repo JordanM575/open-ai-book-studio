@@ -3,6 +3,7 @@ import {
   type ContinuationCheckinInput
 } from "@ai-book-studio/core/review/campaign-continuation-checkin";
 import type { ReadContinuationCheckinInput } from "@ai-book-studio/core/ipc";
+import { countWords } from "@ai-book-studio/core/words";
 import type { Library } from "./library/store";
 
 /**
@@ -22,7 +23,23 @@ import type { Library } from "./library/store";
  * Every 6a refusal surfaces as a typed `ContinuationCheckinError` carrying
  * the contract's own code, so the IPC boundary can answer with `fail()`
  * instead of an empty or successful result. Scalar/byte counters are
- * returned verbatim; no word count, cadence or task role is derived.
+ * returned verbatim; no task role is derived.
+ *
+ * Cadence supply (caller-counted, host-owned): when the campaign maps, this
+ * host also tries to count the authoring cadence progress from checked
+ * state it already loads for this request. Saved words are counted only
+ * with the canonical `countWords` over chapter bodies loaded through the
+ * existing `Library.readBook` reader; chapters are counted as chapters
+ * present in that same read (Library state records chapter existence, not
+ * a distinct coordinator adoption event). The supply is scoped to the
+ * pre-checkpoint window: while the mapped campaign has no checkpoint
+ * record, no check-in has been taken against stored state, so totals from
+ * the book's saved chapters are exactly the since-check-in counters. Once
+ * a checkpoint record exists, or any chapter cannot be read, the since
+ * window is ambiguous and cadence is withheld (the counted check-in inputs
+ * still succeed without a cadence section). Withheld cadence (no `cadence`
+ * key) is therefore distinguishable from an evaluated cadence with
+ * `due: false`.
  */
 
 /** The host-supplied 037 identity a check-in is mapped against. */
@@ -52,6 +69,55 @@ function refusal(code: string): ContinuationCheckinError {
 }
 
 /**
+ * Whether recorded state holds a pending irreversible choice. No checked
+ * record in this build stores one: the campaign checkpoint carries stage
+ * receipts only, book and chapter records carry no such field, and the 037
+ * durable question inbox has no store yet. The honest report of that
+ * recorded state is `false`; when a question store exists it must feed
+ * this instead of extending the constant.
+ */
+function recordedIrreversibleChoicePending(): boolean {
+  return false;
+}
+
+/**
+ * Count cadence progress honestly from checked Library state, or return
+ * `null` when any input cannot be counted truthfully for this request.
+ * Read-only; prose is counted only from bodies the existing `readBook`
+ * reader already loads, with the canonical `countWords`.
+ */
+async function countCadenceProgress(
+  library: Library,
+  bookId: string,
+  checkin: ContinuationCheckinInput
+): Promise<{
+  adoptedChaptersSinceCheckin: number;
+  savedWordsSinceCheckin: number;
+  firstAdoptedChapterOccurred: boolean;
+  irreversibleChoicePending: boolean;
+} | null> {
+  // A checkpoint record means a since window may already have closed:
+  // without stored check-in state the totals can no longer be named
+  // since-check-in counters, so cadence is withheld rather than guessed.
+  if (checkin.checkpoint !== null) return null;
+  const detail = await library.readBook(bookId).catch(() => null);
+  if (!detail) return null;
+  // An unreadable chapter makes the saved-word total incomplete.
+  if (detail.chapterReadIssues.length > 0) return null;
+  let savedWords = 0;
+  for (const chapter of detail.chapters) {
+    savedWords += countWords(chapter.content);
+    if (!Number.isSafeInteger(savedWords)) return null;
+  }
+  return {
+    adoptedChaptersSinceCheckin: detail.chapters.length,
+    savedWordsSinceCheckin: savedWords,
+    firstAdoptedChapterOccurred: detail.chapters.length > 0,
+    irreversibleChoicePending: recordedIrreversibleChoicePending()
+  };
+}
+
+/**
  * Read the counted check-in inputs for one checked campaign. Read-only: the
  * store readers and the pure mapper never write, re-encode or recount prose.
  */
@@ -73,7 +139,7 @@ export async function readContinuationCheckin(
   const fixedHistory = await store.inspectContinuationFixedHistory(input.bookId, input.campaignId);
   // A partial group never maps, whichever inspection carries the split.
   const inspectedGroup = fixedHistory.state === "partial" ? fixedHistory : group;
-  const result = mapCampaignContinuationCheckin({
+  const mapped = mapCampaignContinuationCheckin({
     inspection,
     reports,
     group: inspectedGroup,
@@ -81,6 +147,21 @@ export async function readContinuationCheckin(
     direction: coordinator.direction,
     ...(input.expected ? { expected: input.expected } : {})
   });
-  if (result.status === "refused") throw refusal(result.code);
-  return result.checkin;
+  if (mapped.status === "refused") throw refusal(mapped.code);
+  const progress = await countCadenceProgress(library, input.bookId, mapped.checkin);
+  if (!progress) return mapped.checkin;
+  const withCadence = mapCampaignContinuationCheckin({
+    inspection,
+    reports,
+    group: inspectedGroup,
+    coordinatorOwner: coordinator.owner,
+    direction: coordinator.direction,
+    ...(input.expected ? { expected: input.expected } : {}),
+    cadence: {
+      ...(input.cadence?.policy ? { policy: input.cadence.policy } : {}),
+      callerCountedProgress: progress
+    }
+  });
+  if (withCadence.status === "refused") throw refusal(withCadence.code);
+  return withCadence.checkin;
 }

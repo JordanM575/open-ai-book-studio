@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IPC, type Result, type StudioApi } from "@ai-book-studio/core/ipc";
 import { normalizeBody, serializeChapter } from "@ai-book-studio/core/markdown";
+import { countWords } from "@ai-book-studio/core/words";
 import { buildCampaignContinuation } from "@ai-book-studio/core/review/campaign-continuation-build";
 import { campaignInput, planned, withSynthesis } from "../../../packages/core/tests/review/campaign-fixtures";
 import { Library } from "../src/main/library/store";
@@ -50,11 +51,14 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function checkedLibrary() {
+async function checkedLibrary(chapterContents: string[] = []) {
   const root = await mkdtemp(join(tmpdir(), "continuation-checkin-ipc-"));
   roots.push(root);
   const library = await Library.open(root);
   const book = await library.createBook({ title: "Synthetic check-in book" });
+  for (const [index, content] of chapterContents.entries()) {
+    await library.createChapter(book.id, { title: `Counted chapter ${index + 1}`, content });
+  }
   const body = normalizeBody("Synthetic chapter prose for check-in mapping.\n");
   const rawBytes = new TextEncoder().encode(serializeChapter({
     id: "ch_123456", title: "Synthetic chapter", order: 1, arc: "middle", purpose: "", synopsis: "",
@@ -157,10 +161,59 @@ describe("continuation check-in channel (039 T018 seam 6b)", () => {
     expect(foreign).toMatchObject({ ok: false, error: { code: "corrupt" } });
   });
 
-  test("with no coordinator identity in the host, the channel refuses truthfully", async () => {
-    const { library, book, plan } = await checkedLibrary();
-    register(library, null);
+  test("returns the host-counted cadence through the channel with a countWords oracle", async () => {
+    const contents = ["Alpha beta gamma.", "Delta epsilon zeta eta."];
+    const { library, book, plan } = await checkedLibrary(contents);
+    register(library, coordinatorFor(book.id));
     const result = await call({ bookId: book.id, campaignId: plan.campaignId });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const data = result.data as { cadence?: { callerCountedProgress: { savedWordsSinceCheckin: number; adoptedChaptersSinceCheckin: number } } };
+    const oracle = contents.reduce((total, content) => total + countWords(normalizeBody(content)), 0);
+    expect(data.cadence?.callerCountedProgress.savedWordsSinceCheckin).toBe(oracle);
+    expect(data.cadence?.callerCountedProgress.adoptedChaptersSinceCheckin).toBe(2);
+  });
+
+  test("malformed cadence input is invalid before the Library is touched", async () => {
+    const { library, book, plan } = await checkedLibrary(["Alpha beta gamma."]);
+    register(library, coordinatorFor(book.id));
+    const basePolicy = {
+      version: 1, adoptedChapterInterval: 3, savedWordInterval: 10_000,
+      afterFirstChapter: true, onIrreversibleChoice: true
+    };
+    const refused: unknown[] = [
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, adoptedChapterInterval: 0 } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, adoptedChapterInterval: 1025 } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, savedWordInterval: 0 } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, savedWordInterval: 1_000_001 } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, version: 2 } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, afterFirstChapter: "yes" } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: { ...basePolicy, adoptedChapterInterval: "3" } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { callerCountedProgress: { adoptedChaptersSinceCheckin: 1, savedWordsSinceCheckin: 1, firstAdoptedChapterOccurred: true, irreversibleChoicePending: false } } },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: 42 },
+      { bookId: book.id, campaignId: plan.campaignId, cadence: { policy: basePolicy, extra: true } }
+    ];
+    for (const payload of refused) {
+      const result = await call(payload);
+      expect({ payload: JSON.stringify(payload), ok: result.ok, code: result.ok ? null : result.error.code })
+        .toEqual({ payload: JSON.stringify(payload), ok: false, code: "invalid" });
+    }
+    const after = await call({ bookId: book.id, campaignId: plan.campaignId });
+    expect(after.ok).toBe(true);
+  });
+
+  test("with no coordinator identity in the host, the channel refuses truthfully", async () => {
+    const { library, book, plan } = await checkedLibrary(["Alpha beta gamma."]);
+    register(library, null);
+    const result = await call({
+      bookId: book.id, campaignId: plan.campaignId,
+      cadence: {
+        policy: {
+          version: 1, adoptedChapterInterval: 3, savedWordInterval: 10_000,
+          afterFirstChapter: true, onIrreversibleChoice: true
+        }
+      }
+    });
     expect(result).toMatchObject({ ok: false, error: { code: "unsupported" } });
     if (!result.ok) expect(result.error.message).toContain("037");
   });
