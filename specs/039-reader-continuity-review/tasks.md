@@ -79,6 +79,19 @@ verified reports. Compatible replanning, storage publication/recovery, adapter q
 cross-book report resolution, host integration and independent exact-head review remain open.
 T014/T017/T018 stay unchecked; 038 T022 is unchanged.
 
+### November 9 — pure compatible-replan and source-validation seam (T014/T017 partial)
+
+`packages/core/src/review/campaign-continuation-replan.ts` now supplies the pure seam the codec
+handoff ordered second: compatibility dispatch on recorded schema/`plannerSemantics`, bounded
+validation of explicitly chosen current or historical raw sources, and compatible replan through
+the real planner requiring the codec's complete canonical match (`matched-local-plan-only` or a
+bounded refusal). Only the freshly provenanced plan is usable afterwards; hash agreement never
+registers a deserialized object. Focused synthetic tests cover serving, replan, historical and
+multi-source sources, checkpoint return, incompatible/forged/substituted/oversized refusals and
+provenance non-transfer. Storage publication/recovery, version-dispatching storage reads,
+cross-book report resolution, host integration and independent exact-head review remain open.
+T014/T017/T018 stay unchecked; 038 T022 is unchanged.
+
 ### November 8 — D-201 conditional continuation specification (T014 partial)
 
 D-201 and the ADR 0020 amendment accept the conditional schema-2 campaign format; `docs/FORMAT.md`

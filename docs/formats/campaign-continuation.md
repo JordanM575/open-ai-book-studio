@@ -3,7 +3,8 @@
 **Status:** Accepted by [D-201](../DECISIONS.md#d-201--conditional-campaign-continuation) and
 [ADR 0020](../adr/0020-inline-editorial-review.md#d-201-conditional-campaign-continuation).
 This document specifies the wire and operating contract. Pure in-memory codec leaves now implement
-part of that contract; they do **not** establish a writer, compatible planner registry, host
+part of that contract, including pure compatibility dispatch, bounded source validation and
+compatible replan; they do **not** establish a writer, version-dispatching storage reader, host
 execution, adapter capability, group move or archive. Those and independent review remain required.
 [FORMAT](../FORMAT.md#saved-review-records-schema-1) continues to specify the separate existing
 schema-1 records.
@@ -31,10 +32,15 @@ checks exact external values, expansion counts and the plan digest, but alone do
 source identity, all manifest counts, coverage, dependencies, envelopes or planner semantics.
 `compareContinuationWithLocalPlan` additionally requires exact complete comparison and checks counts,
 planned union and checkpoint shape against an independently supplied local plan; it does not register
-the decoded object, authenticate source files, verify report files or authorize execution. A
-compatible-replan/source-file-validation seam, version-dispatching storage reader, publication and
-recovery writer, report resolver and host integration remain separate work. These leaves have focused
-synthetic tests, not independent acceptance or a self-contained archive.
+the decoded object, authenticate source files, verify report files or authorize execution. The
+`campaign-continuation-replan` leaf adds the pure compatible-replan/source-validation seam of §6:
+it dispatches on the recorded schema version and `plannerSemantics`, validates explicitly supplied
+current or historical raw source files against the retained identities and bounds before planning,
+replans only through the real planner, and returns `matched-local-plan-only` with that fresh
+provenanced plan or a bounded refusal; a differing but compatible semantics label is never served
+unchanged, and hash agreement alone never registers a plan. A version-dispatching storage reader,
+publication and recovery writer, report resolver and host integration remain separate work. These
+leaves have focused synthetic tests, not independent acceptance or a self-contained archive.
 
 ## 1. Encoding and operation limits
 

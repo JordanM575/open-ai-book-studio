@@ -1005,7 +1005,10 @@ history rules are unchanged.
 Pure in-memory leaves construct bounded candidates and inspect/reconstruct untrusted wire data. Exact
 comparison requires a separately supplied locally provenanced plan; no decoded object gains planner
 provenance. Structural reconstruction alone does not validate all plan semantics or source files.
-No schema-2 writer, compatible replan registry, host integration, archive or adapter qualification
+A pure compatible-replan leaf dispatches on recorded planner semantics, validates explicitly supplied
+raw current or historical sources within the format's read bounds, replans through the real planner
+and accepts only its complete canonical match; differing compatible semantics are never served
+unchanged. No schema-2 writer, host integration, archive or adapter qualification
 is implemented or independently accepted. Exact continuation remains conditional on matching external
 values and compatible planner provenance; missing values remain unavailable. 039 T014/T017/T018 and
 T015 remain open.
