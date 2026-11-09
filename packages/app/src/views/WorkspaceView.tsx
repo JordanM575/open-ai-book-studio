@@ -43,6 +43,7 @@ import {
 import { RecoveryPanel } from "../components/RecoveryPanel";
 import { ReviewGateDialog, type ReviewGateView } from "../components/ReviewGateDialog";
 import { ReviewReportDialog, type ReviewRunView } from "../components/ReviewReportDialog";
+import { reviewFailureCoverage } from "../lib/review-worker-validation";
 import { exportBlockedMessage, exportReceipt, type ManuscriptExportReceipt } from "../lib/export-save";
 import { runAfterReviewSave } from "../lib/review-save-gate";
 import { analyzeReviewInWorker, verifyRepetitionInWorker } from "../lib/review-worker";
@@ -807,7 +808,8 @@ export function WorkspaceView({
         onNotice(error);
         setReviewView({
           kind: "failed",
-          message: "The saved chapters could not be read. Your manuscript was not changed."
+          message: "The saved chapters could not be read. Your manuscript was not changed.",
+          guidance: "Check access to the library folder, then run again."
         });
         return;
       }
@@ -819,7 +821,9 @@ export function WorkspaceView({
       if (analysisOutcome.status !== "complete") {
         runController.current = null;
         setReviewView(analysisOutcome.status === "failed"
-          ? { kind: "failed", message: analysisOutcome.message }
+          ? { kind: "failed", message: analysisOutcome.message,
+            guidance: "Try running the review again. If it still fails, reopen the studio and try again.",
+            coverage: reviewFailureCoverage(snapshot) }
           : { kind: "stopped" });
         return;
       }
@@ -827,7 +831,16 @@ export function WorkspaceView({
       if (analysis.status === "failed") {
         runController.current = null;
         const failure = reviewNoSourceResult(snapshot.scope, requestedAt, analysis.coverage);
-        setReviewView({ kind: "failed", message: failure.message });
+        const coverage = reviewFailureCoverage(snapshot, analysis);
+        const workerClaims = coverage.some((entry) => entry.origin === "worker");
+        setReviewView({ kind: "failed", coverage,
+          message: workerClaims
+            ? "Unverified result · The local review worker reported every chapter skipped. This does not confirm that the saved chapters are unreadable. Your manuscript was not changed."
+            : failure.message,
+          guidance: workerClaims
+            ? "Check the listed source-read issues and saved text, then run again. If the worker keeps failing, reopen the studio and try again."
+            : "Check the file details below. Restore folder access or fix the indicated file problem, then run again."
+        });
         return;
       }
       const outcome = await runReviewWork({ requestedAt, source: snapshot }, controller.signal, async () =>
@@ -857,7 +870,9 @@ export function WorkspaceView({
         setReviewView({ kind: "stopped" });
       } else {
         runController.current = null;
-        setReviewView({ kind: "failed", message: outcome.message });
+        setReviewView({ kind: "failed", message: outcome.message,
+          guidance: "Try running the review again. If it still fails, reopen the studio and try again.",
+          coverage: reviewFailureCoverage(snapshot) });
       }
     },
     [bookId, libraryRoot, onNotice]
@@ -953,7 +968,9 @@ export function WorkspaceView({
     // A deferred effect from an old report must not hide a newer run's Cancel control.
     if (lifetime !== reportLifetime.current) return;
     invalidateReview();
-    setReviewView({ kind: "failed", message: "The local review worker returned an invalid result. Your saved manuscript was not changed." });
+    setReviewView((current) => ({ kind: "failed", message: "The local review worker returned an invalid result. Your saved manuscript was not changed.",
+      guidance: "Try running the review again. If it still fails, reopen the studio and try again.",
+      coverage: current.kind === "report" ? reviewFailureCoverage(current.report.source) : [] }));
   }, [invalidateReview]);
 
   /**

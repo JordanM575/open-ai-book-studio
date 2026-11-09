@@ -1,4 +1,4 @@
-import type { ReviewCoverageAnalysis, ReviewEvidenceSpan, ReviewSourceSnapshot } from "@ai-book-studio/core/review";
+import type { ReviewCoverageAnalysis, ReviewEvidenceSpan, ReviewSourceReference, ReviewSourceSnapshot, SkippedReviewChapter } from "@ai-book-studio/core/review";
 import { REPETITION_VERSION } from "@ai-book-studio/core/review/repetition";
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -7,6 +7,17 @@ const text = (value: unknown): value is string => typeof value === "string";
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 const order = (value: unknown): boolean => Number.isSafeInteger(value);
 const MALFORMED_UNICODE = "The saved chapter contains malformed Unicode and could not be analyzed. Nothing was repaired or changed.";
+
+export type ReviewFailureCoverageEntry = SkippedReviewChapter & { origin: "source-read" | "worker" };
+
+/** Keep fresh read issues even when the worker fails. Only a validated reply can add worker claims. */
+export function reviewFailureCoverage(source: { chapters: readonly ReviewSourceReference[] }, analysis?: ReviewCoverageAnalysis): ReviewFailureCoverageEntry[] {
+  return source.chapters.flatMap((chapter, index): ReviewFailureCoverageEntry[] => {
+    if (chapter.status === "skipped") return [{ ...chapter, origin: "source-read" }];
+    const entry = analysis?.coverage.chapters[index];
+    return entry?.status === "skipped" ? [{ ...entry, origin: "worker" }] : [];
+  });
+}
 
 /** Only metadata is traversed here; occurrence arrays can contain hundreds of thousands of spans. */
 export async function validReviewAnalysis(value: unknown, source: ReviewSourceSnapshot, signal: AbortSignal): Promise<boolean> {

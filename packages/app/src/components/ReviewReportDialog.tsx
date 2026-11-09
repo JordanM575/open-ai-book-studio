@@ -8,12 +8,12 @@ import type {
 import { Button } from "@ai-book-studio/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@ai-book-studio/ui/dialog";
 import { formatWords, pluralize } from "../lib/utils";
-import { validVisibleEvidence } from "../lib/review-worker-validation";
+import { validVisibleEvidence, type ReviewFailureCoverageEntry } from "../lib/review-worker-validation";
 
 export type ReviewRunView =
   | { kind: "running" }
   | { kind: "stopped" }
-  | { kind: "failed"; message: string }
+  | { kind: "failed"; message: string; guidance: string; coverage?: readonly ReviewFailureCoverageEntry[] }
   | { kind: "report"; report: ReviewReportResult; freshness: ReviewDisplayFreshness };
 
 /** Source identity and individual worker excerpts are distinct checks. */
@@ -137,8 +137,26 @@ export function ReviewReportDialog({ open, view, bookTitle, onCancelRun, onRunAg
         {view.kind === "failed" ? (
           <>
             <p role="status" data-testid="review-status" className="text-(length:--text-subheadline-size) leading-[var(--text-subheadline-leading)] text-muted-foreground">
-              {view.message} Run again when the chapter files are readable.
+              {view.message} {view.guidance}
             </p>
+            {view.coverage && view.coverage.length > 0 ? (
+              <section aria-label="Skipped chapters" className="mt-4" data-testid="review-failure-coverage">
+                <h3 className="text-(length:--text-callout-size) font-semibold">Skipped chapters</h3>
+                <ul className="mt-2 space-y-2">
+                  {view.coverage.map((entry, index) => (
+                    <li key={`${entry.origin}:${entry.fileName}`} data-testid={`review-failure-row-${index}`} className="break-words text-(length:--text-subheadline-size)">
+                      <p className="font-medium">{entry.fileName}</p>
+                      <p className="text-muted-foreground">
+                        {entry.origin === "source-read" ? "Source-read issue" : "Worker-reported skip · unverified"} · {entry.reason}
+                      </p>
+                      {entry.origin === "worker" ? (
+                        <p className="text-muted-foreground">This classification has not been checked against saved text.</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
             <DialogFooter>
               <Button variant="ghost" onClick={onClose} data-testid="review-close">
                 Close

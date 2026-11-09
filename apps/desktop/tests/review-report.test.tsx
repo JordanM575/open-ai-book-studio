@@ -115,7 +115,7 @@ describe("ReviewReportDialog", () => {
     expect(onRunAgain).toHaveBeenCalledTimes(1);
 
     testing.cleanup();
-    renderReport({ kind: "failed", message: "No saved chapter text could be verified." });
+    renderReport({ kind: "failed", message: "No saved chapter text could be verified.", guidance: "Check the file details, then run again." });
     expect(testing.within(document.body).getByTestId("review-status").textContent ?? "").toContain(
       "No saved chapter text could be verified"
     );
@@ -600,6 +600,183 @@ function changeLaterOccurrence(
 }
 
 describe("workspace review entry to report", () => {
+  test.each([false, true])("fresh all-skipped failures name each source-read issue without replacing the editor (dirty=%s)", async (dirty) => {
+    const fixture = workerWorkspaceFixture();
+    const control = controlledReviewWorkers();
+    const failedDetail: BookDetail = { ...firstDetail, chapters: [], chapterReadIssues: [
+      { fileName: "0001-orchard.md", order: 1, reason: "permission-needed" },
+      { fileName: "0002-rain.md", order: 2, reason: "invalid-format" }
+    ] };
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: failedDetail }));
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      const editor = queries.getByTestId("manuscript-text") as HTMLTextAreaElement;
+      const original = editor.value;
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      if (dirty) testing.fireEvent.change(editor, { target: { value: "My newer unsaved words." } });
+      editor.selectionStart = 2;
+      editor.selectionEnd = 5;
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("No saved chapter text could be verified");
+      expect(status).toContain("Restore folder access or fix the indicated file problem");
+      expect(status).not.toContain("worker reported");
+      const first = queries.getByTestId("review-failure-row-0").textContent ?? "";
+      const second = queries.getByTestId("review-failure-row-1").textContent ?? "";
+      expect(first).toContain("0001-orchard.md");
+      expect(first).toContain("Source-read issue · The studio did not have permission to read this chapter file.");
+      expect(second).toContain("0002-rain.md");
+      expect(second).toContain("Source-read issue · The chapter file could not be read as a valid chapter.");
+      expect(first + second).not.toContain("unverified");
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      expect(queries.getByTestId("manuscript-text")).toBe(editor);
+      expect(editor.value).toBe(dirty ? "My newer unsaved words." : original);
+      expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 5]);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+      if (!dirty) {
+        testing.fireEvent.click(queries.getByTestId("review-run-again"));
+        await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+        await testing.act(async () => { control.workers[1]?.complete(); });
+        expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+        expect(queries.queryByTestId("review-failure-coverage")).toBeNull();
+      }
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("forged all-skipped worker claims stay distinct from source-read evidence (partial=%s)", async (partial) => {
+    const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
+    const detail: BookDetail = {
+      ...integrationDetail(INTEGRATION_BOOK, "Failure metadata fixture", [integrationChapter("ch_int000001", "Saved prose", 1, body)]),
+      chapterReadIssues: partial ? [{ fileName: "0002-unreadable-fixture.md", order: 2, reason: "unreadable" }] : []
+    };
+    const fixture = workerWorkspaceFixture(detail);
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[0]?.complete((analysis) => {
+        expect(analysis.status).toBe(partial ? "partial" : "complete");
+        expect(analysis.wordCounts.totalWordCount).toBe(10);
+        expect(analysis.findings).toHaveLength(3);
+        const chapters = analysis.coverage.chapters.map((entry) => entry.status === "skipped" ? entry : {
+          status: "skipped" as const, fileName: `${entry.title} (${entry.chapterId})`, order: entry.order,
+          reason: "The saved chapter contains malformed Unicode and could not be analyzed. Nothing was repaired or changed."
+        });
+        return { status: "failed", findings: [],
+          coverage: { inScope: chapters.length, included: 0, empty: 0, skipped: chapters.length, chapters },
+          wordCounts: { totalWordCount: 0, chapters: chapters.map((entry) => ({ ...entry, wordCount: null })) }
+        };
+      }); });
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("Unverified result");
+      expect(status).toContain("local review worker reported every chapter skipped");
+      expect(status).toContain("does not confirm that the saved chapters are unreadable");
+      expect(status).not.toContain("No saved chapter text could be verified");
+      const workerRow = queries.getByTestId("review-failure-row-0").textContent ?? "";
+      expect(workerRow).toContain("Saved prose (ch_int000001)");
+      expect(workerRow).toContain("Worker-reported skip · unverified");
+      expect(workerRow).toContain("malformed Unicode");
+      expect(workerRow).toContain("has not been checked against saved text");
+      if (partial) {
+        const sourceRow = queries.getByTestId("review-failure-row-1").textContent ?? "";
+        expect(sourceRow).toContain("0002-unreadable-fixture.md");
+        expect(sourceRow).toContain("Source-read issue · The studio could not read this chapter file.");
+        expect(sourceRow).not.toContain("unverified");
+      }
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect(queries.queryByTestId("review-evidence")).toBeNull();
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(body);
+      expect(control.checks).toHaveLength(0);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+      expect(fixture.props.onNotice).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test("a genuine synthetic malformed source retains its worker-classified failure reason", async () => {
+    const fixture = workerWorkspaceFixture();
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: integrationDetail(INTEGRATION_BOOK,
+      "Malformed fixture", [integrationChapter("ch_int000001", "Malformed source", 1, "\ud800")]) }));
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      expect(queries.getByTestId("review-status").textContent).toContain("Unverified result");
+      expect(queries.getByTestId("review-failure-coverage").textContent).toContain("malformed Unicode");
+      expect(queries.getByTestId("review-failure-coverage").textContent).toContain("Worker-reported skip · unverified");
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(at(firstDetail.chapters, 0).content);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
+  test.each([false, true])("worker startup failures give infrastructure guidance and keep available read issues (partial=%s)", async (partial) => {
+    const fixture = workerWorkspaceFixture();
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: { ...firstDetail,
+      chapterReadIssues: partial ? [{ fileName: "0003-locked.md", order: 3, reason: "permission-needed" }] : [] } }));
+    const original = globalThis.Worker;
+    globalThis.Worker = class { constructor() { throw new Error("Synthetic worker startup failure"); } } as unknown as typeof Worker;
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(queries.getByTestId("review-status").textContent).toContain("worker could not complete"));
+      const status = queries.getByTestId("review-status").textContent ?? "";
+      expect(status).toContain("reopen the studio");
+      expect(status).not.toContain("when the chapter files are readable");
+      expect(status).not.toContain("every chapter skipped");
+      if (partial) {
+        const row = queries.getByTestId("review-failure-row-0").textContent ?? "";
+        expect(row).toContain("0003-locked.md");
+        expect(row).toContain("Source-read issue · The studio did not have permission");
+        expect(row).not.toContain("Worker-reported");
+      } else expect(queries.queryByTestId("review-failure-coverage")).toBeNull();
+      expect(queries.queryByTestId("review-run-meta")).toBeNull();
+      expect(queries.queryByTestId("review-findings")).toBeNull();
+      expect((queries.getByTestId("manuscript-text") as HTMLTextAreaElement).value).toBe(at(firstDetail.chapters, 0).content);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); globalThis.Worker = original; }
+  });
+
+  test("a late all-skipped reply cannot replace the next run or leak its failure coverage", async () => {
+    const fixture = workerWorkspaceFixture();
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: firstDetail }));
+    fixture.open.mockImplementationOnce(() => Promise.resolve({ ok: true, data: { ...firstDetail, chapters: [],
+      chapterReadIssues: [{ fileName: "0001-obsolete.md", order: 1, reason: "invalid-format" }] } }));
+    const control = controlledReviewWorkers();
+    try {
+      testing.render(React.createElement(WorkspaceView, fixture.props));
+      const queries = testing.within(document.body);
+      await testing.waitFor(() => expect(queries.getByTestId("manuscript-editor")).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-manuscript"));
+      await testing.waitFor(() => expect(control.workers[0]?.request).toBeTruthy());
+      testing.fireEvent.click(queries.getByTestId("review-cancel-run"));
+      testing.fireEvent.click(queries.getByTestId("review-run-again"));
+      await testing.waitFor(() => expect(control.workers[1]?.request).toBeTruthy());
+      await testing.act(async () => { control.workers[1]?.complete(); });
+      await testing.act(async () => { control.workers[0]?.complete(); });
+      expect(queries.getByTestId("review-findings").textContent).toContain("salt and stone");
+      expect(queries.queryByTestId("review-failure-coverage")).toBeNull();
+      expect(control.workers[0]?.terminate).toHaveBeenCalledTimes(1);
+      expect(fixture.forbidden).not.toHaveBeenCalled();
+    } finally { testing.cleanup(); control.restore(); }
+  });
+
   test.each([false, true])("false-empty worker metadata stays explicitly unverified (partial=%s)", async (partial) => {
     const body = "😀 Café, L’ÉTÉ pine. CAFÉ l’été PINE. café l'été pine!";
     const detail: BookDetail = {
@@ -963,7 +1140,8 @@ describe("workspace review entry to report", () => {
 
   test.each(["resolve", "reject"] as const)(
     "a current malformed page invalidates a pending navigation on late %s", async (outcome) => {
-      const fixture = workerWorkspaceFixture(repeatedDetail);
+      const fixture = workerWorkspaceFixture({ ...repeatedDetail,
+        chapterReadIssues: [{ fileName: "0002-locked.md", order: 2, reason: "permission-needed" }] });
       const control = controlledReviewWorkers();
       try {
         const { queries } = await startControlledReport(fixture, control, (analysis) =>
@@ -976,6 +1154,8 @@ describe("workspace review entry to report", () => {
         expect(fixture.open.mock.calls.length).toBe(before + 1);
         testing.fireEvent.click(finding.getByRole("button", { name: "Next occurrences" }));
         expect(queries.getByTestId("review-status").textContent).toContain("invalid result");
+        expect(queries.getByTestId("review-failure-coverage").textContent).toContain("0002-locked.md");
+        expect(queries.getByTestId("review-failure-coverage").textContent).toContain("Source-read issue");
         await testing.act(async () => {
           if (outcome === "resolve") pending.resolve({ ok: true, data: repeatedDetail });
           else pending.reject(new Error("obsolete synthetic navigation"));

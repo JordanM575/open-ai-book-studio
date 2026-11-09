@@ -111,7 +111,10 @@ it does not change the existing count contract or manuscript format.
   prose, show **Not enough saved text to review**, not a successful “no findings” result. If some
   chapters cannot be read or verified but others can, show a partial report with the omitted chapters
   and reasons. If no source can be verified, show a failure state with the next safe action; do not
-  display an empty report as success.
+  display an empty report as success. Keep the fresh run's available skipped filenames and reasons
+  in that failure view without replacing the live editor. Distinguish source-read issues from
+  unverified worker classifications, including an all-skipped conclusion. Infrastructure failures
+  give worker-appropriate retry guidance rather than assuming unreadable chapter files.
 - **FR-011 — Disposable report.** The first milestone MUST keep report data in volatile run-local
   state only. It MUST NOT write a report, excerpt, run history or retention metadata to the library,
   app profile, index, conversation store or usage log. A new run replaces the current report; changing

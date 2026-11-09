@@ -8,6 +8,14 @@ Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
 
+### Review failure details
+
+- Preserve fresh skipped filenames and reasons in run-local failure views, with source-read issues
+  distinguished from unverified worker classifications and all-skipped conclusions. Give worker
+  failures appropriate retry guidance while keeping the live manuscript and selected text intact.
+- Cover fresh read failures after a clean load, dirty-buffer preservation, complete and partial
+  all-skipped worker replies, startup failures and obsolete failure replies after cancellation.
+
 ### Review metadata disclosure
 
 - Attribute worker-derived coverage, studio word counts and insufficient-text conclusions as
