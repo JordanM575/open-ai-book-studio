@@ -10,6 +10,7 @@ Update the `Unreleased` section before every commit.
 ### Campaign stage documentation
 
 - Current delivery notes no longer list a stage-kind mapping as an open authoring-contract gap. A campaign stage kind is refused as an authoring role and is not mapped onto one. The completion lane and the current review-routing gate record the same refusal. The check-in word-count source and the cadence contract remain open. No task box is closed.
+- The current bounded implementation queue names those two open gaps and records the same stage-kind refusal. No task box is closed.
 
 ### Campaign stage role refusal
 
