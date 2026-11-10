@@ -36,10 +36,12 @@ import type {
  * `foreign-reference`); unknown shapes are refused, never coerced.
  *
  * Deliberate boundary: the codec retains no word count, the authoring
- * contracts define no campaign-stage task role and no way to derive
+ * contracts refuse campaign stage kinds as task roles
+ * (`refuseCampaignStageRole`) and provide no way to derive
  * `Brief.targetWords`, so this leaf emits counted scalar, byte, stage and
- * receipt progress only. A host must not relabel `selectedUtf16`/
- * `selectedUtf8` as words or invent a cadence from them.
+ * receipt progress only. It does not call that refusal or build a task.
+ * A host must not relabel `selectedUtf16`/`selectedUtf8` as words, invent a
+ * cadence from them, or turn a campaign stage into a task.
  *
  * Cadence emission (adapter-level choice): the authoring contracts now
  * define the versioned cadence policy and pure evaluator. When the caller

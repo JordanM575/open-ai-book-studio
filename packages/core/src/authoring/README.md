@@ -15,6 +15,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `contracts.ts` | `Owner`, `Reference<K>`, `Graph`, `TaskDefinition`, `validateGraph`, `prepareBrief` | Readonly owner/kind/id/revision/hash references; supported version, duplicate/missing/foreign/stale dependency and DAG checks. Input descriptors are copied, not trusted as permissions. The exact brief and existing 033 goal survive; no word counter. |
 | `contracts.ts` | `CheckinCadencePolicy`, `DEFAULT_CHECKIN_CADENCE_POLICY`, `CHECKIN_CADENCE_LIMITS`, `validateCheckinCadencePolicy`, `CheckinCadenceProgress`, `validateCheckinCadenceProgress`, `evaluateCheckinCadence` | Versioned check-in cadence (ADR 0019): editable adopted-chapter/saved-word intervals, first-chapter and irreversible-choice triggers, bounded validation, and a pure due evaluation over caller-counted progress. Counts nothing and reads no prose. |
 | `contracts.ts` | `readCheckinWordTarget` | Copies an existing 033 goal id and its positive saved `targetWords`. Refuses a null target, any schema other than 1, a different book, and campaign `selectedUtf16` / `selectedUtf8` fields at any depth. Does not count prose or invent a goal id. |
+| `contracts.ts` | `refuseCampaignStageRole` | Refuses campaign stage kinds `range` and `synthesis` as authoring roles (`campaign-stage-not-a-role`). Any other value, including a role name, refuses as `unknown-stage-kind`. Does not create a task or change `ROLES`. |
 | `graph.ts` | `createRun`, `reduceRun`, `taskStatuses`, `runStatus`, `publicationEligible` | Checked command/revision/generation transitions, deterministic graph-order projection, questions/direction, preserved historical attempts, explicit author finish. Publication eligibility is only a necessary graph condition. |
 | `lifecycle.ts` | `advanceAttempt`, `advanceEffect` | Prepared, intent, receiving, output-kept and completed are separate. Publication intent and actual receipt are separate. Recovery never turns possible sends/writes into known-free failure or a replay. |
 | `admission.ts` | `createLedger`, `reserve`, `observeReservation`, `accountingSummary` | Finite reservations, actual receipts, pinned routes, per-attempt continuations/read limits, revision/no-progress checks and known/unknown/partial accounting. |
@@ -110,6 +111,15 @@ arrays, refuses as `campaign-count-not-words` before the target is read. The rea
 manuscript words, never imports a word counter, and never fills in `goalId` from `bookId`.
 `prepareBrief` does not call it, and the continuation check-in leaf still emits no `targetWords`.
 Nothing here schedules a check-in or wires a host.
+
+## Campaign stage kinds
+
+`refuseCampaignStageRole(kind)` is the admitted relationship between a review-campaign stage kind
+and an authoring role: there is none. `range` and `synthesis` refuse as `campaign-stage-not-a-role`,
+and the function never returns a `Role` or `TaskDefinition`. Any other value, including an existing
+role name or a stage object, refuses as `unknown-stage-kind` and is not read as an object. `ROLES`
+and `validateGraph` stay as they are. The continuation check-in leaf names the refusal, does not
+call it, and still emits no task graph. Nothing here wires a host or resumes cadence.
 
 ## Adoption receipts
 

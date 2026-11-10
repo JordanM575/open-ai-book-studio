@@ -1,4 +1,4 @@
-import { copyValue, digest, freeze, id, integer, requireValue, text, type Immutable } from './value';
+import { AuthoringError, copyValue, digest, freeze, id, integer, requireValue, text, type Immutable } from './value';
 
 export interface Owner {
   readonly libraryRegistration: string;
@@ -22,6 +22,27 @@ export const OUTPUT_TOKENS: Readonly<Record<Role, number>> = Object.freeze({
   architect: 8192, 'character-planner': 8192, drafter: 4096, 'developmental-reviewer': 4096,
   'line-reviewer': 4096, 'revision-writer': 8192, 'canon-summarizer': 2048,
 });
+
+/** Review-campaign plan units. These are not authoring roles. */
+export const CAMPAIGN_STAGE_KINDS = ['range', 'synthesis'] as const;
+export type CampaignStageKind = typeof CAMPAIGN_STAGE_KINDS[number];
+
+/**
+ * Refuses a campaign stage kind as an authoring role. `range` and `synthesis`
+ * refuse as `campaign-stage-not-a-role` and never become a Role or
+ * TaskDefinition. Any other value, including an authoring role name or a stage
+ * object, refuses as `unknown-stage-kind` first and is not read as an object.
+ * Does not change `ROLES` or `validateGraph`. The continuation leaf does not
+ * call this function.
+ */
+export function refuseCampaignStageRole(kind: unknown): never {
+  requireValue(
+    typeof kind === 'string' && (CAMPAIGN_STAGE_KINDS as readonly string[]).includes(kind),
+    'unknown-stage-kind',
+  );
+  throw new AuthoringError('campaign-stage-not-a-role');
+}
+
 export const DEFAULT_LIMITS = Object.freeze({
   concurrency: 3, calls: 600, activeMs: 12 * 60 * 60 * 1000, lifetimeMs: 7 * 24 * 60 * 60 * 1000,
   localRevisions: 2, globalRevisions: 1, callsPerAttempt: 4, readsPerAttempt: 8,

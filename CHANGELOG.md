@@ -7,6 +7,10 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign stage role refusal
+
+- `refuseCampaignStageRole` records that a campaign stage kind is not an authoring role. `range` and `synthesis` refuse as `campaign-stage-not-a-role` and never become a role or task. Any other value refuses as `unknown-stage-kind`. Existing roles are unchanged. The continuation check-in names that refusal, does not call it, and does not build a task from a stage. Cadence is not resumed and no task box is closed.
+
 ### Check-in word target
 
 - `readCheckinWordTarget` copies an existing goal id and its positive saved word target for a later check-in. A null target, any schema other than 1, a different book, and a supplied campaign scalar or byte total (`selectedUtf16` or `selectedUtf8`, including nested) are refused. The reader does not count manuscript words, does not invent a goal id from the book id, and is not used by brief preparation or the continuation check-in. Cadence is not resumed and no task box is closed.

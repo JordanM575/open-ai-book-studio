@@ -140,8 +140,16 @@ task is completed. T010 retains the independent correction gate. The policy amen
     `prepareBrief` or the continuation leaf. That leaf still emits no `targetWords`. Focused
     synthetic tests cover the copy, those refusals, nested campaign totals, and a prose field
     that does not change the saved target. No host wiring, coordinator execution, or cadence
-    resume is completed by this slice. The stage-kind mapping gap stays open, and T018 stays
+    resume is completed by this slice. That slice leaves stage kinds unmapped, and T018 stays
     unchecked.
+  - Partial evidence (campaign stage role refusal, pure contract only): `refuseCampaignStageRole`
+    in `packages/core/src/authoring/contracts.ts` records the only supported relationship between
+    a campaign stage kind and an authoring role. `range` and `synthesis` refuse as
+    `campaign-stage-not-a-role` and never become a `Role` or `TaskDefinition`. Any other value,
+    including an authoring role name or a stage object, refuses as `unknown-stage-kind` first.
+    `ROLES` and `validateGraph` are unchanged. The continuation leaf names the refusal and does
+    not call it, and it still builds no task graph. No host wiring, coordinator session, or
+    cadence resume is completed by this slice. T018 stays unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
   - Partial evidence (seam 6d, measurement only): `apps/desktop/tests/continuation-checkin-measurement.test.tsx`
