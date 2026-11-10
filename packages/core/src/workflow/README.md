@@ -97,6 +97,7 @@ directory, a file whose name is not a question id, a record this build cannot re
 listing failure refuses the whole list and leaves the files untouched. The folder is scanned and
 every question is decoded before a page is cut. A page is at most 256 questions and a run is at
 most 10,000. The page is `{ questions }` store snapshots. This method does not resume cadence.
+`projectQuestionInbox` projects a complete listing into open questions and an explicit irreversible-choice boolean, without reading the folder, answering, or writing.
 
 ## Limits of this slice
 

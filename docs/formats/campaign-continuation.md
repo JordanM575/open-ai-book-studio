@@ -114,11 +114,14 @@ cannot be named adopted chapters and `0` is also unverified. Cadence is therefor
 (no `cadence` key) in all cases until adoption is countable from recorded
 receipts/provenance; the saved-word counting code is retained as the honest subset that
 resumes then but is not emitted today. The 037 question store primitive exists
-(`WorkflowRecordStore.readQuestion`/`saveQuestion` over `questions/<questionId>.json`), but
-there is no durable question inbox, no irreversible classification on the question record,
-and no host-readable pending-irreversible source, so when adoption becomes countable
-`irreversibleChoicePending` must also be read from recorded question state or supply stays
-withheld — supply must not resume on adoption receipts alone. Supply remains scoped to the
+(`WorkflowRecordStore.readQuestion`/`saveQuestion` over `questions/<questionId>.json`).
+A question record may carry an explicit `irreversibleChoice` boolean, and absence is
+unclassified rather than pending. `projectQuestionInbox` projects an already complete
+listed set into open questions only — the id, the open state, and that boolean when it
+is present — and it does not answer, write, or schedule. The host still does not read
+that projection, so when adoption becomes countable `irreversibleChoicePending` must be
+supplied from recorded question state or supply stays withheld — supply must not resume
+on adoption receipts alone. Supply remains scoped to the
 pre-checkpoint window (a checkpoint record or an unreadable chapter also withholds), and
 withheld cadence stays distinguishable from an evaluated cadence with `due: false` while
 counted inputs still succeed without a cadence section. The channel still validates policy

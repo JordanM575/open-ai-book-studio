@@ -1201,6 +1201,68 @@ export function readIrreversibleChoicePending(input: unknown, owner: Owner): Imm
   });
 }
 
+const QUESTION_INBOX_LIMIT = 10_000;
+
+export interface QuestionInboxQuestion {
+  readonly id: string;
+  readonly state: 'open';
+  readonly irreversibleChoice?: boolean;
+}
+
+export interface QuestionInbox {
+  readonly questions: readonly QuestionInboxQuestion[];
+}
+
+/**
+ * Pure projection of an already listed question set. Open questions only.
+ * Not a store, an answer, or a cadence input. Absence of `irreversibleChoice`
+ * stays omitted; it is not stored as false or null.
+ */
+export function projectQuestionInbox(input: unknown, owner: Owner): Immutable<QuestionInbox> {
+  validateOwner(owner);
+  const items = questionInputs(input);
+  requireValue(items.length <= QUESTION_INBOX_LIMIT, 'question-inbox-too-large');
+  if (!Array.isArray(input)) {
+    const listing = input as Record<string, unknown>;
+    if (Object.hasOwn(listing, 'total')) {
+      requireValue(listing.total === items.length, 'partial-question-list');
+    }
+    if (Object.hasOwn(listing, 'offset')) {
+      requireValue(listing.offset === 0, 'partial-question-list');
+    }
+  }
+  const questions: QuestionInboxQuestion[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const record = unwrapQuestion(item);
+    if (Object.hasOwn(record, 'kind')) requireValue(record.kind === 'question', 'foreign-kind');
+    if (Object.hasOwn(record, 'owner')) {
+      const recordOwner = objectValue(record.owner, 'invalid-owner') as unknown as Owner;
+      validateOwner(recordOwner);
+      requireValue(sameOwner(recordOwner, owner), 'foreign-owner');
+    }
+    requireValue(typeof record.state === 'string' && QUESTION_STATES.has(record.state),
+      typeof record.state === 'string' ? 'unknown-question-state' : 'invalid-question-state');
+    let choice: boolean | undefined;
+    if (Object.hasOwn(record, 'irreversibleChoice')) {
+      requireValue(typeof record.irreversibleChoice === 'boolean', 'invalid-irreversible-choice');
+      choice = record.irreversibleChoice;
+    }
+    const questionId = idValue(record.id);
+    requireValue(!seen.has(questionId), 'duplicate-question');
+    seen.add(questionId);
+    if (record.state !== 'open') continue;
+    const projected: { id: string; state: 'open'; irreversibleChoice?: boolean } = {
+      id: questionId,
+      state: 'open',
+    };
+    if (choice !== undefined) projected.irreversibleChoice = choice;
+    questions.push(projected);
+  }
+  questions.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  return freeze({ questions });
+}
+
 function questionInputs(input: unknown): unknown[] {
   if (Array.isArray(input)) return input;
   const listing = objectValue(input, 'invalid-questions');

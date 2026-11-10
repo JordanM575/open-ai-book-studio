@@ -173,6 +173,15 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     `direction`, so the caller supplies those references; no host counts receipts on cadence
     resume and `irreversibleChoicePending` is not yet read from recorded question state, and
     the question inbox and checked answers remain open; this task stays unchecked.
+  - Partial evidence (question inbox): `projectQuestionInbox` in
+    `packages/core/src/authoring/wire.ts` projects an already listed question set into
+    open questions only (id, open state, and an explicit `irreversibleChoice` boolean;
+    absence is omitted, not stored as false). It refuses a partial page, duplicates,
+    foreign kind or owner, an unknown state, a non-boolean classification, and more
+    than 10,000 inputs before inspection. Focused synthetic coverage is
+    `packages/core/tests/authoring/question-inbox.test.ts`. Checked versioned author
+    answers, persistence, scheduling, and host wiring remain open. This task stays
+    unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.
