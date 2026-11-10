@@ -831,6 +831,9 @@ function validateQuestion(record: Record<string, unknown>, owner: Owner): void {
   }
   requireValue(typeof record.state === 'string' && QUESTION_STATES.has(record.state),
     typeof record.state === 'string' ? 'unknown-question-state' : 'invalid-question-state');
+  if (Object.hasOwn(record, 'irreversibleChoice')) {
+    requireValue(typeof record.irreversibleChoice === 'boolean', 'invalid-irreversible-choice');
+  }
   const options = arrayValue(record.options, 'invalid-options');
   requireValue(options.length <= WORKFLOW_LIMITS.questionOptions, 'record-count');
   const optionIds = new Set<string>();
@@ -1159,4 +1162,53 @@ export function encodeWorkflowRecord(record: WorkflowRecord, maxBytes?: number):
   requireValue(Number.isSafeInteger(limit) && limit >= 0, 'invalid-limit');
   requireValue(bytes.byteLength <= limit, 'record-overflow');
   return bytes;
+}
+
+export interface IrreversibleChoicePending {
+  readonly irreversibleChoicePending: boolean;
+  readonly openIrreversibleCount: number;
+  readonly openIrreversibleQuestionIds: readonly string[];
+}
+
+/** Pure count of open questions explicitly classified irreversible. Absence is unclassified, not pending. */
+export function readIrreversibleChoicePending(input: unknown, owner: Owner): Immutable<IrreversibleChoicePending> {
+  validateOwner(owner);
+  const openIds: string[] = [];
+  const seen = new Set<string>();
+  for (const item of questionInputs(input)) {
+    const record = unwrapQuestion(item);
+    if (Object.hasOwn(record, 'kind')) requireValue(record.kind === 'question', 'foreign-kind');
+    if (Object.hasOwn(record, 'owner')) {
+      const recordOwner = objectValue(record.owner, 'invalid-owner') as unknown as Owner;
+      validateOwner(recordOwner);
+      requireValue(sameOwner(recordOwner, owner), 'foreign-owner');
+    }
+    requireValue(typeof record.state === 'string' && QUESTION_STATES.has(record.state),
+      typeof record.state === 'string' ? 'unknown-question-state' : 'invalid-question-state');
+    if (Object.hasOwn(record, 'irreversibleChoice')) {
+      requireValue(typeof record.irreversibleChoice === 'boolean', 'invalid-irreversible-choice');
+    }
+    const questionId = idValue(record.id);
+    requireValue(!seen.has(questionId), 'duplicate-question');
+    seen.add(questionId);
+    if (record.state === 'open' && record.irreversibleChoice === true) openIds.push(questionId);
+  }
+  openIds.sort();
+  return freeze({
+    irreversibleChoicePending: openIds.length > 0,
+    openIrreversibleCount: openIds.length,
+    openIrreversibleQuestionIds: openIds,
+  });
+}
+
+function questionInputs(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input;
+  const listing = objectValue(input, 'invalid-questions');
+  return arrayValue(listing.questions, 'invalid-questions');
+}
+
+function unwrapQuestion(item: unknown): Record<string, unknown> {
+  const value = objectValue(item, 'invalid-question');
+  if (!Object.hasOwn(value, 'record')) return value;
+  return objectValue(value.record, 'invalid-question');
 }

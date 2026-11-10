@@ -36,6 +36,8 @@ interface Question {
   affected: string[];
   state: 'open' | 'answered' | 'superseded' | 'withdrawn';
   answer: { exactText: string; confirmedText: string; direction: Reference<'direction'> } | null;
+  /** Explicit host classification. Omission on a new question stores false, never a prose inference. */
+  irreversibleChoice: boolean;
 }
 
 interface TaskControl {
@@ -67,7 +69,7 @@ export type RunStatus = 'active' | 'blocked' | 'final-review-ready' | 'pausing' 
 
 export type GraphAction =
   | { type: 'pause' | 'cancel' | 'revoke' | 'resume' | 'recover' | 'finish' }
-  | { type: 'question'; questionId: string; keys: string[] }
+  | { type: 'question'; questionId: string; keys: string[]; irreversibleChoice?: boolean }
   | { type: 'close-question'; questionId: string; questionRevision: number; disposition: 'superseded' | 'withdrawn' }
   | { type: 'answer'; questionId: string; questionRevision: number; direction: Reference<'direction'>;
       exactText: string; confirmedText: string }
@@ -104,6 +106,12 @@ function definition(state: RunSnapshot, taskId: string): Immutable<TaskDefinitio
 function currentAttempt(state: RunSnapshot, taskId: string): Immutable<Attempt> | undefined {
   return state.attempts.findLast(attempt => attempt.taskId === taskId && !attempt.historical &&
     (attempt.generation === state.generation || attempt.phase === 'completed'));
+}
+
+function explicitIrreversibleChoice(action: { irreversibleChoice?: unknown }): boolean {
+  if (!Object.hasOwn(action, 'irreversibleChoice')) return false;
+  requireValue(typeof action.irreversibleChoice === 'boolean', 'invalid-irreversible-choice');
+  return action.irreversibleChoice;
 }
 
 function blockedByQuestion(state: RunSnapshot, taskId: string): boolean {
@@ -258,7 +266,8 @@ export function reduceRun(snapshot: RunSnapshot, input: Command): RunSnapshot {
       id(action.questionId);
       requireValue(!state.questions.some(q => q.id === action.questionId), 'duplicate-question');
       const affected = affectedTasks(state, action.keys);
-      state.questions.push({ id: action.questionId, revision: 0, keys: action.keys, affected, state: 'open', answer: null });
+      const irreversibleChoice = explicitIrreversibleChoice(action);
+      state.questions.push({ id: action.questionId, revision: 0, keys: action.keys, affected, state: 'open', answer: null, irreversibleChoice });
       invalidate(state, affected);
       break;
     }
