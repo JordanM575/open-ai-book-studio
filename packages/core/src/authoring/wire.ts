@@ -1210,5 +1210,8 @@ function questionInputs(input: unknown): unknown[] {
 function unwrapQuestion(item: unknown): Record<string, unknown> {
   const value = objectValue(item, 'invalid-question');
   if (!Object.hasOwn(value, 'record')) return value;
+  // A question record may retain an unknown `record` object. Only a snapshot
+  // wrapper — own `record`, and no question `kind` or `state` — unwraps.
+  if (Object.hasOwn(value, 'kind') || Object.hasOwn(value, 'state')) return value;
   return objectValue(value.record, 'invalid-question');
 }

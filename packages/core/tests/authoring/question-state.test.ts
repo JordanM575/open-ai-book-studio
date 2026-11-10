@@ -345,6 +345,19 @@ describe("pure pending reader — irreversibleChoicePending", () => {
     expect(fromListing).toEqual(fromSnapshots);
   });
 
+  test("a question's own classification wins over a nested record extension", () => {
+    const record = questionRecord({
+      irreversibleChoice: false,
+      record: { id: "question_00000002", state: "open", irreversibleChoice: true },
+    });
+    const decodedRecord = decode(bytesOf(record));
+    expect((decodedRecord as Record<string, unknown>).irreversibleChoice).toBe(false);
+    const pending = readIrreversibleChoicePending([decodedRecord as never], owner);
+    expect(pending.irreversibleChoicePending).toBe(false);
+    expect(pending.openIrreversibleCount).toBe(0);
+    expect(pending.openIrreversibleQuestionIds).toEqual([]);
+  });
+
   test("deep-frozen inputs are not mutated and empty input is not pending", () => {
     const record = decoded({ irreversibleChoice: true });
     const frozenRecord = JSON.parse(JSON.stringify(record)) as Record<string, unknown>;

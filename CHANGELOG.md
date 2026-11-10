@@ -10,6 +10,7 @@ Update the `Unreleased` section before every commit.
 ### Authoring question-state reading
 
 - Question records may carry an explicit `irreversibleChoice` boolean. A record without that field stays valid and unclassified: absence is not pending, and option wording, consequences, keys, or character identity are not a classification. A present non-boolean is refused. `readIrreversibleChoicePending` counts only open questions whose recorded classification is true and returns ids and a count, not question prose. A new in-memory question stores false when its action omits the field. Blocking behavior is unchanged. Cadence is not resumed and no task box is closed.
+- A question record that keeps an unknown `record` object is counted from its own `irreversibleChoice`. A store snapshot with `record` and no question `kind` or `state` still unwraps. Cadence is not resumed and no task box is closed.
 
 ### Authoring adoption receipt publisher (037 T032 partial)
 
