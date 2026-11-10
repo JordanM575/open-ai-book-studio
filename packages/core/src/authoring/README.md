@@ -14,6 +14,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | --- | --- | --- |
 | `contracts.ts` | `Owner`, `Reference<K>`, `Graph`, `TaskDefinition`, `validateGraph`, `prepareBrief` | Readonly owner/kind/id/revision/hash references; supported version, duplicate/missing/foreign/stale dependency and DAG checks. Input descriptors are copied, not trusted as permissions. The exact brief and existing 033 goal survive; no word counter. |
 | `contracts.ts` | `CheckinCadencePolicy`, `DEFAULT_CHECKIN_CADENCE_POLICY`, `CHECKIN_CADENCE_LIMITS`, `validateCheckinCadencePolicy`, `CheckinCadenceProgress`, `validateCheckinCadenceProgress`, `evaluateCheckinCadence` | Versioned check-in cadence (ADR 0019): editable adopted-chapter/saved-word intervals, first-chapter and irreversible-choice triggers, bounded validation, and a pure due evaluation over caller-counted progress. Counts nothing and reads no prose. |
+| `contracts.ts` | `readCheckinWordTarget` | Copies an existing 033 goal id and its positive saved `targetWords`. Refuses a null target, any schema other than 1, a different book, and campaign `selectedUtf16` / `selectedUtf8` fields at any depth. Does not count prose or invent a goal id. |
 | `graph.ts` | `createRun`, `reduceRun`, `taskStatuses`, `runStatus`, `publicationEligible` | Checked command/revision/generation transitions, deterministic graph-order projection, questions/direction, preserved historical attempts, explicit author finish. Publication eligibility is only a necessary graph condition. |
 | `lifecycle.ts` | `advanceAttempt`, `advanceEffect` | Prepared, intent, receiving, output-kept and completed are separate. Publication intent and actual receipt are separate. Recovery never turns possible sends/writes into known-free failure or a replay. |
 | `admission.ts` | `createLedger`, `reserve`, `observeReservation`, `accountingSummary` | Finite reservations, actual receipts, pinned routes, per-attempt continuations/read limits, revision/no-progress checks and known/unknown/partial accounting. |
@@ -97,6 +98,18 @@ chapters, supplying the first-chapter flag only until that first check-in is tak
 since-check-in counters after a check-in. The policy and evaluator perform no scheduling, persistence,
 inbox or host wiring; the campaign-continuation adapter now emits cadence when the caller supplies
 counted progress (host wiring that supplies it is a later slice).
+
+## Check-in word target
+
+`readCheckinWordTarget(goal, bookId)` is the pure source for a later check-in brief's `targetWords`.
+It copies `goalId` and a positive `targetWords` from a schema-1 goal for that book. A cleared goal
+(`targetWords: null`) refuses as `absent-word-target`. Any other `schemaVersion` refuses as
+`unsupported-version`. A different or missing `bookId` refuses as `foreign-goal`. A supplied value
+that carries `selectedUtf16` or `selectedUtf8` at any depth, including inside nested objects and
+arrays, refuses as `campaign-count-not-words` before the target is read. The reader never counts
+manuscript words, never imports a word counter, and never fills in `goalId` from `bookId`.
+`prepareBrief` does not call it, and the continuation check-in leaf still emits no `targetWords`.
+Nothing here schedules a check-in or wires a host.
 
 ## Adoption receipts
 

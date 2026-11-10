@@ -62,6 +62,48 @@ export function prepareBrief(input: Brief): Immutable<Brief> {
   return freeze(brief);
 }
 
+export interface CheckinWordTarget {
+  goalId: string;
+  targetWords: number;
+}
+
+/**
+ * Copies an existing 033 goal id and its positive saved word target.
+ * Does not count manuscript words, invent a goal id, or relabel campaign
+ * scalar/byte totals as words. Not used by `prepareBrief`.
+ */
+export function readCheckinWordTarget(input: unknown, bookId: string): Immutable<CheckinWordTarget> {
+  id(bookId);
+  const goal: unknown = copyValue(input);
+  refuseCampaignCounts(goal);
+  requireValue(isPlainRecord(goal), 'invalid-goal');
+  requireValue(goal.schemaVersion === 1, 'unsupported-version');
+  requireValue(goal.bookId === bookId, 'foreign-goal');
+  requireValue(goal.targetWords !== null, 'absent-word-target');
+  const targetWords = integer(goal.targetWords, 1);
+  requireValue(Object.hasOwn(goal, 'goalId'), 'invalid-id');
+  const goalId: unknown = goal.goalId;
+  id(goalId);
+  return freeze({ goalId, targetWords });
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Campaign continuation totals are not word targets, at any depth. */
+function refuseCampaignCounts(value: unknown): void {
+  if (value === null || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const entry of value) refuseCampaignCounts(entry);
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    requireValue(key !== 'selectedUtf16' && key !== 'selectedUtf8', 'campaign-count-not-words');
+    refuseCampaignCounts(Reflect.get(value, key));
+  }
+}
+
 export interface TaskDefinition {
   ref: Reference<'task'>;
   role: Role;

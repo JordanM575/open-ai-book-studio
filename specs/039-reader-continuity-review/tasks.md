@@ -130,6 +130,18 @@ task is completed. T010 retains the independent correction gate. The policy amen
     (Zod-validated before Library access); renderer-supplied progress refuses as `invalid`,
     and the production no-coordinator `unsupported` refusal is unchanged. No UI change, no
     coordinator session is fabricated, and T018 stays unchecked.
+  - Partial evidence (check-in word target, pure contract only): `readCheckinWordTarget` in
+    `packages/core/src/authoring/contracts.ts` copies an existing goal id and a positive saved
+    `targetWords` for a later check-in brief. A null target refuses as `absent-word-target`, any
+    schema other than 1 as `unsupported-version`, and a different or missing book as
+    `foreign-goal`. A supplied value carrying `selectedUtf16` or `selectedUtf8` at any depth
+    refuses as `campaign-count-not-words` before the target is read. The reader does not invent
+    a goal id from the book id, does not import a word counter, and is not called by
+    `prepareBrief` or the continuation leaf. That leaf still emits no `targetWords`. Focused
+    synthetic tests cover the copy, those refusals, nested campaign totals, and a prose field
+    that does not change the saved target. No host wiring, coordinator execution, or cadence
+    resume is completed by this slice. The stage-kind mapping gap stays open, and T018 stays
+    unchecked.
 - [ ] T019 Measure the connected journey's accessibility, fidelity and existing performance/bundle gates;
   separately evaluate semantic usefulness before any model-quality claim.
   - Partial evidence (seam 6d, measurement only): `apps/desktop/tests/continuation-checkin-measurement.test.tsx`
