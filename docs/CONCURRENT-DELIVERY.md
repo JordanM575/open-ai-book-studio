@@ -135,7 +135,7 @@ decisions are coordinator work; no duplicate research assignment is needed.
 | --- | --- | --- |
 | W04 | Host permission, durable admission and publisher seams over merged #43 storage | Explicit host/shared Library integration owner; preserve pending receipts, active baselines and legitimate predecessors |
 | W08 | Built-adapter recovery and remaining manual planning over merged #44 corrections | Manual planning components/tests and explicit shared integration owner; built/native acceptance remains separate |
-| W10 | Packaged/native and inline/retained repetition acceptance; separately, coordinator execution over the merged continuation seams | Non-overlapping review seams; continuation contract, codec, storage and check-in seams are merged, coordinator execution and its three contract gaps remain |
+| W10 | Packaged/native and inline/retained repetition acceptance; separately, coordinator execution over the merged continuation seams | Non-overlapping review seams; continuation contract, codec, storage and check-in seams are merged, coordinator execution and its two remaining contract gaps remain |
 | W14 | Qualify a production capture/IPC owner after merged synthetic controls and cancellable transport | Host permission, capture lifetime, actual dispatch and accounting; native/audio checks remain separately gated |
 | W15 | Fresh-context documentation review, truthful requirement status and next-slice DAG | Read-only stage reviewers; coordinator owns document corrections and traceability |
 

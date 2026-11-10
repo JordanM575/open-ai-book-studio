@@ -7,6 +7,10 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Campaign stage documentation
+
+- Current delivery notes no longer list a stage-kind mapping as an open authoring-contract gap. A campaign stage kind is refused as an authoring role and is not mapped onto one. The completion lane and the current review-routing gate record the same refusal. The check-in word-count source and the cadence contract remain open. No task box is closed.
+
 ### Campaign stage role refusal
 
 - `refuseCampaignStageRole` records that a campaign stage kind is not an authoring role. `range` and `synthesis` refuse as `campaign-stage-not-a-role` and never become a role or task. Any other value refuses as `unknown-stage-kind`. Existing roles are unchanged. The continuation check-in names that refusal, does not call it, and does not build a task from a stage. Cadence is not resumed and no task box is closed.
