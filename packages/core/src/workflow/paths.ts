@@ -4,9 +4,9 @@ import { toLibraryFilePath, toLibraryPath, type LibraryPath } from "../library/p
  * Exact schema-1 workflow paths under `books/<bookId>/workflows/<runId>/` (docs/FORMAT.md,
  * "Workflow records (schema 1)"). These are format constants, not preferences.
  *
- * Only the T023 record kinds are listed. Command/receipt pages, policies, plans, directions,
- * reservations, observations and accounting keep their reserved FORMAT paths but have no writer in
- * this slice.
+ * Only the T023 record kinds, plus the absent-only direction epoch, are listed. Command/receipt
+ * pages, policies, plans, reservations, observations and accounting keep their reserved FORMAT
+ * paths but have no writer in this slice.
  */
 
 export const WORKFLOW_DIR = "workflows";
@@ -44,6 +44,10 @@ export const artifactBodyPath = (
   extension: "md" | "json"
 ): LibraryPath =>
   toLibraryFilePath(["books", bookId, WORKFLOW_DIR, runId, "artifacts", `${artifactId}.${extension}`]);
+export const directionsPath = (bookId: string, runId: string): LibraryPath =>
+  toLibraryPath(["books", bookId, WORKFLOW_DIR, runId, "directions"]);
+export const directionPath = (bookId: string, runId: string, directionId: string): LibraryPath =>
+  toLibraryFilePath(["books", bookId, WORKFLOW_DIR, runId, "directions", `${directionId}.json`]);
 export const contextsPath = (bookId: string, runId: string): LibraryPath =>
   toLibraryPath(["books", bookId, WORKFLOW_DIR, runId, "contexts"]);
 export const contextPath = (bookId: string, runId: string, contextId: string): LibraryPath =>

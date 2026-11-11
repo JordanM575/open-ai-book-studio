@@ -7,6 +7,10 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Direction persistence
+
+- `readDirection` and `createDirection` store one immutable direction epoch when `directions/<directionId>.json` is absent. The existing direction codec still checks the previous link. Revision 1 has no previous direction. A later epoch is a different id. The store does not open or hash the previous direction file. The same bytes are unchanged. Different bytes for that id are kept as a conflict copy and the active file stays. This writer does not answer a question, step the run, schedule, or resume cadence, and the host does not call it. No task box is closed.
+
 ### Answered question projection
 
 - `projectAnsweredQuestion` builds the next question revision after `checkVersionedAnswer`. The check runs first, so a stale question or a missing answer refuses before the timestamp or previous digest is read. The timestamp must be UTC. The previous digest must be 64 hexadecimal characters; this function does not hash the question. The result is a frozen copy at the open revision plus one, with a sha256 base naming that digest and the open revision, state `answered`, and an answer of the checked texts, a copy of the proposed direction reference, and that timestamp. `updatedAt` is the same timestamp. Generation, `createdAt`, and the question's other own fields are copied. It does not write, create a direction, step the run, schedule, or resume cadence, and the host does not call it. No task box is closed.

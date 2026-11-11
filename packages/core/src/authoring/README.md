@@ -148,7 +148,7 @@ function does not hash the direction. Extra answer fields, including `answeredAt
 
 The result is a frozen copy of the question id, the open revision, the two texts, and the direction
 id and revision. It is not a stored answer. The caller's records are not frozen or changed.
-Persistence, scheduling, and host wiring remain open.
+This check still does not write. Scheduling and host wiring remain open.
 
 ## Answered question projection
 
@@ -166,7 +166,18 @@ Its `base` is `{kind:"sha256", value: previousHash, revision: open revision}`. I
 from the check and stay separate, and `direction` is a copy of the proposed direction reference.
 `updatedAt` is that same timestamp. Generation, `createdAt`, and the question's other own data
 fields are copied, not invented. The caller's question, answer, and direction are not frozen or
-changed. Direction persistence, scheduling, and host wiring remain open.
+changed. This projection still does not create a direction. Scheduling and host wiring remain open.
+The store writer is described below.
+
+## Direction persistence
+
+`WorkflowRecordStore.readDirection` and `createDirection` store one immutable direction epoch at
+`directions/<directionId>.json`. Creation is absent-only through the existing create-only path and
+uses the codec's `validateDirection`. Revision 1 has `previous: null`. A later epoch names a
+different direction id whose previous reference revision is one lower. The store does not open or
+hash that previous file. The same bytes are unchanged. Different bytes for the same id are kept as
+a conflict copy and the active file stays. This writer does not answer a question, step the run,
+schedule, resume cadence, or wire the host.
 
 ## Adoption receipts
 

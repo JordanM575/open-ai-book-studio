@@ -199,9 +199,17 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     Generation, `createdAt`, and the question's other own fields are copied. It
     does not hash the question, write, create a direction, step the run, schedule,
     or resume cadence. Focused synthetic coverage is
-    `packages/core/tests/authoring/answered-question.test.ts`. Direction
-    persistence, scheduling, and host wiring remain open. This task stays
-    unchecked.
+    `packages/core/tests/authoring/answered-question.test.ts`. This projection
+    still does not create a direction. Scheduling and host wiring remain open.
+    This task stays unchecked.
+  - Partial evidence (direction persistence): `WorkflowRecordStore.readDirection`
+    and `createDirection` store one absent-only direction epoch at
+    `directions/<directionId>.json` through the existing create-only path. The
+    codec's `validateDirection` stays. Revision 1 has no previous direction. A
+    later epoch is a different id. The store does not open or hash the previous
+    direction file. Focused synthetic coverage is
+    `packages/core/tests/workflow/record-store.test.ts`. The host is not wired.
+    Scheduling and cadence resume remain open. This task stays unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.

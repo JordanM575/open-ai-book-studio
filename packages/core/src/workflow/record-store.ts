@@ -27,6 +27,7 @@ import {
   artifactMetaPath,
   attemptPath,
   contextPath,
+  directionPath,
   effectPath,
   questionPath,
   questionsPath,
@@ -41,8 +42,10 @@ import {
  *
  * Checked records: `run`, `task`, `attempt`, `effect` and `question` carry a positive revision and
  * the exact previous raw hash. Immutable records: `artifact` (metadata plus a bounded body) and
- * `context` are absent-only at revision 1. Every read-modify-write joins the Library's per-book
- * queue and every commit uses the service's journal-aware checked writer. There is no second queue,
+ * `context` are absent-only at revision 1. A `direction` epoch is also absent-only: a later epoch
+ * is a different id, and this store does not open or hash the previous direction file. Every
+ * read-modify-write joins the Library's per-book queue and every commit uses the service's
+ * journal-aware checked writer. There is no second queue,
  * no direct adapter commit, no scheduler, no provider call, no publication and no deletion.
  *
  * Canonical bytes are produced by the T018 codec, parsed again by the same build's reader before
@@ -70,7 +73,7 @@ export const QUESTION_LIST_LIMITS = Object.freeze({
 });
 
 export type CheckedWorkflowKind = "run" | "task" | "attempt" | "effect" | "question";
-export type ImmutableWorkflowKind = "artifact" | "context";
+export type ImmutableWorkflowKind = "artifact" | "context" | "direction";
 export type StoredWorkflowKind = CheckedWorkflowKind | ImmutableWorkflowKind;
 
 export interface WorkflowRecordHost {
@@ -126,7 +129,8 @@ const PREFIX: Readonly<Record<StoredWorkflowKind, string>> = Object.freeze({
   effect: "effect_",
   question: "question_",
   artifact: "artifact_",
-  context: "context_"
+  context: "context_",
+  direction: "direction_"
 });
 
 const RECORD_BOUND: Readonly<Record<StoredWorkflowKind, number>> = Object.freeze({
@@ -136,7 +140,8 @@ const RECORD_BOUND: Readonly<Record<StoredWorkflowKind, number>> = Object.freeze
   effect: WORKFLOW_LIMITS.recordBytes,
   question: WORKFLOW_LIMITS.recordBytes,
   artifact: WORKFLOW_LIMITS.recordBytes,
-  context: WORKFLOW_LIMITS.recordBytes
+  context: WORKFLOW_LIMITS.recordBytes,
+  direction: WORKFLOW_LIMITS.recordBytes
 });
 
 /** Codes that mean this build does not understand a current, otherwise readable record. */
@@ -190,6 +195,7 @@ function recordFilePath(
   if (kind === "effect") return effectPath(bookId, runId, id);
   if (kind === "question") return questionPath(bookId, runId, id);
   if (kind === "artifact") return artifactMetaPath(bookId, runId, id);
+  if (kind === "direction") return directionPath(bookId, runId, id);
   return contextPath(bookId, runId, id);
 }
 
@@ -286,6 +292,26 @@ export class WorkflowRecordStore {
         total: all.length,
         questions: all.slice(offset, offset + limit)
       };
+    });
+  }
+
+  /* -------------------------------------------------------------- directions */
+
+  async readDirection(
+    bookId: string,
+    runId: string,
+    directionId: string
+  ): Promise<WorkflowRecordSnapshot | null> {
+    assertRunId(runId);
+    assertRecordId("direction", directionId);
+    return this.inBook(bookId, () => this.load("direction", bookId, runId, directionId));
+  }
+
+  createDirection(bookId: string, runId: string, value: unknown): Promise<WorkflowCreateResult> {
+    assertRunId(runId);
+    return this.inBook(bookId, async () => {
+      await this.writable(bookId);
+      return this.createOnly("direction", bookId, runId, value);
     });
   }
 

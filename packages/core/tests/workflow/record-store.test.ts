@@ -9,6 +9,7 @@ import {
   artifactMetaPath,
   attemptPath,
   contextPath,
+  directionPath,
   effectPath,
   questionPath,
   runHeaderPath,
@@ -23,9 +24,12 @@ import {
   attemptRecord,
   clockAt,
   contextRecord,
+  directionRecord,
   effectRecord,
   makeBook,
+  ownerFor,
   questionRecord,
+  reference,
   runId,
   runRecord,
   sha256Hex,
@@ -105,6 +109,7 @@ describe("checked workflow record store", () => {
         () => records.saveEffect(book.id, runId, effectRecord(book.id, extension)),
         () => records.saveQuestion(book.id, runId, questionRecord(book.id, extension)),
         () => records.createContext(book.id, runId, contextRecord(book.id, extension)),
+        () => records.createDirection(book.id, runId, directionRecord(book.id, extension)),
         () => records.createArtifact(book.id, runId, artifactMetadata(book.id, body, extension), body)
       ];
       for (const write of writes) expect((await refusal(write())).code).toBe("invalid");
@@ -233,6 +238,9 @@ describe("checked workflow record store", () => {
         { value: contextRecord(book.id), path: contextPath(book.id, runId, "context_00000001"),
           read: () => records.readContext(book.id, runId, "context_00000001"),
           write: (value: unknown) => records.createContext(book.id, runId, value) },
+        { value: directionRecord(book.id), path: directionPath(book.id, runId, "direction_00000001"),
+          read: () => records.readDirection(book.id, runId, "direction_00000001"),
+          write: (value: unknown) => records.createDirection(book.id, runId, value) },
         { value: artifactMetadata(book.id, body), path: artifactMetaPath(book.id, runId, "artifact_00000001"),
           read: () => records.readArtifact(book.id, runId, "artifact_00000001"),
           write: (value: unknown) => records.createArtifact(book.id, runId, value, body) }
@@ -780,6 +788,58 @@ describe("checked workflow record store", () => {
     })));
     expect(conflict.code).toBe("conflict");
     expect((await port.readFile(contextPath(book.id, runId, "context_00000001")))?.sha256).toBe(created.record.hash);
+    expect(await conflictNames(port, book.id)).toHaveLength(1);
+  });
+
+  test("directions are immutable and absent-only", async () => {
+    const { library, book, port }: TestLibrary = await makeBook();
+    const records = library.workflowRecords;
+    const firstPath = directionPath(book.id, runId, "direction_00000001");
+    const secondPath = directionPath(book.id, runId, "direction_00000002");
+    const reads: string[] = [];
+    const original = port.readFile.bind(port);
+    port.readFile = async (path, options) => {
+      reads.push(key(path));
+      return original(path, options);
+    };
+
+    const created = await records.createDirection(book.id, runId, directionRecord(book.id));
+    expect(created.status).toBe("created");
+    expect((await records.readDirection(book.id, runId, "direction_00000001"))?.hash).toBe(created.record.hash);
+
+    const again = await records.createDirection(book.id, runId, directionRecord(book.id));
+    expect(again.status).toBe("unchanged");
+
+    const sameId = await refusal(records.createDirection(book.id, runId, directionRecord(book.id, {
+      revision: 2,
+      previous: reference("direction", ownerFor(book.id), "direction_00000001", 1),
+      exactText: "The same id is not a later epoch."
+    })));
+    expect(sameId.code).toBe("invalid");
+    expect((await port.readFile(firstPath))?.sha256).toBe(created.record.hash);
+    expect(await conflictNames(port, book.id)).toHaveLength(0);
+
+    const beforeLater = reads.length;
+    const later = await records.createDirection(book.id, runId, directionRecord(book.id, {
+      id: "direction_00000002",
+      revision: 2,
+      previous: reference("direction", ownerFor(book.id), "direction_00000001", 1),
+      exactText: "A later synthetic epoch."
+    }));
+    expect(later.status).toBe("created");
+    expect(later.record.record.revision).toBe(2);
+    const laterReads = reads.slice(beforeLater);
+    expect(laterReads).toContain(key(secondPath));
+    expect(laterReads).not.toContain(key(firstPath));
+    expect((await port.readFile(firstPath))?.sha256).toBe(created.record.hash);
+    expect((await records.readDirection(book.id, runId, "direction_00000002"))?.hash).toBe(later.record.hash);
+
+    const conflict = await refusal(records.createDirection(book.id, runId, directionRecord(book.id, {
+      exactText: "A different synthetic epoch."
+    })));
+    expect(conflict.code).toBe("conflict");
+    expect((await port.readFile(firstPath))?.sha256).toBe(created.record.hash);
+    expect((await port.readFile(secondPath))?.sha256).toBe(later.record.hash);
     expect(await conflictNames(port, book.id)).toHaveLength(1);
   });
 
