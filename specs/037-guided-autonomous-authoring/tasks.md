@@ -211,6 +211,20 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     `packages/core/tests/workflow/record-store.test.ts`. The host is not wired.
     Scheduling and cadence resume remain open. This task stays unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
+  - Partial evidence (invalidated task projection): `projectInvalidatedTasks` in
+    `packages/core/src/authoring/wire.ts` builds the next task revisions for one
+    direction's impact. An incomplete impact or a shared impact key matches, and
+    then so does a task that depends on a match. The result is a frozen copy in
+    input order: revision plus one, a sha256 base of the caller-supplied digest
+    at the old revision, the supplied direction reference, `retryAllowed: true`,
+    and the caller-supplied timestamp. A cached `status` is dropped.
+    `currentAttempt`, `needsDirection`, `generation`, `createdAt`, and
+    `definition` are copied. It does not hash, write, mark an attempt historical,
+    clear a live attempt, bump generation, or compare the new direction with the
+    task's current direction. Focused synthetic coverage is
+    `packages/core/tests/authoring/invalidated-tasks.test.ts`. The host is not
+    wired. Independent continuation and stop precedence remain the in-memory
+    reducer proofs. This task stays unchecked.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.
 - [ ] T036 Complete hierarchical whole-book source/category coverage, boundary review and synthesis.
