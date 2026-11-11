@@ -99,6 +99,7 @@ every question is decoded before a page is cut. A page is at most 256 questions 
 most 10,000. The page is `{ questions }` store snapshots. This method does not resume cadence.
 `projectQuestionInbox` projects a complete listing into open questions and an explicit irreversible-choice boolean, without reading the folder, answering, or writing.
 `checkVersionedAnswer` checks one decoded open question, the named revision, a proposed answer, and the direction epoch that answer would create. It does not write or resume cadence.
+`projectAnsweredQuestion` builds the next answered question revision from that check and a caller-supplied timestamp and previous digest. It does not hash, write, or resume cadence.
 
 ## Limits of this slice
 
