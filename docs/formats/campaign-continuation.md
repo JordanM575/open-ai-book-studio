@@ -118,10 +118,13 @@ resumes then but is not emitted today. The 037 question store primitive exists
 A question record may carry an explicit `irreversibleChoice` boolean, and absence is
 unclassified rather than pending. `projectQuestionInbox` projects an already complete
 listed set into open questions only — the id, the open state, and that boolean when it
-is present — and it does not answer, write, or schedule. The host still does not read
-that projection, so when adoption becomes countable `irreversibleChoicePending` must be
-supplied from recorded question state or supply stays withheld — supply must not resume
-on adoption receipts alone. Supply remains scoped to the
+is present — and it does not answer, write, or schedule. `checkVersionedAnswer` checks
+one decoded open question, the revision the author named, one proposed answer, and the
+direction epoch that answer would create. Silence is not an answer. It does not write,
+step a run, or schedule. The host still does not read that projection or call that
+check, so when adoption becomes countable `irreversibleChoicePending` must be supplied
+from recorded question state or supply stays withheld — supply must not resume on
+adoption receipts alone. Supply remains scoped to the
 pre-checkpoint window (a checkpoint record or an unreadable chapter also withholds), and
 withheld cadence stays distinguishable from an evaluated cadence with `due: false` while
 counted inputs still succeed without a cadence section. The channel still validates policy

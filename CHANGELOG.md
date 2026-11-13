@@ -7,6 +7,10 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Versioned answer check
+
+- `checkVersionedAnswer` checks one already decoded open question, the revision the author named, one proposed answer, and the direction epoch that answer would create. Silence (`null` or a missing answer) is not an answer. A question that is not open, or a named revision that is not the question's current revision, refuses as `stale-question`. Exact and confirmed text are copied separately and need not match. The direction must have origin `answer`, name this question at that open revision, be a new epoch under the existing previous-link rule, and its `exactText` must be the confirmed text. The answer's direction reference must name that direction record. The check returns those identities and the two texts. It does not write, step the run, schedule, or resume cadence, and no task box is closed.
+
 ### Question inbox
 
 - `projectQuestionInbox` projects an already listed question set into open questions only. Each entry copies the id, the open state, and an explicit `irreversibleChoice` boolean. A record without that field stays unclassified: the field is omitted, not stored as false or null. A present non-boolean is refused. The projection keeps no question prose. More than 10,000 inputs refuse before inspection. A listing whose own `total` is not the question count, or whose own `offset` is not zero, refuses as a partial list. It does not answer, write, schedule, or resume cadence, and no task box is closed.

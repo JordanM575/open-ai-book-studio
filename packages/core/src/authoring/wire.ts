@@ -1277,3 +1277,55 @@ function unwrapQuestion(item: unknown): Record<string, unknown> {
   if (Object.hasOwn(value, 'kind') || Object.hasOwn(value, 'state')) return value;
   return objectValue(value.record, 'invalid-question');
 }
+
+export interface CheckedVersionedAnswer {
+  readonly questionId: string;
+  readonly revision: number;
+  readonly exactText: string;
+  readonly confirmedText: string;
+  readonly directionId: string;
+  readonly directionRevision: number;
+}
+
+/**
+ * Pure check of one already decoded open question, the revision the author
+ * named, one proposed answer, and the direction epoch that answer would
+ * create. Silence is not an answer. Not a write, a run step, or a cadence
+ * input. The result is not a stored answer.
+ */
+export function checkVersionedAnswer(question: unknown, namedRevision: unknown, answer: unknown,
+  direction: unknown, owner: Owner): Immutable<CheckedVersionedAnswer> {
+  validateOwner(owner);
+  const record = unwrapQuestion(question);
+  if (Object.hasOwn(record, 'kind')) requireValue(record.kind === 'question', 'foreign-kind');
+  if (Object.hasOwn(record, 'owner')) {
+    const recordOwner = objectValue(record.owner, 'invalid-owner') as unknown as Owner;
+    validateOwner(recordOwner);
+    requireValue(sameOwner(recordOwner, owner), 'foreign-owner');
+  }
+  requireValue(typeof record.state === 'string' && QUESTION_STATES.has(record.state),
+    typeof record.state === 'string' ? 'unknown-question-state' : 'invalid-question-state');
+  requireValue(record.state === 'open', 'stale-question');
+  const revision = integer(record.revision, 1);
+  requireValue(revision === integer(namedRevision), 'stale-question');
+  checkRecord(record, RECORDS.question, 'question', owner);
+  if (answer === null || answer === undefined) fail('invalid-answer');
+  const proposed = objectValue(answer, 'invalid-answer');
+  requireValue(Object.hasOwn(proposed, 'exactText') && Object.hasOwn(proposed, 'confirmedText') &&
+    Object.hasOwn(proposed, 'direction'), 'invalid-answer');
+  const exactText = stringValue(proposed.exactText, 262_144, 262_144, 'invalid-text');
+  const confirmedText = stringValue(proposed.confirmedText, 262_144, 262_144, 'invalid-text');
+  const epoch = objectValue(direction, 'invalid-record');
+  checkRecord(epoch, RECORDS.direction, 'direction', owner);
+  requireValue(epoch.origin === 'answer', 'invalid-question-link');
+  const link = epoch.question as WorkflowReference;
+  const questionId = idValue(record.id);
+  requireValue(link.id === questionId && link.revision === revision, 'invalid-question-link');
+  requireValue(epoch.exactText === confirmedText, 'direction-text-mismatch');
+  referenceValue(proposed.direction, 'direction', owner);
+  const directionId = idValue(epoch.id);
+  const directionRevision = integer(epoch.revision, 1);
+  const named = proposed.direction as WorkflowReference;
+  requireValue(named.id === directionId && named.revision === directionRevision, 'stale-direction');
+  return freeze({ questionId, revision, exactText, confirmedText, directionId, directionRevision });
+}

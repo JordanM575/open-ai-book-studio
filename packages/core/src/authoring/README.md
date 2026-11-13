@@ -21,6 +21,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `value.ts` | `copyValue`, `AuthoringError` | Plain acyclic value admission without getters/toJSON, exact escaped JSON-size accounting, well-formed Unicode, depth 64, and checked arithmetic. This is not a wire encoder/parser. |
 | `wire.ts` | `decodeWorkflowRecord`, `encodeWorkflowRecord`, `canonicalWorkflowJson`, `WORKFLOW_LIMITS` | Raw schema-1 UTF-8 JSON admission and deterministic canonical encoding for the FORMAT workflow records. Refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy numeric lexemes, unsupported versions, foreign owner/kind/prefix, stale bases/links, depth and per-kind size/count overflow before returning a semantic record. Preserves supported unknown plain fields; no I/O, crypto, clock or host action. |
 | `wire.ts` | `projectQuestionInbox` | Pure projection of an already listed question array, or an object whose `questions` array is used, into open questions only. Copies the id, `state: "open"`, and an explicit `irreversibleChoice` boolean; omission is absence, not false. Refuses a partial page, duplicates, foreign kind/owner, an unknown state, a non-boolean classification, and more than 10,000 inputs before inspection. No prose, store, answer, schedule, or cadence. |
+| `wire.ts` | `checkVersionedAnswer` | Pure check of one already decoded open question, the revision the author named, one proposed answer, and the direction epoch that answer would create. Silence is not an answer. Exact and confirmed text stay separate. The direction origin is `answer`, its text is the confirmed text, and its question link names this open revision. No write, run step, stored answer, schedule, or cadence. |
 | `adoption-receipt.ts` | `AdoptionReceipt`, `validateAdoptionReceipt`, `countAdoptedChapters`, `ADOPTION_RECEIPT_LIMITS` | Versioned recorded adoption receipt (FR-017) and the pure adopted-chapter counter for T032 cadence. Binds one exact `artifact` candidate, `chapterId`, `resultVersion`/`resultHash`, `owner`, `grant`/`direction` references and caller-supplied `sequence`/`adoptedAt`; counts distinct chapters since an exclusive marker. No prose, clock or adoption decision. |
 
 Factories and reducers defensively copy before returning recursively frozen snapshots. They never
@@ -121,6 +122,32 @@ refuses as `partial-question-list` before the entries are built. A missing `tota
 not invented. More than 10,000 inputs refuse as `question-inbox-too-large` before any question is
 inspected; exactly 10,000 may proceed. The function does not answer, write, schedule, or resume
 cadence.
+
+## Versioned answer check
+
+`checkVersionedAnswer(question, namedRevision, answer, direction, owner)` checks one already
+decoded open question against the revision the author named, one proposed answer, and the direction
+epoch that answer would create. It does not write, step the run, schedule, or resume cadence.
+
+A store snapshot unwraps only when it has its own `record` and no question `kind` or `state`. The
+direction argument is the direction record itself. Silence is `null` or a missing answer and
+refuses as `invalid-answer`. A missing or non-string state keeps `invalid-question-state`; an
+unknown state string keeps `unknown-question-state`. Withdrawn, superseded, and answered questions
+are not open and refuse as `stale-question`, as does a named revision that is not the question's
+current revision. A decoded question revision is at least 1.
+
+Exact and confirmed text are copied separately and are not required to equal each other. The
+direction must be a direction record whose origin is `answer` (`invalid-question-link` otherwise),
+whose question reference names this question at that same open revision (`invalid-question-link`),
+and whose previous link is a new epoch under the existing rule (`stale-direction-link`,
+`duplicate-direction`). Its `exactText` must be exactly the confirmed text
+(`direction-text-mismatch`). The answer's direction reference must name that direction record's id
+and revision (`stale-direction`). The hash on that reference is only checked as a digest; this
+function does not hash the direction. Extra answer fields, including `answeredAt`, are not copied.
+
+The result is a frozen copy of the question id, the open revision, the two texts, and the direction
+id and revision. It is not a stored answer. The caller's records are not frozen or changed.
+Persistence, scheduling, and host wiring remain open.
 
 ## Adoption receipts
 

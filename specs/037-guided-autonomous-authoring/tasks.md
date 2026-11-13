@@ -182,6 +182,14 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     `packages/core/tests/authoring/question-inbox.test.ts`. Checked versioned author
     answers, persistence, scheduling, and host wiring remain open. This task stays
     unchecked.
+  - Partial evidence (versioned answer check): `checkVersionedAnswer` in
+    `packages/core/src/authoring/wire.ts` checks one already decoded open question,
+    the revision the author named, one proposed answer, and the direction epoch that
+    answer would create. Silence is not an answer. Exact and confirmed text stay
+    separate, and the direction text must be the confirmed text. It does not write,
+    step the run, schedule, or resume cadence. Focused synthetic coverage is
+    `packages/core/tests/authoring/versioned-answer.test.ts`. Persistence, scheduling,
+    and host wiring remain open. This task stays unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.
