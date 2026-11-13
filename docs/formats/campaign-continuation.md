@@ -83,11 +83,13 @@ owner identity, revision, segment/token totals, selected scalar/byte counts and 
 receipt tallies). It refuses stale expectations, partial or non-active groups, cross-book
 artifacts, refused or compatibly differing semantics labels and campaigns too large for one
 037 context/phase, and it never recounts prose, re-encodes stored bytes or mutates its
-inputs, so supported unknown fields survive untouched. The codec retains no word count and
-there is no campaign-stage task role and no derivation for `Brief.targetWords`; the leaf
-therefore emits counted progress only and a host must not relabel scalar/byte counts as words
-or invent a cadence from them. The 037 authoring contracts now define a versioned check-in
-cadence policy and pure due evaluator (`CheckinCadencePolicy` in
+inputs, so supported unknown fields survive untouched. The codec retains no word count.
+Campaign stage kinds are refused as authoring roles (`refuseCampaignStageRole` in
+`packages/core/src/authoring/contracts.ts`) and are not turned into tasks. There is no
+derivation for `Brief.targetWords`. The leaf therefore emits counted progress only, does
+not call that refusal, and a host must not relabel scalar/byte counts as words, invent a
+cadence from them, or turn a campaign stage into a task. The 037 authoring contracts now
+define a versioned check-in cadence policy and pure due evaluator (`CheckinCadencePolicy` in
 `packages/core/src/authoring/contracts.ts`, ADR 0019 defaults), and this leaf now emits cadence
 when the caller supplies counted progress: an optional `cadence` request input carries
 `callerCountedProgress` (adopted chapters/saved words counted by the caller, first-adopted-chapter
