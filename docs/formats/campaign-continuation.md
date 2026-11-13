@@ -126,8 +126,12 @@ after that check: the open revision plus one, a sha256 base naming the caller-su
 previous digest and the open revision, state `answered`, and an answer of the checked
 texts, a copy of the proposed direction reference, and the caller-supplied timestamp.
 It does not hash the question, write, create a direction, step a run, or schedule.
-The host still does not read the inbox projection, call `checkVersionedAnswer`, or call
-`projectAnsweredQuestion`, so when
+`readDirection` and `createDirection` store one absent-only direction epoch at
+`directions/<directionId>.json`. A later epoch is a different id. The store does not open or
+hash the previous direction file, answer a question, step a run, or schedule. The host does
+not call them.
+The host still does not read the inbox projection, call `checkVersionedAnswer`, call
+`projectAnsweredQuestion`, or call `createDirection`, so when
 adoption becomes countable `irreversibleChoicePending` must be supplied
 from recorded question state or supply stays withheld — supply must not resume on
 adoption receipts alone. Supply remains scoped to the

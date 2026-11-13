@@ -19,8 +19,9 @@ writer for these files and has no IPC, scheduler, provider, execution, publicati
 | `question` | `questions/<questionId>.json` | Checked revision + exact previous raw hash. `listQuestions` reads the folder; it does not write. |
 | `artifact` | `artifacts/<artifactId>.meta.json` + `artifacts/<artifactId>.{md,json}` | Absent-only immutable pair. |
 | `context` | `contexts/<contextId>.json` | Absent-only immutable manifest. |
+| `direction` | `directions/<directionId>.json` | Absent-only immutable epoch. A later epoch is a different id. |
 
-`brief`, `policy`, `phase-plan`, `direction`, command/receipt pages, reservation, observation and
+`brief`, `policy`, `phase-plan`, command/receipt pages, reservation, observation and
 accounting records keep their reserved FORMAT paths but have no writer in this slice.
 
 ## Invariants
@@ -33,7 +34,8 @@ accounting records keep their reserved FORMAT paths but have no writer in this s
   semantically identical record is a no-op and writes nothing.
 - Immutable records are absent-only. An artifact's metadata and body must agree on the exact SHA-256
   and byte count; a missing body, an orphan body, a second body or a mismatch refuses without
-  rewriting either file.
+  rewriting either file. A direction epoch is absent-only at `directions/<directionId>.json`. A later
+  epoch is a different id. The store does not open or hash the previous direction file.
 - Every commit is the Library's journal-aware checked commit, and every write is compared with the
   exact bytes and hash on readback. A publication that cannot be verified is reported as
   `uncertain`; it is never retried automatically.
@@ -100,6 +102,7 @@ most 10,000. The page is `{ questions }` store snapshots. This method does not r
 `projectQuestionInbox` projects a complete listing into open questions and an explicit irreversible-choice boolean, without reading the folder, answering, or writing.
 `checkVersionedAnswer` checks one decoded open question, the named revision, a proposed answer, and the direction epoch that answer would create. It does not write or resume cadence.
 `projectAnsweredQuestion` builds the next answered question revision from that check and a caller-supplied timestamp and previous digest. It does not hash, write, or resume cadence.
+`readDirection` and `createDirection` store one absent-only direction epoch. They do not answer, schedule, or resume cadence.
 
 ## Limits of this slice
 

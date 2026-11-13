@@ -212,6 +212,23 @@ export function artifactMetadata(
   };
 }
 
+export function directionRecord(bookId: string, overrides: Record<string, unknown> = {}, run = runId) {
+  const owner = ownerFor(bookId, run);
+  return {
+    schemaVersion: 1,
+    kind: "direction",
+    owner,
+    id: "direction_00000001",
+    revision: 1,
+    exactText: "Synthetic direction epoch.",
+    origin: "author",
+    previous: null,
+    question: null,
+    createdAt: at,
+    ...overrides
+  };
+}
+
 export function contextRecord(bookId: string, overrides: Record<string, unknown> = {}, run = runId) {
   const owner = ownerFor(bookId, run);
   return {

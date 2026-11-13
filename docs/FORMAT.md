@@ -52,7 +52,7 @@ schema from these directory names or from an unchecked TypeScript object.
 
 | Reserved location | Accepted ownership / prerequisite |
 | --- | --- |
-| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers for `run`, `task`, `attempt`, `effect`, `question`, `artifact` and `context` exist, while command/admission writers and independent storage review remain separate. |
+| `books/<bookId>/workflows/<runId>/` | Book-owned run/brief/policy/plans/directions/tasks/commands/attempts/effects/questions/artifacts/contexts/admission records. Schema 1 is defined in [Workflow records](#workflow-records-schema-1); checked writers for `run`, `task`, `attempt`, `effect`, `question`, `artifact` and `context` exist, and an absent-only `direction` writer exists, while command/admission writers and independent storage review remain separate. |
 | `books/<bookId>/reviews/<runId>.json` | Immutable absent-only explicit saved report; analyzer/profile/source/coverage/findings attribution, bounded quotes, no full source bodies. Schema 1 is defined in [Saved review records](#saved-review-records-schema-1); checked writer and saved-record IPC/UI exist, export and independent review remain open. |
 | `books/<bookId>/reviews/dispositions/`, `profiles/`, `campaigns/<campaignId>.json` | Checked author-owned records. The existing schema-1 writer is defined in [Saved review records](#saved-review-records-schema-1). The same campaign path is also reserved for the distinct [schema-2 manifest](#saved-campaign-continuation-manifest-schema-2-segment-and-intent-schema-1), not implemented by that writer. |
 | `books/<bookId>/reviews/campaigns/<campaignId>.segments/`, `<campaignId>.intents/`, and `reviews/campaign-moves/` | D-201 [schema and recovery rules](formats/campaign-continuation.md); pure segment/intent candidate encoding and inspection exist, a checked storage slice publishes and recovers one campaign's manifest, segments and intents, and a checked group slice now trashes/restores the whole campaign group under an immutable group intent and resolves checkpoint reports across their recorded owners. A checked fixed-history slice additionally moves the owner book's `history/` tree with that campaign group under an immutable fixed-history intent in `reviews/fixed-history-moves/`. No host execution or portable-archive claim is added. |
@@ -304,9 +304,11 @@ D-194–D-196 / [ADR 0019](adr/0019-bounded-autonomous-authoring.md) define the 
 authority. This section specifies the durable schema-1 records under
 `books/<bookId>/workflows/<runId>/` that the pure graph, lifecycle and admission contracts need. It
 does **not** authorize a scheduler, provider call, publication or host permission. The checked writer
-for the T023 record kinds is `packages/core/src/workflow/record-store.ts`, constructed as
+for the T023 record kinds, and the absent-only direction epoch writer, is
+`packages/core/src/workflow/record-store.ts`, constructed as
 `LibraryService.workflowRecords`; command/receipt pages, admission records, scheduling, provider
-calls, publication and independent storage review remain open. The pure host-neutral raw codec is
+calls, publication and independent storage review remain open. The direction writer does not open
+or hash the previous direction file. The pure host-neutral raw codec is
 `packages/core/src/authoring/wire.ts`; it performs no I/O.
 
 ### Layout
@@ -465,6 +467,13 @@ the 1,024-per-plan bound.
 | `previous` | yes | `null` only at revision 1; otherwise a `direction` reference whose revision is exactly one lower and whose ID differs. |
 | `question` | yes | Non-null `question` reference exactly when `origin` is `answer`; otherwise `null`. |
 | `createdAt` | yes | UTC ISO timestamp. |
+
+`WorkflowRecordStore.readDirection` and `createDirection` are the absent-only writer for this file.
+Creation uses the codec's `validateDirection` and commits only when the file is absent. The same
+bytes are unchanged. Different bytes for the same id are kept as a conflict copy and the active
+file is not replaced. A later epoch is a different id. The store does not open or hash the previous
+direction file. It does not answer a question, update a question, step a run, schedule, or resume
+cadence.
 
 A confirmed answer creates immutable versioned direction, closes affected publication gates and
 invalidates dependent attempts. Old directions and old-epoch outputs remain historical. No base or
