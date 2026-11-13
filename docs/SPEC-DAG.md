@@ -134,9 +134,10 @@ campaign planning/execution and retained continuation have separate gates, as sh
 [four review paths](DELIVERY-FORECAST.md#review-paths). D-171/D-116 and U-037/U-039 are specifically
 accepted under ADRs 0019–0020; the detailed continuation format and its storage and check-in seams
 are merged, while coordinator execution and independent evidence gates remain. No real coordinator
-session exists yet, so the check-in channel and presenter refuse truthfully until one does. Three
-authoring-contract gaps stay open: no word-count source for check-in targets, no cadence contract
-and no stage-kind mapping. D-115 and U-040…U-042 retain open decisions.
+session exists yet, so the check-in channel and presenter refuse truthfully until one does. Two
+authoring-contract gaps stay open: no word-count source for check-in targets and no cadence contract.
+A campaign stage kind is refused as an authoring role and is not mapped onto one. D-115 and
+U-040…U-042 retain open decisions.
 
 Spec 017's D-200 extension now includes hands-free/reading; 038 and existing speech services supply
 selection/request seams, not an audiobook job system. L12 → L13 links 038 as its speech-route owner;

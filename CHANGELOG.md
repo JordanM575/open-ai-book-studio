@@ -27,6 +27,19 @@ Update the `Unreleased` section before every commit.
 
 - `projectQuestionInbox` projects an already listed question set into open questions only. Each entry copies the id, the open state, and an explicit `irreversibleChoice` boolean. A record without that field stays unclassified: the field is omitted, not stored as false or null. A present non-boolean is refused. The projection keeps no question prose. More than 10,000 inputs refuse before inspection. A listing whose own `total` is not the question count, or whose own `offset` is not zero, refuses as a partial list. It does not answer, write, schedule, or resume cadence, and no task box is closed.
 
+### Campaign stage documentation
+
+- Current delivery notes no longer list a stage-kind mapping as an open authoring-contract gap. A campaign stage kind is refused as an authoring role and is not mapped onto one. The completion lane and the current review-routing gate record the same refusal. The check-in word-count source and the cadence contract remain open. No task box is closed.
+- The current bounded implementation queue names those two open gaps and records the same stage-kind refusal. No task box is closed.
+
+### Campaign stage role refusal
+
+- `refuseCampaignStageRole` records that a campaign stage kind is not an authoring role. `range` and `synthesis` refuse as `campaign-stage-not-a-role` and never become a role or task. Any other value refuses as `unknown-stage-kind`. Existing roles are unchanged. The continuation check-in names that refusal, does not call it, and does not build a task from a stage. Cadence is not resumed and no task box is closed.
+
+### Check-in word target
+
+- `readCheckinWordTarget` copies an existing goal id and its positive saved word target for a later check-in. A null target, any schema other than 1, a different book, and a supplied campaign scalar or byte total (`selectedUtf16` or `selectedUtf8`, including nested) are refused. The reader does not count manuscript words, does not invent a goal id from the book id, and is not used by brief preparation or the continuation check-in. Cadence is not resumed and no task box is closed.
+
 ### Authoring question-state reading
 
 - Question records may carry an explicit `irreversibleChoice` boolean. A record without that field stays valid and unclassified: absence is not pending, and option wording, consequences, keys, or character identity are not a classification. A present non-boolean is refused. `readIrreversibleChoicePending` counts only open questions whose recorded classification is true and returns ids and a count, not question prose. A new in-memory question stores false when its action omits the field. Blocking behavior is unchanged. Cadence is not resumed and no task box is closed.

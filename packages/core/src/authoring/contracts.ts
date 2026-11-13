@@ -1,4 +1,4 @@
-import { copyValue, digest, freeze, id, integer, requireValue, text, type Immutable } from './value';
+import { AuthoringError, copyValue, digest, freeze, id, integer, requireValue, text, type Immutable } from './value';
 
 export interface Owner {
   readonly libraryRegistration: string;
@@ -22,6 +22,27 @@ export const OUTPUT_TOKENS: Readonly<Record<Role, number>> = Object.freeze({
   architect: 8192, 'character-planner': 8192, drafter: 4096, 'developmental-reviewer': 4096,
   'line-reviewer': 4096, 'revision-writer': 8192, 'canon-summarizer': 2048,
 });
+
+/** Review-campaign plan units. These are not authoring roles. */
+export const CAMPAIGN_STAGE_KINDS = ['range', 'synthesis'] as const;
+export type CampaignStageKind = typeof CAMPAIGN_STAGE_KINDS[number];
+
+/**
+ * Refuses a campaign stage kind as an authoring role. `range` and `synthesis`
+ * refuse as `campaign-stage-not-a-role` and never become a Role or
+ * TaskDefinition. Any other value, including an authoring role name or a stage
+ * object, refuses as `unknown-stage-kind` first and is not read as an object.
+ * Does not change `ROLES` or `validateGraph`. The continuation leaf does not
+ * call this function.
+ */
+export function refuseCampaignStageRole(kind: unknown): never {
+  requireValue(
+    typeof kind === 'string' && (CAMPAIGN_STAGE_KINDS as readonly string[]).includes(kind),
+    'unknown-stage-kind',
+  );
+  throw new AuthoringError('campaign-stage-not-a-role');
+}
+
 export const DEFAULT_LIMITS = Object.freeze({
   concurrency: 3, calls: 600, activeMs: 12 * 60 * 60 * 1000, lifetimeMs: 7 * 24 * 60 * 60 * 1000,
   localRevisions: 2, globalRevisions: 1, callsPerAttempt: 4, readsPerAttempt: 8,
@@ -60,6 +81,48 @@ export function prepareBrief(input: Brief): Immutable<Brief> {
   const brief = copyValue(input, 262_144);
   text(brief.text); id(brief.goalId); integer(brief.targetWords, 1);
   return freeze(brief);
+}
+
+export interface CheckinWordTarget {
+  goalId: string;
+  targetWords: number;
+}
+
+/**
+ * Copies an existing 033 goal id and its positive saved word target.
+ * Does not count manuscript words, invent a goal id, or relabel campaign
+ * scalar/byte totals as words. Not used by `prepareBrief`.
+ */
+export function readCheckinWordTarget(input: unknown, bookId: string): Immutable<CheckinWordTarget> {
+  id(bookId);
+  const goal: unknown = copyValue(input);
+  refuseCampaignCounts(goal);
+  requireValue(isPlainRecord(goal), 'invalid-goal');
+  requireValue(goal.schemaVersion === 1, 'unsupported-version');
+  requireValue(goal.bookId === bookId, 'foreign-goal');
+  requireValue(goal.targetWords !== null, 'absent-word-target');
+  const targetWords = integer(goal.targetWords, 1);
+  requireValue(Object.hasOwn(goal, 'goalId'), 'invalid-id');
+  const goalId: unknown = goal.goalId;
+  id(goalId);
+  return freeze({ goalId, targetWords });
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Campaign continuation totals are not word targets, at any depth. */
+function refuseCampaignCounts(value: unknown): void {
+  if (value === null || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const entry of value) refuseCampaignCounts(entry);
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    requireValue(key !== 'selectedUtf16' && key !== 'selectedUtf8', 'campaign-count-not-words');
+    refuseCampaignCounts(Reflect.get(value, key));
+  }
 }
 
 export interface TaskDefinition {
