@@ -1354,3 +1354,125 @@ export function projectAnsweredQuestion(question: unknown, namedRevision: unknow
   };
   return freeze(next) as Immutable<WorkflowRecord>;
 }
+
+export interface InvalidatedTaskProjection {
+  readonly tasks: readonly WorkflowRecord[];
+}
+
+/**
+ * Pure next task revisions for one direction's impact. An incomplete impact
+ * or a shared impact key matches, and then so does a task that depends on a
+ * match. Not a write, a hash, an attempt update, a run step, or a cadence
+ * input.
+ */
+export function projectInvalidatedTasks(tasks: unknown, keys: unknown, direction: unknown,
+  owner: Owner, updatedAt: unknown, digests: unknown): Immutable<InvalidatedTaskProjection> {
+  validateOwner(owner);
+  const impactKeys = impactKeyList(keys);
+  const records = taskRecords(tasks, owner);
+  const affected = affectedTaskIds(records, impactKeys);
+  referenceValue(direction, 'direction', owner);
+  const when = isoValue(updatedAt);
+  const previous = taskDigestMap(digests);
+  const projected: Record<string, unknown>[] = [];
+  for (const record of records) {
+    const taskId = record.id as string;
+    if (!affected.has(taskId)) continue;
+    const digest = previous.get(taskId);
+    requireValue(digest !== undefined, 'missing-digest');
+    const revision = integer(record.revision, 1);
+    const next = copyValue(record);
+    next.revision = add(revision, 1);
+    next.base = { kind: 'sha256', value: digest, revision };
+    next.direction = copyValue(direction);
+    next.retryAllowed = true;
+    next.updatedAt = when;
+    delete next.status;
+    projected.push(next);
+  }
+  return freeze({ tasks: projected }) as Immutable<InvalidatedTaskProjection>;
+}
+
+function impactKeyList(value: unknown): readonly string[] {
+  requireValue(Array.isArray(value) && value.length > 0, 'missing-impact');
+  requireValue(value.length <= WORKFLOW_LIMITS.impactKeysPerTask, 'record-count');
+  for (const key of value) idValue(key);
+  return value as readonly string[];
+}
+
+function taskInputs(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input;
+  const listing = objectValue(input, 'invalid-tasks');
+  return arrayValue(listing.tasks, 'invalid-tasks');
+}
+
+function unwrapTask(item: unknown): Record<string, unknown> {
+  const value = objectValue(item, 'invalid-task');
+  if (!Object.hasOwn(value, 'record')) return value;
+  // A task record may retain an unknown `record` object. Only a snapshot
+  // wrapper — own `record`, and no task `kind` — unwraps.
+  if (Object.hasOwn(value, 'kind')) return value;
+  return objectValue(value.record, 'invalid-task');
+}
+
+function taskRecords(input: unknown, owner: Owner): Record<string, unknown>[] {
+  const items = taskInputs(input);
+  requireValue(items.length <= WORKFLOW_LIMITS.tasksPerPlan, 'record-count');
+  const records: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const record = unwrapTask(item);
+    checkRecord(record, RECORDS.task, 'task', owner);
+    const taskId = idValue(record.id);
+    requireValue(!seen.has(taskId), 'duplicate-task');
+    seen.add(taskId);
+    records.push(record);
+  }
+  for (const record of records) {
+    const definition = objectValue(record.definition, 'invalid-definition');
+    for (const dependency of definition.dependsOn as readonly WorkflowReference[]) {
+      requireValue(seen.has(dependency.id), 'missing-task');
+    }
+  }
+  return records;
+}
+
+function affectedTaskIds(records: readonly Record<string, unknown>[], keys: readonly string[]): Set<string> {
+  const affected = new Set<string>();
+  for (const record of records) {
+    const impact = taskImpact(record);
+    const impactKeys = impact.keys as readonly string[];
+    if (impact.complete === false || impactKeys.some(key => keys.includes(key))) {
+      affected.add(record.id as string);
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const record of records) {
+      const taskId = record.id as string;
+      if (affected.has(taskId)) continue;
+      const definition = objectValue(record.definition, 'invalid-definition');
+      const dependsOn = definition.dependsOn as readonly WorkflowReference[];
+      if (dependsOn.some(dependency => affected.has(dependency.id))) {
+        affected.add(taskId);
+        changed = true;
+      }
+    }
+  }
+  return affected;
+}
+
+function taskImpact(record: Record<string, unknown>): Record<string, unknown> {
+  const definition = objectValue(record.definition, 'invalid-definition');
+  return objectValue(definition.impact, 'invalid-definition');
+}
+
+function taskDigestMap(value: unknown): Map<string, string> {
+  const record = objectValue(value, 'invalid-digest');
+  const names = Object.keys(record);
+  requireValue(names.length <= WORKFLOW_LIMITS.tasksPerPlan, 'record-count');
+  const digests = new Map<string, string>();
+  for (const name of names) digests.set(idValue(name), digestValue(record[name]));
+  return digests;
+}

@@ -23,6 +23,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `wire.ts` | `projectQuestionInbox` | Pure projection of an already listed question array, or an object whose `questions` array is used, into open questions only. Copies the id, `state: "open"`, and an explicit `irreversibleChoice` boolean; omission is absence, not false. Refuses a partial page, duplicates, foreign kind/owner, an unknown state, a non-boolean classification, and more than 10,000 inputs before inspection. No prose, store, answer, schedule, or cadence. |
 | `wire.ts` | `checkVersionedAnswer` | Pure check of one already decoded open question, the revision the author named, one proposed answer, and the direction epoch that answer would create. Silence is not an answer. Exact and confirmed text stay separate. The direction origin is `answer`, its text is the confirmed text, and its question link names this open revision. No write, run step, stored answer, schedule, or cadence. |
 | `wire.ts` | `projectAnsweredQuestion` | Pure next question revision after that check. The check runs first. Copies the question, sets revision plus one, a sha256 base of the caller-supplied previous digest at the open revision, state `answered`, and an answer of the checked texts, the proposed direction reference, and the caller-supplied timestamp. Does not hash, write, create a direction, schedule, or resume cadence. |
+| `wire.ts` | `projectInvalidatedTasks` | Pure next task revisions for one direction's impact. An incomplete impact or a shared key matches, and then so does a dependent. Copies each affected task, sets revision plus one, a sha256 base of the caller-supplied digest at the old revision, the supplied direction reference, `retryAllowed: true`, and the caller timestamp. Drops a cached `status`. Does not hash, write, mark an attempt historical, schedule, or resume cadence. |
 | `adoption-receipt.ts` | `AdoptionReceipt`, `validateAdoptionReceipt`, `countAdoptedChapters`, `ADOPTION_RECEIPT_LIMITS` | Versioned recorded adoption receipt (FR-017) and the pure adopted-chapter counter for T032 cadence. Binds one exact `artifact` candidate, `chapterId`, `resultVersion`/`resultHash`, `owner`, `grant`/`direction` references and caller-supplied `sequence`/`adoptedAt`; counts distinct chapters since an exclusive marker. No prose, clock or adoption decision. |
 
 Factories and reducers defensively copy before returning recursively frozen snapshots. They never
@@ -178,6 +179,40 @@ different direction id whose previous reference revision is one lower. The store
 hash that previous file. The same bytes are unchanged. Different bytes for the same id are kept as
 a conflict copy and the active file stays. This writer does not answer a question, step the run,
 schedule, resume cadence, or wire the host.
+
+## Invalidated task projection
+
+`projectInvalidatedTasks(tasks, keys, direction, owner, updatedAt, digests)` builds the next task
+revisions for one direction's impact. It does not write, hash a task, open a task file, mark an
+attempt historical, clear a live attempt, bump generation, step the run, schedule, or resume cadence.
+
+The owner is checked first. `keys` must be a non-empty list of ids no longer than the impact-key
+cap (`missing-impact`, then `record-count`). A non-array is `missing-impact`. Duplicate supplied
+keys are not a task-impact duplicate. The tasks may be an array or an object whose `tasks` array
+is used; other listing fields are not a cursor and this function does not read the tasks folder.
+More than 1,024 tasks refuse as `record-count` before inspection. Each task is checked with the
+existing task codec. A snapshot unwraps only when it has its own `record` and no own `kind`. A
+task that keeps an unknown `record` object stays that task. Duplicate ids are `duplicate-task`.
+A `dependsOn` id missing from the supplied set is `missing-task`.
+
+A task matches when its impact is incomplete (`complete: false`) or one of its impact keys is in
+the supplied list. A task that depends on a match matches too, including through further
+dependents. A dependency that does not itself match is not included. This is the in-memory
+affected-task rule. The supplied direction is not compared with the task's current direction or
+with a run epoch.
+
+The direction reference, the UTC `updatedAt`, and the digest map are checked after the match,
+including when nothing matches. An empty match is `{ tasks: [] }` only after those checks. Each
+affected task needs its own caller digest (`missing-digest`). A snapshot `hash` is not read, and
+this function does not hash.
+
+Each result is a frozen copy in input order. Revision is one higher. `base` is
+`{kind:"sha256", value: that digest, revision: the old revision}`. The supplied direction
+reference is copied on, and `retryAllowed` is true. `updatedAt` is the caller timestamp. An own
+cached `status` is dropped, because status is a projection and absent means recompute.
+`currentAttempt`, `needsDirection`, `generation`, `createdAt`, and `definition` are copied. The
+caller's tasks, direction, and digests are not frozen or changed. The host does not call this
+function. Independent continuation and stop precedence remain in-memory reducer proofs.
 
 ## Adoption receipts
 

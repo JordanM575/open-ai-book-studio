@@ -129,9 +129,14 @@ It does not hash the question, write, create a direction, step a run, or schedul
 `readDirection` and `createDirection` store one absent-only direction epoch at
 `directions/<directionId>.json`. A later epoch is a different id. The store does not open or
 hash the previous direction file, answer a question, step a run, or schedule. The host does
-not call them.
+not call them. `projectInvalidatedTasks` projects the next task revisions for one
+direction's impact keys, including dependents. An incomplete impact or a shared key matches,
+and then so does a task that depends on a match. It copies the next revision with a
+caller-supplied digest, the supplied direction reference, and `retryAllowed: true`, and it
+drops a cached status. It does not write, hash, mark an attempt historical, step a run, or
+schedule. The host does not call it.
 The host still does not read the inbox projection, call `checkVersionedAnswer`, call
-`projectAnsweredQuestion`, or call `createDirection`, so when
+`projectAnsweredQuestion`, call `createDirection`, or call `projectInvalidatedTasks`, so when
 adoption becomes countable `irreversibleChoicePending` must be supplied
 from recorded question state or supply stays withheld — supply must not resume on
 adoption receipts alone. Supply remains scoped to the

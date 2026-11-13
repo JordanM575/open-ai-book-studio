@@ -103,6 +103,7 @@ most 10,000. The page is `{ questions }` store snapshots. This method does not r
 `checkVersionedAnswer` checks one decoded open question, the named revision, a proposed answer, and the direction epoch that answer would create. It does not write or resume cadence.
 `projectAnsweredQuestion` builds the next answered question revision from that check and a caller-supplied timestamp and previous digest. It does not hash, write, or resume cadence.
 `readDirection` and `createDirection` store one absent-only direction epoch. They do not answer, schedule, or resume cadence.
+`projectInvalidatedTasks` projects the next task revisions for one direction's impact keys, including dependents. It does not write, hash, mark an attempt historical, or resume cadence.
 
 ## Limits of this slice
 
