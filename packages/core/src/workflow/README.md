@@ -16,7 +16,7 @@ writer for these files and has no IPC, scheduler, provider, execution, publicati
 | `task` | `tasks/<taskId>.json` | Checked revision + exact previous raw hash. |
 | `attempt` | `attempts/<attemptId>.json` | Checked revision + exact previous raw hash. |
 | `effect` | `effects/<effectId>.json` | Checked revision + exact previous raw hash. |
-| `question` | `questions/<questionId>.json` | Checked revision + exact previous raw hash. |
+| `question` | `questions/<questionId>.json` | Checked revision + exact previous raw hash. `listQuestions` reads the folder; it does not write. |
 | `artifact` | `artifacts/<artifactId>.meta.json` + `artifacts/<artifactId>.{md,json}` | Absent-only immutable pair. |
 | `context` | `contexts/<contextId>.json` | Absent-only immutable manifest. |
 
@@ -83,8 +83,20 @@ the confirmed adoption is never rolled back and no receipt is claimed. Other eff
 (`prepared`, `publish-intent`, `conflict`, `not-published`, `uncertain`) record nothing.
 
 What remains: the cadence host does not yet count these receipts on resume
-(`countAdoptedChapters` is still unwired there), and `irreversibleChoicePending` is not yet read
-from recorded question state, so host cadence supply stays withheld.
+(`countAdoptedChapters` is still unwired there). Recorded questions can be listed, but the host
+still does not supply that list to the pending-question reader, so host cadence supply stays
+withheld.
+
+## Question listing
+
+`WorkflowRecordStore.listQuestions` is read-only. It asks the storage port to inspect the
+questions folder, because a plain directory list can drop a name this version cannot open and can
+turn a missing folder into an empty list for a different reason than a successful read. A missing
+folder is an empty list. A port that cannot inspect names refuses. An unsupported name, a nested
+directory, a file whose name is not a question id, a record this build cannot read, or any other
+listing failure refuses the whole list and leaves the files untouched. The folder is scanned and
+every question is decoded before a page is cut. A page is at most 256 questions and a run is at
+most 10,000. The page is `{ questions }` store snapshots. This method does not resume cadence.
 
 ## Limits of this slice
 

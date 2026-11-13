@@ -15,6 +15,7 @@ import type {
   CommitFileResult,
   FileExpectation,
   LibraryFileSnapshot,
+  LibraryInspectedEntry,
   LibraryPort,
   LibraryRuntime
 } from "../library/port";
@@ -28,6 +29,7 @@ import {
   contextPath,
   effectPath,
   questionPath,
+  questionsPath,
   runHeaderPath,
   taskPath,
   workflowConflictPath,
@@ -58,6 +60,15 @@ const CONFLICT_COPY_BYTES = WORKFLOW_CONFLICT_BYTES;
 const CONFLICT_NAME_LIMIT = 200;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
+/**
+ * Question listing budget. Same page and run caps as adoption receipts.
+ * These are reader limits, not a format change.
+ */
+export const QUESTION_LIST_LIMITS = Object.freeze({
+  maxQuestionsPerRun: 10_000,
+  maxListPage: 256
+});
+
 export type CheckedWorkflowKind = "run" | "task" | "attempt" | "effect" | "question";
 export type ImmutableWorkflowKind = "artifact" | "context";
 export type StoredWorkflowKind = CheckedWorkflowKind | ImmutableWorkflowKind;
@@ -86,6 +97,16 @@ export interface WorkflowArtifactSnapshot extends WorkflowRecordSnapshot {
 export interface WorkflowSaveResult {
   status: "saved" | "unchanged";
   record: WorkflowRecordSnapshot;
+}
+
+/** A complete question scan cut into one page. `questions` are store snapshots. */
+export interface WorkflowQuestionListing {
+  bookId: string;
+  runId: string;
+  offset: number;
+  limit: number;
+  total: number;
+  questions: WorkflowRecordSnapshot[];
 }
 
 export interface WorkflowCreateResult {
@@ -232,6 +253,40 @@ export class WorkflowRecordStore {
 
   saveQuestion(bookId: string, runId: string, value: unknown): Promise<WorkflowSaveResult> {
     return this.saveChecked("question", bookId, runId, value);
+  }
+
+  /**
+   * Read every question in the run, then return one page.
+   * An unreadable name refuses the whole list. This does not write and does not supply cadence.
+   */
+  async listQuestions(
+    bookId: string,
+    runId: string,
+    options: { offset?: number; limit?: number } = {}
+  ): Promise<WorkflowQuestionListing> {
+    assertRunId(runId);
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? QUESTION_LIST_LIMITS.maxListPage;
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new WorkflowRecordError("invalid", "The question list offset is not valid.");
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > QUESTION_LIST_LIMITS.maxListPage) {
+      throw new WorkflowRecordError(
+        "invalid",
+        `The question list page is not valid; use 1 to ${QUESTION_LIST_LIMITS.maxListPage}.`
+      );
+    }
+    return this.inBook(bookId, async () => {
+      const all = await this.listAllQuestionsUnlocked(bookId, runId);
+      return {
+        bookId,
+        runId,
+        offset,
+        limit,
+        total: all.length,
+        questions: all.slice(offset, offset + limit)
+      };
+    });
   }
 
   /* ---------------------------------------------------------------- contexts */
@@ -584,6 +639,83 @@ export class WorkflowRecordStore {
       );
     }
     return { bytes, record };
+  }
+
+  /**
+   * Scan the whole questions folder before any page is cut.
+   * Missing the folder is an empty list. Every other listing failure stays a failure.
+   */
+  private async listAllQuestionsUnlocked(
+    bookId: string,
+    runId: string
+  ): Promise<WorkflowRecordSnapshot[]> {
+    const entries = await this.inspectQuestionDirectory(questionsPath(bookId, runId));
+    const ids: string[] = [];
+    for (const entry of entries) {
+      if (entry.kind === "unsupported") {
+        throw new WorkflowRecordError(
+          "unavailable",
+          "This questions folder contains a name this version cannot read. Nothing was counted."
+        );
+      }
+      if (entry.kind !== "file") {
+        throw new WorkflowRecordError(
+          "unavailable",
+          "This questions folder contains a directory. Nothing was counted."
+        );
+      }
+      if (!entry.name.endsWith(".json")) {
+        throw new WorkflowRecordError(
+          "corrupt",
+          "This question file name is not a question ID. The file was left untouched."
+        );
+      }
+      const id = entry.name.slice(0, -".json".length);
+      if (!ID_PATTERN.test(id) || !id.startsWith(PREFIX.question)) {
+        throw new WorkflowRecordError(
+          "corrupt",
+          "This question file name is not a question ID. The file was left untouched."
+        );
+      }
+      ids.push(id);
+    }
+    if (ids.length > QUESTION_LIST_LIMITS.maxQuestionsPerRun) {
+      throw new WorkflowRecordError(
+        "too-large",
+        `This run holds more than ${QUESTION_LIST_LIMITS.maxQuestionsPerRun.toLocaleString("en-US")} questions. The files were left untouched.`
+      );
+    }
+    const snapshots: WorkflowRecordSnapshot[] = [];
+    for (const id of [...ids].sort((left, right) => left.localeCompare(right))) {
+      const snapshot = await this.load("question", bookId, runId, id);
+      if (!snapshot) {
+        throw new WorkflowRecordError(
+          "corrupt",
+          "This question disappeared while listing. It was left untouched."
+        );
+      }
+      snapshots.push(snapshot);
+    }
+    return snapshots;
+  }
+
+  private async inspectQuestionDirectory(path: LibraryPath): Promise<LibraryInspectedEntry[]> {
+    if (!this.host.storage.inspectDirectory) {
+      throw new WorkflowRecordError(
+        "unavailable",
+        "This library cannot show every question name. Nothing was counted."
+      );
+    }
+    try {
+      return await this.host.storage.inspectDirectory(path);
+    } catch (error) {
+      if (error instanceof LibraryPortError && error.code === "not-found") return [];
+      if (error instanceof WorkflowRecordError) throw error;
+      throw new WorkflowRecordError(
+        "io",
+        "The questions folder could not be listed. Nothing was counted."
+      );
+    }
   }
 
   private async load(

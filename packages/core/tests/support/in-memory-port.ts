@@ -8,6 +8,7 @@ import type {
   LibraryDeviceInfo,
   LibraryEntry,
   LibraryFileSnapshot,
+  LibraryInspectedEntry,
   LibraryPath,
   LibraryPort,
   LibraryRuntime
@@ -75,6 +76,14 @@ export class InMemoryLibraryPort implements LibraryPort, LibraryRuntime {
     }
 
     return [...entries].map(([name, kind]) => ({ name, kind })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Same file and directory names as `listDirectory`. This port has no unsupported names.
+   * A missing folder is empty, matching the desktop adapter's missing-folder result.
+   */
+  async inspectDirectory(path: LibraryPath): Promise<LibraryInspectedEntry[]> {
+    return this.listDirectory(path);
   }
 
   async stat(path: LibraryPath): Promise<{ size: number; createdAt: string | null; modifiedAt: string | null } | null> {

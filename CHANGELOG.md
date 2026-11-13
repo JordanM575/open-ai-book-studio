@@ -12,6 +12,10 @@ Update the `Unreleased` section before every commit.
 - Question records may carry an explicit `irreversibleChoice` boolean. A record without that field stays valid and unclassified: absence is not pending, and option wording, consequences, keys, or character identity are not a classification. A present non-boolean is refused. `readIrreversibleChoicePending` counts only open questions whose recorded classification is true and returns ids and a count, not question prose. A new in-memory question stores false when its action omits the field. Blocking behavior is unchanged. Cadence is not resumed and no task box is closed.
 - A question record that keeps an unknown `record` object is counted from its own `irreversibleChoice`. A store snapshot with `record` and no question `kind` or `state` still unwraps. Cadence is not resumed and no task box is closed.
 
+### Workflow question listing
+
+- Recorded questions can be listed without writing. `listQuestions` inspects the questions folder and treats a missing folder as an empty list. A library that cannot inspect names refuses. An unsupported name, a nested directory, a file whose name is not a question id, a record this version cannot read, or any other listing failure refuses the whole list and leaves the files untouched. The folder is classified and every question is decoded before a page is cut. A page is at most 256 questions and a run is at most 10,000. The page is store snapshots the pending-question reader can count. Cadence is not resumed and no task box is closed.
+
 ### Authoring adoption receipt publisher (037 T032 partial)
 
 - Record adoption receipts from the Library publisher on confirmed
