@@ -190,6 +190,18 @@ with an explicit 037 exception. Earlier open/Proposed phrasing above is the hist
     step the run, schedule, or resume cadence. Focused synthetic coverage is
     `packages/core/tests/authoring/versioned-answer.test.ts`. Persistence, scheduling,
     and host wiring remain open. This task stays unchecked.
+  - Partial evidence (answered question projection): `projectAnsweredQuestion` in
+    `packages/core/src/authoring/wire.ts` builds the next question revision after
+    `checkVersionedAnswer`. The existing check runs first. The result is a frozen
+    copy: revision plus one, a sha256 base of the caller-supplied previous digest
+    at the open revision, state `answered`, and an answer of the checked texts, a
+    copy of the proposed direction reference, and the caller-supplied timestamp.
+    Generation, `createdAt`, and the question's other own fields are copied. It
+    does not hash the question, write, create a direction, step the run, schedule,
+    or resume cadence. Focused synthetic coverage is
+    `packages/core/tests/authoring/answered-question.test.ts`. Direction
+    persistence, scheduling, and host wiring remain open. This task stays
+    unchecked.
 - [ ] T033 Invalidate affected tasks on direction change; prove independent continuation and stop precedence.
 - [ ] T034 Wire hidden-window/sleep/quit/connection-revoke handling and privacy-preserving notifications.
 - [ ] T035 Reconcile in a fresh process; default no sends, opted-in safe resume, uncertain effects blocked.

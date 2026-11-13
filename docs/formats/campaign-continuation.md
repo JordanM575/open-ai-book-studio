@@ -121,8 +121,14 @@ listed set into open questions only — the id, the open state, and that boolean
 is present — and it does not answer, write, or schedule. `checkVersionedAnswer` checks
 one decoded open question, the revision the author named, one proposed answer, and the
 direction epoch that answer would create. Silence is not an answer. It does not write,
-step a run, or schedule. The host still does not read that projection or call that
-check, so when adoption becomes countable `irreversibleChoicePending` must be supplied
+step a run, or schedule. `projectAnsweredQuestion` builds the next question revision
+after that check: the open revision plus one, a sha256 base naming the caller-supplied
+previous digest and the open revision, state `answered`, and an answer of the checked
+texts, a copy of the proposed direction reference, and the caller-supplied timestamp.
+It does not hash the question, write, create a direction, step a run, or schedule.
+The host still does not read the inbox projection, call `checkVersionedAnswer`, or call
+`projectAnsweredQuestion`, so when
+adoption becomes countable `irreversibleChoicePending` must be supplied
 from recorded question state or supply stays withheld — supply must not resume on
 adoption receipts alone. Supply remains scoped to the
 pre-checkpoint window (a checkpoint record or an unreadable chapter also withholds), and

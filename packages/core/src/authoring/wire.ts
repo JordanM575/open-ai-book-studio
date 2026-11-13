@@ -3,7 +3,7 @@ import {
   type Graph, type Owner, type Role,
 } from './contracts';
 import {
-  AuthoringError, copyValue, digest, freeze, id, integer, requireValue, text,
+  AuthoringError, add, copyValue, digest, freeze, id, integer, requireValue, text,
   type Immutable,
 } from './value';
 
@@ -1328,4 +1328,29 @@ export function checkVersionedAnswer(question: unknown, namedRevision: unknown, 
   const named = proposed.direction as WorkflowReference;
   requireValue(named.id === directionId && named.revision === directionRevision, 'stale-direction');
   return freeze({ questionId, revision, exactText, confirmedText, directionId, directionRevision });
+}
+
+/**
+ * Pure next question revision after `checkVersionedAnswer`. The check runs
+ * first. Not a write, a direction record, a hash, a run step, or a cadence
+ * input.
+ */
+export function projectAnsweredQuestion(question: unknown, namedRevision: unknown, answer: unknown,
+  direction: unknown, owner: Owner, answeredAt: unknown, previousHash: unknown): Immutable<WorkflowRecord> {
+  const checked = checkVersionedAnswer(question, namedRevision, answer, direction, owner);
+  const when = isoValue(answeredAt);
+  const previous = digestValue(previousHash);
+  const next = copyValue(unwrapQuestion(question));
+  next.revision = add(checked.revision, 1);
+  next.base = { kind: 'sha256', value: previous, revision: checked.revision };
+  next.state = 'answered';
+  next.updatedAt = when;
+  const proposed = objectValue(answer, 'invalid-answer');
+  next.answer = {
+    exactText: checked.exactText,
+    confirmedText: checked.confirmedText,
+    direction: copyValue(proposed.direction),
+    answeredAt: when,
+  };
+  return freeze(next) as Immutable<WorkflowRecord>;
 }

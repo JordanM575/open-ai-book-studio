@@ -7,6 +7,10 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Answered question projection
+
+- `projectAnsweredQuestion` builds the next question revision after `checkVersionedAnswer`. The check runs first, so a stale question or a missing answer refuses before the timestamp or previous digest is read. The timestamp must be UTC. The previous digest must be 64 hexadecimal characters; this function does not hash the question. The result is a frozen copy at the open revision plus one, with a sha256 base naming that digest and the open revision, state `answered`, and an answer of the checked texts, a copy of the proposed direction reference, and that timestamp. `updatedAt` is the same timestamp. Generation, `createdAt`, and the question's other own fields are copied. It does not write, create a direction, step the run, schedule, or resume cadence, and the host does not call it. No task box is closed.
+
 ### Versioned answer check
 
 - `checkVersionedAnswer` checks one already decoded open question, the revision the author named, one proposed answer, and the direction epoch that answer would create. Silence (`null` or a missing answer) is not an answer. A question that is not open, or a named revision that is not the question's current revision, refuses as `stale-question`. Exact and confirmed text are copied separately and need not match. The direction must have origin `answer`, name this question at that open revision, be a new epoch under the existing previous-link rule, and its `exactText` must be the confirmed text. The answer's direction reference must name that direction record. The check returns those identities and the two texts. It does not write, step the run, schedule, or resume cadence, and no task box is closed.

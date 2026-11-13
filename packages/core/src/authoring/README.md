@@ -22,6 +22,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `wire.ts` | `decodeWorkflowRecord`, `encodeWorkflowRecord`, `canonicalWorkflowJson`, `WORKFLOW_LIMITS` | Raw schema-1 UTF-8 JSON admission and deterministic canonical encoding for the FORMAT workflow records. Refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy numeric lexemes, unsupported versions, foreign owner/kind/prefix, stale bases/links, depth and per-kind size/count overflow before returning a semantic record. Preserves supported unknown plain fields; no I/O, crypto, clock or host action. |
 | `wire.ts` | `projectQuestionInbox` | Pure projection of an already listed question array, or an object whose `questions` array is used, into open questions only. Copies the id, `state: "open"`, and an explicit `irreversibleChoice` boolean; omission is absence, not false. Refuses a partial page, duplicates, foreign kind/owner, an unknown state, a non-boolean classification, and more than 10,000 inputs before inspection. No prose, store, answer, schedule, or cadence. |
 | `wire.ts` | `checkVersionedAnswer` | Pure check of one already decoded open question, the revision the author named, one proposed answer, and the direction epoch that answer would create. Silence is not an answer. Exact and confirmed text stay separate. The direction origin is `answer`, its text is the confirmed text, and its question link names this open revision. No write, run step, stored answer, schedule, or cadence. |
+| `wire.ts` | `projectAnsweredQuestion` | Pure next question revision after that check. The check runs first. Copies the question, sets revision plus one, a sha256 base of the caller-supplied previous digest at the open revision, state `answered`, and an answer of the checked texts, the proposed direction reference, and the caller-supplied timestamp. Does not hash, write, create a direction, schedule, or resume cadence. |
 | `adoption-receipt.ts` | `AdoptionReceipt`, `validateAdoptionReceipt`, `countAdoptedChapters`, `ADOPTION_RECEIPT_LIMITS` | Versioned recorded adoption receipt (FR-017) and the pure adopted-chapter counter for T032 cadence. Binds one exact `artifact` candidate, `chapterId`, `resultVersion`/`resultHash`, `owner`, `grant`/`direction` references and caller-supplied `sequence`/`adoptedAt`; counts distinct chapters since an exclusive marker. No prose, clock or adoption decision. |
 
 Factories and reducers defensively copy before returning recursively frozen snapshots. They never
@@ -148,6 +149,24 @@ function does not hash the direction. Extra answer fields, including `answeredAt
 The result is a frozen copy of the question id, the open revision, the two texts, and the direction
 id and revision. It is not a stored answer. The caller's records are not frozen or changed.
 Persistence, scheduling, and host wiring remain open.
+
+## Answered question projection
+
+`projectAnsweredQuestion(question, namedRevision, answer, direction, owner, answeredAt, previousHash)`
+builds the next question revision after `checkVersionedAnswer`. It does not write, create a
+direction record, step the run, schedule, or resume cadence.
+
+The existing check runs first, so its codes win before `answeredAt` or `previousHash` is read.
+`answeredAt` must be a UTC timestamp (`invalid-timestamp`). `previousHash` must be a 64-hex digest
+(`invalid-digest`). This function does not hash the question and does not call `saveQuestion`.
+
+The result is a frozen copy of the unwrapped question. Its revision is the open revision plus one.
+Its `base` is `{kind:"sha256", value: previousHash, revision: open revision}`. Its state is
+`answered`. Its `answer` is `{exactText, confirmedText, direction, answeredAt}`: the two texts come
+from the check and stay separate, and `direction` is a copy of the proposed direction reference.
+`updatedAt` is that same timestamp. Generation, `createdAt`, and the question's other own data
+fields are copied, not invented. The caller's question, answer, and direction are not frozen or
+changed. Direction persistence, scheduling, and host wiring remain open.
 
 ## Adoption receipts
 
