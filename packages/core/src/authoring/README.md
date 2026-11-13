@@ -20,6 +20,7 @@ exists in the implementation. All IDs, digests, clocks, receipts and host facts 
 | `admission.ts` | `advanceAdmissionGeneration`, `parkConnection`, `continueConnection` | Preserve budgets across pause/recovery generations. Old reservations cannot dispatch. Auth/quota parks; 429 records eligibility only. Explicit Continue removes a park, never creates a request. |
 | `value.ts` | `copyValue`, `AuthoringError` | Plain acyclic value admission without getters/toJSON, exact escaped JSON-size accounting, well-formed Unicode, depth 64, and checked arithmetic. This is not a wire encoder/parser. |
 | `wire.ts` | `decodeWorkflowRecord`, `encodeWorkflowRecord`, `canonicalWorkflowJson`, `WORKFLOW_LIMITS` | Raw schema-1 UTF-8 JSON admission and deterministic canonical encoding for the FORMAT workflow records. Refuses invalid UTF-8/BOM, duplicate keys at any depth, lossy numeric lexemes, unsupported versions, foreign owner/kind/prefix, stale bases/links, depth and per-kind size/count overflow before returning a semantic record. Preserves supported unknown plain fields; no I/O, crypto, clock or host action. |
+| `wire.ts` | `projectQuestionInbox` | Pure projection of an already listed question array, or an object whose `questions` array is used, into open questions only. Copies the id, `state: "open"`, and an explicit `irreversibleChoice` boolean; omission is absence, not false. Refuses a partial page, duplicates, foreign kind/owner, an unknown state, a non-boolean classification, and more than 10,000 inputs before inspection. No prose, store, answer, schedule, or cadence. |
 | `adoption-receipt.ts` | `AdoptionReceipt`, `validateAdoptionReceipt`, `countAdoptedChapters`, `ADOPTION_RECEIPT_LIMITS` | Versioned recorded adoption receipt (FR-017) and the pure adopted-chapter counter for T032 cadence. Binds one exact `artifact` candidate, `chapterId`, `resultVersion`/`resultHash`, `owner`, `grant`/`direction` references and caller-supplied `sequence`/`adoptedAt`; counts distinct chapters since an exclusive marker. No prose, clock or adoption decision. |
 
 Factories and reducers defensively copy before returning recursively frozen snapshots. They never
@@ -97,6 +98,29 @@ chapters, supplying the first-chapter flag only until that first check-in is tak
 since-check-in counters after a check-in. The policy and evaluator perform no scheduling, persistence,
 inbox or host wiring; the campaign-continuation adapter now emits cadence when the caller supplies
 counted progress (host wiring that supplies it is a later slice).
+
+## Question inbox
+
+`projectQuestionInbox(input, owner)` projects questions the caller already has. It is not a second
+store and it does not read the library. The input is an array, or an object whose own `questions`
+array is used — the same shapes as `readIrreversibleChoicePending`. Only `state: "open"` is kept.
+Entries are sorted by id. Each entry copies that id, the open state, and an explicit boolean
+`irreversibleChoice`. When the field is absent the projection omits it; absence is not stored as
+`false` or `null`. Keys, options, answers, and other prose are not copied.
+
+A duplicate id refuses as `duplicate-question`. A present kind other than `question` refuses as
+`foreign-kind`. A present owner that is not the caller's owner refuses as `foreign-owner`. An
+unknown state string refuses as `unknown-question-state`; a missing or non-string state refuses as
+`invalid-question-state`. A present non-boolean `irreversibleChoice` refuses as
+`invalid-irreversible-choice`, including on a question that would not have been kept. Answered,
+superseded, and withdrawn questions are omitted after those checks, not treated as errors.
+
+On a listing object, an own `total` must equal the number of input questions, and an own `offset`
+must be `0`. Any other value, including a later page or a total that counts only the open subset,
+refuses as `partial-question-list` before the entries are built. A missing `total` or `offset` is
+not invented. More than 10,000 inputs refuse as `question-inbox-too-large` before any question is
+inspected; exactly 10,000 may proceed. The function does not answer, write, schedule, or resume
+cadence.
 
 ## Adoption receipts
 

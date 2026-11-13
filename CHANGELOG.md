@@ -7,6 +7,10 @@ All notable changes to Open Book Studio are recorded here. The format follows
 Update the `Unreleased` section before every commit.
 
 ## [Unreleased]
+### Question inbox
+
+- `projectQuestionInbox` projects an already listed question set into open questions only. Each entry copies the id, the open state, and an explicit `irreversibleChoice` boolean. A record without that field stays unclassified: the field is omitted, not stored as false or null. A present non-boolean is refused. The projection keeps no question prose. More than 10,000 inputs refuse before inspection. A listing whose own `total` is not the question count, or whose own `offset` is not zero, refuses as a partial list. It does not answer, write, schedule, or resume cadence, and no task box is closed.
+
 ### Authoring question-state reading
 
 - Question records may carry an explicit `irreversibleChoice` boolean. A record without that field stays valid and unclassified: absence is not pending, and option wording, consequences, keys, or character identity are not a classification. A present non-boolean is refused. `readIrreversibleChoicePending` counts only open questions whose recorded classification is true and returns ids and a count, not question prose. A new in-memory question stores false when its action omits the field. Blocking behavior is unchanged. Cadence is not resumed and no task box is closed.
